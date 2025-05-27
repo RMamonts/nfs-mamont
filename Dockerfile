@@ -13,8 +13,8 @@ WORKDIR /app
 # Copy dependency files first for better caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create a dummy main.rs to build dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+# Create a dummy lib.rs to build dependencies
+RUN mkdir src && echo "// dummy lib" > src/lib.rs
 
 # Build dependencies (this layer will be cached)
 RUN cargo build --release && rm -rf src
@@ -23,8 +23,8 @@ RUN cargo build --release && rm -rf src
 COPY src ./src
 COPY examples ./examples
 
-# Build the actual application
-RUN cargo build --release
+# Build the actual application and examples
+RUN cargo build --release --examples
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -41,9 +41,9 @@ RUN useradd -r -s /bin/false nfs-user
 RUN mkdir -p /app /exports /mnt/nfs && \
     chown -R nfs-user:nfs-user /app /exports
 
-# Copy binary from builder stage
-COPY --from=builder /app/target/release/nfs-mamont /app/
-COPY --from=builder /app/target/release/examples/* /app/examples/
+# Copy example binaries from builder stage
+COPY --from=builder /app/target/release/examples/mirrorfs /app/
+COPY --from=builder /app/target/release/examples/demofs /app/
 
 # Set working directory
 WORKDIR /app
@@ -58,5 +58,5 @@ EXPOSE 2049
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD timeout 5s nc -z localhost 2049 || exit 1
 
-# Default command
-CMD ["./nfs-mamont"] 
+# Default command (run demofs example which doesn't require arguments)
+CMD ["./demofs"] 

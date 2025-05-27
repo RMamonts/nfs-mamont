@@ -157,6 +157,49 @@ This implementation follows these RFCs:
 - [RFC 1832](https://datatracker.ietf.org/doc/html/rfc1832): XDR: External Data Representation Standard
 - [RFC 1833](https://datatracker.ietf.org/doc/html/rfc1833): Binding Protocols for ONC RPC Version 2
 
+## Docker Usage
+
+### Quick Start with Docker
+
+Run the demo NFS server:
+
+```bash
+# Run demo file system (in-memory with sample files)
+docker run -d --name nfs-mamont -p 2049:2049 --privileged \
+  registry.gitflic.ru/project/yadro/nfs-mamont/nfs-mamont:latest
+
+# Mount the NFS share
+mkdir /mnt/nfs
+sudo mount -t nfs -o vers=3,tcp,port=2049,nolock 127.0.0.1:/ /mnt/nfs
+```
+
+### Run Mirror File System
+
+To export an existing directory:
+
+```bash
+# Run mirror file system with a local directory
+docker run -d --name nfs-mamont -p 2049:2049 --privileged \
+  -v /path/to/your/directory:/exports:rw \
+  registry.gitflic.ru/project/yadro/nfs-mamont/nfs-mamont:latest \
+  ./mirrorfs /exports
+```
+
+### Using Docker Compose
+
+```bash
+# Start the complete stack
+docker-compose up -d
+
+# Test with included NFS client
+docker-compose --profile testing up
+```
+
+### Available Images
+
+- `registry.gitflic.ru/project/yadro/nfs-mamont/nfs-mamont:latest` - Latest build
+- `registry.gitflic.ru/project/yadro/nfs-mamont/nfs-mamont:v0.0.0` - Stable release
+
 ## CI/CD & Docker
 
 This project uses GitFlic CI/CD for automated testing, security scanning, and deployment. The pipeline automatically runs on every push and merge request, ensuring code quality and reliability.

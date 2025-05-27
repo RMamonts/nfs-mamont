@@ -9,6 +9,11 @@ variables:
   CARGO_INCREMENTAL: "0"
   RUSTFLAGS: "-Dwarnings"
   
+  # Performance settings
+  CARGO_NET_RETRY: "3"
+  CARGO_NET_TIMEOUT: "300"
+  CARGO_HTTP_TIMEOUT: "300"
+  
   # Cache settings
   CARGO_CACHE_KEY: "cargo-${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
   
@@ -16,13 +21,7 @@ variables:
   PIPELINE_TIMEOUT: "3600"  # 1 hour timeout
   JOB_RESTART_TIMEOUT: "300"  # 5 minutes restart timeout
 
-# Pipeline lifetime settings (30 days)
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_BRANCH
+
 
 # Pipeline stages
 stages:
@@ -35,8 +34,38 @@ stages:
   - docker
   - deploy
 
-# Caching to speed up builds
-.cache_template: &cache_template
+
+# Base template for Rust jobs
+.rust_base:
+  image: rust:1.83
+  before_script:
+    - echo "=== Setting up Rust environment ==="
+    - export PATH="$CARGO_HOME/bin:$PATH"
+    - echo "CARGO_HOME: $CARGO_HOME"
+    - echo "PATH: $PATH"
+    - |
+      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
+        echo "Installing Rust toolchain..."
+        echo "Downloading rustup installer..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
+        echo "Sourcing Rust environment..."
+        source $CARGO_HOME/env
+        echo "Installing stable toolchain..."
+        rustup toolchain install stable --profile minimal --no-self-update
+        rustup default stable
+        echo "Adding components..."
+        rustup component add clippy rustfmt
+        echo "Rust installation completed"
+      else
+        echo "Rust already installed, using cached version"
+      fi
+    - source $CARGO_HOME/env || true
+    - echo "=== Rust version info ==="
+    - rustc --version
+    - cargo --version
+    - rustup --version
+  scripts:
+    - echo "Rust base template - should be extended by other jobs"
   cache:
     key: "${CARGO_CACHE_KEY}"
     paths:
@@ -45,44 +74,51 @@ stages:
       - target/
     policy: pull-push
 
-# Base template for Rust jobs
-.rust_base:
-  image: rust:1.83
-  before_script:
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - |
-      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
-        echo "Installing Rust toolchain..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-        source $CARGO_HOME/env
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        rustup component add clippy rustfmt
-      fi
-    - source $CARGO_HOME/env || true
-    - rustc --version
-    - cargo --version
-  <<: *cache_template
+# Quick test job
+test:basic:
+  image: alpine:latest
+  stage: setup
+  scripts:
+    - echo "=== Basic CI test ==="
+    - echo "Current time: $(date)"
+    - echo "Available disk space:"
+    - df -h
+    - echo "Environment variables:"
+    - env | grep CI_ | head -10
+    - echo "=== Basic test completed ==="
+  timeout: 5m
 
 # Environment setup
 setup:rust:
   extends: .rust_base
   stage: setup
-  script:
-    - echo "Rust environment setup completed"
-    - cargo fetch --locked
+  scripts:
+    - echo "=== Starting Rust environment setup ==="
+    - echo "Current time: $(date)"
+    - echo "Available disk space:"
+    - df -h
+    - echo "=== Checking Cargo.toml ==="
+    - ls -la Cargo.toml Cargo.lock
+    - echo "=== Fetching dependencies (this may take a while) ==="
+    - timeout 15m cargo fetch --locked --verbose || echo "Fetch timed out, continuing..."
+    - echo "=== Setup completed ==="
+    - echo "Cargo cache size:"
+    - du -sh .cargo/ || echo "No cargo cache yet"
+    - echo "Registry cache:"
+    - du -sh .cargo/registry/ || echo "No registry cache yet"
   artifacts:
     expire_in: 1 hour
     paths:
       - .cargo/
       - .rustup/
+  timeout: 20m
 
 # Code formatting check
 format:check:
   extends: .rust_base
   stage: quality
   needs: ["setup:rust"]
-  script:
+  scripts:
     - echo "Checking code formatting..."
     - cargo fmt --all -- --check
   allow_failure: false
@@ -92,7 +128,7 @@ clippy:analysis:
   extends: .rust_base
   stage: quality
   needs: ["setup:rust"]
-  script:
+  scripts:
     - echo "Running clippy analysis..."
     - cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all
   artifacts:
@@ -106,7 +142,7 @@ cargo:check:
   extends: .rust_base
   stage: quality
   needs: ["setup:rust"]
-  script:
+  scripts:
     - echo "Running cargo check..."
     - cargo check --workspace --all-targets --all-features
 
@@ -115,26 +151,28 @@ build:debug:
   extends: .rust_base
   stage: build
   needs: ["format:check", "clippy:analysis", "cargo:check"]
-  script:
+  scripts:
     - echo "Building debug version..."
     - cargo build --workspace --all-targets --all-features
   artifacts:
     expire_in: 1 day
     paths:
       - target/debug/
+  timeout: 30m
 
 # Release build
 build:release:
   extends: .rust_base
   stage: build
   needs: ["format:check", "clippy:analysis", "cargo:check"]
-  script:
+  scripts:
     - echo "Building release version..."
     - cargo build --release --workspace --all-targets --all-features
   artifacts:
     expire_in: 1 week
     paths:
       - target/release/
+  timeout: 45m
   only:
     - main
     - merge_requests
@@ -144,7 +182,7 @@ build:examples:
   extends: .rust_base
   stage: build
   needs: ["build:debug"]
-  script:
+  scripts:
     - echo "Building examples..."
     - cargo build --examples --all-features
     - cargo build --example mirrorfs --all-features
@@ -162,7 +200,7 @@ test:unit:
   extends: .rust_base
   stage: test
   needs: ["build:debug"]
-  script:
+  scripts:
     - echo "Running unit tests..."
     - cargo test --workspace --lib --all-features -- --nocapture
   artifacts:
@@ -176,7 +214,7 @@ test:integration:
   extends: .rust_base
   stage: test
   needs: ["build:debug"]
-  script:
+  scripts:
     - echo "Running integration tests..."
     - cargo test --workspace --test "*" --all-features -- --nocapture
   artifacts:
@@ -190,7 +228,7 @@ test:doc:
   extends: .rust_base
   stage: test
   needs: ["build:debug"]
-  script:
+  scripts:
     - echo "Running documentation tests..."
     - cargo test --workspace --doc --all-features
 
@@ -214,7 +252,7 @@ security:audit:
     - rustc --version
     - cargo --version
     - cargo install cargo-audit --locked || true
-  script:
+  scripts:
     - echo "Running security audit..."
     - cargo audit --json > target/audit-report.json || true
     - cargo audit
@@ -245,7 +283,7 @@ security:outdated:
     - rustc --version
     - cargo --version
     - cargo install cargo-outdated --locked || true
-  script:
+  scripts:
     - echo "Checking for outdated dependencies..."
     - cargo outdated --root-deps-only > target/outdated-report.txt || true
   artifacts:
@@ -260,7 +298,7 @@ docs:generate:
   extends: .rust_base
   stage: documentation
   needs: ["build:release"]
-  script:
+  scripts:
     - echo "Generating documentation..."
     - cargo doc --workspace --all-features --no-deps --document-private-items
   artifacts:
@@ -290,7 +328,7 @@ coverage:analysis:
     - rustc --version
     - cargo --version
     - cargo install cargo-tarpaulin --locked || true
-  script:
+  scripts:
     - echo "Generating coverage report..."
     - mkdir -p target/coverage
     - cargo tarpaulin --workspace --all-features --out xml --out html --output-dir target/coverage --timeout 300
@@ -311,7 +349,7 @@ benchmarks:performance:
   extends: .rust_base
   stage: documentation
   needs: ["build:release"]
-  script:
+  scripts:
     - echo "Running performance benchmarks..."
     - |
       if [ -d "benches" ] || grep -q "\\[\\[bench\\]\\]" Cargo.toml; then
@@ -337,7 +375,7 @@ deploy:artifacts:
     - "build:release"
     - "docs:generate"
     - "coverage:analysis"
-  script:
+  scripts:
     - echo "Deploying artifacts..."
     - echo "Release binaries and documentation are ready for deployment"
   artifacts:
@@ -350,7 +388,7 @@ deploy:artifacts:
     - main
   when: manual
 
-# Docker build and push
+# Docker build and push template
 .docker_base:
   image: docker:24.0.5
   services:
@@ -365,13 +403,15 @@ deploy:artifacts:
   before_script:
     - echo "Logging into GitFlic Docker registry..."
     - echo "$DOCKER_REGISTRY_PASSWORD" | docker login $DOCKER_REGISTRY -u "$DOCKER_REGISTRY_USER" --password-stdin
+  scripts:
+    - echo "Docker base template - should be extended by other jobs"
 
 # Build Docker image
 docker:build:
   extends: .docker_base
   stage: docker
   needs: ["build:release"]
-  script:
+  scripts:
     - echo "Building Docker image..."
     - |
       IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
@@ -399,7 +439,7 @@ docker:push:
   extends: .docker_base
   stage: docker
   needs: ["docker:build"]
-  script:
+  scripts:
     - echo "Pushing Docker image to registry..."
     - |
       IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
@@ -434,7 +474,7 @@ docker:security:
     - apk add --no-cache curl
     - |
       curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-  script:
+  scripts:
     - echo "Scanning Docker image for vulnerabilities..."
     - |
       IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
@@ -459,7 +499,7 @@ deploy:docker:
   needs: 
     - "docker:push"
     - "docker:security"
-  script:
+  scripts:
     - echo "Docker deployment ready..."
     - |
       IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
@@ -482,7 +522,7 @@ deploy:docker:
 cleanup:
   stage: .post
   image: alpine:latest
-  script:
+  scripts:
     - echo "Performing cleanup..."
     - find target -name "*.tmp" -delete || true
     - find target -name "*.rlib" -mtime +7 -delete || true
