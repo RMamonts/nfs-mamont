@@ -1,0 +1,9 @@
+# Build artifacts
+/target
+
+# IDEs
+.vscode
+.idea
+.cursorrules
+.cursor
+.cursorignore
