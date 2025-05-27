@@ -40,26 +40,22 @@ stages:
   image: rust:1.83
   before_script:
     - echo "=== Setting up Rust environment ==="
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - echo "CARGO_HOME: $CARGO_HOME"
-    - echo "PATH: $PATH"
-    - |
-      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
-        echo "Installing Rust toolchain..."
-        echo "Downloading rustup installer..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
-        echo "Sourcing Rust environment..."
-        source $CARGO_HOME/env
-        echo "Installing stable toolchain..."
-        rustup toolchain install stable --profile minimal --no-self-update
-        rustup default stable
-        echo "Adding components..."
-        rustup component add clippy rustfmt
-        echo "Rust installation completed"
-      else
-        echo "Rust already installed, using cached version"
-      fi
-    - source $CARGO_HOME/env || true
+    - 'export PATH="$CARGO_HOME/bin:$PATH"'
+    - 'echo "CARGO_HOME: $CARGO_HOME"'
+    - 'echo "PATH: $PATH"'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Installing Rust toolchain..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Downloading rustup installer..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Sourcing Rust environment..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then source $CARGO_HOME/env; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Installing stable toolchain..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup toolchain install stable --profile minimal --no-self-update; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup default stable; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Adding components..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup component add clippy rustfmt; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Rust installation completed"; fi'
+    - 'if [ -f "$CARGO_HOME/bin/cargo" ]; then echo "Rust already installed, using cached version"; fi'
+    - 'source $CARGO_HOME/env || true'
     - echo "=== Rust version info ==="
     - rustc --version
     - cargo --version
@@ -80,7 +76,7 @@ test:basic:
   stage: setup
   scripts:
     - echo "=== Basic CI test ==="
-    - echo "Current time: $(date)"
+    - 'echo "Current time: $(date)"'
     - echo "Available disk space:"
     - df -h
     - echo "Environment variables:"
@@ -94,18 +90,18 @@ setup:rust:
   stage: setup
   scripts:
     - echo "=== Starting Rust environment setup ==="
-    - echo "Current time: $(date)"
+    - 'echo "Current time: $(date)"'
     - echo "Available disk space:"
     - df -h
     - echo "=== Checking Cargo.toml ==="
     - ls -la Cargo.toml Cargo.lock
     - echo "=== Fetching dependencies (this may take a while) ==="
-    - timeout 15m cargo fetch --locked --verbose || echo "Fetch timed out, continuing..."
+    - 'timeout 15m cargo fetch --locked --verbose || echo "Fetch timed out, continuing..."'
     - echo "=== Setup completed ==="
     - echo "Cargo cache size:"
-    - du -sh .cargo/ || echo "No cargo cache yet"
+    - 'du -sh .cargo/ || echo "No cargo cache yet"'
     - echo "Registry cache:"
-    - du -sh .cargo/registry/ || echo "No registry cache yet"
+    - 'du -sh .cargo/registry/ || echo "No registry cache yet"'
   artifacts:
     expire_in: 1 hour
     paths:
@@ -238,23 +234,20 @@ security:audit:
   stage: security
   needs: ["setup:rust"]
   before_script:
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - |
-      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
-        echo "Installing Rust toolchain..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-        source $CARGO_HOME/env
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        rustup component add clippy rustfmt
-      fi
-    - source $CARGO_HOME/env || true
+    - 'export PATH="$CARGO_HOME/bin:$PATH"'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Installing Rust toolchain..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then source $CARGO_HOME/env; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup toolchain install stable --profile minimal; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup default stable; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup component add clippy rustfmt; fi'
+    - 'source $CARGO_HOME/env || true'
     - rustc --version
     - cargo --version
-    - cargo install cargo-audit --locked || true
+    - 'cargo install cargo-audit --locked || true'
   scripts:
     - echo "Running security audit..."
-    - cargo audit --json > target/audit-report.json || true
+    - 'cargo audit --json > target/audit-report.json || true'
     - cargo audit
   artifacts:
     expire_in: 1 week
@@ -269,23 +262,20 @@ security:outdated:
   stage: security
   needs: ["setup:rust"]
   before_script:
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - |
-      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
-        echo "Installing Rust toolchain..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-        source $CARGO_HOME/env
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        rustup component add clippy rustfmt
-      fi
-    - source $CARGO_HOME/env || true
+    - 'export PATH="$CARGO_HOME/bin:$PATH"'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Installing Rust toolchain..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then source $CARGO_HOME/env; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup toolchain install stable --profile minimal; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup default stable; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup component add clippy rustfmt; fi'
+    - 'source $CARGO_HOME/env || true'
     - rustc --version
     - cargo --version
-    - cargo install cargo-outdated --locked || true
+    - 'cargo install cargo-outdated --locked || true'
   scripts:
     - echo "Checking for outdated dependencies..."
-    - cargo outdated --root-deps-only > target/outdated-report.txt || true
+    - 'cargo outdated --root-deps-only > target/outdated-report.txt || true'
   artifacts:
     expire_in: 1 week
     paths:
@@ -314,20 +304,17 @@ coverage:analysis:
   stage: documentation
   needs: ["test:unit", "test:integration"]
   before_script:
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - |
-      if [ ! -f "$CARGO_HOME/bin/cargo" ]; then
-        echo "Installing Rust toolchain..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-        source $CARGO_HOME/env
-        rustup toolchain install stable --profile minimal
-        rustup default stable
-        rustup component add clippy rustfmt
-      fi
-    - source $CARGO_HOME/env || true
+    - 'export PATH="$CARGO_HOME/bin:$PATH"'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then echo "Installing Rust toolchain..."; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then source $CARGO_HOME/env; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup toolchain install stable --profile minimal; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup default stable; fi'
+    - 'if [ ! -f "$CARGO_HOME/bin/cargo" ]; then rustup component add clippy rustfmt; fi'
+    - 'source $CARGO_HOME/env || true'
     - rustc --version
     - cargo --version
-    - cargo install cargo-tarpaulin --locked || true
+    - 'cargo install cargo-tarpaulin --locked || true'
   scripts:
     - echo "Generating coverage report..."
     - mkdir -p target/coverage
@@ -351,14 +338,10 @@ benchmarks:performance:
   needs: ["build:release"]
   scripts:
     - echo "Running performance benchmarks..."
-    - |
-      if [ -d "benches" ] || grep -q "\\[\\[bench\\]\\]" Cargo.toml; then
-        echo "Running benchmarks..."
-        cargo bench --workspace --all-features -- --output-format json > target/benchmark-results.json || true
-      else
-        echo "No benchmarks found, skipping..."
-        echo "{}" > target/benchmark-results.json
-      fi
+    - 'if [ -d "benches" ] || grep -q "\\[\\[bench\\]\\]" Cargo.toml; then echo "Running benchmarks..."; fi'
+    - 'if [ -d "benches" ] || grep -q "\\[\\[bench\\]\\]" Cargo.toml; then cargo bench --workspace --all-features -- --output-format json > target/benchmark-results.json || true; fi'
+    - 'if [ ! -d "benches" ] && ! grep -q "\\[\\[bench\\]\\]" Cargo.toml; then echo "No benchmarks found, skipping..."; fi'
+    - 'if [ ! -d "benches" ] && ! grep -q "\\[\\[bench\\]\\]" Cargo.toml; then echo "{}" > target/benchmark-results.json; fi'
   artifacts:
     expire_in: 1 month
     paths:
@@ -397,12 +380,12 @@ deploy:artifacts:
     DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_TLS_VERIFY: 1
-    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
     DOCKER_DRIVER: overlay2
     DOCKER_BUILDKIT: 1
   before_script:
     - echo "Logging into GitFlic Docker registry..."
-    - echo "$DOCKER_REGISTRY_PASSWORD" | docker login $DOCKER_REGISTRY -u "$DOCKER_REGISTRY_USER" --password-stdin
+    - 'echo "$DOCKER_REGISTRY_PASSWORD" | docker login $DOCKER_REGISTRY -u "$DOCKER_REGISTRY_USER" --password-stdin'
   scripts:
     - echo "Docker base template - should be extended by other jobs"
 
@@ -413,19 +396,12 @@ docker:build:
   needs: ["build:release"]
   scripts:
     - echo "Building Docker image..."
-    - |
-      IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
-      LATEST_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:latest"
-      
-      echo "Building image: $IMAGE_TAG"
-      docker build --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from $LATEST_TAG \
-        -t $IMAGE_TAG \
-        -t $LATEST_TAG \
-        .
-      
-      echo "Built image successfully"
-      docker images | grep nfs-mamont
+    - 'IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"'
+    - 'LATEST_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:latest"'
+    - 'echo "Building image: $IMAGE_TAG"'
+    - 'docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $LATEST_TAG -t $IMAGE_TAG -t $LATEST_TAG .'
+    - echo "Built image successfully"
+    - 'docker images | grep nfs-mamont'
   artifacts:
     expire_in: 1 hour
     reports:
@@ -441,21 +417,15 @@ docker:push:
   needs: ["docker:build"]
   scripts:
     - echo "Pushing Docker image to registry..."
-    - |
-      IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
-      LATEST_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:latest"
-      
-      echo "Pushing image: $IMAGE_TAG"
-      docker push $IMAGE_TAG
-      
-      if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-        echo "Pushing latest tag: $LATEST_TAG"
-        docker push $LATEST_TAG
-      fi
-      
-      echo "Image pushed successfully"
-      echo "IMAGE_TAG=$IMAGE_TAG" >> docker-push.env
-      echo "LATEST_TAG=$LATEST_TAG" >> docker-push.env
+    - 'IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"'
+    - 'LATEST_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:latest"'
+    - 'echo "Pushing image: $IMAGE_TAG"'
+    - 'docker push $IMAGE_TAG'
+    - 'if [ "$CI_COMMIT_BRANCH" = "main" ]; then echo "Pushing latest tag: $LATEST_TAG"; fi'
+    - 'if [ "$CI_COMMIT_BRANCH" = "main" ]; then docker push $LATEST_TAG; fi'
+    - echo "Image pushed successfully"
+    - 'echo "IMAGE_TAG=$IMAGE_TAG" >> docker-push.env'
+    - 'echo "LATEST_TAG=$LATEST_TAG" >> docker-push.env'
   artifacts:
     expire_in: 1 week
     reports:
@@ -472,16 +442,13 @@ docker:security:
   before_script:
     - echo "Installing Trivy for container security scanning..."
     - apk add --no-cache curl
-    - |
-      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+    - 'curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin'
   scripts:
     - echo "Scanning Docker image for vulnerabilities..."
-    - |
-      IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
-      
-      echo "Scanning image: $IMAGE_TAG"
-      trivy image --format json --output trivy-report.json $IMAGE_TAG || true
-      trivy image --format table $IMAGE_TAG || true
+    - 'IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"'
+    - 'echo "Scanning image: $IMAGE_TAG"'
+    - 'trivy image --format json --output trivy-report.json $IMAGE_TAG || true'
+    - 'trivy image --format table $IMAGE_TAG || true'
   artifacts:
     expire_in: 1 week
     paths:
@@ -501,15 +468,13 @@ deploy:docker:
     - "docker:security"
   scripts:
     - echo "Docker deployment ready..."
-    - |
-      IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
-      
-      echo "Image ready for deployment: $IMAGE_TAG"
-      echo "To run the container:"
-      echo "docker run -d -p 2049:2049 --name nfs-mamont $IMAGE_TAG"
-      echo ""
-      echo "To mount NFS:"
-      echo "sudo mount -t nfs -o vers=3,tcp,port=2049 <container-ip>:/ /mnt/nfs"
+    - 'IMAGE_TAG="${DOCKER_REGISTRY}/${DOCKER_PROJECT_PATH}/${DOCKER_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"'
+    - 'echo "Image ready for deployment: $IMAGE_TAG"'
+    - echo "To run the container:"
+    - 'echo "docker run -d -p 2049:2049 --name nfs-mamont $IMAGE_TAG"'
+    - echo ""
+    - echo "To mount NFS:"
+    - 'echo "sudo mount -t nfs -o vers=3,tcp,port=2049 <container-ip>:/ /mnt/nfs"'
   artifacts:
     expire_in: 3 months
     paths:
@@ -524,8 +489,8 @@ cleanup:
   image: alpine:latest
   scripts:
     - echo "Performing cleanup..."
-    - find target -name "*.tmp" -delete || true
-    - find target -name "*.rlib" -mtime +7 -delete || true
-    - find target -name "*.rmeta" -mtime +7 -delete || true
+    - 'find target -name "*.tmp" -delete || true'
+    - 'find target -name "*.rlib" -mtime +7 -delete || true'
+    - 'find target -name "*.rmeta" -mtime +7 -delete || true'
   when: always
   allow_failure: true
