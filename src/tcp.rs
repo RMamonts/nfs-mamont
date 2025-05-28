@@ -172,7 +172,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
     /// # Arguments
     ///
     /// * `ipstr` - IP address and port in the format "IP:PORT" (e.g. "127.0.0.1:2049")
-    ///             Special value "auto:PORT" attempts to find an available local address
+    ///   Special value "auto:PORT" attempts to find an available local address
     /// * `fs` - Implementation of the NFSFileSystem trait that will handle NFS operations
     ///
     /// # Returns
