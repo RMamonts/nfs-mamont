@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
-use crate::protocol::xdr::{self, mount, nfs3, portmap, XDR};
+use crate::protocol::xdr::{self, mount, nfs3, portmap, Deserialize, Serialize};
 use crate::protocol::{nfs, rpc};
 
 // Information from RFC 5531 (ONC RPC v2)

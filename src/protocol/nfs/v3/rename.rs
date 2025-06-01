@@ -29,7 +29,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, nfs3, Deserialize, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 RENAME procedure (procedure 14)

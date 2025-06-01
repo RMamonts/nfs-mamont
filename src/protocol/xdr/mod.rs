@@ -29,7 +29,11 @@ pub type XDREndian = BigEndian;
 /// All data structures that need to be serialized to or deserialized from
 /// the network must implement this trait.
 #[allow(clippy::upper_case_acronyms)]
-pub trait XDR {
+pub trait XDR: Serialize + Deserialize {}
+
+impl<T: Serialize + Deserialize> XDR for T {}
+
+pub trait Serialize {
     /// Serializes the implementing type to the provided writer.
     ///
     /// # Arguments
@@ -37,8 +41,10 @@ pub trait XDR {
     ///
     /// # Returns
     /// * `std::io::Result<()>` - Ok(()) on success, or an error if serialization fails.
-    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()>;
+    fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()>;
+}
 
+pub trait Deserialize {
     /// Deserializes data from the provided reader into the implementing type.
     ///
     /// # Arguments
@@ -57,11 +63,13 @@ pub trait XDR {
 #[macro_export]
 macro_rules! XDREnumSerde {
     ($t:ident) => {
-        impl XDR for $t {
-            fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        impl Serialize for $t {
+            fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
                 dest.write_u32::<$crate::xdr::XDREndian>(*self as u32)
             }
+        }
 
+        impl Deserialize for $t {
             fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
                 let r: u32 = src.read_u32::<$crate::xdr::XDREndian>()?;
                 if let Some(p) = FromPrimitive::from_u32(r) {
@@ -82,12 +90,14 @@ macro_rules! XDREnumSerde {
 ///
 /// Booleans are serialized as 4-byte big endian integers
 /// where 0 represents false and any non-zero value represents true.
-impl XDR for bool {
+impl Serialize for bool {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         let val: u32 = *self as u32;
         dest.write_u32::<XDREndian>(val)
     }
+}
 
+impl Deserialize for bool {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let val: u32 = src.read_u32::<XDREndian>()?;
         *self = val > 0;
@@ -98,11 +108,13 @@ impl XDR for bool {
 /// XDR implementation for 32-bit signed integers.
 ///
 /// Integers are serialized as 4-byte big endian values.
-impl XDR for i32 {
+impl Serialize for i32 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         dest.write_i32::<XDREndian>(*self)
     }
+}
 
+impl Deserialize for i32 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         *self = src.read_i32::<XDREndian>()?;
         Ok(())
@@ -112,11 +124,13 @@ impl XDR for i32 {
 /// XDR implementation for 64-bit signed integers.
 ///
 /// 64-bit integers are serialized as 8-byte big endian values.
-impl XDR for i64 {
+impl Serialize for i64 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         dest.write_i64::<XDREndian>(*self)
     }
+}
 
+impl Deserialize for i64 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         *self = src.read_i64::<XDREndian>()?;
         Ok(())
@@ -126,11 +140,13 @@ impl XDR for i64 {
 /// XDR implementation for 32-bit unsigned integers.
 ///
 /// Unsigned 32-bit integers are serialized as 4-byte big endian values.
-impl XDR for u32 {
+impl Serialize for u32 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         dest.write_u32::<XDREndian>(*self)
     }
+}
 
+impl Deserialize for u32 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         *self = src.read_u32::<XDREndian>()?;
         Ok(())
@@ -140,11 +156,13 @@ impl XDR for u32 {
 /// XDR implementation for 64-bit unsigned integers.
 ///
 /// Unsigned 64-bit integers are serialized as 8-byte big endian values.
-impl XDR for u64 {
+impl Serialize for u64 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         dest.write_u64::<XDREndian>(*self)
     }
+}
 
+impl Deserialize for u64 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         *self = src.read_u64::<XDREndian>()?;
         Ok(())
@@ -154,11 +172,13 @@ impl XDR for u64 {
 /// XDR implementation for fixed-size byte arrays.
 ///
 /// Fixed-size arrays are serialized as their raw bytes without length prefix.
-impl<const N: usize> XDR for [u8; N] {
+impl<const N: usize> Serialize for [u8; N] {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         dest.write_all(self)
     }
+}
 
+impl<const N: usize> Deserialize for [u8; N] {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         src.read_exact(self)
     }
@@ -168,7 +188,7 @@ impl<const N: usize> XDR for [u8; N] {
 ///
 /// Variable-length data is serialized with a 4-byte length prefix,
 /// followed by the actual data, and padded to a multiple of 4 bytes.
-impl XDR for Vec<u8> {
+impl Serialize for [u8] {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         assert!(self.len() < u32::MAX as usize);
         let length = self.len() as u32;
@@ -182,7 +202,9 @@ impl XDR for Vec<u8> {
         }
         Ok(())
     }
+}
 
+impl Deserialize for Vec<u8> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut length: u32 = 0;
         length.deserialize(src)?;
@@ -199,7 +221,7 @@ impl XDR for Vec<u8> {
 /// XDR implementation for vectors of 32-bit unsigned integers.
 ///
 /// Serialized as a 4-byte length prefix followed by that many 4-byte integers.
-impl XDR for Vec<u32> {
+impl Serialize for Vec<u32> {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         assert!(self.len() < u32::MAX as usize);
         let length = self.len() as u32;
@@ -209,7 +231,9 @@ impl XDR for Vec<u32> {
         }
         Ok(())
     }
+}
 
+impl Deserialize for Vec<u32> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut length: u32 = 0;
         length.deserialize(src)?;
@@ -232,12 +256,14 @@ macro_rules! XDRStruct {
         $t:ident,
         $($element:ident),*
     ) => {
-        impl XDR for $t {
+        impl Serialize for $t {
             fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
                 $(self.$element.serialize(dest)?;)*
                 Ok(())
             }
+        }
 
+        impl Deserialize for $t {
             fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
                 $(self.$element.deserialize(src)?;)*
                 Ok(())
@@ -265,7 +291,7 @@ macro_rules! XDRBoolUnion {
     (
         $t:ident, $enumcase:ident, $enumtype:ty
     ) => {
-        impl XDR for $t {
+        impl Serialize for $t {
             fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
                 match self {
                     $t::Void => {
@@ -278,7 +304,8 @@ macro_rules! XDRBoolUnion {
                 }
                 Ok(())
             }
-
+        }
+        impl Deserialize for $t {
             fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
                 let mut c: bool = false;
                 c.deserialize(src)?;

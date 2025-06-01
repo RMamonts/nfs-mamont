@@ -21,7 +21,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, nfs3, Deserialize, Serialize};
 
 /// Handles NFSv3 READLINK procedure (procedure 5)
 ///

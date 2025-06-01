@@ -200,7 +200,7 @@ impl Default for rpc_body {
     }
 }
 
-impl XDR for rpc_body {
+impl Serialize for rpc_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             rpc_body::CALL(v) => {
@@ -214,6 +214,8 @@ impl XDR for rpc_body {
         }
         Ok(())
     }
+}
+impl Deserialize for rpc_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;
@@ -272,7 +274,7 @@ impl Default for reply_body {
     }
 }
 
-impl XDR for reply_body {
+impl Serialize for reply_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             reply_body::MSG_ACCEPTED(v) => {
@@ -286,7 +288,8 @@ impl XDR for reply_body {
         }
         Ok(())
     }
-
+}
+impl Deserialize for reply_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;
@@ -369,7 +372,7 @@ pub enum accept_body {
     GARBAGE_ARGS,
 }
 
-impl XDR for accept_body {
+impl Serialize for accept_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             accept_body::SUCCESS => {
@@ -392,7 +395,8 @@ impl XDR for accept_body {
 
         Ok(())
     }
-
+}
+impl Deserialize for accept_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;
@@ -455,7 +459,7 @@ impl Default for rejected_reply {
     }
 }
 
-impl XDR for rejected_reply {
+impl Serialize for rejected_reply {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             rejected_reply::RPC_MISMATCH(v) => {
@@ -470,7 +474,8 @@ impl XDR for rejected_reply {
 
         Ok(())
     }
-
+}
+impl Deserialize for rejected_reply {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;

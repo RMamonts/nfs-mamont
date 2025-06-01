@@ -8,7 +8,7 @@ use num_traits::cast::ToPrimitive;
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, XDR};
+use crate::protocol::xdr::{self, mount, Deserialize, Serialize};
 
 /// Handles MOUNTPROC3_MNT procedure.
 ///

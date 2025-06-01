@@ -22,8 +22,9 @@ use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 
-use crate::protocol::xdr::XDR;
 use crate::{XDRBoolUnion, XDREnumSerde, XDRStruct};
+
+use super::{Deserialize, Serialize};
 
 // Modules for different operation types
 pub mod dir;
@@ -112,10 +113,13 @@ impl fmt::Display for nfsstring {
     }
 }
 
-impl XDR for nfsstring {
+impl Serialize for nfsstring {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         self.0.serialize(dest)
     }
+}
+
+impl Deserialize for nfsstring {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         self.0.deserialize(src)
     }
@@ -578,7 +582,7 @@ pub enum set_atime {
     SET_TO_CLIENT_TIME(nfstime3),
 }
 
-impl XDR for set_atime {
+impl Serialize for set_atime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             set_atime::DONT_CHANGE => {
@@ -595,7 +599,8 @@ impl XDR for set_atime {
 
         Ok(())
     }
-
+}
+impl Deserialize for set_atime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;
@@ -642,7 +647,7 @@ pub enum set_mtime {
     SET_TO_CLIENT_TIME(nfstime3),
 }
 
-impl XDR for set_mtime {
+impl Serialize for set_mtime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             set_mtime::DONT_CHANGE => {
@@ -659,7 +664,8 @@ impl XDR for set_mtime {
 
         Ok(())
     }
-
+}
+impl Deserialize for set_mtime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let mut c: u32 = 0;
         c.deserialize(src)?;

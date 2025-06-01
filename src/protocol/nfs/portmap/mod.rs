@@ -7,7 +7,7 @@ use num_traits::cast::FromPrimitive;
 use tracing::error;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, portmap, XDR};
+use crate::protocol::xdr::{self, portmap, Serialize};
 
 mod get_port;
 mod null;

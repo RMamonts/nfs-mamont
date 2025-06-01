@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, XDR};
+use crate::protocol::xdr::{self, Deserialize, Serialize};
 
 /// Handles PMAPPROC_GETPORT procedure.
 ///

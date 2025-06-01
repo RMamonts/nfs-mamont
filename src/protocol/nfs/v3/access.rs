@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, nfs3, Deserialize, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 ACCESS procedure (procedure 4)

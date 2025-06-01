@@ -6,7 +6,7 @@ use std::io::Write;
 
 use tracing::debug;
 
-use crate::protocol::xdr::{self, XDR};
+use crate::protocol::xdr::{self, Serialize};
 
 /// Handles PMAPPROC_NULL procedure.
 ///

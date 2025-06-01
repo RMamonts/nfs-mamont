@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, XDR};
+use crate::protocol::xdr::{self, mount, Deserialize, Serialize};
 
 /// Handles MOUNTPROC3_UMNT procedure.
 ///
