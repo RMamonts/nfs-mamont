@@ -55,6 +55,16 @@ pub trait Deserialize {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()>;
 }
 
+pub fn deserialize<T>(src: &mut impl Read) -> std::io::Result<T>
+where
+    T: Deserialize + Default,
+{
+    let mut val = T::default();
+    val.deserialize(src)?;
+
+    Ok(val)
+}
+
 /// Macro for implementing XDR serialization and deserialization for enumerations.
 ///
 /// This macro simplifies implementation of the XDR trait for enum types
@@ -206,12 +216,11 @@ impl Serialize for [u8] {
 
 impl Deserialize for Vec<u8> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut length: u32 = 0;
-        length.deserialize(src)?;
-        self.resize(length as usize, 0);
+        let length = deserialize::<u32>(src)? as usize;
+        self.resize(length, 0);
         src.read_exact(self)?;
         // read padding
-        let pad = ((4 - length % 4) % 4) as usize;
+        let pad = (4 - length % 4) % 4;
         let mut zeros: [u8; 4] = [0, 0, 0, 0];
         src.read_exact(&mut zeros[..pad])?;
         Ok(())
@@ -235,9 +244,8 @@ impl Serialize for Vec<u32> {
 
 impl Deserialize for Vec<u32> {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut length: u32 = 0;
-        length.deserialize(src)?;
-        self.resize(length as usize, 0);
+        let length = deserialize::<u32>(src)? as usize;
+        self.resize(length, 0);
         for i in self {
             i.deserialize(src)?;
         }
@@ -307,15 +315,12 @@ macro_rules! XDRBoolUnion {
         }
         impl Deserialize for $t {
             fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-                let mut c: bool = false;
-                c.deserialize(src)?;
-                if c == false {
-                    *self = $t::Void;
+                if deserialize::<bool>(src)? {
+                    *self = $t::$enumcase(deserialize::<$enumtype>(src)?);
                 } else {
-                    let mut r = <$enumtype>::default();
-                    r.deserialize(src)?;
-                    *self = $t::$enumcase(r);
+                    *self = $t::Void;
                 }
+
                 Ok(())
             }
         }

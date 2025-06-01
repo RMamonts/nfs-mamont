@@ -24,7 +24,7 @@ use num_traits::cast::FromPrimitive;
 
 use crate::{XDRBoolUnion, XDREnumSerde, XDRStruct};
 
-use super::{Deserialize, Serialize};
+use super::{deserialize, Deserialize, Serialize};
 
 // Modules for different operation types
 pub mod dir;
@@ -602,9 +602,7 @@ impl Serialize for set_atime {
 }
 impl Deserialize for set_atime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        match c {
+        match deserialize::<u32>(src)? {
             0 => {
                 *self = set_atime::DONT_CHANGE;
             }
@@ -612,11 +610,9 @@ impl Deserialize for set_atime {
                 *self = set_atime::SET_TO_SERVER_TIME;
             }
             2 => {
-                let mut time = nfstime3::default();
-                time.deserialize(src)?;
-                *self = set_atime::SET_TO_CLIENT_TIME(time);
+                *self = set_atime::SET_TO_CLIENT_TIME(deserialize(src)?);
             }
-            _ => {
+            c => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("Invalid set_atime value: {}", c),
@@ -667,9 +663,7 @@ impl Serialize for set_mtime {
 }
 impl Deserialize for set_mtime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        match c {
+        match deserialize::<u32>(src)? {
             0 => {
                 *self = set_mtime::DONT_CHANGE;
             }
@@ -677,11 +671,9 @@ impl Deserialize for set_mtime {
                 *self = set_mtime::SET_TO_SERVER_TIME;
             }
             2 => {
-                let mut time = nfstime3::default();
-                time.deserialize(src)?;
-                *self = set_mtime::SET_TO_CLIENT_TIME(time);
+                *self = set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?);
             }
-            _ => {
+            c => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("Invalid set_mtime value: {}", c),

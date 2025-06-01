@@ -217,21 +217,15 @@ impl Serialize for rpc_body {
 }
 impl Deserialize for rpc_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        if c == 0 {
-            let mut r = call_body::default();
-            r.deserialize(src)?;
-            *self = rpc_body::CALL(r);
-        } else if c == 1 {
-            let mut r = reply_body::default();
-            r.deserialize(src)?;
-            *self = rpc_body::REPLY(r);
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid message type in rpc_body: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = rpc_body::CALL(deserialize(src)?),
+            1 => *self = rpc_body::REPLY(deserialize(src)?),
+            msg_type => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid message type in rpc_body: {msg_type}"),
+                ))
+            }
         }
 
         Ok(())
@@ -291,21 +285,15 @@ impl Serialize for reply_body {
 }
 impl Deserialize for reply_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        if c == 0 {
-            let mut r = accepted_reply::default();
-            r.deserialize(src)?;
-            *self = reply_body::MSG_ACCEPTED(r);
-        } else if c == 1 {
-            let mut r = rejected_reply::default();
-            r.deserialize(src)?;
-            *self = reply_body::MSG_DENIED(r);
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid reply status in reply_body: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = reply_body::MSG_ACCEPTED(deserialize(src)?),
+            1 => *self = reply_body::MSG_DENIED(deserialize(src)?),
+            reply_status => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid reply status in reply_body: {reply_status}"),
+                ))
+            }
         }
 
         Ok(())
@@ -398,31 +386,16 @@ impl Serialize for accept_body {
 }
 impl Deserialize for accept_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-
-        match c {
-            0 => {
-                *self = accept_body::SUCCESS;
-            }
-            1 => {
-                *self = accept_body::PROG_UNAVAIL;
-            }
-            2 => {
-                let mut m = mismatch_info::default();
-                m.deserialize(src)?;
-                *self = accept_body::PROG_MISMATCH(m);
-            }
-            3 => {
-                *self = accept_body::PROC_UNAVAIL;
-            }
-            4 => {
-                *self = accept_body::GARBAGE_ARGS;
-            }
-            _ => {
+        match deserialize::<u32>(src)? {
+            0 => *self = accept_body::SUCCESS,
+            1 => *self = accept_body::PROG_UNAVAIL,
+            2 => *self = accept_body::PROG_MISMATCH(deserialize(src)?),
+            3 => *self = accept_body::PROC_UNAVAIL,
+            4 => *self = accept_body::GARBAGE_ARGS,
+            accept_stat => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Invalid accept stat in accept_body: {}", c),
+                    format!("Invalid accept stat in accept_body: {accept_stat}"),
                 ));
             }
         }
@@ -477,24 +450,15 @@ impl Serialize for rejected_reply {
 }
 impl Deserialize for rejected_reply {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-
-        if c == 0 {
-            let mut m = mismatch_info::default();
-            m.deserialize(src)?;
-            *self = rejected_reply::RPC_MISMATCH(m);
-        } else if c == 1 {
-            let mut a: u32 = 0;
-            a.deserialize(src)?;
-            *self = rejected_reply::AUTH_ERROR(
-                FromPrimitive::from_u32(a).unwrap_or(auth_stat::AUTH_BADCRED),
-            );
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid reject stat in rejected_reply: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = rejected_reply::RPC_MISMATCH(deserialize(src)?),
+            1 => *self = rejected_reply::AUTH_ERROR(deserialize(src)?),
+            stat => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid reject stat in rejected_reply: {stat}"),
+                ))
+            }
         }
 
         Ok(())
