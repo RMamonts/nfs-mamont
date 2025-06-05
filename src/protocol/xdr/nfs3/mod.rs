@@ -22,8 +22,12 @@ use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::cast::FromPrimitive;
 
-use crate::protocol::xdr::XDR;
-use crate::{XDRBoolUnion, XDREnumSerde, XDRStruct};
+use crate::{
+    DeserializeBoolUnion, DeserializeEnum, DeserializeStruct, SerializeBoolUnion, SerializeEnum,
+    SerializeStruct,
+};
+
+use super::{deserialize, Deserialize, Serialize};
 
 // Modules for different operation types
 pub mod dir;
@@ -112,10 +116,13 @@ impl fmt::Display for nfsstring {
     }
 }
 
-impl XDR for nfsstring {
+impl Serialize for nfsstring {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         self.0.serialize(dest)
     }
+}
+
+impl Deserialize for nfsstring {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         self.0.deserialize(src)
     }
@@ -315,7 +322,8 @@ pub enum nfsstat3 {
     /// respond to client with this error.
     NFS3ERR_JUKEBOX = 10008,
 }
-XDREnumSerde!(nfsstat3);
+SerializeEnum!(nfsstat3);
+DeserializeEnum!(nfsstat3);
 
 /// File type enumeration as defined in RFC 1813 section 2.3.5
 /// Determines the type of a file system object
@@ -339,7 +347,8 @@ pub enum ftype3 {
     /// Named Pipe
     NF3FIFO = 7,
 }
-XDREnumSerde!(ftype3);
+SerializeEnum!(ftype3);
+DeserializeEnum!(ftype3);
 
 /// Special device information for character and block special devices
 /// Contains the major and minor device numbers
@@ -351,7 +360,8 @@ pub struct specdata3 {
     /// Minor device number
     pub specdata2: u32,
 }
-XDRStruct!(specdata3, specdata1, specdata2);
+DeserializeStruct!(specdata3, specdata1, specdata2);
+SerializeStruct!(specdata3, specdata1, specdata2);
 
 /// The NFS version 3 file handle
 /// The file handle uniquely identifies a file or directory on the server
@@ -362,7 +372,8 @@ pub struct nfs_fh3 {
     /// Raw file handle data (up to NFS3_FHSIZE bytes)
     pub data: Vec<u8>,
 }
-XDRStruct!(nfs_fh3, data);
+DeserializeStruct!(nfs_fh3, data);
+SerializeStruct!(nfs_fh3, data);
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
@@ -374,7 +385,8 @@ pub struct nfstime3 {
     /// Nanoseconds (0-999999999)
     pub nseconds: u32,
 }
-XDRStruct!(nfstime3, seconds, nseconds);
+DeserializeStruct!(nfstime3, seconds, nseconds);
+SerializeStruct!(nfstime3, seconds, nseconds);
 
 impl From<nfstime3> for filetime::FileTime {
     fn from(time: nfstime3) -> Self {
@@ -422,7 +434,10 @@ pub struct fattr3 {
     /// Time of last status change (modification to the file's attributes)
     pub ctime: nfstime3,
 }
-XDRStruct!(
+DeserializeStruct!(
+    fattr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
+);
+SerializeStruct!(
     fattr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
 );
 
@@ -439,7 +454,8 @@ pub struct wcc_attr {
     /// Last status change time of the file
     pub ctime: nfstime3,
 }
-XDRStruct!(wcc_attr, size, mtime, ctime);
+DeserializeStruct!(wcc_attr, size, mtime, ctime);
+SerializeStruct!(wcc_attr, size, mtime, ctime);
 
 /// Pre-operation attributes for weak cache consistency as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state before an operation was performed
@@ -454,7 +470,8 @@ pub enum pre_op_attr {
     /// Attributes are available
     attributes(wcc_attr),
 }
-XDRBoolUnion!(pre_op_attr, attributes, wcc_attr);
+DeserializeBoolUnion!(pre_op_attr, attributes, wcc_attr);
+SerializeBoolUnion!(pre_op_attr, attributes, wcc_attr);
 
 /// Post-operation attributes for file information as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state after an operation was performed
@@ -470,7 +487,8 @@ pub enum post_op_attr {
     /// Attributes are available
     attributes(fattr3),
 }
-XDRBoolUnion!(post_op_attr, attributes, fattr3);
+DeserializeBoolUnion!(post_op_attr, attributes, fattr3);
+SerializeBoolUnion!(post_op_attr, attributes, fattr3);
 
 /// Weak cache consistency data as defined in RFC 1813 section 2.3.8
 /// Contains file attributes before and after an operation
@@ -484,7 +502,8 @@ pub struct wcc_data {
     /// File attributes after operation
     pub after: post_op_attr,
 }
-XDRStruct!(wcc_data, before, after);
+DeserializeStruct!(wcc_data, before, after);
+SerializeStruct!(wcc_data, before, after);
 
 /// Optional file handle response
 #[allow(non_camel_case_types)]
@@ -497,21 +516,8 @@ pub enum post_op_fh3 {
     /// File handle is available
     handle(nfs_fh3),
 }
-XDRBoolUnion!(post_op_fh3, handle, nfs_fh3);
-
-/// Method for setting file times in SETATTR operations
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum _time_how {
-    /// Don't change time
-    DONT_CHANGE = 0,
-    /// Set to server's current time
-    SET_TO_SERVER_TIME = 1,
-    /// Set to time provided by client
-    SET_TO_CLIENT_TIME = 2,
-}
-XDREnumSerde!(_time_how);
+DeserializeBoolUnion!(post_op_fh3, handle, nfs_fh3);
+SerializeBoolUnion!(post_op_fh3, handle, nfs_fh3);
 
 /// Optional file mode for SETATTR operations
 #[allow(non_camel_case_types)]
@@ -523,7 +529,8 @@ pub enum set_mode3 {
     /// Set to specified mode
     mode(mode3),
 }
-XDRBoolUnion!(set_mode3, mode, mode3);
+DeserializeBoolUnion!(set_mode3, mode, mode3);
+SerializeBoolUnion!(set_mode3, mode, mode3);
 
 /// Optional user ID for SETATTR operations
 #[allow(non_camel_case_types)]
@@ -535,7 +542,8 @@ pub enum set_uid3 {
     /// Set to specified user ID
     uid(uid3),
 }
-XDRBoolUnion!(set_uid3, uid, uid3);
+DeserializeBoolUnion!(set_uid3, uid, uid3);
+SerializeBoolUnion!(set_uid3, uid, uid3);
 
 /// Optional group ID for SETATTR operations
 #[allow(non_camel_case_types)]
@@ -547,7 +555,8 @@ pub enum set_gid3 {
     /// Set to specified group ID
     gid(gid3),
 }
-XDRBoolUnion!(set_gid3, gid, gid3);
+DeserializeBoolUnion!(set_gid3, gid, gid3);
+SerializeBoolUnion!(set_gid3, gid, gid3);
 
 /// Optional file size for SETATTR operations
 #[allow(non_camel_case_types)]
@@ -559,7 +568,8 @@ pub enum set_size3 {
     /// Set to specified size
     size(size3),
 }
-XDRBoolUnion!(set_size3, size, size3);
+DeserializeBoolUnion!(set_size3, size, size3);
+SerializeBoolUnion!(set_size3, size, size3);
 
 /// Specifies how to modify the last access time (atime) during a SETATTR operation.
 /// This enum allows the client to either:
@@ -578,7 +588,7 @@ pub enum set_atime {
     SET_TO_CLIENT_TIME(nfstime3),
 }
 
-impl XDR for set_atime {
+impl Serialize for set_atime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             set_atime::DONT_CHANGE => {
@@ -595,11 +605,10 @@ impl XDR for set_atime {
 
         Ok(())
     }
-
+}
+impl Deserialize for set_atime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        match c {
+        match deserialize::<u32>(src)? {
             0 => {
                 *self = set_atime::DONT_CHANGE;
             }
@@ -607,11 +616,9 @@ impl XDR for set_atime {
                 *self = set_atime::SET_TO_SERVER_TIME;
             }
             2 => {
-                let mut time = nfstime3::default();
-                time.deserialize(src)?;
-                *self = set_atime::SET_TO_CLIENT_TIME(time);
+                *self = set_atime::SET_TO_CLIENT_TIME(deserialize(src)?);
             }
-            _ => {
+            c => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("Invalid set_atime value: {}", c),
@@ -642,7 +649,7 @@ pub enum set_mtime {
     SET_TO_CLIENT_TIME(nfstime3),
 }
 
-impl XDR for set_mtime {
+impl Serialize for set_mtime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             set_mtime::DONT_CHANGE => {
@@ -659,11 +666,10 @@ impl XDR for set_mtime {
 
         Ok(())
     }
-
+}
+impl Deserialize for set_mtime {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        match c {
+        match deserialize::<u32>(src)? {
             0 => {
                 *self = set_mtime::DONT_CHANGE;
             }
@@ -671,11 +677,9 @@ impl XDR for set_mtime {
                 *self = set_mtime::SET_TO_SERVER_TIME;
             }
             2 => {
-                let mut time = nfstime3::default();
-                time.deserialize(src)?;
-                *self = set_mtime::SET_TO_CLIENT_TIME(time);
+                *self = set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?);
             }
-            _ => {
+            c => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("Invalid set_mtime value: {}", c),
@@ -704,7 +708,8 @@ pub struct sattr3 {
     /// Last modification time
     pub mtime: set_mtime,
 }
-XDRStruct!(sattr3, mode, uid, gid, size, atime, mtime);
+DeserializeStruct!(sattr3, mode, uid, gid, size, atime, mtime);
+SerializeStruct!(sattr3, mode, uid, gid, size, atime, mtime);
 
 impl Default for sattr3 {
     fn default() -> sattr3 {
@@ -728,7 +733,8 @@ pub struct diropargs3 {
     /// Name within the directory
     pub name: filename3,
 }
-XDRStruct!(diropargs3, dir, name);
+DeserializeStruct!(diropargs3, dir, name);
+SerializeStruct!(diropargs3, dir, name);
 
 /// Data for creating a symbolic link
 #[allow(non_camel_case_types)]
@@ -739,7 +745,8 @@ pub struct symlinkdata3 {
     /// Target path for the symbolic link
     pub symlink_data: nfspath3,
 }
-XDRStruct!(symlinkdata3, symlink_attributes, symlink_data);
+DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
 
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
@@ -773,7 +780,8 @@ pub enum createmode3 {
     /// Use exclusive create mechanism (with verifier)
     EXCLUSIVE = 2,
 }
-XDREnumSerde!(createmode3);
+SerializeEnum!(createmode3);
+DeserializeEnum!(createmode3);
 
 /// Guard condition for SETATTR operations based on ctime
 #[allow(non_camel_case_types)]
@@ -786,7 +794,8 @@ pub enum sattrguard3 {
     /// Only change if file's ctime matches provided value
     obj_ctime(nfstime3),
 }
-XDRBoolUnion!(sattrguard3, obj_ctime, nfstime3);
+DeserializeBoolUnion!(sattrguard3, obj_ctime, nfstime3);
+SerializeBoolUnion!(sattrguard3, obj_ctime, nfstime3);
 
 /// Arguments for SETATTR operations
 #[allow(non_camel_case_types)]
@@ -799,4 +808,5 @@ pub struct SETATTR3args {
     /// Guard condition for atomic change
     pub guard: sattrguard3,
 }
-XDRStruct!(SETATTR3args, object, new_attribute, guard);
+DeserializeStruct!(SETATTR3args, object, new_attribute, guard);
+SerializeStruct!(SETATTR3args, object, new_attribute, guard);

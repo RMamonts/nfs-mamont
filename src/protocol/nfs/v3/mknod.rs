@@ -24,7 +24,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 MKNOD procedure (procedure 11)
@@ -58,8 +58,7 @@ pub async fn nfsproc3_mknod(
         return Ok(());
     }
 
-    let mut args = nfs3::dir::MKNOD3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::dir::MKNOD3args>(input)?;
     debug!("nfsproc3_mknod({:?}, {:?}) ", xid, args);
 
     // find the directory we are supposed to create the special file in

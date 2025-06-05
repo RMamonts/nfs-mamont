@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 ACCESS procedure (procedure 4)
@@ -51,10 +51,8 @@ pub async fn nfsproc3_access(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut handle = nfs3::nfs_fh3::default();
-    handle.deserialize(input)?;
-    let mut access: u32 = 0;
-    access.deserialize(input)?;
+    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
+    let access = deserialize::<u32>(input)?;
     debug!("nfsproc3_access({:?},{:?},{:?})", xid, handle, access);
 
     let id = context.vfs.fh_to_id(&handle);

@@ -8,7 +8,7 @@ use num_traits::cast::ToPrimitive;
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, XDR};
+use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
 /// Handles MOUNTPROC3_MNT procedure.
 ///
@@ -34,8 +34,7 @@ pub async fn mountproc3_mnt(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut path = mount::dirpath::new();
-    path.deserialize(input)?;
+    let path = deserialize::<Vec<u8>>(input)?;
     let utf8path = std::str::from_utf8(&path).unwrap_or_default();
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
     let path = if let Some(path) = utf8path.strip_prefix(context.export_name.as_str()) {

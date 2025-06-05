@@ -24,7 +24,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
 /// Handles NFSv3 FSSTAT procedure (procedure 18)
 ///
@@ -48,8 +48,7 @@ pub async fn nfsproc3_fsstat(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut handle = nfs3::nfs_fh3::default();
-    handle.deserialize(input)?;
+    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_fsstat({:?},{:?}) ", xid, handle);
     let id = context.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle

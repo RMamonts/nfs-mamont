@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, XDR};
+use crate::protocol::xdr::{self, deserialize, portmap::mapping, Serialize};
 
 /// Handles PMAPPROC_GETPORT procedure.
 ///
@@ -35,8 +35,7 @@ pub fn pmapproc_getport(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut mapping = xdr::portmap::mapping::default();
-    mapping.deserialize(read)?;
+    let mapping = deserialize::<mapping>(read)?;
     debug!("pmapproc_getport({:?}, {:?}) ", xid, mapping);
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     let port = context.local_port as u32;

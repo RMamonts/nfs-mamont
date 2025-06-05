@@ -21,7 +21,7 @@ use std::io::{Read, Write};
 use tracing::{debug, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 LINK procedure (procedure 15)
@@ -56,8 +56,7 @@ pub async fn nfsproc3_link(
         return Ok(());
     }
 
-    let mut args = nfs3::file::LINK3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::file::LINK3args>(input)?;
     debug!("nfsproc3_link({:?}, {:?}) ", xid, args);
 
     // Get the file id

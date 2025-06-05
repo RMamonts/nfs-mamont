@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use num_traits::cast::FromPrimitive;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, XDR};
+use crate::protocol::xdr::{self, mount, Serialize};
 
 mod export;
 mod mnt;

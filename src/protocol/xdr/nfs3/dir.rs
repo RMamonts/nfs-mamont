@@ -21,7 +21,6 @@
 use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::cast::FromPrimitive;
 
 use super::*;
 
@@ -42,7 +41,8 @@ pub enum devicetype3 {
     /// FIFO pipe
     NF3FIFO = 3,
 }
-XDREnumSerde!(devicetype3);
+SerializeEnum!(devicetype3);
+DeserializeEnum!(devicetype3);
 
 /// Arguments for the MKDIR procedure (procedure 9)
 /// as defined in RFC 1813 section 3.3.9
@@ -55,7 +55,8 @@ pub struct MKDIR3args {
     /// Initial attributes for the new directory
     pub attributes: sattr3,
 }
-XDRStruct!(MKDIR3args, dirops, attributes);
+DeserializeStruct!(MKDIR3args, dirops, attributes);
+SerializeStruct!(MKDIR3args, dirops, attributes);
 
 /// Arguments for the SYMLINK procedure (procedure 10)
 /// as defined in RFC 1813 section 3.3.10
@@ -68,7 +69,8 @@ pub struct SYMLINK3args {
     /// Target path and attributes for the symbolic link
     pub symlink: symlinkdata3,
 }
-XDRStruct!(SYMLINK3args, dirops, symlink);
+DeserializeStruct!(SYMLINK3args, dirops, symlink);
+SerializeStruct!(SYMLINK3args, dirops, symlink);
 
 /// Directory entry returned by READDIR operation
 /// as defined in RFC 1813 section 3.3.16
@@ -82,7 +84,8 @@ pub struct entry3 {
     /// Cookie for the next READDIR operation
     pub cookie: cookie3,
 }
-XDRStruct!(entry3, fileid, name, cookie);
+DeserializeStruct!(entry3, fileid, name, cookie);
+SerializeStruct!(entry3, fileid, name, cookie);
 
 /// Arguments for the READDIR procedure (procedure 16)
 /// as defined in RFC 1813 section 3.3.16
@@ -101,7 +104,8 @@ pub struct READDIR3args {
     /// Maximum number of bytes of directory information to return
     pub dircount: count3,
 }
-XDRStruct!(READDIR3args, dir, cookie, cookieverf, dircount);
+DeserializeStruct!(READDIR3args, dir, cookie, cookieverf, dircount);
+SerializeStruct!(READDIR3args, dir, cookie, cookieverf, dircount);
 
 /// Directory entry with additional attributes for READDIRPLUS operation
 /// as defined in RFC 1813 section 3.3.17
@@ -120,7 +124,8 @@ pub struct entryplus3 {
     /// File handle for this directory entry
     pub name_handle: post_op_fh3,
 }
-XDRStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
+DeserializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
+SerializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
 
 /// Arguments for the READDIRPLUS procedure (procedure 17)
 /// as defined in RFC 1813 section 3.3.17
@@ -139,7 +144,8 @@ pub struct READDIRPLUS3args {
     /// Maximum number of bytes of attribute information to return
     pub maxcount: count3,
 }
-XDRStruct!(READDIRPLUS3args, dir, cookie, cookieverf, dircount, maxcount);
+DeserializeStruct!(READDIRPLUS3args, dir, cookie, cookieverf, dircount, maxcount);
+SerializeStruct!(READDIRPLUS3args, dir, cookie, cookieverf, dircount, maxcount);
 
 /// Arguments for the MKNOD procedure (procedure 11)
 /// as defined in RFC 1813 section 3.3.11
@@ -152,7 +158,8 @@ pub struct MKNOD3args {
     /// Type and device information for the special file
     pub what: mknoddata3,
 }
-XDRStruct!(MKNOD3args, where_dir, what);
+DeserializeStruct!(MKNOD3args, where_dir, what);
+SerializeStruct!(MKNOD3args, where_dir, what);
 
 /// Device data for special files
 /// as defined in RFC 1813 section 3.3.11
@@ -165,7 +172,8 @@ pub struct devicedata3 {
     /// Major and minor device numbers for character and block devices
     pub device: specdata3,
 }
-XDRStruct!(devicedata3, dev_type, device);
+DeserializeStruct!(devicedata3, dev_type, device);
+SerializeStruct!(devicedata3, dev_type, device);
 
 /// Data structure for creating special files
 /// as defined in RFC 1813 section 3.3.11
@@ -178,4 +186,5 @@ pub struct mknoddata3 {
     /// Device information if creating a special file
     pub device: devicedata3,
 }
-XDRStruct!(mknoddata3, mknod_type, device);
+DeserializeStruct!(mknoddata3, mknod_type, device);
+SerializeStruct!(mknoddata3, mknod_type, device);

@@ -15,64 +15,6 @@ use num_traits::cast::FromPrimitive;
 
 use super::*;
 
-/// This is only defined as the discriminant for rpc_body and should not
-/// be used directly
-#[allow(non_camel_case_types)]
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum _msg_type {
-    /// The message is a call to a remote procedure
-    CALL = 0,
-    /// The message is a reply from a remote procedure
-    REPLY = 1,
-}
-XDREnumSerde!(_msg_type);
-
-/// This is only defined as the discriminant for reply_body and should not
-/// be used directly
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum _reply_stat {
-    /// The call was accepted and processed
-    MSG_ACCEPTED = 0,
-    /// The call was denied
-    MSG_DENIED = 1,
-}
-XDREnumSerde!(_reply_stat);
-
-/// Status codes for accepted replies, indicating the outcome of the procedure call
-#[allow(non_camel_case_types)]
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum _accept_stat {
-    /// The RPC call completed successfully and returned a valid result
-    SUCCESS = 0,
-    /// The requested program number is not available on this server
-    PROG_UNAVAIL = 1,
-    /// The requested program version is not supported by the server
-    PROG_MISMATCH = 2,
-    /// The requested procedure number is not implemented by this program
-    PROC_UNAVAIL = 3,
-    /// The server could not decode the procedure arguments
-    GARBAGE_ARGS = 4,
-}
-XDREnumSerde!(_accept_stat);
-
-/// Status codes for denied replies, indicating why the call was denied
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum _reject_stat {
-    /// The RPC version number in the request does not match the server's supported version (version 2)
-    RPC_MISMATCH = 0,
-    /// The server was unable to authenticate the client's credentials or verify the request signature
-    AUTH_ERROR = 1,
-}
-XDREnumSerde!(_reject_stat);
-
 /// Authentication status codes indicating why authentication failed
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
@@ -90,7 +32,8 @@ pub enum auth_stat {
     /// Authentication mechanism too weak for requested operation
     AUTH_TOOWEAK = 5,
 }
-XDREnumSerde!(auth_stat);
+SerializeEnum!(auth_stat);
+DeserializeEnum!(auth_stat);
 
 /// Authentication flavor (mechanism) identifiers for RPC
 #[allow(non_camel_case_types)]
@@ -108,7 +51,8 @@ pub enum auth_flavor {
     AUTH_DES = 3,
     /* and more to be defined */
 }
-XDREnumSerde!(auth_flavor);
+SerializeEnum!(auth_flavor);
+DeserializeEnum!(auth_flavor);
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
@@ -125,7 +69,8 @@ pub struct auth_unix {
     /// A list of additional group IDs for the caller
     pub gids: Vec<u32>,
 }
-XDRStruct!(auth_unix, stamp, machinename, uid, gid, gids);
+DeserializeStruct!(auth_unix, stamp, machinename, uid, gid, gids);
+SerializeStruct!(auth_unix, stamp, machinename, uid, gid, gids);
 
 /// Authentication data structure used in RPC protocol for both client and server authentication.
 ///
@@ -152,7 +97,8 @@ pub struct opaque_auth {
     /// The opaque authentication data associated with that mechanism
     pub body: Vec<u8>,
 }
-XDRStruct!(opaque_auth, flavor, body);
+DeserializeStruct!(opaque_auth, flavor, body);
+SerializeStruct!(opaque_auth, flavor, body);
 
 impl Default for opaque_auth {
     fn default() -> opaque_auth {
@@ -180,7 +126,8 @@ pub struct rpc_msg {
     /// The body of the RPC message (call or reply)
     pub body: rpc_body,
 }
-XDRStruct!(rpc_msg, xid, body);
+DeserializeStruct!(rpc_msg, xid, body);
+SerializeStruct!(rpc_msg, xid, body);
 
 /// The body of an RPC message, which can be either a call or a reply
 #[allow(non_camel_case_types)]
@@ -200,7 +147,7 @@ impl Default for rpc_body {
     }
 }
 
-impl XDR for rpc_body {
+impl Serialize for rpc_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             rpc_body::CALL(v) => {
@@ -214,22 +161,18 @@ impl XDR for rpc_body {
         }
         Ok(())
     }
+}
+impl Deserialize for rpc_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        if c == 0 {
-            let mut r = call_body::default();
-            r.deserialize(src)?;
-            *self = rpc_body::CALL(r);
-        } else if c == 1 {
-            let mut r = reply_body::default();
-            r.deserialize(src)?;
-            *self = rpc_body::REPLY(r);
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid message type in rpc_body: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = rpc_body::CALL(deserialize(src)?),
+            1 => *self = rpc_body::REPLY(deserialize(src)?),
+            msg_type => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid message type in rpc_body: {msg_type}"),
+                ))
+            }
         }
 
         Ok(())
@@ -254,7 +197,8 @@ pub struct call_body {
     pub verf: opaque_auth,
     /* procedure specific parameters start here */
 }
-XDRStruct!(call_body, rpcvers, prog, vers, proc, cred, verf);
+DeserializeStruct!(call_body, rpcvers, prog, vers, proc, cred, verf);
+SerializeStruct!(call_body, rpcvers, prog, vers, proc, cred, verf);
 
 /// The body of an RPC reply, indicating whether the call was accepted or denied
 #[allow(non_camel_case_types)]
@@ -272,7 +216,7 @@ impl Default for reply_body {
     }
 }
 
-impl XDR for reply_body {
+impl Serialize for reply_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             reply_body::MSG_ACCEPTED(v) => {
@@ -286,23 +230,18 @@ impl XDR for reply_body {
         }
         Ok(())
     }
-
+}
+impl Deserialize for reply_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-        if c == 0 {
-            let mut r = accepted_reply::default();
-            r.deserialize(src)?;
-            *self = reply_body::MSG_ACCEPTED(r);
-        } else if c == 1 {
-            let mut r = rejected_reply::default();
-            r.deserialize(src)?;
-            *self = reply_body::MSG_DENIED(r);
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid reply status in reply_body: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = reply_body::MSG_ACCEPTED(deserialize(src)?),
+            1 => *self = reply_body::MSG_DENIED(deserialize(src)?),
+            reply_status => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid reply status in reply_body: {reply_status}"),
+                ))
+            }
         }
 
         Ok(())
@@ -318,7 +257,8 @@ pub struct mismatch_info {
     /// Highest version supported
     pub high: u32,
 }
-XDRStruct!(mismatch_info, low, high);
+DeserializeStruct!(mismatch_info, low, high);
+SerializeStruct!(mismatch_info, low, high);
 
 /// Reply to an RPC call that was accepted by the server.
 ///
@@ -341,7 +281,8 @@ pub struct accepted_reply {
     /// Reply data union discriminated by accept_stat
     pub reply_data: accept_body,
 }
-XDRStruct!(accepted_reply, verf, reply_data);
+DeserializeStruct!(accepted_reply, verf, reply_data);
+SerializeStruct!(accepted_reply, verf, reply_data);
 
 /// Response data for an accepted RPC call, discriminated by accept_stat.
 ///
@@ -369,7 +310,7 @@ pub enum accept_body {
     GARBAGE_ARGS,
 }
 
-impl XDR for accept_body {
+impl Serialize for accept_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             accept_body::SUCCESS => {
@@ -392,33 +333,19 @@ impl XDR for accept_body {
 
         Ok(())
     }
-
+}
+impl Deserialize for accept_body {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-
-        match c {
-            0 => {
-                *self = accept_body::SUCCESS;
-            }
-            1 => {
-                *self = accept_body::PROG_UNAVAIL;
-            }
-            2 => {
-                let mut m = mismatch_info::default();
-                m.deserialize(src)?;
-                *self = accept_body::PROG_MISMATCH(m);
-            }
-            3 => {
-                *self = accept_body::PROC_UNAVAIL;
-            }
-            4 => {
-                *self = accept_body::GARBAGE_ARGS;
-            }
-            _ => {
+        match deserialize::<u32>(src)? {
+            0 => *self = accept_body::SUCCESS,
+            1 => *self = accept_body::PROG_UNAVAIL,
+            2 => *self = accept_body::PROG_MISMATCH(deserialize(src)?),
+            3 => *self = accept_body::PROC_UNAVAIL,
+            4 => *self = accept_body::GARBAGE_ARGS,
+            accept_stat => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Invalid accept stat in accept_body: {}", c),
+                    format!("Invalid accept stat in accept_body: {accept_stat}"),
                 ));
             }
         }
@@ -455,7 +382,7 @@ impl Default for rejected_reply {
     }
 }
 
-impl XDR for rejected_reply {
+impl Serialize for rejected_reply {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             rejected_reply::RPC_MISMATCH(v) => {
@@ -470,26 +397,18 @@ impl XDR for rejected_reply {
 
         Ok(())
     }
-
+}
+impl Deserialize for rejected_reply {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let mut c: u32 = 0;
-        c.deserialize(src)?;
-
-        if c == 0 {
-            let mut m = mismatch_info::default();
-            m.deserialize(src)?;
-            *self = rejected_reply::RPC_MISMATCH(m);
-        } else if c == 1 {
-            let mut a: u32 = 0;
-            a.deserialize(src)?;
-            *self = rejected_reply::AUTH_ERROR(
-                FromPrimitive::from_u32(a).unwrap_or(auth_stat::AUTH_BADCRED),
-            );
-        } else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid reject stat in rejected_reply: {}", c),
-            ));
+        match deserialize::<u32>(src)? {
+            0 => *self = rejected_reply::RPC_MISMATCH(deserialize(src)?),
+            1 => *self = rejected_reply::AUTH_ERROR(deserialize(src)?),
+            stat => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid reject stat in rejected_reply: {stat}"),
+                ))
+            }
         }
 
         Ok(())

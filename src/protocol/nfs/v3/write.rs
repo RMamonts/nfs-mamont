@@ -21,7 +21,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 WRITE procedure (procedure 7)
@@ -55,8 +55,7 @@ pub async fn nfsproc3_write(
         return Ok(());
     }
 
-    let mut args = nfs3::file::WRITE3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::file::WRITE3args>(input)?;
     debug!("nfsproc3_write({:?},...) ", xid);
     // sanity check the length
     if args.data.len() != args.count as usize {

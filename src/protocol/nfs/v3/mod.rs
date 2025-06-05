@@ -43,7 +43,7 @@ use num_traits::cast::FromPrimitive;
 use tracing::warn;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 
 mod access;
 mod commit;
