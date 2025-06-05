@@ -63,7 +63,8 @@ pub enum mountstat3 {
     /// A failure on the server
     MNT3ERR_SERVERFAULT = 10006, /* A failure on the server */
 }
-XDREnumSerde!(mountstat3);
+SerializeEnum!(mountstat3);
+DeserializeEnum!(mountstat3);
 
 /// Successful response to a mount request
 #[allow(non_camel_case_types)]
@@ -74,7 +75,8 @@ pub struct mountres3_ok {
     /// List of authentication flavors supported by the server
     pub auth_flavors: Vec<u32>,
 }
-XDRStruct!(mountres3_ok, fhandle, auth_flavors);
+DeserializeStruct!(mountres3_ok, fhandle, auth_flavors);
+SerializeStruct!(mountres3_ok, fhandle, auth_flavors);
 
 /// Procedure numbers for the MOUNT version 3 protocol
 #[allow(non_camel_case_types)]
@@ -96,4 +98,5 @@ pub enum MountProgram {
     /// Invalid procedure number
     INVALID,
 }
-XDREnumSerde!(MountProgram);
+SerializeEnum!(MountProgram);
+DeserializeEnum!(MountProgram);

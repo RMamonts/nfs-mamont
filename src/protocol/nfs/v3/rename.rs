@@ -29,7 +29,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 RENAME procedure (procedure 14)
@@ -67,10 +67,8 @@ pub async fn nfsproc3_rename(
         return Ok(());
     }
 
-    let mut fromdirops = nfs3::diropargs3::default();
-    let mut todirops = nfs3::diropargs3::default();
-    fromdirops.deserialize(input)?;
-    todirops.deserialize(input)?;
+    let fromdirops = deserialize::<nfs3::diropargs3>(input)?;
+    let todirops = deserialize::<nfs3::diropargs3>(input)?;
 
     debug!("nfsproc3_rename({:?}, {:?}, {:?}) ", xid, fromdirops, todirops);
 

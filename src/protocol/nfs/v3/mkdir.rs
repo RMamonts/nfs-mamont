@@ -20,7 +20,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 MKDIR procedure (procedure 9)
@@ -53,8 +53,7 @@ pub async fn nfsproc3_mkdir(
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let mut args = nfs3::dir::MKDIR3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::dir::MKDIR3args>(input)?;
 
     debug!("nfsproc3_mkdir({:?}, {:?}) ", xid, args);
 

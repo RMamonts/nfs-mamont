@@ -75,7 +75,21 @@ pub struct fsinfo3 {
     /// Bit mask of file system properties (FSF_* constants)
     pub properties: u32,
 }
-XDRStruct!(
+DeserializeStruct!(
+    fsinfo3,
+    obj_attributes,
+    rtmax,
+    rtpref,
+    rtmult,
+    wtmax,
+    wtpref,
+    wtmult,
+    dtpref,
+    maxfilesize,
+    time_delta,
+    properties
+);
+SerializeStruct!(
     fsinfo3,
     obj_attributes,
     rtmax,
@@ -113,7 +127,28 @@ pub struct FSSTAT3resok {
     /// Zero means the information is always valid
     pub invarsec: u32,
 }
-XDRStruct!(FSSTAT3resok, obj_attributes, tbytes, fbytes, abytes, tfiles, ffiles, afiles, invarsec);
+DeserializeStruct!(
+    FSSTAT3resok,
+    obj_attributes,
+    tbytes,
+    fbytes,
+    abytes,
+    tfiles,
+    ffiles,
+    afiles,
+    invarsec
+);
+SerializeStruct!(
+    FSSTAT3resok,
+    obj_attributes,
+    tbytes,
+    fbytes,
+    abytes,
+    tfiles,
+    ffiles,
+    afiles,
+    invarsec
+);
 
 /// Path configuration information returned by PATHCONF procedure
 /// as defined in RFC 1813 section 3.3.20
@@ -135,7 +170,17 @@ pub struct PATHCONF3resok {
     /// If true, file name case is preserved
     pub case_preserving: bool,
 }
-XDRStruct!(
+DeserializeStruct!(
+    PATHCONF3resok,
+    obj_attributes,
+    linkmax,
+    name_max,
+    no_trunc,
+    chown_restricted,
+    case_insensitive,
+    case_preserving
+);
+SerializeStruct!(
     PATHCONF3resok,
     obj_attributes,
     linkmax,

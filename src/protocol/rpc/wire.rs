@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
-use crate::protocol::xdr::{self, mount, nfs3, portmap, XDR};
+use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
 
 // Information from RFC 5531 (ONC RPC v2)
@@ -63,14 +63,11 @@ pub async fn handle_rpc(
     output: &mut impl Write,
     mut context: rpc::Context,
 ) -> Result<bool, anyhow::Error> {
-    let mut recv = xdr::rpc::rpc_msg::default();
-    recv.deserialize(input)?;
+    let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
     if let xdr::rpc::rpc_body::CALL(call) = recv.body {
         if let xdr::rpc::auth_flavor::AUTH_UNIX = call.cred.flavor {
-            let mut auth = xdr::rpc::auth_unix::default();
-            auth.deserialize(&mut Cursor::new(&call.cred.body))?;
-            context.auth = auth;
+            context.auth = deserialize(&mut Cursor::new(&call.cred.body))?;
         }
         if call.rpcvers != 2 {
             warn!("Invalid RPC version {} != 2", call.rpcvers);

@@ -24,7 +24,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, trace};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
 /// Handles NFSv3 READDIR procedure (procedure 16)
 ///
@@ -48,8 +48,7 @@ pub async fn nfsproc3_readdir(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut args = nfs3::dir::READDIR3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::dir::READDIR3args>(input)?;
     debug!("nfsproc3_readdirplus({:?},{:?}) ", xid, args);
 
     let dirid = context.vfs.fh_to_id(&args.dir);

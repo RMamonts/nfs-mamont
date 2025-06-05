@@ -13,6 +13,7 @@
 use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 use super::*;
 
@@ -30,7 +31,8 @@ pub struct mapping {
     /// The port number where the service is listening
     pub port: u32,
 }
-XDRStruct!(mapping, prog, vers, prot, port);
+DeserializeStruct!(mapping, prog, vers, prot, port);
+SerializeStruct!(mapping, prog, vers, prot, port);
 
 /// Protocol number for TCP/IP
 pub const IPPROTO_TCP: u32 = 6;
@@ -61,3 +63,5 @@ pub enum PortmapProgram {
     /// Invalid procedure number
     INVALID,
 }
+SerializeEnum!(PortmapProgram);
+DeserializeEnum!(PortmapProgram);

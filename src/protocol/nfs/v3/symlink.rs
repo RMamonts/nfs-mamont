@@ -31,7 +31,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 SYMLINK procedure (procedure 10)
@@ -74,8 +74,7 @@ pub async fn nfsproc3_symlink(
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let mut args = nfs3::dir::SYMLINK3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::dir::SYMLINK3args>(input)?;
 
     debug!("nfsproc3_symlink({:?}, {:?}) ", xid, args);
 

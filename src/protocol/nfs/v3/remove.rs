@@ -28,7 +28,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles NFSv3 REMOVE procedure (procedure 12)
@@ -72,8 +72,7 @@ pub async fn nfsproc3_remove(
         return Ok(());
     }
 
-    let mut dirops = nfs3::diropargs3::default();
-    dirops.deserialize(input)?;
+    let dirops = deserialize::<nfs3::diropargs3>(input)?;
 
     debug!("nfsproc3_remove({:?}, {:?}) ", xid, dirops);
 

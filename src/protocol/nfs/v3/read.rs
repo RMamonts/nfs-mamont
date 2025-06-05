@@ -18,7 +18,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
 /// Handles NFSv3 READ procedure (procedure 6)
 ///
@@ -42,8 +42,7 @@ pub async fn nfsproc3_read(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut args = nfs3::file::READ3args::default();
-    args.deserialize(input)?;
+    let args = deserialize::<nfs3::file::READ3args>(input)?;
     debug!("nfsproc3_read({:?},{:?}) ", xid, args);
 
     let id = context.vfs.fh_to_id(&args.file);

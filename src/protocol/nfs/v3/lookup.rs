@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
 /// Handles NFSv3 LOOKUP procedure (procedure 3)
 ///
@@ -41,8 +41,7 @@ pub async fn nfsproc3_lookup(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut dirops = nfs3::diropargs3::default();
-    dirops.deserialize(input)?;
+    let dirops = deserialize::<nfs3::diropargs3>(input)?;
     debug!("nfsproc3_lookup({:?},{:?}) ", xid, dirops);
 
     let dirid = context.vfs.fh_to_id(&dirops.dir);

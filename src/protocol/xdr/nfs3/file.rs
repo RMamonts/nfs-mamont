@@ -36,7 +36,8 @@ pub struct READ3args {
     /// Number of bytes of data to read
     pub count: count3,
 }
-XDRStruct!(READ3args, file, offset, count);
+DeserializeStruct!(READ3args, file, offset, count);
+SerializeStruct!(READ3args, file, offset, count);
 
 /// Successful response for the READ procedure as defined in RFC 1813 section 3.3.6
 #[allow(non_camel_case_types)]
@@ -51,7 +52,8 @@ pub struct READ3resok {
     /// The data read from the file
     pub data: Vec<u8>,
 }
-XDRStruct!(READ3resok, file_attributes, count, eof, data);
+DeserializeStruct!(READ3resok, file_attributes, count, eof, data);
+SerializeStruct!(READ3resok, file_attributes, count, eof, data);
 
 /// Arguments for the COMMIT procedure (procedure 21) as defined in RFC 1813 section 3.3.21
 /// Used to commit pending writes to stable storage
@@ -65,7 +67,8 @@ pub struct COMMIT3args {
     /// Number of bytes to commit
     pub count: count3,
 }
-XDRStruct!(COMMIT3args, file, offset, count);
+DeserializeStruct!(COMMIT3args, file, offset, count);
+SerializeStruct!(COMMIT3args, file, offset, count);
 
 /// Successful response for the COMMIT procedure as defined in RFC 1813 section 3.3.21
 #[allow(non_camel_case_types)]
@@ -76,7 +79,8 @@ pub struct COMMIT3resok {
     /// Write verifier to detect server restarts
     pub verf: writeverf3,
 }
-XDRStruct!(COMMIT3resok, file_wcc, verf);
+DeserializeStruct!(COMMIT3resok, file_wcc, verf);
+SerializeStruct!(COMMIT3resok, file_wcc, verf);
 
 /// Arguments for the LINK procedure (procedure 15) as defined in RFC 1813 section 3.3.15
 /// Used to create a hard link to a file
@@ -88,7 +92,8 @@ pub struct LINK3args {
     /// Directory and name for the new link
     pub link: diropargs3,
 }
-XDRStruct!(LINK3args, file, link);
+DeserializeStruct!(LINK3args, file, link);
+SerializeStruct!(LINK3args, file, link);
 
 /// Enumeration specifying how data should be written to storage
 /// as defined in RFC 1813 section 3.3.7
@@ -107,7 +112,8 @@ pub enum stable_how {
     /// This includes the data and all metadata for this request
     FILE_SYNC = 2,
 }
-XDREnumSerde!(stable_how);
+SerializeEnum!(stable_how);
+DeserializeEnum!(stable_how);
 
 /// Arguments for the WRITE procedure (procedure 7) as defined in RFC 1813 section 3.3.7
 /// Used to write data to a regular file
@@ -125,7 +131,8 @@ pub struct WRITE3args {
     /// The data to be written
     pub data: Vec<u8>,
 }
-XDRStruct!(WRITE3args, file, offset, count, stable, data);
+DeserializeStruct!(WRITE3args, file, offset, count, stable, data);
+SerializeStruct!(WRITE3args, file, offset, count, stable, data);
 
 /// Successful response for the WRITE procedure as defined in RFC 1813 section 3.3.7
 #[allow(non_camel_case_types)]
@@ -140,4 +147,5 @@ pub struct WRITE3resok {
     /// Write verifier to detect server restarts
     pub verf: writeverf3,
 }
-XDRStruct!(WRITE3resok, file_wcc, count, committed, verf);
+DeserializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
+SerializeStruct!(WRITE3resok, file_wcc, count, committed, verf);

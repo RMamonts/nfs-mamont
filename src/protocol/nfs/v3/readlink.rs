@@ -21,7 +21,7 @@ use std::io::{Read, Write};
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, XDR};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
 /// Handles NFSv3 READLINK procedure (procedure 5)
 ///
@@ -52,8 +52,7 @@ pub async fn nfsproc3_readlink(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let mut handle = nfs3::nfs_fh3::default();
-    handle.deserialize(input)?;
+    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_readlink({:?},{:?}) ", xid, handle);
 
     let id = context.vfs.fh_to_id(&handle);

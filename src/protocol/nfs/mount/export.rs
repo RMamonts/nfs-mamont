@@ -7,7 +7,7 @@ use std::io::Write;
 use tracing::debug;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, XDR};
+use crate::protocol::xdr::{self, Serialize};
 
 /// Handles MOUNTPROC3_EXPORT procedure.
 ///
@@ -34,7 +34,7 @@ pub fn mountproc3_export(
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     true.serialize(output)?;
     // Dirpath of one export
-    context.export_name.as_bytes().to_vec().serialize(output)?;
+    context.export_name.as_bytes().serialize(output)?;
     // No groups
     false.serialize(output)?;
     // No next exports
