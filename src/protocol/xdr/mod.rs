@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 use byteorder::BigEndian;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_traits::ToPrimitive;
+use tracing::trace;
 
 pub mod mount;
 pub mod nfs3;
@@ -65,6 +66,8 @@ where
 
     Ok(val)
 }
+
+pub trait ArrayItem {}
 
 /// Macro for implementing XDR serialization and deserialization for enumerations.
 ///
@@ -342,6 +345,32 @@ impl Deserialize for Vec<char> {
         for i in self {
             i.deserialize(src)?;
         }
+        Ok(())
+    }
+}
+
+impl<T: Serialize + ArrayItem> Serialize for Vec<T> {
+    fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+        (self.len() as u32).serialize(dest)?;
+        for v in self {
+            v.serialize(dest)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Deserialize + Default + ArrayItem> Deserialize for Vec<T> {
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let mut len: u32 = 0;
+        len.deserialize(src).inspect_err(|err| trace!("Parse len error: {err:?}"))?;
+        trace!("Len of array: {len:?}");
+        self.clear();
+        for _ in 0..len {
+            let mut v = T::default();
+            v.deserialize(src)?;
+            self.push(v);
+        }
+
         Ok(())
     }
 }

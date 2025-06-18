@@ -90,8 +90,7 @@ pub async fn handle_rpc(
                 if call.vers == nfs3::VERSION {
                     nfs::v3::handle_nfs(xid, call, input, output, &context).await
                 } else {
-                    error!("NFSv4 not implemented");
-                    Err(anyhow!("NFSv4 protocol error"))
+                    nfs::v4::handle_nfs(xid, call, input, output, &context).await
                 }
             } else if call.prog == portmap::PROGRAM {
                 nfs::portmap::handle_portmap(xid, call, input, output, &context)
