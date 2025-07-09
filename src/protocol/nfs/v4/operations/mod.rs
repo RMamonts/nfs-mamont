@@ -1,7 +1,6 @@
 use std::io::{Read, Write};
 
 use anyhow::anyhow;
-
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
@@ -58,7 +57,10 @@ impl Deserialize for Request {
                 self.uin = Argument::Compound(arg);
             }
             command => {
-                unimplemented!("{command:?}")
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Not implemented {command:?}"),
+                ));
             }
         }
 
@@ -100,7 +102,7 @@ impl Request {
 #[derive(Debug)]
 /// nfs_resop4
 pub struct Response {
-    /// Нет в RFC/NFSv4. Добавил для удобства работы в compound
+    /// Not in RFC NFSv4. Added for simpler architecture
     pub status: Status,
     pub resop: OpNum,
     pub uin: Data,

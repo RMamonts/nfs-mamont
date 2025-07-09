@@ -11,9 +11,9 @@ mod operations;
 
 pub const VERSION: u32 = 4;
 
-/// Main handler for NFSv3 protocol
+/// Main handler for NFSv4 protocol
 ///
-/// Dispatches NFSv3 RPC calls to appropriate procedure handlers based on procedure number.
+/// Dispatches NFSv4 RPC calls to appropriate procedure handlers based on procedure number.
 /// Validates protocol version and returns appropriate error for unsupported procedures.
 /// Acts as the central router for all NFS operations in the server.
 ///
