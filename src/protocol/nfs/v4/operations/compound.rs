@@ -7,7 +7,7 @@ use crate::{
     DeserializeStruct, SerializeStruct,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Args {
     pub tag: String,
     pub minor_version: u32,

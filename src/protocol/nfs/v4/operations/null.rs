@@ -2,7 +2,7 @@ use std::io::Read;
 
 use crate::{protocol::nfs::v4::operations, xdr};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Args {}
 
 impl Args {

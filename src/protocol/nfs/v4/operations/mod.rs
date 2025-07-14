@@ -1,14 +1,10 @@
 use std::io::{Read, Write};
 
 use anyhow::anyhow;
-use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 
-use crate::{
-    xdr::{self, ArrayItem, Deserialize, Serialize},
-    DeserializeEnum, SerializeEnum,
-};
+use crate::xdr::{self, Deserialize, Serialize};
 
 pub mod compound;
 pub mod null;
@@ -25,15 +21,13 @@ trait Operation {
 #[allow(dead_code)]
 pub struct Compound {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// nfs_argop4
 pub struct Request {
     //TODO: Походу тут надо добавить что-то для lkhd->flags ??
     pub argop: OpNum,
     pub uin: Argument,
 }
-
-impl ArrayItem for Request {}
 
 impl Default for Request {
     fn default() -> Self {
@@ -107,8 +101,6 @@ pub struct Response {
     pub resop: OpNum,
     pub uin: Data,
 }
-
-impl xdr::ArrayItem for Response {}
 
 impl Response {
     pub fn serialize_no_resop(&self, dest: &mut impl Write) -> std::io::Result<()> {
@@ -211,11 +203,12 @@ pub enum OpNum {
     LastOne = 76,
     Illegal = 10044,
 }
-DeserializeEnum!(OpNum);
-SerializeEnum!(OpNum);
+
+impl xdr::SerializeEnum for OpNum {}
+impl xdr::DeserializeEnum for OpNum {}
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Request arguments
 /// nfs_argop4_u
 pub enum Argument {
@@ -352,4 +345,6 @@ pub enum Status {
     ErrXattr2big = 10096,
     ErrReplay = 11001,
 }
-SerializeEnum!(Status);
+
+impl xdr::SerializeEnum for Status {}
+impl xdr::DeserializeEnum for Status {}
