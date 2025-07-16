@@ -14,7 +14,9 @@ use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use super::*;
+use super::{
+    Deserialize, DeserializeEnum, DeserializeStruct, Serialize, SerializeEnum, SerializeStruct,
+};
 
 /// Represents a mapping between an RPC program and a network port.
 #[allow(non_camel_case_types)]

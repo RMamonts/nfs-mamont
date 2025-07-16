@@ -1,7 +1,7 @@
-//! Implementation of the ACCESS procedure (procedure 4) for NFS version 3 protocol
+//! Implementation of the `ACCESS` procedure (procedure 4) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.4.
 //!
-//! The ACCESS procedure determines the access rights that a user, as identified
+//! The `ACCESS` procedure determines the access rights that a user, as identified
 //! by the authentication credentials, has with respect to a file system object.
 //! The client uses the returned access information to:
 //!
@@ -9,7 +9,7 @@
 //! - Validate user access before executing operations
 //! - Determine actual access rights when file mode bits are inadequate
 //!
-//! This procedure improves over NFSv2 by providing explicit access right checking
+//! This procedure improves over `NFSv2` by providing explicit access right checking
 //! rather than requiring clients to attempt operations to discover allowed actions.
 
 use std::io::{Read, Write};
@@ -20,20 +20,20 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 ACCESS procedure (procedure 4)
+/// Handles `NFSv3` `ACCESS` procedure (procedure 4)
 ///
-/// ACCESS determines the access rights a user has to a file system object.
+/// `ACCESS` determines the access rights a user has to a file system object.
 /// It evaluates requested access permissions against the file's attributes
 /// and returns which operations client is allowed to perform.
 ///
 /// The client encodes the following types of requested permissions in the
 /// 'access' parameter:
-/// - ACCESS3_READ (0x0001): Read data from file or read a directory
-/// - ACCESS3_LOOKUP (0x0002): Look up a name in a directory
-/// - ACCESS3_MODIFY (0x0004): Modify a file's data
-/// - ACCESS3_EXTEND (0x0008): Extend a file or directory
-/// - ACCESS3_DELETE (0x0010): Delete a file or directory
-/// - ACCESS3_EXECUTE (0x0020): Execute a file or traverse a directory
+/// - `ACCESS3_READ` (0x0001): Read data from file or read a directory
+/// - `ACCESS3_LOOKUP` (0x0002): Look up a name in a directory
+/// - `ACCESS3_MODIFY` (0x0004): Modify a file's data
+/// - `ACCESS3_EXTEND` (0x0008): Extend a file or directory
+/// - `ACCESS3_DELETE` (0x0010): Delete a file or directory
+/// - `ACCESS3_EXECUTE` (0x0020): Execute a file or traverse a directory
 ///
 /// # Arguments
 ///

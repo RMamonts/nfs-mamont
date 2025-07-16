@@ -1,5 +1,5 @@
-//! MOUNT protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
-//! https://datatracker.ietf.org/doc/html/rfc1813#section-5.0
+//! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 
 use std::io::{Read, Write};
 
@@ -20,9 +20,9 @@ use null::mountproc3_null;
 use umnt::mountproc3_umnt;
 use umnt_all::mountproc3_umnt_all;
 
-/// Main handler for MOUNT procedures of version 3 protocol.
+/// Main handler for `MOUNT` procedures of version 3 protocol.
 ///
-/// TODO: MOUNTPROC3_DUMP function is not implemented.
+/// TODO: `MOUNTPROC3_DUMP` function is not implemented.
 ///
 /// # Arguments
 ///
@@ -48,10 +48,10 @@ pub async fn handle_mount(
         mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
         mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
         mount::MountProgram::MOUNTPROC3_UMNT => {
-            mountproc3_umnt(xid, input, output, context).await?
+            mountproc3_umnt(xid, input, output, context).await?;
         }
         mount::MountProgram::MOUNTPROC3_UMNTALL => {
-            mountproc3_umnt_all(xid, output, context).await?
+            mountproc3_umnt_all(xid, output, context).await?;
         }
         mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context)?,
         _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,

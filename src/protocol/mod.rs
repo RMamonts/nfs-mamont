@@ -6,7 +6,7 @@
 //!   of data structures according to RFC 1832.
 //!
 //! - `nfs`: Implementation of the NFS version 3 protocol operations, including the main
-//!   NFSv3 protocol (RFC 1813), the MOUNT protocol, and the PORTMAP protocol.
+//!   `NFSv3` protocol (RFC 1813), the `MOUNT` protocol, and the PORTMAP protocol.
 //!
 //! - `rpc`: Remote Procedure Call (RPC) protocol implementation for handling client
 //!   requests, transaction tracking, and server context management as defined in RFC 1057.

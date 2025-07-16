@@ -1,6 +1,6 @@
-//! Implementation of the GETPORT procedure (procedure 3) for port mapper protocol
+//! Implementation of the `GETPORT` procedure (procedure 3) for port mapper protocol
 //! as defined in RFC 1057 A.2 section.
-//! https://datatracker.ietf.org/doc/rfc1057/
+//! <https://datatracker.ietf.org/doc/rfc1057/>.
 
 use std::io::{Read, Write};
 
@@ -9,9 +9,9 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, portmap::mapping, Serialize};
 
-/// Handles PMAPPROC_GETPORT procedure.
+/// Handles `PMAPPROC_GETPORT` procedure.
 ///
-/// GETPORT maps an RPC program and version to a TCP/UDP port.
+/// `GETPORT` maps an RPC program and version to a TCP/UDP port.
 /// Takes a mapping request with program number, version, protocol and port.
 /// Returns the port number where the requested service can be reached.
 ///

@@ -1,7 +1,7 @@
-//! This module implements the MOUNT protocol (RFC 1813 Appendix I) data structures
+//! This module implements the `MOUNT` protocol (RFC 1813 Appendix I) data structures
 //! for XDR serialization and deserialization.
 //!
-//! The MOUNT protocol is used to establish the initial connection between an NFS client
+//! The `MOUNT` protocol is used to establish the initial connection between an NFS client
 //! and server. It provides functions for mounting and unmounting file systems, and
 //! obtaining the initial file handle that serves as the root of the mounted file system.
 
@@ -36,7 +36,7 @@ pub type dirpath = Vec<u8>;
 /// Name in the directory
 pub type name = Vec<u8>;
 
-/// Status codes returned by MOUNT protocol operations
+/// Status codes returned by `MOUNT` protocol operations
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
@@ -77,7 +77,7 @@ pub struct mountres3_ok {
 DeserializeStruct!(mountres3_ok, fhandle, auth_flavors);
 SerializeStruct!(mountres3_ok, fhandle, auth_flavors);
 
-/// Procedure numbers for the MOUNT version 3 protocol
+/// Procedure numbers for the `MOUNT` version 3 protocol
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]

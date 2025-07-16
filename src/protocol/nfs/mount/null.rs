@@ -1,6 +1,6 @@
-//! Implementation of the NULL procedure (procedure 0) for MOUNT version 3 protocol
+//! Implementation of the `NULL` procedure (procedure 0) for MOUNT version 3 protocol
 //! as defined in RFC 1813 section 5.2.0
-//! https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.0
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.0>.
 
 use std::io::Write;
 
@@ -8,9 +8,9 @@ use tracing::debug;
 
 use crate::protocol::xdr::{self, Serialize};
 
-/// Handles MOUNTPROC3_NULL procedure.
+/// Handles `MOUNTPROC3_NULL` procedure.
 ///
-/// Procedure NULL does not do any work. It is made available
+/// Procedure `NULL` does not do any work. It is made available
 /// to allow server response testing and timing.
 ///
 /// # Arguments

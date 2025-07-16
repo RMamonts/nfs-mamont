@@ -1,41 +1,41 @@
-//! NFSv3 (Network File System version 3) protocol implementation as specified in RFC 1813.
+//! `NFSv3` (Network File System version 3) protocol implementation as specified in RFC 1813.
 //!
 //! This module implements all 21 procedure calls defined in the NFS version 3 protocol:
 //!
-//! 1. NULL - Do nothing (ping the server)
-//! 2. GETATTR - Get file attributes
-//! 3. SETATTR - Set file attributes
-//! 4. LOOKUP - Look up file name
-//! 5. ACCESS - Check access permission
-//! 6. READLINK - Read from symbolic link
-//! 7. READ - Read from file
-//! 8. WRITE - Write to file
-//! 9. CREATE - Create a file
-//! 10. MKDIR - Create a directory
-//! 11. SYMLINK - Create a symbolic link
-//! 12. MKNOD - Create a special device
-//! 13. REMOVE - Remove a file
-//! 14. RMDIR - Remove a directory
-//! 15. RENAME - Rename a file or directory
-//! 16. LINK - Create a hard link
-//! 17. READDIR - Read from directory
-//! 18. READDIRPLUS - Extended read from directory
-//! 19. FSSTAT - Get file system statistics
-//! 20. FSINFO - Get file system information
-//! 21. PATHCONF - Get path configuration
-//! 22. COMMIT - Commit cached data
+//! 1. `NULL` - Do nothing (ping the server)
+//! 2. `GETATTR` - Get file attributes
+//! 3. `SETATTR` - Set file attributes
+//! 4. `LOOKUP` - Look up file name
+//! 5. `ACCESS` - Check access permission
+//! 6. `READLINK` - Read from symbolic link
+//! 7. `READ` - Read from file
+//! 8. `WRITE` - Write to file
+//! 9. `CREATE` - Create a file
+//! 10. `MKDIR` - Create a directory
+//! 11. `SYMLINK` - Create a symbolic link
+//! 12. `MKNOD` - Create a special device
+//! 13. `REMOVE` - Remove a file
+//! 14. `RMDIR` - Remove a directory
+//! 15. `RENAME` - Rename a file or directory
+//! 16. `LINK` - Create a hard link
+//! 17. `READDIR` - Read from directory
+//! 18. `READDIRPLUS` - Extended read from directory
+//! 19. `FSSTAT` - Get file system statistics
+//! 20. `FSINFO` - Get file system information
+//! 21. `PATHCONF` - Get path configuration
+//! 22. `COMMIT` - Commit cached data
 //!
 //! Each procedure is implemented in its own module and registered with the main
 //! dispatcher function (`handle_nfs`). The dispatcher validates the protocol version
 //! and routes incoming RPC requests to the appropriate handler based on the procedure number.
 //!
-//! NFSv3 offers several improvements over NFSv2, including:
+//! `NFSv3` offers several improvements over `NFSv2`, including:
 //! - Support for files larger than 2GB
-//! - Safe asynchronous writes with the COMMIT operation
+//! - Safe asynchronous writes with the `COMMIT` operation
 //! - More robust error reporting with detailed status codes
 //! - Support for 64-bit file sizes and offsets
-//! - Better attribute caching with the ACCESS procedure
-//! - Enhanced directory reading with READDIRPLUS
+//! - Better attribute caching with the `ACCESS` procedure
+//! - Enhanced directory reading with `READDIRPLUS`
 
 use std::io::{Read, Write};
 
@@ -89,9 +89,9 @@ use setattr::nfsproc3_setattr;
 use symlink::nfsproc3_symlink;
 use write::nfsproc3_write;
 
-/// Main handler for NFSv3 protocol
+/// Main handler for `NFSv3` protocol
 ///
-/// Dispatches NFSv3 RPC calls to appropriate procedure handlers based on procedure number.
+/// Dispatches `NFSv3` RPC calls to appropriate procedure handlers based on procedure number.
 /// Validates protocol version and returns appropriate error for unsupported procedures.
 /// Acts as the central router for all NFS operations in the server.
 ///
@@ -128,12 +128,12 @@ pub async fn handle_nfs(
         nfs3::NFSProgram::NFSPROC3_FSINFO => nfsproc3_fsinfo(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_ACCESS => nfsproc3_access(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_PATHCONF => {
-            nfsproc3_pathconf(xid, input, output, context).await?
+            nfsproc3_pathconf(xid, input, output, context).await?;
         }
         nfs3::NFSProgram::NFSPROC3_FSSTAT => nfsproc3_fsstat(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_READDIR => nfsproc3_readdir(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_READDIRPLUS => {
-            nfsproc3_readdirplus(xid, input, output, context).await?
+            nfsproc3_readdirplus(xid, input, output, context).await?;
         }
         nfs3::NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await?,
@@ -144,7 +144,7 @@ pub async fn handle_nfs(
         nfs3::NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_READLINK => {
-            nfsproc3_readlink(xid, input, output, context).await?
+            nfsproc3_readlink(xid, input, output, context).await?;
         }
         nfs3::NFSProgram::NFSPROC3_MKNOD => nfsproc3_mknod(xid, input, output, context).await?,
         nfs3::NFSProgram::NFSPROC3_LINK => nfsproc3_link(xid, input, output, context).await?,

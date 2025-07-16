@@ -8,7 +8,7 @@
 //!
 //! 1. Message framing for TCP using the Record Marking Standard
 //! 2. Transaction tracking for detecting and handling retransmissions
-//! 3. Authentication (AUTH_UNIX)
+//! 3. Authentication (`AUTH_UNIX`)
 //! 4. Program/procedure number dispatching
 //! 5. Error handling and reporting
 //! 6. Asynchronous message processing
