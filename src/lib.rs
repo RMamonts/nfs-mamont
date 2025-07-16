@@ -39,7 +39,7 @@
 //! To create an NFS server, implement the `NFSFileSystem` trait and use the `NFSTcpListener`
 //! to expose it over the network.
 
-mod protocol;
+pub mod protocol;
 mod write_counter;
 
 #[cfg(not(target_os = "windows"))]
