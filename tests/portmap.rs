@@ -17,6 +17,7 @@ use nfs_mamont::xdr::rpc::call_body;
 use nfs_mamont::xdr::{deserialize, nfs3, Serialize};
 use nfs_mamont::{vfs, xdr};
 
+#[allow(dead_code)]
 pub struct DemoFS {
     root: String,
 }
@@ -190,8 +191,7 @@ fn send_get_port(
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-)
-    -> Result<(), anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let body = call_body {
         rpcvers: 2,
         prog: xdr::portmap::PROGRAM,
@@ -247,8 +247,7 @@ fn send_unset_port(
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-)
-    -> Result<(), anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let body = call_body {
         rpcvers: 2,
         prog: xdr::portmap::PROGRAM,
@@ -267,18 +266,26 @@ fn send_unset_port(
         output,
         context,
     )
-        .expect("can't proceed get_port");
+    .expect("can't proceed get_port");
     Ok(())
 }
 
-fn call_assert<F: Fn(&mut Context,  &mut Cursor<Vec<u8>>,  &mut Cursor<Vec<u8>>, mapping) -> Result<(), anyhow::Error>, T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug>(
+fn call_assert<
+    F: Fn(
+        &mut Context,
+        &mut Cursor<Vec<u8>>,
+        &mut Cursor<Vec<u8>>,
+        mapping,
+    ) -> Result<(), anyhow::Error>,
+    T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug,
+>(
     function: F,
     context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping: mapping,
-    expected: T
-    ) {
+    expected: T,
+) {
     input.set_position(0);
     output.set_position(0);
     function(context, input, output, mapping).expect("can't proceed operation");
@@ -289,7 +296,6 @@ fn call_assert<F: Fn(&mut Context,  &mut Cursor<Vec<u8>>,  &mut Cursor<Vec<u8>>,
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
     use super::*;
 
     /// simple test to assure, that result of GET_PORT operation is zero,
@@ -338,7 +344,7 @@ mod tests {
             port: port as u32,
         };
         call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0);
-        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args,true);
+        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true);
     }
 
     ///simple test of GET_PORT after SET_PORT
@@ -362,7 +368,14 @@ mod tests {
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true);
-        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, port as u32);
+        call_assert(
+            send_get_port,
+            &mut context,
+            &mut input,
+            &mut output,
+            mapping_args,
+            port as u32,
+        );
     }
 
     ///test of multiple GET_PORT after SET_PORT
@@ -386,8 +399,14 @@ mod tests {
         }
 
         for mapping_arg in maps {
-            call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_arg,
-                        mapping_arg.prog + mapping_arg.vers * 1000);
+            call_assert(
+                send_get_port,
+                &mut context,
+                &mut input,
+                &mut output,
+                mapping_arg,
+                mapping_arg.prog + mapping_arg.vers * 1000,
+            );
         }
     }
 
@@ -403,15 +422,30 @@ mod tests {
 
         std::thread::scope(|scope| {
             for mut d in data {
-                scope.spawn(move || {
-                    let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
-                    let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.0, 0);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1.0, true);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1.1, true);
-                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.0, d.1.0.prog + d.1.0.vers * 1000);
-                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.1, d.1.1.prog + d.1.1.vers * 1000);
-                }).join().unwrap();
+                scope
+                    .spawn(move || {
+                        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+                        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+                        call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1 .0, 0);
+                        call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .0, true);
+                        call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .1, true);
+                        call_assert(
+                            send_get_port,
+                            &mut d.0,
+                            &mut input,
+                            &mut output,
+                            d.1 .0,
+                            d.1 .0.prog + d.1 .0.vers * 1000,
+                        );
+                        call_assert(
+                            send_get_port,
+                            &mut d.0,
+                            &mut input,
+                            &mut output,
+                            d.1 .1,
+                            d.1 .1.prog + d.1 .1.vers * 1000,
+                        );
+                    });
             }
         });
 
@@ -419,7 +453,14 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         for mapping_arg in mappings {
-            call_assert(send_get_port,&mut contexts[0],  &mut input, &mut output, mapping_arg, mapping_arg.prog+mapping_arg.vers*1000);
+            call_assert(
+                send_get_port,
+                &mut contexts[0],
+                &mut input,
+                &mut output,
+                mapping_arg,
+                mapping_arg.prog + mapping_arg.vers * 1000,
+            );
         }
     }
 
@@ -445,7 +486,7 @@ mod tests {
         }
     }
 
-    fn unset_single_protocol(amount: u32, ) {
+    fn unset_single_protocol(amount: u32) {
         let mut context = Context {
             local_port: 0,
             client_addr: "1".to_string(),
@@ -470,7 +511,7 @@ mod tests {
         }
     }
 
-    fn unset_both_protocols(amount: u32, ) {
+    fn unset_both_protocols(amount: u32) {
         let mut context = Context {
             local_port: 0,
             client_addr: "1".to_string(),
@@ -501,7 +542,6 @@ mod tests {
         for mapping in args_udp {
             call_assert(send_unset_port, &mut context, &mut input, &mut output, mapping, false);
         }
-
     }
 
     fn unset_several_threads(amount_threads: usize) {
@@ -509,14 +549,14 @@ mod tests {
         let mapping_tcp = multiple_mappings(amount_threads as u32, IPPROTO_TCP);
         let mapping_udp = multiple_mappings(amount_threads as u32, IPPROTO_UDP);
 
-        let mut  data: Vec<(Context, mapping, mapping)> = Vec::with_capacity(amount_threads);
+        let mut data: Vec<(Context, mapping, mapping)> = Vec::with_capacity(amount_threads);
         for i in 0..amount_threads {
             data.push((context[i].clone(), mapping_tcp[i], mapping_udp[i]));
         }
 
         std::thread::scope(|scope| {
             for mut d in data {
-                std::thread::spawn(move || {
+                scope.spawn(move || {
                     let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                     let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
                     call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
@@ -524,13 +564,20 @@ mod tests {
                     call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1, true);
                     call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.1, true);
                     call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
-                }).join().unwrap();
+                });
             }
         });
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         for mapping in mapping_udp {
-            call_assert(send_get_port, &mut context[0].clone(), &mut input, &mut output, mapping, 0);
+            call_assert(
+                send_get_port,
+                &mut context[0].clone(),
+                &mut input,
+                &mut output,
+                mapping,
+                0,
+            );
         }
     }
 
