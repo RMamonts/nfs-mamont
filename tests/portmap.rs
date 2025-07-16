@@ -270,22 +270,42 @@ fn send_unset_port(
     Ok(())
 }
 
-fn call_assert<
-    F: Fn(
-        &mut Context,
-        &mut Cursor<Vec<u8>>,
-        &mut Cursor<Vec<u8>>,
-        mapping,
-    ) -> Result<(), anyhow::Error>,
-    T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug,
->(
+/// Assisting function for RPC portmap operation (`GETPORT`, `SET`, or `UNSET`) to ease operations with Cursors and asserts
+///
+/// This function:
+/// 1. Resets the input/output cursor positions (to ensure clean state).
+/// 2. Executes the provided portmap operation (`function`) with the given arguments.
+/// 3. Deserializes the output buffer into type `T` (expected result type).
+/// 4. Compares the deserialized result with `expected`, panicking if they differ.
+///
+/// # Parameters
+/// - `function`: One of the portmap operations (`send_get_port`, `send_set_port`, `send_unset_port`).
+/// - `context`: Mutable NFS context (e.g., for tracking RPC transactions).
+/// - `input`: Mutable cursor containing serialized input arguments (e.g., `mapping`).
+/// - `output`: Mutable cursor where the RPC response will be written.
+/// - `mapping`: Portmap arguments (program, port, protocol, etc.).
+/// - `expected`: The expected deserialized result (e.g., `0` for failure, port number for success).
+///
+/// # Type Constraints
+/// - `T` must be deserializable (via `xdr::Deserialize`), comparable (`PartialEq`),
+///   and have a default value (`Default`). Used for the response type.
+/// - `F`: A closure or function pointer matching one of the portmap operations.
+fn call_assert<F, T>(
     function: F,
     context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping: mapping,
     expected: T,
-) {
+) where
+    F: FnOnce(
+        &mut Context,
+        &mut Cursor<Vec<u8>>,
+        &mut Cursor<Vec<u8>>,
+        mapping,
+    ) -> Result<(), anyhow::Error>,
+    T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug,
+{
     input.set_position(0);
     output.set_position(0);
     function(context, input, output, mapping).expect("can't proceed operation");
@@ -352,7 +372,7 @@ mod tests {
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
             vers: nfs3::VERSION,
-            prot: xdr::portmap::IPPROTO_TCP,
+            prot: IPPROTO_TCP,
             port: port as u32,
         };
         let mut context = Context {
@@ -411,7 +431,7 @@ mod tests {
     }
 
     ///test of multiple operations asynchronously
-    fn multi_thread_sequence(amount: usize) {
+    fn multi_thread_get_set(amount: usize) {
         let mut contexts = multiple_contexts((amount / 2) as u32);
         let mappings = multiple_mappings(amount as u32, IPPROTO_TCP);
 
@@ -422,30 +442,29 @@ mod tests {
 
         std::thread::scope(|scope| {
             for mut d in data {
-                scope
-                    .spawn(move || {
-                        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
-                        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                        call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1 .0, 0);
-                        call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .0, true);
-                        call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .1, true);
-                        call_assert(
-                            send_get_port,
-                            &mut d.0,
-                            &mut input,
-                            &mut output,
-                            d.1 .0,
-                            d.1 .0.prog + d.1 .0.vers * 1000,
-                        );
-                        call_assert(
-                            send_get_port,
-                            &mut d.0,
-                            &mut input,
-                            &mut output,
-                            d.1 .1,
-                            d.1 .1.prog + d.1 .1.vers * 1000,
-                        );
-                    });
+                scope.spawn(move || {
+                    let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+                    let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1 .0, 0);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .0, true);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .1, true);
+                    call_assert(
+                        send_get_port,
+                        &mut d.0,
+                        &mut input,
+                        &mut output,
+                        d.1 .0,
+                        d.1 .0.prog + d.1 .0.vers * 1000,
+                    );
+                    call_assert(
+                        send_get_port,
+                        &mut d.0,
+                        &mut input,
+                        &mut output,
+                        d.1 .1,
+                        d.1 .1.prog + d.1 .1.vers * 1000,
+                    );
+                });
             }
         });
 
@@ -464,7 +483,7 @@ mod tests {
         }
     }
 
-    ///test of UNSET programs that haven't been mapped to port
+    ///test of UNSET when programs that haven't been mapped to port
     fn unset_empty_table(amount: u32) {
         let mut context = Context {
             local_port: 0,
@@ -486,6 +505,7 @@ mod tests {
         }
     }
 
+    ///test of UNSET, when only one of two (TCP or UDP) protocols are mapped
     fn unset_single_protocol(amount: u32) {
         let mut context = Context {
             local_port: 0,
@@ -511,6 +531,7 @@ mod tests {
         }
     }
 
+    ///test of UNSET, when both protocols (TCP or UDP) are mapped
     fn unset_both_protocols(amount: u32) {
         let mut context = Context {
             local_port: 0,
@@ -544,6 +565,7 @@ mod tests {
         }
     }
 
+    ///test of UNSET, where requests are sent from different threads
     fn unset_several_threads(amount_threads: usize) {
         let context = multiple_contexts(amount_threads as u32);
         let mapping_tcp = multiple_mappings(amount_threads as u32, IPPROTO_TCP);
@@ -604,9 +626,9 @@ mod tests {
         set_and_get_multiple(789);
     }
     #[test]
-    fn multi_threads() {
-        multi_thread_sequence(0);
-        multi_thread_sequence(100);
+    fn multi_threads_gets_sets() {
+        multi_thread_get_set(0);
+        multi_thread_get_set(100);
     }
 
     #[test]
