@@ -94,7 +94,7 @@ pub async fn handle_rpc(
                     Err(anyhow!("NFSv4 protocol error"))
                 }
             } else if call.prog == portmap::PROGRAM {
-                nfs::portmap::handle_portmap(xid, call, input, output, &context)
+                nfs::portmap::handle_portmap(xid, call, input, output, &mut context)
             } else if call.prog == mount::PROGRAM {
                 nfs::mount::handle_mount(xid, call, input, output, &context).await
             } else if call.prog == NFS_ACL_PROGRAM

@@ -14,10 +14,11 @@
 //! server configuration.
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tokio::sync::mpsc;
 
+use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::xdr;
 use crate::vfs;
 
@@ -60,6 +61,10 @@ pub struct Context {
     /// Transaction state tracker for handling retransmissions
     /// Maintains idempotency by detecting duplicate RPC calls
     pub transaction_tracker: Arc<super::TransactionTracker>,
+
+    /// Portmap table storing port-to-program mappings
+    /// (like a portmap service)
+    pub portmap_table: Arc<RwLock<PortmapTable>>,
 }
 
 impl fmt::Debug for Context {
