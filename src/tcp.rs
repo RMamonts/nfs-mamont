@@ -10,7 +10,7 @@
 //! on mount/unmount operations.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use std::{io, net::IpAddr};
 
@@ -21,6 +21,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
+use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::{rpc, xdr};
 use crate::vfs::NFSFileSystem;
 
@@ -39,6 +40,9 @@ pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
     export_name: Arc<String>,
     /// Tracker for RPC transactions to handle retransmissions
     transaction_tracker: Arc<rpc::TransactionTracker>,
+    /// Portmap table storing port-to-program mappings
+    /// (like a portmap service)
+    portmap_table: Arc<RwLock<PortmapTable>>,
 }
 
 /// Generates a local loopback IP address from a 16-bit host number
@@ -223,6 +227,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         })
     }
 
@@ -291,12 +296,13 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             let (socket, _) = self.listener.accept().await?;
             let context = rpc::Context {
                 local_port: self.port,
-                client_addr: socket.peer_addr().unwrap().to_string(),
+                client_addr: socket.peer_addr()?.to_string(),
                 auth: xdr::rpc::auth_unix::default(),
                 vfs: self.arcfs.clone(),
                 mount_signal: self.mount_signal.clone(),
                 export_name: self.export_name.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
+                portmap_table: self.portmap_table.clone(),
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
