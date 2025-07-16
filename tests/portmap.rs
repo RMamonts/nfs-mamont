@@ -12,13 +12,13 @@ use nfs_mamont::vfs::{Capabilities, ReadDirResult};
 use nfs_mamont::xdr::nfs3::{
     fattr3, fileid3, filename3, ftype3, nfspath3, nfsstat3, sattr3, specdata3,
 };
-use nfs_mamont::xdr::portmap::mapping;
+use nfs_mamont::xdr::portmap::{mapping, IPPROTO_TCP, IPPROTO_UDP};
 use nfs_mamont::xdr::rpc::call_body;
 use nfs_mamont::xdr::{deserialize, nfs3, Serialize};
 use nfs_mamont::{vfs, xdr};
 
 pub struct DemoFS {
-    pub root: String,
+    root: String,
 }
 
 const RPC_MSG_SIZE: u64 = 24;
@@ -156,13 +156,13 @@ impl vfs::NFSFileSystem for DemoFS {
     }
 }
 
-fn multiple_mappings(amount: u32) -> Vec<mapping> {
+fn multiple_mappings(amount: u32, prot: u32) -> Vec<mapping> {
     let mut result = Vec::<mapping>::with_capacity(amount as usize);
     for i in 1..=amount / 2 {
-        result.push(mapping { prog: i, vers: 1, prot: 0, port: i + 1000 })
+        result.push(mapping { prog: i, vers: 1, prot, port: i + 1000 });
     }
     for i in 1..=amount / 2 {
-        result.push(mapping { prog: i, vers: 2, prot: 0, port: i + 2000 })
+        result.push(mapping { prog: i, vers: 2, prot, port: i + 2000 });
     }
     result
 }
@@ -186,11 +186,12 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
 }
 
 fn send_get_port(
-    mut context: &mut Context,
+    context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-) -> Result<(), anyhow::Error> {
+)
+    -> Result<(), anyhow::Error> {
     let body = call_body {
         rpcvers: 2,
         prog: xdr::portmap::PROGRAM,
@@ -207,14 +208,14 @@ fn send_get_port(
         body,
         input,
         output,
-        &mut context,
+        context,
     )
     .expect("can't proceed get_port");
     Ok(())
 }
 
 fn send_set_port(
-    mut context: &mut Context,
+    context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
@@ -235,14 +236,60 @@ fn send_set_port(
         body,
         input,
         output,
-        &mut context,
+        context,
     )
     .expect("can't proceed get_port");
     Ok(())
 }
 
+fn send_unset_port(
+    context: &mut Context,
+    input: &mut Cursor<Vec<u8>>,
+    output: &mut Cursor<Vec<u8>>,
+    mapping_args: mapping,
+)
+    -> Result<(), anyhow::Error> {
+    let body = call_body {
+        rpcvers: 2,
+        prog: xdr::portmap::PROGRAM,
+        vers: xdr::portmap::VERSION,
+        proc: xdr::portmap::PortmapProgram::PMAPPROC_UNSET.to_u32().unwrap(),
+        cred: Default::default(),
+        verf: Default::default(),
+    };
+
+    mapping_args.serialize(input)?;
+    input.set_position(0);
+    nfs_mamont::protocol::nfs::portmap::handle_portmap(
+        u32::default(),
+        body,
+        input,
+        output,
+        context,
+    )
+        .expect("can't proceed get_port");
+    Ok(())
+}
+
+fn call_assert<F: Fn(&mut Context,  &mut Cursor<Vec<u8>>,  &mut Cursor<Vec<u8>>, mapping) -> Result<(), anyhow::Error>, T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug>(
+    function: F,
+    context: &mut Context,
+    input: &mut Cursor<Vec<u8>>,
+    output: &mut Cursor<Vec<u8>>,
+    mapping: mapping,
+    expected: T
+    ) {
+    input.set_position(0);
+    output.set_position(0);
+    function(context, input, output, mapping).expect("can't proceed operation");
+    output.set_position(RPC_MSG_SIZE);
+    let res = deserialize::<T>(output).expect("can't get result");
+    assert_eq!(res, expected);
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
     use super::*;
 
     /// simple test to assure, that result of GET_PORT operation is zero,
@@ -263,14 +310,10 @@ mod tests {
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
             vers: nfs3::VERSION,
-            prot: xdr::portmap::IPPROTO_TCP,
+            prot: IPPROTO_TCP,
             port: port as u32,
         };
-        send_get_port(&mut context, &mut input, &mut output, mapping_args)
-            .expect("failed to proceed request");
-        output.set_position(RPC_MSG_SIZE);
-        let result = deserialize::<u32>(&mut output).expect("can't proceed resulted port");
-        assert_eq!(result, 0);
+        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0);
     }
 
     ///simple test to assure, that after SET_PORT operation for program without
@@ -291,18 +334,11 @@ mod tests {
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
             vers: nfs3::VERSION,
-            prot: xdr::portmap::IPPROTO_TCP,
+            prot: IPPROTO_TCP,
             port: port as u32,
         };
-        send_set_port(&mut context, &mut input, &mut output, mapping_args)
-            .expect("failed to proceed request");
-        input.set_position(0);
-        output.set_position(0);
-        send_get_port(&mut context, &mut input, &mut output, mapping_args)
-            .expect("failed to proceed request");
-        output.set_position(RPC_MSG_SIZE);
-        let result = deserialize::<u32>(&mut output).expect("can't proceed resulted port");
-        assert_eq!(result, port as u32);
+        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0);
+        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args,true);
     }
 
     ///simple test of GET_PORT after SET_PORT
@@ -325,20 +361,13 @@ mod tests {
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-        send_set_port(&mut context, &mut input, &mut output, mapping_args)
-            .expect("failed to proceed request");
-        output.set_position(0);
-        input.set_position(0);
-        send_get_port(&mut context, &mut input, &mut output, mapping_args)
-            .expect("failed to proceed request");
-        output.set_position(RPC_MSG_SIZE);
-        let result = deserialize::<u32>(&mut output).expect("can't proceed resulted port");
-        assert_eq!(result, port as u32);
+        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true);
+        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, port as u32);
     }
 
     ///test of multiple GET_PORT after SET_PORT
     fn set_and_get_multiple(amount: u32) {
-        let maps = multiple_mappings(amount);
+        let maps = multiple_mappings(amount, IPPROTO_TCP);
         let mut context = Context {
             local_port: 0,
             client_addr: "1".to_string(),
@@ -353,30 +382,19 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         for mapping_arg in maps.clone() {
-            input.set_position(0);
-            output.set_position(0);
-            send_set_port(&mut context, &mut input, &mut output, mapping_arg)
-                .expect("failed to proceed request");
-            output.set_position(RPC_MSG_SIZE);
-            let result = deserialize::<bool>(&mut output).expect("can't proceed resulted port");
-            assert_eq!(result, true);
+            call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_arg, true);
         }
 
         for mapping_arg in maps {
-            input.set_position(0);
-            output.set_position(0);
-            send_get_port(&mut context, &mut input, &mut output, mapping_arg)
-                .expect("failed to proceed request");
-            output.set_position(RPC_MSG_SIZE);
-            let result = deserialize::<u32>(&mut output).expect("can't proceed resulted port");
-            assert_eq!(mapping_arg.prog + mapping_arg.vers * 1000, result);
+            call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_arg,
+                        mapping_arg.prog + mapping_arg.vers * 1000);
         }
     }
 
     ///test of multiple operations asynchronously
     fn multi_thread_sequence(amount: usize) {
         let mut contexts = multiple_contexts((amount / 2) as u32);
-        let mappings = multiple_mappings(amount as u32);
+        let mappings = multiple_mappings(amount as u32, IPPROTO_TCP);
 
         let mut data = Vec::new();
         for i in 0..amount / 2 {
@@ -388,25 +406,12 @@ mod tests {
                 scope.spawn(move || {
                     let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                     let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                    send_get_port(&mut d.0, &mut input, &mut output, d.1 .0)
-                        .expect("failed to proceed request");
-                    input.set_position(0);
-                    output.set_position(0);
-                    send_set_port(&mut d.0, &mut input, &mut output, d.1 .0)
-                        .expect("failed to proceed request");
-                    input.set_position(0);
-                    output.set_position(0);
-                    send_set_port(&mut d.0, &mut input, &mut output, d.1 .1)
-                        .expect("failed to proceed request");
-                    input.set_position(0);
-                    output.set_position(0);
-                    send_get_port(&mut d.0, &mut input, &mut output, d.1 .0)
-                        .expect("failed to proceed request");
-                    input.set_position(0);
-                    output.set_position(0);
-                    send_get_port(&mut d.0, &mut input, &mut output, d.1 .1)
-                        .expect("failed to proceed request");
-                });
+                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.0, 0);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1.0, true);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1.1, true);
+                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.0, d.1.0.prog + d.1.0.vers * 1000);
+                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1.1, d.1.1.prog + d.1.1.vers * 1000);
+                }).join().unwrap();
             }
         });
 
@@ -414,13 +419,118 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         for mapping_arg in mappings {
-            input.set_position(0);
-            output.set_position(0);
-            send_get_port(&mut contexts[0], &mut input, &mut output, mapping_arg)
-                .expect("failed to proceed request");
-            output.set_position(RPC_MSG_SIZE);
-            let result = deserialize::<u32>(&mut output).expect("can't proceed resulted port");
-            assert_eq!(mapping_arg.prog + mapping_arg.vers * 1000, result);
+            call_assert(send_get_port,&mut contexts[0],  &mut input, &mut output, mapping_arg, mapping_arg.prog+mapping_arg.vers*1000);
+        }
+    }
+
+    ///test of UNSET programs that haven't been mapped to port
+    fn unset_empty_table(amount: u32) {
+        let mut context = Context {
+            local_port: 0,
+            client_addr: "1".to_string(),
+            auth: xdr::rpc::auth_unix::default(),
+            vfs: Arc::new(DemoFS { root: "root".to_string() }),
+            mount_signal: None,
+            export_name: Arc::from("/".to_string()),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+        };
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+
+        let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
+
+        for arg in args_tcp {
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, arg, false);
+        }
+    }
+
+    fn unset_single_protocol(amount: u32, ) {
+        let mut context = Context {
+            local_port: 0,
+            client_addr: "1".to_string(),
+            auth: xdr::rpc::auth_unix::default(),
+            vfs: Arc::new(DemoFS { root: "root".to_string() }),
+            mount_signal: None,
+            export_name: Arc::from("/".to_string()),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+        };
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+
+        let args = multiple_mappings(amount, IPPROTO_UDP);
+
+        for arg in &args {
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true);
+        }
+
+        for arg in args {
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, arg, true);
+        }
+    }
+
+    fn unset_both_protocols(amount: u32, ) {
+        let mut context = Context {
+            local_port: 0,
+            client_addr: "1".to_string(),
+            auth: xdr::rpc::auth_unix::default(),
+            vfs: Arc::new(DemoFS { root: "root".to_string() }),
+            mount_signal: None,
+            export_name: Arc::from("/".to_string()),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+        };
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+
+        let args_udp = multiple_mappings(amount, IPPROTO_UDP);
+        let args_tcp = multiple_mappings(amount, IPPROTO_UDP);
+
+        for arg in &args_udp {
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true);
+        }
+
+        for arg in &args_tcp {
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true);
+        }
+
+        for mapping in args_tcp {
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, mapping, true);
+        }
+        for mapping in args_udp {
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, mapping, false);
+        }
+
+    }
+
+    fn unset_several_threads(amount_threads: usize) {
+        let context = multiple_contexts(amount_threads as u32);
+        let mapping_tcp = multiple_mappings(amount_threads as u32, IPPROTO_TCP);
+        let mapping_udp = multiple_mappings(amount_threads as u32, IPPROTO_UDP);
+
+        let mut  data: Vec<(Context, mapping, mapping)> = Vec::with_capacity(amount_threads);
+        for i in 0..amount_threads {
+            data.push((context[i].clone(), mapping_tcp[i], mapping_udp[i]));
+        }
+
+        std::thread::scope(|scope| {
+            for mut d in data {
+                std::thread::spawn(move || {
+                    let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+                    let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.2, true);
+                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1, true);
+                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.1, true);
+                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
+                }).join().unwrap();
+            }
+        });
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+        for mapping in mapping_udp {
+            call_assert(send_get_port, &mut context[0].clone(), &mut input, &mut output, mapping, 0);
         }
     }
 
@@ -450,5 +560,29 @@ mod tests {
     fn multi_threads() {
         multi_thread_sequence(0);
         multi_thread_sequence(100);
+    }
+
+    #[test]
+    fn empty_unsets() {
+        unset_empty_table(0);
+        unset_empty_table(200);
+    }
+
+    #[test]
+    fn unset_one_protocol_entry() {
+        unset_single_protocol(0);
+        unset_single_protocol(200);
+    }
+
+    #[test]
+    fn unset_two_protocol_entry() {
+        unset_both_protocols(0);
+        unset_single_protocol(750);
+    }
+
+    #[test]
+    fn multi_thread_unset() {
+        unset_several_threads(0);
+        unset_several_threads(100);
     }
 }
