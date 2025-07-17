@@ -24,7 +24,7 @@ pub struct DemoFS {
 const RPC_MSG_SIZE: u64 = 24;
 const OUTPUT_SIZE: usize = 28;
 const INPUT_SIZE: usize = 16;
-const DEFAULT_VERSION: u32 = 1;
+const DEFAULT_VERSION: u32 = 2;
 
 #[async_trait]
 impl vfs::NFSFileSystem for DemoFS {
@@ -203,15 +203,7 @@ fn send_get_port(
 
     mapping_args.serialize(input)?;
     input.set_position(0);
-    nfs_mamont::protocol::nfs::portmap::handle_portmap(
-        u32::default(),
-        body,
-        input,
-        output,
-        context,
-    )
-    .expect("can't proceed get_port");
-    Ok(())
+    nfs_mamont::protocol::nfs::portmap::handle_portmap(u32::default(), body, input, output, context)
 }
 
 fn send_set_port(
@@ -231,17 +223,8 @@ fn send_set_port(
     mapping_args.serialize(input)?;
 
     input.set_position(0);
-    nfs_mamont::protocol::nfs::portmap::handle_portmap(
-        u32::default(),
-        body,
-        input,
-        output,
-        context,
-    )
-    .expect("can't proceed get_port");
-    Ok(())
+    nfs_mamont::protocol::nfs::portmap::handle_portmap(u32::default(), body, input, output, context)
 }
-
 fn send_unset_port(
     context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
@@ -259,15 +242,7 @@ fn send_unset_port(
 
     mapping_args.serialize(input)?;
     input.set_position(0);
-    nfs_mamont::protocol::nfs::portmap::handle_portmap(
-        u32::default(),
-        body,
-        input,
-        output,
-        context,
-    )
-    .expect("can't proceed get_port");
-    Ok(())
+    nfs_mamont::protocol::nfs::portmap::handle_portmap(u32::default(), body, input, output, context)
 }
 
 /// Assisting function for RPC portmap operation (`GETPORT`, `SET`, or `UNSET`) to ease operations with Cursors and asserts
@@ -435,34 +410,55 @@ mod tests {
         let mut contexts = multiple_contexts((amount / 2) as u32);
         let mappings = multiple_mappings(amount as u32, IPPROTO_TCP);
 
-        let mut data = Vec::new();
+        let mut set_for_thread = Vec::new();
         for i in 0..amount / 2 {
-            data.push((contexts[i].clone(), (mappings[i], mappings[amount / 2 + i])));
+            set_for_thread.push((contexts[i].clone(), (mappings[i], mappings[amount / 2 + i])));
         }
 
         std::thread::scope(|scope| {
-            for mut d in data {
+            for (mut context, (mappings_1, mappings_2)) in set_for_thread {
                 scope.spawn(move || {
                     let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                     let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                    call_assert(send_get_port, &mut d.0, &mut input, &mut output, d.1 .0, 0);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .0, true);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1 .1, true);
                     call_assert(
                         send_get_port,
-                        &mut d.0,
+                        &mut context,
                         &mut input,
                         &mut output,
-                        d.1 .0,
-                        d.1 .0.prog + d.1 .0.vers * 1000,
+                        mappings_1,
+                        0,
+                    );
+                    call_assert(
+                        send_set_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_1,
+                        true,
+                    );
+                    call_assert(
+                        send_set_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_2,
+                        true,
                     );
                     call_assert(
                         send_get_port,
-                        &mut d.0,
+                        &mut context,
                         &mut input,
                         &mut output,
-                        d.1 .1,
-                        d.1 .1.prog + d.1 .1.vers * 1000,
+                        mappings_1,
+                        mappings_1.prog + mappings_1.vers * 1000,
+                    );
+                    call_assert(
+                        send_get_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_2,
+                        mappings_2.prog + mappings_2.vers * 1000,
                     );
                 });
             }
@@ -571,21 +567,57 @@ mod tests {
         let mapping_tcp = multiple_mappings(amount_threads as u32, IPPROTO_TCP);
         let mapping_udp = multiple_mappings(amount_threads as u32, IPPROTO_UDP);
 
-        let mut data: Vec<(Context, mapping, mapping)> = Vec::with_capacity(amount_threads);
+        let mut set_for_thread: Vec<(Context, mapping, mapping)> =
+            Vec::with_capacity(amount_threads);
         for i in 0..amount_threads {
-            data.push((context[i].clone(), mapping_tcp[i], mapping_udp[i]));
+            set_for_thread.push((context[i].clone(), mapping_tcp[i], mapping_udp[i]));
         }
 
         std::thread::scope(|scope| {
-            for mut d in data {
+            for (mut context, mappings_1, mappings_2) in set_for_thread {
                 scope.spawn(move || {
                     let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                     let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.2, true);
-                    call_assert(send_set_port, &mut d.0, &mut input, &mut output, d.1, true);
-                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.1, true);
-                    call_assert(send_unset_port, &mut d.0, &mut input, &mut output, d.2, false);
+                    call_assert(
+                        send_unset_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_2,
+                        false,
+                    );
+                    call_assert(
+                        send_set_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_2,
+                        true,
+                    );
+                    call_assert(
+                        send_set_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_1,
+                        true,
+                    );
+                    call_assert(
+                        send_unset_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_1,
+                        true,
+                    );
+                    call_assert(
+                        send_unset_port,
+                        &mut context,
+                        &mut input,
+                        &mut output,
+                        mappings_2,
+                        false,
+                    );
                 });
             }
         });
