@@ -17,7 +17,9 @@ use nfs_mamont::xdr::rpc::call_body;
 use nfs_mamont::xdr::{deserialize, nfs3, Serialize};
 use nfs_mamont::{vfs, xdr};
 
-pub struct DemoFS;
+pub struct DemoFS {
+    _root: String,
+}
 
 const RPC_MSG_SIZE: u64 = 24;
 const OUTPUT_SIZE: usize = 28;
@@ -173,7 +175,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
             local_port: 0,
             client_addr: i.to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -322,7 +324,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -346,7 +348,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -376,7 +378,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -402,7 +404,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -486,7 +488,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -508,7 +510,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
@@ -534,7 +536,7 @@ mod tests {
             local_port: 0,
             client_addr: "1".to_string(),
             auth: xdr::rpc::auth_unix::default(),
-            vfs: Arc::new(DemoFS),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
