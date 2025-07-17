@@ -24,6 +24,7 @@ pub struct DemoFS {
 const RPC_MSG_SIZE: u64 = 24;
 const OUTPUT_SIZE: usize = 28;
 const INPUT_SIZE: usize = 16;
+const DEFAULT_VERSION: u32 = 1;
 
 #[async_trait]
 impl vfs::NFSFileSystem for DemoFS {
@@ -334,7 +335,7 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
-            vers: nfs3::VERSION,
+            vers: DEFAULT_VERSION,
             prot: IPPROTO_TCP,
             port: port as u32,
         };
@@ -358,7 +359,7 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
-            vers: nfs3::VERSION,
+            vers: DEFAULT_VERSION,
             prot: IPPROTO_TCP,
             port: port as u32,
         };
@@ -370,7 +371,7 @@ mod tests {
     fn get_port_ok_reply(port: u16) {
         let mapping_args = mapping {
             prog: nfs3::PROGRAM,
-            vers: nfs3::VERSION,
+            vers: DEFAULT_VERSION,
             prot: IPPROTO_TCP,
             port: port as u32,
         };
