@@ -30,8 +30,9 @@ pub fn invalid_data(m: &str) -> std::io::Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{invalid_data, padding_len, read_padding, write_padding};
     use std::io;
+
+    use super::{invalid_data, padding_len, read_padding, write_padding};
 
     #[test]
     fn test_padding_len() {
