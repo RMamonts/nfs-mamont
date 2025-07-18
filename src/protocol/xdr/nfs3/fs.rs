@@ -16,7 +16,9 @@
 
 use std::io::{Read, Write};
 
-use super::*;
+use super::{
+    nfstime3, post_op_attr, size3, Deserialize, DeserializeStruct, Serialize, SerializeStruct,
+};
 
 // Section 3.3.19. Procedure 19: FSINFO - Get static file system Information
 // The following constants are used in fsinfo to construct the bitmask 'properties',
@@ -40,7 +42,7 @@ pub const FSF_HOMOGENEOUS: u32 = 0x0008;
 
 /// If this bit is 1 (TRUE), the server will set the
 /// times for a file via SETATTR if requested (to the
-/// accuracy indicated by time_delta). If it is 0
+/// accuracy indicated by `time_delta`). If it is 0
 /// (FALSE), the server cannot set times as requested.
 /// As defined in RFC 1813 section 3.3.19.
 pub const FSF_CANSETTIME: u32 = 0x0010;

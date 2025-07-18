@@ -1,7 +1,7 @@
-//! Implementation of the READDIRPLUS procedure (procedure 17) for NFS version 3 protocol
+//! Implementation of the `READDIRPLUS` procedure (procedure 17) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.17.
 //!
-//! The READDIRPLUS procedure is an extended version of READDIR that returns
+//! The `READDIRPLUS` procedure is an extended version of READDIR that returns
 //! file handles and attributes in addition to directory entries. This procedure
 //! is intended to eliminate separate LOOKUP calls for clients that want to
 //! get attributes and file handles for directory entries.
@@ -30,16 +30,16 @@ use tracing::{debug, error, trace};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 READDIRPLUS procedure (procedure 17)
+/// Handles `NFSv3` `READDIRPLUS` procedure (procedure 17)
 ///
-/// READDIRPLUS retrieves directory entries with their attributes and file handles.
+/// `READDIRPLUS` retrieves directory entries with their attributes and file handles.
 /// Takes directory handle, cookie, cookie verifier, and maximum size limits.
 /// Returns directory entries with file attributes and file handles for each entry.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the READDIRPLUS arguments
+/// * `input` - Input stream containing the `READDIRPLUS` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///
@@ -227,6 +227,6 @@ pub async fn nfsproc3_readdirplus(
             stat.serialize(output)?;
             dir_attr.serialize(output)?;
         }
-    };
+    }
     Ok(())
 }

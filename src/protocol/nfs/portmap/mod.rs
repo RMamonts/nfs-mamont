@@ -1,5 +1,5 @@
-//! PORTMAP protocol implementation as specified in RFC 1057 A.1 and A.2 sections.
-//! https://datatracker.ietf.org/doc/rfc1057/
+//! `PORTMAP` protocol implementation as specified in RFC 1057 A.1 and A.2 sections.
+//! <https://datatracker.ietf.org/doc/rfc1057/>.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -38,9 +38,9 @@ pub struct PortmapKey {
 /// Main handler for PORTMAP protocol
 ///
 /// TODO: Unimplemented procedures:
-/// * PMAPPROC_UNSET - Remove a port mapping
-/// * PMAPPROC_DUMP - List all registered port mappings
-/// * PMAPPROC_CALLIT - Forward a call to another RPC service
+/// * `PMAPPROC_UNSET` - Remove a port mapping
+/// * `PMAPPROC_DUMP` - List all registered port mappings
+/// * `PMAPPROC_CALLIT` - Forward a call to another RPC service
 ///
 /// # Arguments
 ///
@@ -55,7 +55,7 @@ pub struct PortmapKey {
 /// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
 pub fn handle_portmap(
     xid: u32,
-    call: xdr::rpc::call_body,
+    call: &xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &mut Context,

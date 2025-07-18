@@ -1,14 +1,14 @@
-//! Write Counter module provides a wrapper for Writer implementations that counts
+//! Write Counter module provides a wrapper for `Writer` implementations that counts
 //! bytes written during write operations.
 //!
 //! This module is particularly useful when implementing size-limited responses in NFS
-//! operations, such as READDIR and READDIRPLUS, where responses need to be truncated
+//! operations, such as `READDIR` and `READDIRPLUS`, where responses need to be truncated
 //! to fit within a specific byte limit.
 
 #![allow(dead_code)]
 use std::io::Write;
 
-/// A wrapper around a Writer that counts the number of bytes written
+/// A wrapper around a `Writer` that counts the number of bytes written
 ///
 /// This struct decorates any type implementing the Write trait and keeps track of
 /// how many bytes have been successfully written. This is particularly useful in NFS
@@ -24,7 +24,7 @@ impl<W> WriteCounter<W>
 where
     W: Write,
 {
-    /// Creates a new WriteCounter wrapping the provided writer
+    /// Creates a new [`WriteCounter`] wrapping the provided writer
     ///
     /// # Arguments
     ///
@@ -32,12 +32,12 @@ where
     ///
     /// # Returns
     ///
-    /// A new WriteCounter with a zero byte count
+    /// A new [`WriteCounter`] with a zero byte count
     pub fn new(inner: W) -> Self {
         WriteCounter { inner, count: 0 }
     }
 
-    /// Consumes the WriteCounter and returns the wrapped writer
+    /// Consumes the [`WriteCounter`] and returns the wrapped writer
     ///
     /// # Returns
     ///
@@ -75,7 +75,7 @@ where
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let res = self.inner.write(buf);
         if let Ok(size) = res {
-            self.count += size
+            self.count += size;
         }
         res
     }

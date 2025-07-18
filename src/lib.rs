@@ -6,10 +6,10 @@
 //!
 //! ## Supported Features
 //!
-//! - Full NFSv3 protocol implementation (all 21 procedures defined in RFC 1813)
-//! - MOUNT protocol for filesystem exports
-//! - PORTMAP protocol for service discovery
-//! - TCP and UDP transport protocols
+//! - Full `NFSv3` protocol implementation (all 21 procedures defined in RFC 1813)
+//! - `MOUNT` protocol for filesystem exports
+//! - `PORTMAP` protocol for service discovery
+//! - `TCP` and `UDP` transport protocols
 //! - Asynchronous operation with Tokio runtime
 //! - Virtual File System abstraction for implementing custom backends
 //!
@@ -21,8 +21,8 @@
 //! - `tcp`: TCP-based server implementation that handles client connections and dispatches
 //!   NFS protocol requests to the appropriate handlers.
 //!
-//! - `protocol`: Internal module that implements the NFS, MOUNT, and PORTMAP protocols,
-//!   including XDR (External Data Representation) encoding/decoding.
+//! - `protocol`: Internal module that implements the `NFS`, `MOUNT`, and `PORTMAP` protocols,
+//!   including `XDR` (External Data Representation) encoding/decoding.
 //!
 //! - `fs_util`: Utility functions for working with file systems.
 //!

@@ -94,7 +94,7 @@ pub async fn handle_rpc(
                     Err(anyhow!("NFSv4 protocol error"))
                 }
             } else if call.prog == portmap::PROGRAM {
-                nfs::portmap::handle_portmap(xid, call, input, output, &mut context)
+                nfs::portmap::handle_portmap(xid, &call, input, output, &mut context)
             } else if call.prog == mount::PROGRAM {
                 nfs::mount::handle_mount(xid, call, input, output, &context).await
             } else if call.prog == NFS_ACL_PROGRAM
@@ -219,7 +219,7 @@ pub struct SocketMessageHandler {
 }
 
 impl SocketMessageHandler {
-    /// Creates a new SocketMessageHandler instance
+    /// Creates a new `SocketMessageHandler` instance
     ///
     /// Initializes the handler with the provided RPC context and creates the
     /// necessary communication channels. Returns the handler itself, a duplex
@@ -230,7 +230,7 @@ impl SocketMessageHandler {
     pub fn new(
         context: &rpc::Context,
     ) -> (Self, DuplexStream, mpsc::UnboundedReceiver<SocketMessageType>) {
-        let (socksend, sockrecv) = tokio::io::duplex(256000);
+        let (socksend, sockrecv) = tokio::io::duplex(256_000);
         let (msgsend, msgrecv) = mpsc::unbounded_channel();
 
         // Create separate channel for command results
@@ -298,7 +298,7 @@ impl SocketMessageHandler {
     }
 }
 
-/// Standard async RPC processing function that can be used with CommandQueue
+/// Standard async RPC processing function that can be used with `CommandQueue`
 ///
 /// Processes an RPC command by:
 /// 1. Deserializing the RPC message

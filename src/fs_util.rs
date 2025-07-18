@@ -4,7 +4,7 @@
 //! This module contains functions for:
 //! - Converting between local file system metadata and NFS attributes
 //! - Safely checking file existence without traversing symlinks
-//! - Setting file attributes based on NFS SETATTR operations
+//! - Setting file attributes based on NFS `SETATTR` operations
 //! - Comparing file metadata for change detection
 
 use std::fs::Metadata;
@@ -191,9 +191,9 @@ pub fn metadata_to_fattr3(fid: nfs3::fileid3, meta: &Metadata) -> nfs3::fattr3 {
     }
 }
 
-/// Sets attributes of a file path based on NFS SETATTR operation
+/// Sets attributes of a file path based on NFS `SETATTR` operation
 ///
-/// This function applies the attributes specified in an NFS SETATTR request
+/// This function applies the attributes specified in an NFS `SETATTR` request
 /// to a file or directory specified by path.
 ///
 /// # Arguments
@@ -213,7 +213,8 @@ pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs
             let _ = filetime::set_file_atime(path, time.into());
         }
         _ => {}
-    };
+    }
+
     match setattr.mtime {
         nfs3::set_mtime::SET_TO_SERVER_TIME => {
             let _ = filetime::set_file_mtime(path, filetime::FileTime::now());
@@ -222,18 +223,22 @@ pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs
             let _ = filetime::set_file_mtime(path, time.into());
         }
         _ => {}
-    };
+    }
+
     if let nfs3::set_mode3::Some(mode) = setattr.mode {
         debug!(" -- set permissions {:?} {:?}", path, mode);
         let mode = mode_unmask(mode);
         let _ = std::fs::set_permissions(path, Permissions::from_mode(mode));
-    };
+    }
+
     if setattr.uid.is_some() {
         debug!("Set uid not implemented");
     }
+
     if setattr.gid.is_some() {
         debug!("Set gid not implemented");
     }
+
     if let nfs3::set_size3::Some(size3) = setattr.size {
         let file = OpenOptions::new()
             .read(true)
@@ -245,12 +250,13 @@ pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs
         debug!(" -- set size {:?} {:?}", path, size3);
         file.set_len(size3).await.or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
     }
+
     Ok(())
 }
 
-/// Sets attributes of an open file based on NFS SETATTR operation
+/// Sets attributes of an open file based on NFS `SETATTR` operation
 ///
-/// This function applies the attributes specified in an NFS SETATTR request
+/// This function applies the attributes specified in an NFS `SETATTR` request
 /// to an already open file handle.
 ///
 /// # Arguments
@@ -270,9 +276,11 @@ pub async fn file_setattr(
         let mode = mode_unmask(mode);
         let _ = file.set_permissions(Permissions::from_mode(mode));
     }
+
     if let nfs3::set_size3::Some(size3) = setattr.size {
         debug!(" -- set size {:?}", size3);
         file.set_len(size3).or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
     }
+
     Ok(())
 }

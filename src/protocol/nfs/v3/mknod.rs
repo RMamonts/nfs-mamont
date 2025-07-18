@@ -1,7 +1,7 @@
-//! Implementation of the MKNOD procedure (procedure 11) for NFS version 3 protocol
+//! Implementation of the `MKNOD` procedure (procedure 11) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.11.
 //!
-//! The MKNOD procedure creates a special file of a specified type. Special files
+//! The `MKNOD` procedure creates a special file of a specified type. Special files
 //! can be device files (character or block), FIFOs (named pipes), or sockets.
 //!
 //! The client specifies:
@@ -27,16 +27,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 MKNOD procedure (procedure 11)
+/// Handles `NFSv3` `MKNOD` procedure (procedure 11)
 ///
-/// MKNOD creates a special file (device, FIFO, or socket).
+/// `MKNOD` creates a special file (device, FIFO, or socket).
 /// Takes directory handle, name, file type and device specifications.
 /// Returns file handle and attributes of the newly created special file.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the MKNOD arguments
+/// * `input` - Input stream containing the `MKNOD` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

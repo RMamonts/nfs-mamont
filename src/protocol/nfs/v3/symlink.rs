@@ -1,7 +1,7 @@
-//! Implementation of the SYMLINK procedure (procedure 10) for NFS version 3 protocol
+//! Implementation of the `SYMLINK` procedure (procedure 10) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.10.
 //!
-//! The SYMLINK procedure creates a symbolic link in a directory. A symbolic link
+//! The `SYMLINK` procedure creates a symbolic link in a directory. A symbolic link
 //! is a special type of file that contains a path name that clients can use to
 //! reference another file or directory, possibly on a different file system or server.
 //!
@@ -21,10 +21,10 @@
 //! operation, typically via LOOKUP or READLINK procedures.
 //!
 //! Common errors include:
-//! - NFS3ERR_ROFS - If the file system is read-only
-//! - NFS3ERR_EXIST - If the target name already exists
-//! - NFS3ERR_ACCES - If the client doesn't have permission to create the symlink
-//! - NFS3ERR_NOSPC - If there is insufficient storage space
+//! - `NFS3ERR_ROFS` - If the file system is read-only
+//! - `NFS3ERR_EXIST` - If the target name already exists
+//! - `NFS3ERR_ACCES` - If the client doesn't have permission to create the symlink
+//! - `NFS3ERR_NOSPC` - If there is insufficient storage space
 
 use std::io::{Read, Write};
 
@@ -34,16 +34,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 SYMLINK procedure (procedure 10)
+/// Handles `NFSv3` `SYMLINK` procedure (procedure 10)
 ///
-/// SYMLINK creates a symbolic link to a specified target path.
+/// `SYMLINK` creates a symbolic link to a specified target path.
 /// Takes directory handle, name for new link, and target path data.
 /// Returns file handle and attributes of the created symbolic link.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the SYMLINK arguments
+/// * `input` - Input stream containing the `SYMLINK` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///
@@ -54,12 +54,12 @@ use crate::vfs;
 /// # Errors
 ///
 /// Common errors include:
-/// - NFS3ERR_ROFS - If the file system is read-only
-/// - NFS3ERR_EXIST - If a file with the requested name already exists
-/// - NFS3ERR_ACCES - If permission is denied
-/// - NFS3ERR_NOSPC - If there is no space on the file system
-/// - NFS3ERR_NOTDIR - If the parent handle is not a directory
-/// - NFS3ERR_STALE - If the file handle is invalid
+/// - `NFS3ERR_ROFS` - If the file system is read-only
+/// - `NFS3ERR_EXIST` - If a file with the requested name already exists
+/// - `NFS3ERR_ACCES` - If permission is denied
+/// - `NFS3ERR_NOSPC` - If there is no space on the file system
+/// - `NFS3ERR_NOTDIR` - If the parent handle is not a directory
+/// - `NFS3ERR_STALE` - If the file handle is invalid
 pub async fn nfsproc3_symlink(
     xid: u32,
     input: &mut impl Read,

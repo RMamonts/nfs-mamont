@@ -1,7 +1,7 @@
-//! Implementation of the LOOKUP procedure (procedure 3) for NFS version 3 protocol
+//! Implementation of the `LOOKUP` procedure (procedure 3) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.3.
 //!
-//! The LOOKUP procedure performs file name lookup in a directory. It translates
+//! The `LOOKUP` procedure performs file name lookup in a directory. It translates
 //! a file name into a file handle that can be used for subsequent operations on the file.
 //! The client specifies:
 //! - The file handle for the directory to search
@@ -19,16 +19,16 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 LOOKUP procedure (procedure 3)
+/// Handles `NFSv3` `LOOKUP` procedure (procedure 3)
 ///
-/// LOOKUP searches for a file name in a directory and returns the file handle.
+/// `LOOKUP` searches for a file name in a directory and returns the file handle.
 /// It takes directory file handle and a file name as input.
 /// Returns file handle and attributes of the found file.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the LOOKUP arguments
+/// * `input` - Input stream containing the `LOOKUP` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

@@ -1,7 +1,7 @@
-//! Implementation of the READDIR procedure (procedure 16) for NFS version 3 protocol
+//! Implementation of the `READDIR` procedure (procedure 16) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.16.
 //!
-//! The READDIR procedure retrieves a variable number of entries from a directory.
+//! The `READDIR` procedure retrieves a variable number of entries from a directory.
 //! This procedure is used by clients to browse through a directory to discover
 //! the filenames stored within.
 //!
@@ -26,16 +26,16 @@ use tracing::{debug, error, trace};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 READDIR procedure (procedure 16)
+/// Handles `NFSv3` ``READDIR`` procedure (procedure 16)
 ///
-/// READDIR retrieves a variable number of entries from a directory.
+/// `READDIR` retrieves a variable number of entries from a directory.
 /// It takes directory handle, cookie, cookie verifier and directory count limit.
 /// Returns directory entries including file ID, name and cookie for each entry.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the READDIR arguments
+/// * `input` - Input stream containing the `READDIR` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///
@@ -80,6 +80,7 @@ pub async fn nfsproc3_readdir(
     // This is hard to ballpark, so we just divide it by 16
     let estimated_max_results = args.dircount / 16;
     let mut ctr = 0;
+
     match context.vfs.readdir_simple(dirid, estimated_max_results as usize).await {
         Ok(result) => {
             // we count dir_count seperately as it is just a subset of fields
@@ -151,6 +152,7 @@ pub async fn nfsproc3_readdir(
             stat.serialize(output)?;
             dir_attr.serialize(output)?;
         }
-    };
+    }
+
     Ok(())
 }
