@@ -1,7 +1,7 @@
-//! Implementation of the PATHCONF procedure (procedure 20) for NFS version 3 protocol
+//! Implementation of the `PATHCONF` procedure (procedure 20) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.20.
 //!
-//! The PATHCONF procedure retrieves the pathconf information for a file or
+//! The `PATHCONF` procedure retrieves the pathconf information for a file or
 //! directory. This information is typically used by clients to determine
 //! various file system characteristics to properly format and display file names
 //! and paths.
@@ -25,16 +25,16 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 PATHCONF procedure (procedure 20)
+/// Handles `NFSv3` `PATHCONF` procedure (procedure 20)
 ///
-/// PATHCONF retrieves file system path configuration information.
+/// `PATHCONF` retrieves file system path configuration information.
 /// Takes a file handle representing the file system.
 /// Returns parameters like maximum link count, maximum name length, etc.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the PATHCONF arguments
+/// * `input` - Input stream containing the `PATHCONF` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

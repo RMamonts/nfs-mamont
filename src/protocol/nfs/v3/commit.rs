@@ -1,8 +1,8 @@
-//! Implementation of the COMMIT procedure (procedure 21) for NFS version 3 protocol
+//! Implementation of the `COMMIT` procedure (procedure 21) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.21.
 //!
-//! The COMMIT procedure forces or flushes data to stable storage that was previously
-//! written with a WRITE procedure call with the stable flag set to UNSTABLE.
+//! The `COMMIT` procedure forces or flushes data to stable storage that was previously
+//! written with a `WRITE` procedure call with the stable flag set to UNSTABLE.
 //!
 //! The client specifies:
 //! - The file handle of the file to which data is to be flushed
@@ -10,7 +10,7 @@
 //! - The count of bytes to flush (0 means flush all data from the offset to the end of file)
 //!
 //! This procedure implements a two-phase commit strategy:
-//! 1. Client sends WRITE requests with unstable flag to improve performance
+//! 1. Client sends `WRITE` requests with unstable flag to improve performance
 //! 2. Client later sends COMMIT to ensure data durability
 //!
 //! On successful return, the server provides:
@@ -25,16 +25,16 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 COMMIT procedure (procedure 21)
+/// Handles `NFSv3` `COMMIT` procedure (procedure 21)
 ///
-/// COMMIT forces or flushes cached data to stable storage.
+/// `COMMIT` forces or flushes cached data to stable storage.
 /// It takes a file handle, starting offset and byte count to commit.
 /// Returns file attributes and write verifier after the operation.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the COMMIT arguments
+/// * `input` - Input stream containing the `COMMIT` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

@@ -204,7 +204,7 @@ fn send_get_port(
     input.set_position(0);
     nfs_mamont::protocol::nfs::portmap::handle_portmap(
         u32::default(),
-        body,
+        &body,
         input,
         output,
         &mut context,
@@ -232,7 +232,7 @@ fn send_set_port(
     input.set_position(0);
     nfs_mamont::protocol::nfs::portmap::handle_portmap(
         u32::default(),
-        body,
+        &body,
         input,
         output,
         &mut context,

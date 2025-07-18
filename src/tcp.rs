@@ -82,7 +82,7 @@ async fn process_socket(
     loop {
         tokio::select! {
             _ = socket.readable() => {
-                let mut buf = [0; 128000];
+                let mut buf = [0; 128_000];
 
                 match socket.try_read(&mut buf) {
                     Ok(0) => {
@@ -92,7 +92,7 @@ async fn process_socket(
                         let _ = socksend.write_all(&buf[..n]).await;
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        continue;
+                        // do nothing
                     }
                     Err(e) => {
                         debug!("Message handling closed : {:?}", e);
@@ -173,11 +173,11 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
     ///
     /// * `ipstr` - IP address and port in the format "IP:PORT" (e.g. "127.0.0.1:2049")
     ///   Special value "auto:PORT" attempts to find an available local address
-    /// * `fs` - Implementation of the NFSFileSystem trait that will handle NFS operations
+    /// * `fs` - Implementation of the [`NFSFileSystem`] trait that will handle NFS operations
     ///
     /// # Returns
     ///
-    /// A Result containing either the new NFSTcpListener or an IO error
+    /// A Result containing either the new [`NFSTcpListener`] or an IO error
     pub async fn bind(ipstr: &str, fs: T) -> io::Result<NFSTcpListener<T>> {
         let (ip, port) = ipstr.split_once(':').ok_or_else(|| {
             io::Error::new(io::ErrorKind::AddrNotAvailable, "IP Address must be of form ip:port")
@@ -244,7 +244,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
         self.export_name = Arc::new(format!(
             "/{}",
             export_name.as_ref().trim_end_matches('/').trim_start_matches('/')
-        ))
+        ));
     }
 }
 
