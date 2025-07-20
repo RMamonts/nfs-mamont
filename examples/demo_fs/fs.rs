@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -74,17 +74,42 @@ impl vfs::NFSFileSystem for DemoFS {
         {
             let mut fs = self.fs.lock().unwrap();
             let mut fssize = fs[id as usize].attr.size;
-            if let FSContents::File(bytes) = &mut fs[id as usize].contents {
+
+            let mut shared_ptr = None;
+
+            if let FSContents::File(shared_bytes) = &mut fs[id as usize].contents {
+                let mut bytes = shared_bytes.lock().unwrap();
                 let offset = offset as usize;
                 if offset + data.len() > bytes.len() {
                     bytes.resize(offset + data.len(), 0);
                     bytes[offset..].copy_from_slice(data);
                     fssize = bytes.len() as u64;
                 }
+
+                shared_ptr = Some(Arc::as_ptr(shared_bytes));
             }
             fs[id as usize].attr.size = fssize;
             fs[id as usize].attr.used = fssize;
+
+            let new_size = if let FSContents::File(shared_bytes) = &fs[id as usize].contents {
+                let bytes = shared_bytes.lock().unwrap();
+                bytes.len() as u64
+            } else {
+                0
+            };
+
+            if let Some(shared_ptrr) = shared_ptr {
+                for entry in fs.iter_mut() {
+                    if let FSContents::File(b) = &entry.contents {
+                        if Arc::as_ptr(b) == shared_ptrr {
+                            entry.attr.size = new_size;
+                            entry.attr.used = new_size;
+                        }
+                    }
+                }
+            }
         }
+
         self.getattr(id).await
     }
 
@@ -202,7 +227,8 @@ impl vfs::NFSFileSystem for DemoFS {
             nfs3::set_size3::Some(s) => {
                 entry.attr.size = s;
                 entry.attr.used = s;
-                if let FSContents::File(bytes) = &mut entry.contents {
+                if let FSContents::File(shared_bytes) = &mut entry.contents {
+                    let mut bytes = shared_bytes.lock().unwrap();
                     bytes.resize(s as usize, 0);
                 }
             }
@@ -223,7 +249,9 @@ impl vfs::NFSFileSystem for DemoFS {
         let entry = fs.get(id as usize).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::Directory(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
-        } else if let FSContents::File(bytes) = &entry.contents {
+        } else if let FSContents::File(shared_bytes) = &entry.contents {
+            let bytes = shared_bytes.lock().unwrap();
+
             let mut start = offset as usize;
             let mut end = offset as usize + count as usize;
             let eof = end >= bytes.len();
@@ -325,7 +353,7 @@ impl vfs::NFSFileSystem for DemoFS {
         // Mark the file as deleted (in a real FS, we would completely remove it)
         // In our simple implementation, we just clear the name and contents
         fs[file_id as usize].name = Vec::new().into();
-        fs[file_id as usize].contents = FSContents::File(Vec::new());
+        fs[file_id as usize].contents = FSContents::File(Arc::new(Mutex::new(Vec::new())));
 
         Ok(())
     }
@@ -510,7 +538,8 @@ impl vfs::NFSFileSystem for DemoFS {
         match entry.attr.ftype {
             nfs3::ftype3::NF3LNK => {
                 // Get the symbolic link content
-                if let FSContents::File(bytes) = &entry.contents {
+                if let FSContents::File(shared_bytes) = &entry.contents {
+                    let bytes = shared_bytes.lock().unwrap();
                     // Convert Vec<u8> to nfspath3
                     return Ok(bytes.to_vec().into());
                 }
@@ -557,10 +586,14 @@ impl vfs::NFSFileSystem for DemoFS {
 
         // Create a new entry for the hard link
         let newid = fs.len() as nfs3::fileid3;
-        let mut new_entry = source_file.clone();
-        new_entry.id = newid;
-        new_entry.name = link_name.to_vec().into();
-        new_entry.parent = target_dir_id;
+
+        let new_entry = FSEntry {
+            id: newid,
+            name: link_name.to_vec().into(),
+            parent: target_dir_id,
+            attr: source_file.attr,
+            contents: source_file.contents.clone(),
+        };
 
         // Add the new entry to the filesystem
         fs.push(new_entry);
