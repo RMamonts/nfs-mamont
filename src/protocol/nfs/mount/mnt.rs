@@ -2,6 +2,7 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
+use std::collections::HashSet;
 use std::io;
 use std::io::{Read, Write};
 
@@ -92,6 +93,17 @@ pub async fn mountproc3_mnt(
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3_OK.serialize(output)?;
         response.serialize(output)?;
+
+        let machine_name =
+            String::from_utf8(context.auth.machinename.clone()).unwrap_or("<unknown>".to_string());
+        debug!("client_list: {machine_name} += {utf8path}");
+        context
+            .client_list
+            .write()
+            .await
+            .entry(machine_name)
+            .or_insert(HashSet::new())
+            .insert(utf8path.to_string());
     } else {
         debug!("{:?} --> MNT3ERR_NOENT", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;

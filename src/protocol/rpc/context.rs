@@ -13,6 +13,7 @@
 //! to process requests correctly in accordance with client permissions and
 //! server configuration.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -57,6 +58,9 @@ pub struct Context {
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     pub portmap_table: Arc<RwLock<PortmapTable>>,
+
+    /// List of connected clients and file systems they have mounted
+    pub client_list: Arc<RwLock<HashMap<String, HashSet<String>>>>,
 }
 
 impl fmt::Debug for Context {

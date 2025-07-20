@@ -9,12 +9,14 @@ use num_traits::cast::FromPrimitive;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, mount, Serialize};
 
+mod dump;
 mod export;
 mod mnt;
 mod null;
 mod umnt;
 mod umnt_all;
 
+use dump::mountproc3_dump;
 use export::mountproc3_export;
 use mnt::mountproc3_mnt;
 use null::mountproc3_null;
@@ -43,8 +45,6 @@ fn matches_export_path(requested_path: &str, export_name: &str) -> bool {
 
 /// Main handler for `MOUNT` procedures of version 3 protocol.
 ///
-/// TODO: `MOUNTPROC3_DUMP` function is not implemented.
-///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID from the client
@@ -68,6 +68,9 @@ pub async fn handle_mount(
     match prog {
         mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
         mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
+        mount::MountProgram::MOUNTPROC3_DUMP => {
+            mountproc3_dump(xid, input, output, context).await?;
+        }
         mount::MountProgram::MOUNTPROC3_UMNT => {
             mountproc3_umnt(xid, input, output, context).await?;
         }
