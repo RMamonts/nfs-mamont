@@ -1,4 +1,5 @@
 use std::io;
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::string::ToString;
 use std::sync::Arc;
@@ -198,6 +199,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: table.clone(),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         });
     }
     result
@@ -354,6 +356,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -376,6 +379,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -412,6 +416,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -445,6 +450,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -564,6 +570,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -584,6 +591,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -608,6 +616,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
@@ -737,6 +746,7 @@ mod tests {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(RwLock::new(HashMap::new())),
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
