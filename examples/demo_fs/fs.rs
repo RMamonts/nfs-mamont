@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -78,7 +78,7 @@ impl vfs::NFSFileSystem for DemoFS {
             let mut shared_ptr = None;
 
             if let FSContents::File(shared_bytes) = &mut fs[id as usize].contents {
-                let mut bytes = shared_bytes.lock().unwrap();
+                let mut bytes = shared_bytes.write().unwrap();
                 let offset = offset as usize;
                 if offset + data.len() > bytes.len() {
                     bytes.resize(offset + data.len(), 0);
@@ -92,7 +92,7 @@ impl vfs::NFSFileSystem for DemoFS {
             fs[id as usize].attr.used = fssize;
 
             let new_size = if let FSContents::File(shared_bytes) = &fs[id as usize].contents {
-                let bytes = shared_bytes.lock().unwrap();
+                let bytes = shared_bytes.read().unwrap();
                 bytes.len() as u64
             } else {
                 0
@@ -228,7 +228,7 @@ impl vfs::NFSFileSystem for DemoFS {
                 entry.attr.size = s;
                 entry.attr.used = s;
                 if let FSContents::File(shared_bytes) = &mut entry.contents {
-                    let mut bytes = shared_bytes.lock().unwrap();
+                    let mut bytes = shared_bytes.write().unwrap();
                     bytes.resize(s as usize, 0);
                 }
             }
@@ -250,7 +250,7 @@ impl vfs::NFSFileSystem for DemoFS {
         if let FSContents::Directory(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
         } else if let FSContents::File(shared_bytes) = &entry.contents {
-            let bytes = shared_bytes.lock().unwrap();
+            let bytes = shared_bytes.read().unwrap();
 
             let mut start = offset as usize;
             let mut end = offset as usize + count as usize;
@@ -353,7 +353,7 @@ impl vfs::NFSFileSystem for DemoFS {
         // Mark the file as deleted (in a real FS, we would completely remove it)
         // In our simple implementation, we just clear the name and contents
         fs[file_id as usize].name = Vec::new().into();
-        fs[file_id as usize].contents = FSContents::File(Arc::new(Mutex::new(Vec::new())));
+        fs[file_id as usize].contents = FSContents::File(Arc::new(RwLock::new(Vec::new())));
 
         Ok(())
     }
@@ -539,7 +539,7 @@ impl vfs::NFSFileSystem for DemoFS {
             nfs3::ftype3::NF3LNK => {
                 // Get the symbolic link content
                 if let FSContents::File(shared_bytes) = &entry.contents {
-                    let bytes = shared_bytes.lock().unwrap();
+                    let bytes = shared_bytes.read().unwrap();
                     // Convert Vec<u8> to nfspath3
                     return Ok(bytes.to_vec().into());
                 }

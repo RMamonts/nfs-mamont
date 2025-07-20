@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use nfs_mamont::xdr::nfs3;
 
@@ -6,8 +6,8 @@ use nfs_mamont::xdr::nfs3;
 /// Used to represent either file data or directory listings.
 #[derive(Debug, Clone)]
 pub enum FSContents {
-    /// Contains file data as a byte vector
-    File(Arc<Mutex<Vec<u8>>>),
+    /// Contains link to file data as a byte vector
+    File(Arc<RwLock<Vec<u8>>>),
     /// Contains a list of file IDs for directory entries
     Directory(Vec<nfs3::fileid3>),
 }
