@@ -73,38 +73,36 @@ impl vfs::NFSFileSystem for DemoFS {
     ) -> Result<nfs3::fattr3, nfs3::nfsstat3> {
         {
             let mut fs = self.fs.lock().unwrap();
-            let mut fssize = fs[id as usize].attr.size;
 
-            let mut shared_ptr = None;
+            // Get file entry and verify it's a file
+            let entry = fs.get_mut(id as usize).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
 
-            if let FSContents::File(shared_bytes) = &mut fs[id as usize].contents {
-                let mut bytes = shared_bytes.write().unwrap();
-                let offset = offset as usize;
-                if offset + data.len() > bytes.len() {
-                    bytes.resize(offset + data.len(), 0);
-                    bytes[offset..].copy_from_slice(data);
-                    fssize = bytes.len() as u64;
-                }
-
-                shared_ptr = Some(Arc::as_ptr(shared_bytes));
-            }
-            fs[id as usize].attr.size = fssize;
-            fs[id as usize].attr.used = fssize;
-
-            let new_size = if let FSContents::File(shared_bytes) = &fs[id as usize].contents {
-                let bytes = shared_bytes.read().unwrap();
-                bytes.len() as u64
-            } else {
-                0
+            let shared_bytes = match &mut entry.contents {
+                FSContents::File(bytes) => bytes,
+                _ => return Err(nfs3::nfsstat3::NFS3ERR_IO),
             };
 
-            if let Some(shared_ptrr) = shared_ptr {
-                for entry in fs.iter_mut() {
-                    if let FSContents::File(b) = &entry.contents {
-                        if Arc::as_ptr(b) == shared_ptrr {
-                            entry.attr.size = new_size;
-                            entry.attr.used = new_size;
-                        }
+            let new_size = {
+                // Write data to file
+                let mut bytes = shared_bytes.write().unwrap();
+                let offset = offset as usize;
+
+                // Resize if needed and copy data
+                if offset + data.len() > bytes.len() {
+                    bytes.resize(offset + data.len(), 0);
+                }
+                bytes[offset..offset + data.len()].copy_from_slice(data);
+
+                bytes.len() as u64
+            };
+
+            // Update size for all entries sharing this file
+            let shared_ptr = Arc::as_ptr(shared_bytes);
+            for entry in fs.iter_mut() {
+                if let FSContents::File(b) = &entry.contents {
+                    if Arc::as_ptr(b) == shared_ptr {
+                        entry.attr.size = new_size;
+                        entry.attr.used = new_size;
                     }
                 }
             }
