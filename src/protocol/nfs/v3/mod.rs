@@ -69,6 +69,9 @@ mod setattr;
 mod symlink;
 mod write;
 
+use crate::tcp::{NFSExportTable, NFSExportTableEntry};
+use crate::xdr::rpc::make_success_reply;
+use crate::xdr::Deserialize;
 use access::nfsproc3_access;
 use commit::nfsproc3_commit;
 use create::nfsproc3_create;
@@ -90,9 +93,6 @@ use rename::nfsproc3_rename;
 use setattr::nfsproc3_setattr;
 use symlink::nfsproc3_symlink;
 use write::nfsproc3_write;
-use crate::tcp::{NFSExportTable, NFSExportTableEntry};
-use crate::xdr::Deserialize;
-use crate::xdr::rpc::make_success_reply;
 
 /// Main handler for `NFSv3` protocol
 ///

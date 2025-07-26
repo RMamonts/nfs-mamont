@@ -25,8 +25,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{
     cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, ftype3, nfs_fh3, post_op_attr,
-    post_op_fh3, sattr3, specdata3, DeserializeEnum, DeserializeStruct,
-    SerializeEnum, SerializeStruct,
+    post_op_fh3, sattr3, specdata3, DeserializeEnum, DeserializeStruct, SerializeEnum,
+    SerializeStruct,
 };
 use crate::xdr::nfs3::{nfspath3, wcc_data};
 
@@ -109,14 +109,6 @@ pub struct SYMLINK3resfail {
 DeserializeStruct!(SYMLINK3resfail, dir_wcc);
 SerializeStruct!(SYMLINK3resfail, dir_wcc);
 
-
-
-
-
-
-
-
-
 /// Enumeration of device types for special files in NFS version 3 as defined in RFC 1813 section 3.3.11
 /// Used to identify the type of device when creating special files
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
@@ -134,7 +126,6 @@ pub enum devicetype3 {
 }
 impl SerializeEnum for devicetype3 {}
 impl DeserializeEnum for devicetype3 {}
-
 
 /// Device data for special files as defined in RFC 1813 section 3.3.11
 /// Contains the device type and device numbers
@@ -194,14 +185,6 @@ pub struct MKNOD3resfail {
 DeserializeStruct!(MKNOD3resfail, dir_wcc);
 SerializeStruct!(MKNOD3resfail, dir_wcc);
 
-
-
-
-
-
-
-
-
 /// Arguments for the RMDIR procedure (procedure 13) as defined in RFC 1813 section 3.3.13
 /// Used to remove (delete) a subdirectory from a directory
 #[derive(Debug, Default)]
@@ -229,11 +212,6 @@ pub struct RMDIR3resfail {
 }
 DeserializeStruct!(RMDIR3resfail, dir_wcc);
 SerializeStruct!(RMDIR3resfail, dir_wcc);
-
-
-
-
-
 
 /// Arguments for the READDIR procedure (procedure 16) as defined in RFC 1813 section 3.3.16
 /// Used to read entries from a directory. The server returns a variable number of directory entries,
@@ -298,12 +276,6 @@ pub struct READDIR3resfail {
 }
 DeserializeStruct!(READDIR3resfail, dir_attributes);
 SerializeStruct!(READDIR3resfail, dir_attributes);
-
-
-
-
-
-
 
 /// Arguments for the READDIRPLUS procedure (procedure 17) as defined in RFC 1813 section 3.3.17
 /// READDIRPLUS returns directory entries along with their attributes and file handles.
