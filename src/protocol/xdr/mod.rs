@@ -385,7 +385,8 @@ macro_rules! SerializeStruct {
         $t:ident,
         $($element:ident),*
     ) => {
-        impl Serialize for $t {
+        impl $crate::xdr::Serialize for $t {
+            #[allow(unused_variables)]
             fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
                 $(self.$element.serialize(dest)?;)*
                 Ok(())
@@ -401,10 +402,11 @@ macro_rules! DeserializeStruct {
         $t:ident,
         $($element:ident),*
     ) => {
-        impl Deserialize for $t {
+        impl $crate::xdr::Deserialize for $t {
+            #[allow(unused_variables)]
             fn deserialize<R: Read>(src: &mut R) -> std::io::Result<$t> {
                 Ok($t {
-                    $($element: Deserialize::deserialize(src)?,)*
+                    $($element: $crate::xdr::Deserialize::deserialize(src)?,)*
                 })
             }
         }

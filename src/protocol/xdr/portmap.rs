@@ -13,7 +13,7 @@
 use std::io::{Read, Write};
 
 use super::{
-    Deserialize, DeserializeEnum, DeserializeStruct, Serialize, SerializeEnum, SerializeStruct,
+    DeserializeEnum, DeserializeStruct, SerializeEnum, SerializeStruct,
 };
 use crate::xdr::deserialize;
 use num_derive::{FromPrimitive, ToPrimitive};
