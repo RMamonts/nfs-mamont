@@ -141,7 +141,7 @@ impl DeserializeEnum for devicetype3 {}
 #[derive(Debug, Default)]
 pub struct devicedata3 {
     /// Type of device (character, block, socket, or FIFO)
-    pub dev_attributes: devicetype3, // TODO:
+    pub dev_attributes: devicetype3,
     /// Major and minor device numbers for character and block devices
     pub spec: specdata3,
 }
@@ -262,7 +262,6 @@ pub struct entry3 {
     pub name: filename3,
     /// Cookie for the next READDIR operation
     pub cookie: cookie3,
-    // TODO: *nextetry
 }
 DeserializeStruct!(entry3, fileid, name, cookie);
 SerializeStruct!(entry3, fileid, name, cookie);
@@ -338,7 +337,6 @@ pub struct entryplus3 {
     pub name_attributes: post_op_attr,
     /// File handle for this directory entry
     pub name_handle: post_op_fh3,
-    // TODO: *nextetry
 }
 DeserializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
 SerializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);

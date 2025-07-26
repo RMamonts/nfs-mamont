@@ -31,8 +31,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{
     count3, diropargs3, fattr3, nfs_fh3, offset3, post_op_attr, post_op_fh3, sattr3, wcc_data,
-    writeverf3, DeserializeEnum, DeserializeStruct, SerializeEnum,
-    SerializeStruct,
+    writeverf3, DeserializeEnum, DeserializeStruct, SerializeEnum, SerializeStruct,
 };
 use crate::xdr::nfs3::{nfspath3, sattrguard3};
 
@@ -287,7 +286,6 @@ DeserializeStruct!(WRITE3resfail, file_wcc);
 SerializeStruct!(WRITE3resfail, file_wcc);
 
 /// File creation modes for `CREATE` operations
-// TODO: createhow3
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum createmode3 {
