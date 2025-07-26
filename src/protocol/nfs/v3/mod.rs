@@ -164,6 +164,7 @@ pub async fn handle_nfs(
     Ok(())
 }
 
+#[allow(dead_code)]
 trait NfsProc {
     type Args: Deserialize;
     type ResOk: Serialize;
@@ -222,4 +223,18 @@ trait NfsProc {
     ) -> io::Result<()> {
         Self::error_reply(xid, output, status_code, Self::ResFail::default())
     }
+}
+
+/// Macro to check if the export has write capabilities.
+///
+/// If the export does not have write capabilities, it sends an error reply with [`nfs3::nfsstat3::NFS3ERR_ROFS`] status code and returns early.
+#[macro_export]
+macro_rules! check_write_capabilities_or_return {
+    ($export:expr, $xid:expr, $output:expr) => {
+        if !matches!($export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+            warn!("No write capabilities.");
+            Self::error_reply_default($xid, $output, nfs3::nfsstat3::NFS3ERR_ROFS)?;
+            return Ok(());
+        }
+    };
 }
