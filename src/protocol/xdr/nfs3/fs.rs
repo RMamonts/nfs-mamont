@@ -16,10 +16,7 @@
 
 use std::io::{Read, Write};
 
-use super::{
-    nfs_fh3, nfstime3, post_op_attr, size3, Deserialize, DeserializeStruct, Serialize,
-    SerializeStruct,
-};
+use super::{nfs_fh3, nfstime3, post_op_attr, size3, DeserializeStruct, SerializeStruct};
 
 // Section 3.3.19. Procedure 19: FSINFO - Get static file system Information
 // The following constants are used in fsinfo to construct the bitmask 'properties',

@@ -25,8 +25,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{
     cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, ftype3, nfs_fh3, post_op_attr,
-    post_op_fh3, sattr3, specdata3, Deserialize, DeserializeEnum, DeserializeStruct,
-    Serialize, SerializeEnum, SerializeStruct,
+    post_op_fh3, sattr3, specdata3, DeserializeEnum, DeserializeStruct,
+    SerializeEnum, SerializeStruct,
 };
 use crate::xdr::nfs3::{nfspath3, wcc_data};
 
