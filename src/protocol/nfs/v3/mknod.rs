@@ -53,7 +53,7 @@ pub async fn nfsproc3_mknod(
     let args = deserialize::<nfs3::dir::MKNOD3args>(input)?;
     debug!("nfsproc3_mknod({:?}, {:?}) ", xid, args);
 
-    let fs_id = args.where_dir.dir.fs_id;
+    let fs_id = args.where_.dir.fs_id;
     let guard = context.export_table.read().await;
     let Some(export) = guard.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
@@ -73,7 +73,7 @@ pub async fn nfsproc3_mknod(
     }
 
     // find the directory we are supposed to create the special file in
-    let dir_id = export.vfs.fh_to_id(&args.where_dir.dir);
+    let dir_id = export.vfs.fh_to_id(&args.where_.dir);
     if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -94,7 +94,7 @@ pub async fn nfsproc3_mknod(
     // Call VFS mknod method
     match export
         .vfs
-        .mknod(dir_id, &args.where_dir.name, args.what.mknod_type, args.what.device.device, &attr)
+        .mknod(dir_id, &args.where_.name, args.what.mknod_type, args.what.device.spec, &attr)
         .await
     {
         Ok((fid, fattr)) => {

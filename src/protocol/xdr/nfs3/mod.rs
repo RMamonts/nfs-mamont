@@ -374,8 +374,9 @@ pub struct nfs_fh3 {
     /// Unique file identifier within the file system
     pub id: fileid3,
 }
+
 const _: () = {
-    assert!(size_of::<nfs_fh3>() < NFS3_FHSIZE as usize);
+    assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
 };
 
 // Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
@@ -685,18 +686,6 @@ pub struct diropargs3 {
 DeserializeStruct!(diropargs3, dir, name);
 SerializeStruct!(diropargs3, dir, name);
 
-/// Data for creating a symbolic link
-#[allow(non_camel_case_types)]
-#[derive(Debug, Default)]
-pub struct symlinkdata3 {
-    /// Attributes for the symbolic link
-    pub symlink_attributes: sattr3,
-    /// Target path for the symbolic link
-    pub symlink_data: nfspath3,
-}
-DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
-SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
-
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
     vec![0]
@@ -716,34 +705,4 @@ pub const ACCESS3_DELETE: u32 = 0x0010;
 /// Access permission to execute a file or traverse a directory as defined in RFC 1813 section 3.3.4
 pub const ACCESS3_EXECUTE: u32 = 0x0020;
 
-/// File creation modes for `CREATE` operations
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum createmode3 {
-    /// Normal file creation - doesn't error if file exists
-    #[default]
-    UNCHECKED = 0,
-    /// Return error if file exists
-    GUARDED = 1,
-    /// Use exclusive create mechanism (with verifier)
-    EXCLUSIVE = 2,
-}
-impl SerializeEnum for createmode3 {}
-impl DeserializeEnum for createmode3 {}
-
 pub type sattrguard3 = Option<nfstime3>;
-
-/// Arguments for `SETATTR` operations
-#[allow(non_camel_case_types)]
-#[derive(Clone, Debug, Default)]
-pub struct SETATTR3args {
-    /// File handle for target file
-    pub object: nfs_fh3,
-    /// New attributes to set
-    pub new_attribute: sattr3,
-    /// Guard condition for atomic change
-    pub guard: Option<nfstime3>,
-}
-DeserializeStruct!(SETATTR3args, object, new_attribute, guard);
-SerializeStruct!(SETATTR3args, object, new_attribute, guard);

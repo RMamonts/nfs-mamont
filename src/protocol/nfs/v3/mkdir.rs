@@ -49,7 +49,7 @@ pub async fn nfsproc3_mkdir(
     let args = deserialize::<nfs3::dir::MKDIR3args>(input)?;
     debug!("nfsproc3_mkdir({:?}, {:?}) ", xid, args);
 
-    let fs_id = args.dirops.dir.fs_id;
+    let fs_id = args.where_.dir.fs_id;
     let guard = context.export_table.read().await;
     let Some(export) = guard.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
@@ -70,7 +70,7 @@ pub async fn nfsproc3_mkdir(
 
     // find the directory we are supposed to create the
     // new file in
-    let dir_id = export.vfs.fh_to_id(&args.dirops.dir);
+    let dir_id = export.vfs.fh_to_id(&args.where_.dir);
     if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -94,7 +94,7 @@ pub async fn nfsproc3_mkdir(
         }
     };
 
-    let res = export.vfs.mkdir(dir_id, &args.dirops.name).await;
+    let res = export.vfs.mkdir(dir_id, &args.where_.name).await;
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = export.vfs.getattr(dir_id).await.ok();

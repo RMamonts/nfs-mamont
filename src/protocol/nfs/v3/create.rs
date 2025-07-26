@@ -51,7 +51,7 @@ pub async fn nfsproc3_create(
     context: &rpc::Context,
 ) -> io::Result<()> {
     let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
-    let create_mode = deserialize::<nfs3::createmode3>(input)?;
+    let create_mode = deserialize::<nfs3::file::createmode3>(input)?;
 
     debug!("nfsproc3_create({:?}, {:?}, {:?}) ", xid, dir_ops, create_mode);
 
@@ -102,11 +102,11 @@ pub async fn nfsproc3_create(
     let mut target_attributes = nfs3::sattr3::default();
 
     match create_mode {
-        nfs3::createmode3::UNCHECKED => {
+        nfs3::file::createmode3::UNCHECKED => {
             target_attributes.deserialize(input)?;
             debug!("create unchecked {:?}", target_attributes);
         }
-        nfs3::createmode3::GUARDED => {
+        nfs3::file::createmode3::GUARDED => {
             target_attributes.deserialize(input)?;
             debug!("create guarded {:?}", target_attributes);
             if export.vfs.lookup(dirid, &dir_ops.name).await.is_ok() {
@@ -121,7 +121,7 @@ pub async fn nfsproc3_create(
                 return Ok(());
             }
         }
-        nfs3::createmode3::EXCLUSIVE => {
+        nfs3::file::createmode3::EXCLUSIVE => {
             debug!("create exclusive");
         }
     }
@@ -129,7 +129,7 @@ pub async fn nfsproc3_create(
     let fid: Result<nfs3::fileid3, nfs3::nfsstat3>;
     let postopattr: nfs3::post_op_attr;
     // fill in the fid and post op attr here
-    if matches!(create_mode, nfs3::createmode3::EXCLUSIVE) {
+    if matches!(create_mode, nfs3::file::createmode3::EXCLUSIVE) {
         // the API for exclusive is very slightly different
         // We are not returning a post op attribute
         fid = export.vfs.create_exclusive(dirid, &dir_ops.name).await;

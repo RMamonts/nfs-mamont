@@ -14,7 +14,7 @@ use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::xdr::{nfs3, Deserialize, DeserializeEnum, Serialize, SerializeEnum};
+use crate::xdr::{nfs3, DeserializeEnum, SerializeEnum};
 use crate::{DeserializeStruct, SerializeStruct};
 
 /// MOUNT program number for RPC
