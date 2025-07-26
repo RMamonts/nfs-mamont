@@ -57,7 +57,6 @@ pub const NFS3_WRITEVERFSIZE: u32 = 8;
 ///
 /// This is essentially a vector of bytes, but with specific
 /// formatting for NFS protocol requirements.
-#[allow(non_camel_case_types)]
 #[derive(Default, Clone)]
 pub struct nfsstring(pub Vec<u8>);
 
@@ -124,7 +123,6 @@ impl Deserialize for nfsstring {
 }
 
 /// Procedure numbers for NFS version 3 protocol.
-#[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum NFSProgram {
@@ -222,7 +220,6 @@ pub type count3 = u32;
 pub type fs_id = u64;
 
 /// Status codes returned by NFS version 3 operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum nfsstat3 {
@@ -325,7 +322,6 @@ impl DeserializeEnum for nfsstat3 {}
 
 /// File type enumeration as defined in RFC 1813 section 2.3.5
 /// Determines the type of a file system object
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum ftype3 {
@@ -350,7 +346,6 @@ impl DeserializeEnum for ftype3 {}
 
 /// Special device information for character and block special devices
 /// Contains the major and minor device numbers
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct specdata3 {
     /// Major device number
@@ -364,7 +359,6 @@ SerializeStruct!(specdata3, specdata1, specdata2);
 /// The NFS version 3 file handle
 /// The file handle uniquely identifies a file or directory on the server
 /// The server is responsible for the internal format and interpretation of the file handle
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct nfs_fh3 {
     /// Used for stale handle detection
@@ -403,7 +397,6 @@ impl Serialize for nfs_fh3 {
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct nfstime3 {
     /// Seconds since Unix epoch (January 1, 1970)
@@ -423,7 +416,6 @@ impl From<nfstime3> for filetime::FileTime {
 /// File attributes in NFS version 3 as defined in RFC 1813 section 2.3.5
 /// Contains all the standard attributes associated with a file or directory
 /// in the NFS version 3 protocol
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct fattr3 {
     /// Type of file (regular, directory, symbolic link, etc.)
@@ -470,7 +462,6 @@ SerializeStruct!(
 /// Attributes used in weak cache consistency checking as defined in RFC 1813 section 2.3.8
 /// These attributes are used to detect changes to a file by comparing
 /// values before and after operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct wcc_attr {
     /// File size in bytes
@@ -504,7 +495,6 @@ pub type post_op_attr = Option<fattr3>;
 /// Contains file attributes before and after an operation
 /// This data structure is returned by operations that modify file attributes
 /// to allow clients to update their cached attributes appropriately
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct wcc_data {
     /// File attributes before operation
@@ -526,7 +516,6 @@ pub type set_size3 = Option<size3>;
 /// - Leave the atime unchanged (`DONT_CHANGE`)
 /// - Set it to the server's current time (`SET_TO_SERVER_TIME`)
 /// - Set it to a specific client-provided time (`SET_TO_CLIENT_TIME`)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum set_atime {
@@ -587,7 +576,6 @@ impl Deserialize for set_atime {
 /// - Set it to a specific client-provided time
 ///
 /// The discriminant value follows the `time_how` enumeration from RFC 1813
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum set_mtime {
@@ -642,7 +630,6 @@ impl Deserialize for set_mtime {
 }
 
 /// Set of file attributes to change in `SETATTR` operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 pub struct sattr3 {
     /// File mode (permissions)
@@ -675,7 +662,6 @@ impl Default for sattr3 {
 }
 
 /// Arguments for directory operations (specifying directory handle and name)
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct diropargs3 {
     /// Directory file handle
