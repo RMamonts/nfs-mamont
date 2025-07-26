@@ -12,11 +12,10 @@
 
 use std::io::{Read, Write};
 
-use super::{
-    DeserializeEnum, DeserializeStruct, SerializeEnum, SerializeStruct,
-};
-use crate::xdr::deserialize;
 use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::xdr::{deserialize, Deserialize, DeserializeEnum, Serialize, SerializeEnum};
+use crate::{DeserializeStruct, SerializeStruct};
 
 /// Represents a mapping between an RPC program and a network port.
 #[derive(Copy, Clone, Debug, Default)]
