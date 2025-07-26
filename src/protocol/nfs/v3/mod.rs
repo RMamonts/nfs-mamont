@@ -41,6 +41,7 @@ use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
+use tokio::sync::RwLockReadGuard;
 use tracing::warn;
 
 use crate::protocol::rpc;
@@ -89,6 +90,9 @@ use rename::nfsproc3_rename;
 use setattr::nfsproc3_setattr;
 use symlink::nfsproc3_symlink;
 use write::nfsproc3_write;
+use crate::tcp::{NFSExportTable, NFSExportTableEntry};
+use crate::xdr::Deserialize;
+use crate::xdr::rpc::make_success_reply;
 
 /// Main handler for `NFSv3` protocol
 ///
@@ -158,4 +162,64 @@ pub async fn handle_nfs(
         }
     }
     Ok(())
+}
+
+trait NfsProc {
+    type Args: Deserialize;
+    type ResOk: Serialize;
+    type ResFail: Serialize + Default;
+
+    async fn handle(
+        xid: u32,
+        input: &mut impl Read,
+        output: &mut impl Write,
+        context: &rpc::Context,
+    ) -> io::Result<()>;
+
+    /// Retrieve the export entry for the given filesystem ID.
+    /// - If the export is found, returns it.
+    /// - If not found, construct and send an error reply with [`nfs3::nfsstat3::NFS3ERR_BADHANDLE`] status code and default [`Self::ResFail`]
+    async fn get_export_or_reply<'a>(
+        xid: u32,
+        output: &mut impl Write,
+        guard: &'a RwLockReadGuard<'_, NFSExportTable>,
+        fs_id: nfs3::fs_id,
+    ) -> io::Result<Option<&'a NFSExportTableEntry>> {
+        let Some(export) = guard.get(&fs_id) else {
+            warn!("No export found for fs_id: {}", fs_id);
+            Self::error_reply_default(xid, output, nfs3::nfsstat3::NFS3ERR_BADHANDLE)?;
+            return Ok(None);
+        };
+        Ok(Some(export))
+    }
+
+    /// Send a successful reply with the given transaction ID and data.
+    fn success_reply(xid: u32, output: &mut impl Write, data: Self::ResOk) -> io::Result<()> {
+        make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+        data.serialize(output)?;
+        Ok(())
+    }
+
+    /// Send an error reply with the given transaction ID, status code and error reply data.
+    fn error_reply(
+        xid: u32,
+        output: &mut impl Write,
+        status_code: nfs3::nfsstat3,
+        data: Self::ResFail,
+    ) -> io::Result<()> {
+        make_success_reply(xid).serialize(output)?;
+        status_code.serialize(output)?;
+        data.serialize(output)?;
+        Ok(())
+    }
+
+    /// Send an error reply with the given transaction ID, status code and default error reply data.
+    fn error_reply_default(
+        xid: u32,
+        output: &mut impl Write,
+        status_code: nfs3::nfsstat3,
+    ) -> io::Result<()> {
+        Self::error_reply(xid, output, status_code, Self::ResFail::default())
+    }
 }
