@@ -38,7 +38,6 @@ use crate::xdr::nfs3::{nfspath3, sattrguard3};
 
 /// Arguments for the GETATTR procedure (procedure 1) as defined in RFC 1813 section 3.3.1
 /// Used to retrieve the attributes for a specified file system object
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct GETATTR3args {
     /// File handle of an object whose attributes are to be retrieved
@@ -48,7 +47,6 @@ DeserializeStruct!(GETATTR3args, object);
 SerializeStruct!(GETATTR3args, object);
 
 /// Successful response for the GETATTR procedure as defined in RFC 1813 section 3.3.1
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct GETATTR3resok {
     /// The attributes for the object
@@ -58,7 +56,6 @@ DeserializeStruct!(GETATTR3resok, obj_attributes);
 SerializeStruct!(GETATTR3resok, obj_attributes);
 
 /// Failed response for the GETATTR procedure as defined in RFC 1813 section 3.3.1
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct GETATTR3resfail {}
 DeserializeStruct!(GETATTR3resfail,);
@@ -66,7 +63,6 @@ SerializeStruct!(GETATTR3resfail,);
 
 /// Arguments for the SETATTR procedure (procedure 2) as defined in RFC 1813 section 3.3.2
 /// Used to set the attributes of a file system object
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SETATTR3args {
     /// File handle for the object whose attributes are to be set
@@ -80,7 +76,6 @@ DeserializeStruct!(SETATTR3args, object, new_attributes, guard);
 SerializeStruct!(SETATTR3args, object, new_attributes, guard);
 
 /// Successful response for the SETATTR procedure as defined in RFC 1813 section 3.3.2
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SETATTR3resok {
     /// A wcc_data structure containing the old and new attributes for the object.
@@ -90,7 +85,6 @@ DeserializeStruct!(SETATTR3resok, obj_wcc);
 SerializeStruct!(SETATTR3resok, obj_wcc);
 
 /// Failed response for the SETATTR procedure as defined in RFC 1813 section 3.3.2
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SETATTR3resfail {
     /// A wcc_data structure containing the old and new attributes for the object.
@@ -101,7 +95,6 @@ SerializeStruct!(SETATTR3resfail, obj_wcc);
 
 /// Arguments for the LOOKUP procedure (procedure 3) as defined in RFC 1813 section 3.3.3
 /// Used to search a directory for a specific name and return the file handle
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LOOKUP3args {
     /// Object to look up containing directory handle and filename
@@ -111,7 +104,6 @@ DeserializeStruct!(LOOKUP3args, what);
 SerializeStruct!(LOOKUP3args, what);
 
 /// Successful response for the LOOKUP procedure as defined in RFC 1813 section 3.3.3
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LOOKUP3resok {
     /// File handle of the object corresponding to the looked up name
@@ -125,7 +117,6 @@ DeserializeStruct!(LOOKUP3resok, object, obj_attributes, dir_attributes);
 SerializeStruct!(LOOKUP3resok, object, obj_attributes, dir_attributes);
 
 /// Failed response for the LOOKUP procedure as defined in RFC 1813 section 3.3.3
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LOOKUP3resfail {
     /// Post-operation attributes of the directory
@@ -136,7 +127,6 @@ SerializeStruct!(LOOKUP3resfail, dir_attributes);
 
 /// Arguments for the ACCESS procedure (procedure 4) as defined in RFC 1813 section 3.3.4
 /// Used to determine access rights for a file system object
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct ACCESS3args {
     /// File handle for the file system object to check access
@@ -148,7 +138,6 @@ DeserializeStruct!(ACCESS3args, object, access);
 SerializeStruct!(ACCESS3args, object, access);
 
 /// Successful response for the ACCESS procedure as defined in RFC 1813 section 3.3.4
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct ACCESS3resok {
     /// Post-operation attributes of the object
@@ -160,7 +149,6 @@ DeserializeStruct!(ACCESS3resok, obj_attributes, access);
 SerializeStruct!(ACCESS3resok, obj_attributes, access);
 
 /// Failed response for the ACCESS procedure as defined in RFC 1813 section 3.3.4
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct ACCESS3resfail {
     /// Attributes of the object if access to attributes is permitted
@@ -171,7 +159,6 @@ SerializeStruct!(ACCESS3resfail, obj_attributes);
 
 /// Arguments for the READLINK procedure (procedure 5) as defined in RFC 1813 section 3.3.5
 /// Used to read the data associated with a symbolic link
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READLINK3args {
     /// File handle for a symbolic link (file system object of type NF3LNK)
@@ -181,7 +168,6 @@ DeserializeStruct!(READLINK3args, symlink);
 SerializeStruct!(READLINK3args, symlink);
 
 /// Successful response for the READLINK procedure as defined in RFC 1813 section 3.3.5
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READLINK3resok {
     /// Post-operation attributes for the symbolic link
@@ -193,7 +179,6 @@ DeserializeStruct!(READLINK3resok, symlink_attributes, data);
 SerializeStruct!(READLINK3resok, symlink_attributes, data);
 
 /// Failed response for the READLINK procedure as defined in RFC 1813 section 3.3.5
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READLINK3resfail {
     /// Post-operation attributes for the symbolic link
@@ -204,7 +189,6 @@ SerializeStruct!(READLINK3resfail, symlink_attributes);
 
 /// Arguments for the READ procedure (procedure 6) as defined in RFC 1813 section 3.3.6
 /// Used to read data from a regular file
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READ3args {
     /// File handle for the file to be read
@@ -218,7 +202,6 @@ DeserializeStruct!(READ3args, file, offset, count);
 SerializeStruct!(READ3args, file, offset, count);
 
 /// Successful response for the READ procedure as defined in RFC 1813 section 3.3.6
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READ3resok {
     /// File attributes after the operation
@@ -234,7 +217,6 @@ DeserializeStruct!(READ3resok, file_attributes, count, eof, data);
 SerializeStruct!(READ3resok, file_attributes, count, eof, data);
 
 /// Failed response for the READ procedure as defined in RFC 1813 section 3.3.6
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READ3resfail {
     /// Post-operation attributes of the file
@@ -245,7 +227,6 @@ SerializeStruct!(READ3resfail, file_attributes);
 
 /// Enumeration specifying how data should be written to storage
 /// as defined in RFC 1813 section 3.3.7
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum stable_how {
@@ -265,7 +246,6 @@ impl DeserializeEnum for stable_how {}
 
 /// Arguments for the WRITE procedure (procedure 7) as defined in RFC 1813 section 3.3.7
 /// Used to write data to a regular file
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct WRITE3args {
     /// File handle for the file to write
@@ -283,7 +263,6 @@ DeserializeStruct!(WRITE3args, file, offset, count, stable, data);
 SerializeStruct!(WRITE3args, file, offset, count, stable, data);
 
 /// Successful response for the WRITE procedure as defined in RFC 1813 section 3.3.7
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct WRITE3resok {
     /// File attributes before and after the operation
@@ -299,7 +278,6 @@ DeserializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
 SerializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
 
 /// Failed response for the WRITE procedure as defined in RFC 1813 section 3.3.7
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct WRITE3resfail {
     /// Weak cache consistency data for the file
@@ -310,7 +288,6 @@ SerializeStruct!(WRITE3resfail, file_wcc);
 
 /// File creation modes for `CREATE` operations
 // TODO: createhow3
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum createmode3 {
@@ -327,7 +304,6 @@ impl DeserializeEnum for createmode3 {}
 
 /// Arguments for the CREATE procedure (procedure 8) as defined in RFC 1813 section 3.3.8
 /// Used to create a regular file
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct CREATE3args {
     /// Location and name of the file to be created
@@ -339,7 +315,6 @@ DeserializeStruct!(CREATE3args, where_, how);
 SerializeStruct!(CREATE3args, where_, how);
 
 /// Successful response for the CREATE procedure as defined in RFC 1813 section 3.3.8
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct CREATE3resok {
     /// File handle of the newly created regular file
@@ -353,7 +328,6 @@ DeserializeStruct!(CREATE3resok, obj, obj_attributes, dir_wcc);
 SerializeStruct!(CREATE3resok, obj, obj_attributes, dir_wcc);
 
 /// Failed response for the CREATE procedure as defined in RFC 1813 section 3.3.8
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct CREATE3resfail {
     /// Weak cache consistency data for the directory
@@ -364,7 +338,6 @@ SerializeStruct!(CREATE3resfail, dir_wcc);
 
 /// Arguments for the REMOVE procedure (procedure 12) as defined in RFC 1813 section 3.3.12
 /// Used to remove (delete) an entry from a directory
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct REMOVE3args {
     /// Diropargs3 structure identifying the entry to be removed
@@ -374,7 +347,6 @@ DeserializeStruct!(REMOVE3args, object);
 SerializeStruct!(REMOVE3args, object);
 
 /// Successful response for the REMOVE procedure as defined in RFC 1813 section 3.3.12
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct REMOVE3resok {
     /// Weak cache consistency data for the directory
@@ -384,7 +356,6 @@ DeserializeStruct!(REMOVE3resok, dir_wcc);
 SerializeStruct!(REMOVE3resok, dir_wcc);
 
 /// Failed response for the REMOVE procedure as defined in RFC 1813 section 3.3.12
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct REMOVE3resfail {
     /// Weak cache consistency data for the directory
@@ -395,7 +366,6 @@ SerializeStruct!(REMOVE3resfail, dir_wcc);
 
 /// Arguments for the RENAME procedure (procedure 14) as defined in RFC 1813 section 3.3.14
 /// Used to rename a file or directory
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RENAME3args {
     /// Source object to be renamed
@@ -407,7 +377,6 @@ DeserializeStruct!(RENAME3args, from, to);
 SerializeStruct!(RENAME3args, from, to);
 
 /// Successful response for the RENAME procedure as defined in RFC 1813 section 3.3.14
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RENAME3resok {
     /// Weak cache consistency data for the source directory
@@ -419,7 +388,6 @@ DeserializeStruct!(RENAME3resok, fromdir_wcc, todir_wcc);
 SerializeStruct!(RENAME3resok, fromdir_wcc, todir_wcc);
 
 /// Failed response for the RENAME procedure as defined in RFC 1813 section 3.3.14
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RENAME3resfail {
     /// Weak cache consistency data for the source directory
@@ -432,7 +400,6 @@ SerializeStruct!(RENAME3resfail, fromdir_wcc, todir_wcc);
 
 /// Arguments for the LINK procedure (procedure 15) as defined in RFC 1813 section 3.3.15
 /// Used to create a hard link to a file
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LINK3args {
     /// File handle for the target file
@@ -444,7 +411,6 @@ DeserializeStruct!(LINK3args, file, link);
 SerializeStruct!(LINK3args, file, link);
 
 /// Successful response for the LINK procedure as defined in RFC 1813 section 3.3.15
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LINK3resok {
     /// Post-operation attributes of the file system object
@@ -456,7 +422,6 @@ DeserializeStruct!(LINK3resok, file_attributes, linkdir_wcc);
 SerializeStruct!(LINK3resok, file_attributes, linkdir_wcc);
 
 /// Failed response for the LINK procedure as defined in RFC 1813 section 3.3.15
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LINK3resfail {
     /// Post-operation attributes of the file system object
@@ -469,7 +434,6 @@ SerializeStruct!(LINK3resfail, file_attributes, linkdir_wcc);
 
 /// Arguments for the COMMIT procedure (procedure 21) as defined in RFC 1813 section 3.3.21
 /// Used to commit pending writes to stable storage
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct COMMIT3args {
     /// File handle for the file to commit
@@ -483,7 +447,6 @@ DeserializeStruct!(COMMIT3args, file, offset, count);
 SerializeStruct!(COMMIT3args, file, offset, count);
 
 /// Successful response for the COMMIT procedure as defined in RFC 1813 section 3.3.21
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct COMMIT3resok {
     /// File attributes before and after the operation
@@ -495,7 +458,6 @@ DeserializeStruct!(COMMIT3resok, file_wcc, verf);
 SerializeStruct!(COMMIT3resok, file_wcc, verf);
 
 /// Failed response for the COMMIT procedure as defined in RFC 1813 section 3.3.21
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct COMMIT3resfail {
     /// Weak cache consistency data for the file

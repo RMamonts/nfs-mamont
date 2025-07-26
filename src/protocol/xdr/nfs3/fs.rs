@@ -46,7 +46,6 @@ pub const FSF_HOMOGENEOUS: u32 = 0x0008;
 pub const FSF_CANSETTIME: u32 = 0x0010;
 
 /// Arguments for the FSSTAT procedure (procedure 18) as defined in RFC 1813 section 3.3.18
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3args {
     /// File handle identifying an object in the file system
@@ -56,7 +55,6 @@ DeserializeStruct!(FSSTAT3args, fsroot);
 SerializeStruct!(FSSTAT3args, fsroot);
 
 /// File system statistics returned by FSSTAT procedure as defined in RFC 1813 section 3.3.18
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3resok {
     /// File system attributes
@@ -101,7 +99,6 @@ SerializeStruct!(
 );
 
 /// Failed response for the FSSTAT procedure as defined in RFC 1813 section 3.3.18
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3resfail {
     /// Attributes of the file system object specified in fsroot
@@ -111,7 +108,6 @@ DeserializeStruct!(FSSTAT3resfail, obj_attributes);
 SerializeStruct!(FSSTAT3resfail, obj_attributes);
 
 /// Arguments for the FSINFO procedure (procedure 19) as defined in RFC 1813 section 3.3.19
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSINFO3args {
     /// File handle identifying a file object
@@ -121,7 +117,6 @@ DeserializeStruct!(FSINFO3args, fsroot);
 SerializeStruct!(FSINFO3args, fsroot);
 
 /// File system information structure returned by FSINFO procedure as defined in RFC 1813 section 3.3.19
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct fsinfo3 {
     /// File system attributes
@@ -182,7 +177,6 @@ SerializeStruct!(
 pub type FSINFO3resok = fsinfo3;
 
 /// Failed response for the FSINFO procedure as defined in RFC 1813 section 3.3.19
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSINFO3resfail {
     /// Attributes of the file system object specified in fsroot
@@ -192,7 +186,6 @@ DeserializeStruct!(FSINFO3resfail, obj_attributes);
 SerializeStruct!(FSINFO3resfail, obj_attributes);
 
 /// Arguments for the PATHCONF procedure (procedure 20) as defined in RFC 1813 section 3.3.20
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3args {
     /// File handle identifying a file object
@@ -202,7 +195,6 @@ DeserializeStruct!(PATHCONF3args, object);
 SerializeStruct!(PATHCONF3args, object);
 
 /// Path configuration information returned by PATHCONF procedure as defined in RFC 1813 section 3.3.20
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3resok {
     /// The attributes of the object specified by arguments
@@ -241,7 +233,6 @@ SerializeStruct!(
     case_preserving
 );
 
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3resfail {
     /// The attributes of the object specified by arguments

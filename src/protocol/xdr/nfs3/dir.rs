@@ -32,7 +32,6 @@ use crate::xdr::nfs3::{nfspath3, wcc_data};
 
 /// Arguments for the MKDIR procedure (procedure 9) as defined in RFC 1813 section 3.3.9
 /// Used to create a new directory
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKDIR3args {
     /// Directory where new directory should be created and its name
@@ -44,7 +43,6 @@ DeserializeStruct!(MKDIR3args, where_, attributes);
 SerializeStruct!(MKDIR3args, where_, attributes);
 
 /// Successful response for the MKDIR procedure as defined in RFC 1813 section 3.3.9
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKDIR3resok {
     /// File handle for the newly created directory
@@ -58,7 +56,6 @@ DeserializeStruct!(MKDIR3resok, obj, obj_attributes, dir_wcc);
 SerializeStruct!(MKDIR3resok, obj, obj_attributes, dir_wcc);
 
 /// Failed response for the MKDIR procedure as defined in RFC 1813 section 3.3.9
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKDIR3resfail {
     /// Weak cache consistency data for the directory
@@ -68,7 +65,6 @@ DeserializeStruct!(MKDIR3resfail, dir_wcc);
 SerializeStruct!(MKDIR3resfail, dir_wcc);
 
 /// Data for creating a symbolic link
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct symlinkdata3 {
     /// Attributes for the symbolic link
@@ -81,7 +77,6 @@ SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
 
 /// Arguments for the SYMLINK procedure (procedure 10) as defined in RFC 1813 section 3.3.10
 /// Used to create a symbolic link
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SYMLINK3args {
     /// Directory where symbolic link should be created and its name
@@ -93,7 +88,6 @@ DeserializeStruct!(SYMLINK3args, where_, symlink);
 SerializeStruct!(SYMLINK3args, where_, symlink);
 
 /// Successful response for the SYMLINK procedure as defined in RFC 1813 section 3.3.10
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SYMLINK3resok {
     /// File handle for the newly created symbolic link
@@ -107,7 +101,6 @@ DeserializeStruct!(SYMLINK3resok, obj, obj_attributes, dir_wcc);
 SerializeStruct!(SYMLINK3resok, obj, obj_attributes, dir_wcc);
 
 /// Failed response for the SYMLINK procedure as defined in RFC 1813 section 3.3.10
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct SYMLINK3resfail {
     /// Weak cache consistency data for the directory
@@ -126,7 +119,6 @@ SerializeStruct!(SYMLINK3resfail, dir_wcc);
 
 /// Enumeration of device types for special files in NFS version 3 as defined in RFC 1813 section 3.3.11
 /// Used to identify the type of device when creating special files
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum devicetype3 {
@@ -146,7 +138,6 @@ impl DeserializeEnum for devicetype3 {}
 
 /// Device data for special files as defined in RFC 1813 section 3.3.11
 /// Contains the device type and device numbers
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct devicedata3 {
     /// Type of device (character, block, socket, or FIFO)
@@ -159,7 +150,6 @@ SerializeStruct!(devicedata3, dev_attributes, spec);
 
 /// Data structure for creating special files as defined in RFC 1813 section 3.3.11
 /// Contains the file type and device information
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct mknoddata3 {
     /// Type of file to create (regular, directory, special file etc)
@@ -172,7 +162,6 @@ SerializeStruct!(mknoddata3, mknod_type, device);
 
 /// Arguments for the MKNOD procedure (procedure 11) as defined in RFC 1813 section 3.3.11
 /// Used to create a special device file, FIFO, or socket
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKNOD3args {
     /// Directory where the special file should be created and its name
@@ -184,7 +173,6 @@ DeserializeStruct!(MKNOD3args, where_, what);
 SerializeStruct!(MKNOD3args, where_, what);
 
 /// Successful response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKNOD3resok {
     /// File handle for the newly created special file
@@ -198,7 +186,6 @@ DeserializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
 SerializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
 
 /// Failed response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct MKNOD3resfail {
     /// Weak cache consistency data for the directory
@@ -217,7 +204,6 @@ SerializeStruct!(MKNOD3resfail, dir_wcc);
 
 /// Arguments for the RMDIR procedure (procedure 13) as defined in RFC 1813 section 3.3.13
 /// Used to remove (delete) a subdirectory from a directory
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RMDIR3args {
     /// Diropargs3 structure identifying the directory entry to be removed
@@ -227,7 +213,6 @@ DeserializeStruct!(RMDIR3args, object);
 SerializeStruct!(RMDIR3args, object);
 
 /// Successful response for the RMDIR procedure as defined in RFC 1813 section 3.3.13
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RMDIR3resok {
     /// Weak cache consistency data for the directory
@@ -237,7 +222,6 @@ DeserializeStruct!(RMDIR3resok, dir_wcc);
 SerializeStruct!(RMDIR3resok, dir_wcc);
 
 /// Failed response for the RMDIR procedure as defined in RFC 1813 section 3.3.13
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct RMDIR3resfail {
     /// Weak cache consistency data for the directory
@@ -254,7 +238,6 @@ SerializeStruct!(RMDIR3resfail, dir_wcc);
 /// Arguments for the READDIR procedure (procedure 16) as defined in RFC 1813 section 3.3.16
 /// Used to read entries from a directory. The server returns a variable number of directory entries,
 /// up to the specified count limit.
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIR3args {
     /// File handle for the directory to be read
@@ -271,7 +254,6 @@ DeserializeStruct!(READDIR3args, dir, cookie, cookieverf, count);
 SerializeStruct!(READDIR3args, dir, cookie, cookieverf, count);
 
 /// Directory entry returned by READDIR operation as defined in RFC 1813 section 3.3.16
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
 pub struct entry3 {
     /// File identifier (inode number)
@@ -286,7 +268,6 @@ DeserializeStruct!(entry3, fileid, name, cookie);
 SerializeStruct!(entry3, fileid, name, cookie);
 
 /// Directory list returned by READDIR operation as defined in RFC 1813 section 3.3.16
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct dirlist3 {
     /// Zero or more directory entries
@@ -298,7 +279,6 @@ DeserializeStruct!(dirlist3, entries, eof);
 SerializeStruct!(dirlist3, entries, eof);
 
 /// Successful response for the READDIR procedure as defined in RFC 1813 section 3.3.16
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIR3resok {
     /// Attributes of the directory
@@ -312,7 +292,6 @@ DeserializeStruct!(READDIR3resok, dir_attributes, cookieverf, reply);
 SerializeStruct!(READDIR3resok, dir_attributes, cookieverf, reply);
 
 /// Failed response for the READDIR procedure as defined in RFC 1813 section 3.3.16
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIR3resfail {
     /// Attributes of the directory
@@ -329,7 +308,6 @@ SerializeStruct!(READDIR3resfail, dir_attributes);
 
 /// Arguments for the READDIRPLUS procedure (procedure 17) as defined in RFC 1813 section 3.3.17
 /// READDIRPLUS returns directory entries along with their attributes and file handles.
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIRPLUS3args {
     /// Directory file handle
@@ -348,7 +326,6 @@ SerializeStruct!(READDIRPLUS3args, dir, cookie, cookieverf, dircount, maxcount);
 
 /// Directory entry with additional attributes for READDIRPLUS operation as defined in RFC 1813 section 3.3.17
 /// This structure represents a single directory entry with extended information
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
 pub struct entryplus3 {
     /// File identifier (inode number) uniquely identifying the file within the filesystem
@@ -367,7 +344,6 @@ DeserializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handl
 SerializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
 
 /// Directory list with attributes returned by READDIRPLUS operation as defined in RFC 1813 section 3.3.17
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct dirlistplus3 {
     /// Zero or more directory entries with attributes and file handles
@@ -379,7 +355,6 @@ DeserializeStruct!(dirlistplus3, entries, eof);
 SerializeStruct!(dirlistplus3, entries, eof);
 
 /// Successful response for the READDIRPLUS procedure as defined in RFC 1813 section 3.3.17
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIRPLUS3resok {
     /// Attributes of the directory
@@ -393,7 +368,6 @@ DeserializeStruct!(READDIRPLUS3resok, dir_attributes, cookieverf, reply);
 SerializeStruct!(READDIRPLUS3resok, dir_attributes, cookieverf, reply);
 
 /// Failed response for the READDIRPLUS procedure as defined in RFC 1813 section 3.3.17
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct READDIRPLUS3resfail {
     /// Attributes of the directory

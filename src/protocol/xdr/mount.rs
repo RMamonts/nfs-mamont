@@ -37,7 +37,6 @@ pub type dirpath = Vec<u8>;
 pub type name = Vec<u8>;
 
 /// Status codes returned by `MOUNT` protocol operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum mountstat3 {
@@ -66,7 +65,6 @@ impl SerializeEnum for mountstat3 {}
 impl DeserializeEnum for mountstat3 {}
 
 /// Successful response to a mount request
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
 pub struct mountres3_ok {
     /// File handle for the mounted directory
@@ -78,7 +76,6 @@ DeserializeStruct!(mountres3_ok, fhandle, auth_flavors);
 SerializeStruct!(mountres3_ok, fhandle, auth_flavors);
 
 /// Procedure numbers for the `MOUNT` version 3 protocol
-#[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum MountProgram {
