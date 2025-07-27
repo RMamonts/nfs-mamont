@@ -330,7 +330,7 @@ impl vfs::NFSFileSystem for DemoFS {
 
         // Mark the file as deleted (in a real FS, we would completely remove it)
         // In our simple implementation, we just clear the name and contents
-        fs[id_to_remove as usize].name = Vec::new().into();
+        fs[id_to_remove as usize].name.0.clear();
         fs[id_to_remove as usize].contents = FSContents::File(Vec::new());
 
         Ok(())
