@@ -180,6 +180,11 @@ trait NfsProc {
     /// Retrieve the export entry for the given filesystem ID.
     /// - If the export is found, returns it.
     /// - If not found, construct and send an error reply with [`nfs3::nfsstat3::NFS3ERR_BADHANDLE`] status code and default [`Self::ResFail`]
+    ///
+    /// ### Returns
+    /// - `Ok(Some(&NFSExportTableEntry))` if the export is found,
+    /// - `Ok(None)` if the export is not found and an error reply has been sent,
+    /// - `Err(anyhow::Error)` if there was an error during serialization.
     async fn get_export_or_reply<'a>(
         xid: u32,
         output: &mut impl Write,
