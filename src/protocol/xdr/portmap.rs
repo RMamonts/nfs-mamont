@@ -12,11 +12,11 @@
 
 use std::io::{Read, Write};
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use super::{
     Deserialize, DeserializeEnum, DeserializeStruct, Serialize, SerializeEnum, SerializeStruct,
 };
+use crate::xdr::deserialize;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 /// Represents a mapping between an RPC program and a network port.
 #[allow(non_camel_case_types)]
@@ -34,6 +34,41 @@ pub struct mapping {
 }
 DeserializeStruct!(mapping, prog, vers, prot, port);
 SerializeStruct!(mapping, prog, vers, prot, port);
+
+/// A linked list node for port mapper entries following XDR representation
+/// (RFC 1057 for Port Mapper, RFC 4506 for XDR encoding).
+/// where `next` is implicitly optional in XDR (maybe null).
+#[derive(Default, Debug)]
+pub struct pmaplist {
+    /// Current program mapping
+    pub map: mapping,
+    /// Next element in the linked list:
+    /// - `None` marks valid list termination (XDR null pointer)
+    /// - `Some(...)` continues the list
+    pub next: Box<Option<pmaplist>>,
+}
+impl Serialize for pmaplist {
+    fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+        self.map.serialize(dest)?;
+        self.next.serialize(dest)
+    }
+}
+
+impl Deserialize for pmaplist {
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let mapping = deserialize::<mapping>(src)?;
+        self.map = mapping;
+        let has_next = deserialize::<bool>(src)?;
+        match has_next {
+            true => {
+                let pmaplist = deserialize::<pmaplist>(src)?;
+                self.next = Box::from(Some(pmaplist))
+            }
+            false => self.next = Box::from(None),
+        }
+        Ok(())
+    }
+}
 
 /// Protocol number for TCP/IP
 pub const IPPROTO_TCP: u32 = 6;
