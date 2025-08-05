@@ -140,3 +140,55 @@ fn test_vec_bijection() {
         TestForVec(vec![1u64, 2u64, 3u64, 4u64]),
     ]);
 }
+
+#[cfg(test)]
+mod portmap {
+    use nfs_mamont::xdr::portmap::{mapping, pmaplist};
+    use nfs_mamont::xdr::{deserialize, Serialize};
+    use num_traits::Zero;
+    use std::io::Cursor;
+
+    const VERSION: u32 = 2;
+    const TCP: u32 = 6;
+
+    fn generate_list(numb: u32, amount: u32) -> Option<pmaplist> {
+        match amount.is_zero() {
+            true => None,
+            false => {
+                let map = mapping { prog: numb, vers: VERSION, prot: TCP, port: numb };
+                if numb < amount {
+                    Some(pmaplist { map, next: Box::new(generate_list(numb + 1, amount)) })
+                } else {
+                    Some(pmaplist { map, next: Box::from(None) })
+                }
+            }
+        }
+    }
+
+    fn test_pmaplist(amount: u32) {
+        let mut pmaplist = &generate_list(0, amount);
+        let mut buffer = Cursor::new(Vec::with_capacity((4 * (2 * amount + 1)) as usize));
+        pmaplist.serialize(&mut buffer).expect("can't serialize pmaplist");
+        buffer.set_position(0);
+        let mut result = &deserialize::<Option<pmaplist>>(&mut buffer).unwrap();
+        while let (Some(pmap_node), Some(result_node)) = (pmaplist, result) {
+            assert!(
+                pmap_node.map.prog == result_node.map.prog
+                    && pmap_node.map.vers == result_node.map.vers
+                    && pmap_node.map.prot == result_node.map.prot
+                    && pmap_node.map.port == result_node.map.port
+            );
+            pmaplist = &pmap_node.next;
+            result = &result_node.next;
+        }
+        assert!(pmaplist.is_none() && result.is_none())
+    }
+
+    #[test]
+    fn pmaplist_tests() {
+        test_pmaplist(0);
+        test_pmaplist(1);
+        test_pmaplist(5);
+        test_pmaplist(458);
+    }
+}
