@@ -154,7 +154,7 @@ This implementation follows these RFCs:
 
 - [RFC 1813](https://datatracker.ietf.org/doc/html/rfc1813): NFS Version 3 Protocol Specification
 - [RFC 5531](https://datatracker.ietf.org/doc/html/rfc5531): RPC: Remote Procedure Call Protocol Specification Version 2
-- [RFC 1832](https://datatracker.ietf.org/doc/html/rfc1832): XDR: External Data Representation Standard
+- [RFC 4506](https://datatracker.ietf.org/doc/html/rfc1832): XDR: External Data Representation Standard
 - [RFC 1833](https://datatracker.ietf.org/doc/html/rfc1833): Binding Protocols for ONC RPC Version 2
 
 ## CI/CD & Docker
