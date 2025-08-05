@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::string::ToString;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -239,6 +240,27 @@ fn send_set_port(
     )
 }
 
+fn send_dump(
+    context: &mut Context,
+    input: &mut Cursor<Vec<u8>>,
+    output: &mut Cursor<Vec<u8>>,
+) -> Result<(), anyhow::Error> {
+    let body = call_body {
+        rpcvers: 2,
+        prog: xdr::portmap::PROGRAM,
+        vers: xdr::portmap::VERSION,
+        proc: xdr::portmap::PortmapProgram::PMAPPROC_DUMP.to_u32().unwrap(),
+        cred: Default::default(),
+        verf: Default::default(),
+    };
+    nfs_mamont::protocol::nfs::portmap::handle_portmap(
+        u32::default(),
+        &body,
+        input,
+        output,
+        context,
+    )
+}
 fn send_unset_port(
     context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
@@ -310,6 +332,8 @@ fn call_assert<F, T>(
 
 #[cfg(test)]
 mod tests {
+    use nfs_mamont::xdr::portmap::pmaplist;
+
     use super::*;
     /// simple test to assure, that result of GET_PORT operation is zero,
     /// when there is no attached port to corresponding program
@@ -560,7 +584,7 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         let args_udp = multiple_mappings(amount, IPPROTO_UDP);
-        let args_tcp = multiple_mappings(amount, IPPROTO_UDP);
+        let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
 
         for arg in &args_udp {
             call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true);
@@ -652,6 +676,86 @@ mod tests {
         }
     }
 
+    ///test of simple dump in single thread
+    fn dump_one_thread(entries_amount: u32) {
+        let mappings = multiple_mappings(entries_amount, IPPROTO_TCP);
+        let mut context = Context {
+            local_port: DEFAULT_PORT,
+            client_addr: DEFAULT_ADDRESS.to_string(),
+            auth: xdr::rpc::auth_unix::default(),
+            vfs: Arc::new(DemoFS { _root: String::default() }),
+            mount_signal: None,
+            export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+        };
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+        for mapping in &mappings {
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *mapping, true);
+        }
+        output.set_position(0);
+        send_dump(&mut context, &mut input, &mut output).unwrap();
+
+        output.set_position(RPC_MSG_SIZE);
+        let mut result = &deserialize::<Option<pmaplist>>(&mut output).unwrap();
+        let mut amount = 0;
+
+        while let Some(entry) = result {
+            amount += 1;
+            assert!(mappings
+                .iter()
+                .map(|x| {
+                    x.prog == entry.map.prog
+                        && x.prot == entry.map.prot
+                        && x.vers == entry.map.vers
+                        && x.port == entry.map.port
+                })
+                .collect::<Vec<bool>>()
+                .contains(&true));
+            result = &entry.next;
+        }
+        assert_eq!(amount, mappings.len())
+    }
+
+    ///test of dump from several threads
+    fn dump_multi_thread(amount_threads: usize) {
+        let mut contexts = multiple_contexts(amount_threads as u32);
+        let mappings = &multiple_mappings(amount_threads as u32, IPPROTO_TCP);
+        let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+        let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+        for mapping in mappings {
+            call_assert(send_set_port, &mut contexts[0], &mut input, &mut output, *mapping, true);
+        }
+        std::thread::scope(|scope| {
+            for context in &mut contexts {
+                scope.spawn(|| {
+                    let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
+                    let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
+                    send_dump(context, &mut input, &mut output).unwrap();
+                    output.set_position(RPC_MSG_SIZE);
+                    let mut result = &deserialize::<Option<pmaplist>>(&mut output).unwrap();
+                    let mut amount = 0;
+                    while let Some(entry) = result {
+                        amount += 1;
+                        assert!(mappings
+                            .iter()
+                            .map(|x| {
+                                x.prog == entry.map.prog
+                                    && x.prot == entry.map.prot
+                                    && x.vers == entry.map.vers
+                                    && x.port == entry.map.port
+                            })
+                            .collect::<Vec<bool>>()
+                            .contains(&true));
+                        result = &entry.next;
+                    }
+                    assert_eq!(amount, mappings.len())
+                });
+            }
+        })
+    }
+
     #[test]
     fn get_port_zero_reply_multiple() {
         get_port_zero_reply(0);
@@ -681,6 +785,18 @@ mod tests {
     }
 
     #[test]
+    fn dump_single_thread() {
+        dump_one_thread(0);
+        dump_one_thread(200);
+    }
+
+    #[test]
+    fn multi_thread_dump() {
+        dump_multi_thread(0);
+        dump_multi_thread(1);
+        dump_multi_thread(100);
+    }
+    #[test]
     fn empty_unsets() {
         unset_empty_table(0);
         unset_empty_table(200);
@@ -695,7 +811,7 @@ mod tests {
     #[test]
     fn unset_two_protocol_entry() {
         unset_both_protocols(0);
-        unset_single_protocol(750);
+        unset_both_protocols(200);
     }
 
     #[test]
