@@ -10,17 +10,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  cargo-fmt:
+    name: Cargo fmt
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Fmt
-      run: cargo fmt --check --verbose
-    - name: Clippy
-      run: cargo clippy -- -Dwarnings --verbose
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+      - name: Rustfmt Check
+        run: cargo fmt --all --check
+        
+  cargo-clippy:
+    needs: cargo-fmt
+    name: Cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clippy Check
+        run: cargo clippy -- -Dwarnings
+
+  cargo-build:
+    needs: cargo-clippy
+    name: Cargo build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cargo build
+        run: cargo build
+        
+  cargo-test:
+    needs: cargo-build
+    name: Cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cargo test
+        run: cargo test
+
+  cargo-doc:
+    needs: cargo-test
+    name: Cargo doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cargo doc test
+        run: cargo doc --workspace --all-features
+
+  cargo-test-doc:
+    needs: cargo-test
+    name: Cargo test doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cargo test doc
+        run: cargo test --doc --workspace --all-features
