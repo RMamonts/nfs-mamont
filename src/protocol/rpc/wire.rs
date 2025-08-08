@@ -39,6 +39,9 @@ use crate::protocol::{nfs, rpc};
 const NFS_ACL_PROGRAM: u32 = 100227;
 /// RPC program number for NFS ID Mapping
 const NFS_ID_MAP_PROGRAM: u32 = 100270;
+/// RPC program number for LOCALIO auxiliary RPC protocol
+/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
+const NFS_LOCALIO_PROGRAM: u32 = 400122;
 /// RPC program number for NFS Metadata
 const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
@@ -86,28 +89,35 @@ pub async fn handle_rpc(
         }
 
         let res = {
-            if call.prog == nfs3::PROGRAM {
-                if call.vers == nfs3::VERSION {
-                    nfs::v3::handle_nfs(xid, call, input, output, &context).await
-                } else {
-                    error!("NFSv4 not implemented");
-                    Err(anyhow!("NFSv4 protocol error"))
+            match call.prog {
+                nfs3::PROGRAM => match call.vers {
+                    nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
+                    _ => {
+                        error!("NFSv4 not implemented");
+                        Err(anyhow!("NFSv4 protocol error"))
+                    }
+                },
+                portmap::PROGRAM => {
+                    nfs::portmap::handle_portmap(xid, &call, input, output, &mut context)
                 }
-            } else if call.prog == portmap::PROGRAM {
-                nfs::portmap::handle_portmap(xid, &call, input, output, &mut context)
-            } else if call.prog == mount::PROGRAM {
-                nfs::mount::handle_mount(xid, call, input, output, &context).await
-            } else if call.prog == NFS_ACL_PROGRAM
-                || call.prog == NFS_ID_MAP_PROGRAM
-                || call.prog == NFS_METADATA_PROGRAM
-            {
-                trace!("ignoring NFS_ACL packet");
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
-            } else {
-                warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
+                mount::PROGRAM => {
+                    nfs::mount::handle_mount(xid, call, input, output, &context).await
+                }
+                NFS_ACL_PROGRAM | NFS_ID_MAP_PROGRAM | NFS_METADATA_PROGRAM => {
+                    trace!("ignoring NFS_ACL packet");
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                    Ok(())
+                }
+                NFS_LOCALIO_PROGRAM => {
+                    trace!("Ignoring NFS_LOCALIO packet");
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                    Ok(())
+                }
+                unknown_number => {
+                    warn!("Unknown RPC Program number {} != {}", unknown_number, nfs3::PROGRAM);
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                    Ok(())
+                }
             }
         }
         .map(|_| true);
