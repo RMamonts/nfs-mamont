@@ -53,7 +53,7 @@ pub async fn handle_mount(
         mount::MountProgram::MOUNTPROC3_UMNTALL => {
             mountproc3_umnt_all(xid, output, context).await?;
         }
-        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context)?,
+        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await?,
         _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,
     }
     Ok(())

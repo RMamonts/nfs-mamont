@@ -14,7 +14,7 @@
 
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -41,36 +41,45 @@ pub async fn nfsproc3_lookup(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    let dirops = deserialize::<nfs3::diropargs3>(input)?;
-    debug!("nfsproc3_lookup({:?},{:?}) ", xid, dirops);
+    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    debug!("nfsproc3_lookup({:?},{:?}) ", xid, dir_ops);
 
-    let dirid = context.vfs.fh_to_id(&dirops.dir);
+    let fs_id = dir_ops.dir.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let dir_id = export.vfs.fh_to_id(&dir_ops.dir);
 
     // fail if unable to convert file handle
-    if let Err(stat) = dirid {
+    if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         nfs3::post_op_attr::None.serialize(output)?;
         return Ok(());
     }
 
-    let dirid = dirid.unwrap();
+    let dirid = dir_id.unwrap();
 
-    let dir_attr = context.vfs.getattr(dirid).await.ok();
+    let dir_attr = export.vfs.getattr(dirid).await.ok();
 
-    match context.vfs.lookup(dirid, &dirops.name).await {
+    match export.vfs.lookup(dirid, &dir_ops.name).await {
         Ok(fid) => {
-            let obj_attr = context.vfs.getattr(fid).await.ok();
-
+            let obj_attr = export.vfs.getattr(fid).await.ok();
             debug!("nfsproc3_lookup success {:?} --> {:?}", xid, obj_attr);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             nfs3::nfsstat3::NFS3_OK.serialize(output)?;
-            context.vfs.id_to_fh(fid).serialize(output)?;
+            export.vfs.id_to_fh(fid, fs_id).serialize(output)?;
             obj_attr.serialize(output)?;
             dir_attr.serialize(output)?;
         }
         Err(stat) => {
-            debug!("nfsproc3_lookup error {:?}({:?}) --> {:?}", xid, dirops.name, stat);
+            debug!("nfsproc3_lookup error {:?}({:?}) --> {:?}", xid, dir_ops.name, stat);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
             dir_attr.serialize(output)?;

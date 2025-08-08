@@ -26,6 +26,7 @@ async fn main() {
     let path = PathBuf::from(path);
 
     let fs = fs::MirrorFS::new(path);
-    let listener = NFSTcpListener::bind(&format!("127.0.0.1:{HOSTPORT}"), fs).await.unwrap();
+    let mut listener = NFSTcpListener::bind(&format!("127.0.0.1:{HOSTPORT}")).await.unwrap();
+    listener.register_export(fs).await.unwrap();
     listener.handle_forever().await.unwrap();
 }

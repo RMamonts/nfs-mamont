@@ -12,7 +12,7 @@
 
 use std::io::{Read, Write};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -41,15 +41,25 @@ pub async fn nfsproc3_getattr(
     let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_getattr({:?},{:?}) ", xid, handle);
 
-    let id = context.vfs.fh_to_id(&handle);
+    let fs_id = handle.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         return Ok(());
     }
-    let id = id.unwrap();
-    match context.vfs.getattr(id).await {
+    let file_id = id.unwrap();
+
+    match export.vfs.getattr(file_id).await {
         Ok(fh) => {
             debug!(" {:?} --> {:?}", xid, fh);
             xdr::rpc::make_success_reply(xid).serialize(output)?;

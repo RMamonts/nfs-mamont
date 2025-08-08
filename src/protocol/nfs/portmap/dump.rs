@@ -21,12 +21,12 @@ use crate::xdr::Serialize;
 ///    - RPC reply header (success/failure)
 ///    - pmaplist (linked list of mappings)
 /// 2. Empty list is represented by zero-length array
-pub fn pmapproc_dump(
+pub async fn pmapproc_dump(
     xid: u32,
     output: &mut impl Write,
     context: &Context,
 ) -> Result<(), anyhow::Error> {
-    let binding = context.portmap_table.read().unwrap();
+    let binding = context.portmap_table.read().await;
     let entries: Vec<mapping> = binding
         .table
         .iter()

@@ -25,6 +25,8 @@ tracing = "0.1.31"
 tracing-attributes = "0.1"
 
 [dev-dependencies]
+clap = "4.5.41"
+clap_derive = "4.5.41"
 intaglio = { version = "1.6" }
 tracing-subscriber = { version = "0.3", features = ["tracing-log"] }
 
@@ -35,3 +37,4 @@ path = "examples/mirror_fs/main.rs"
 [[example]]
 name = "demofs"
 path = "examples/demo_fs/main.rs"
+

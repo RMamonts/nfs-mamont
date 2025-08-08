@@ -22,7 +22,7 @@ use crate::xdr::{deserialize, Serialize};
 /// 2. Checks if the mapping already exists
 /// 3. If not exists, adds the new mapping
 /// 4. Sends success response with boolean result (true = added, false = existed)
-pub fn pmapproc_setport(
+pub async fn pmapproc_setport(
     xid: u32,
     read: &mut impl Read,
     output: &mut impl Write,
@@ -30,7 +30,7 @@ pub fn pmapproc_setport(
 ) -> Result<(), anyhow::Error> {
     let mapping = deserialize::<mapping>(read)?;
     let entry = PortmapKey { prog: mapping.prog, vers: mapping.vers, prot: mapping.prot };
-    let mut binding = context.portmap_table.write().unwrap();
+    let mut binding = context.portmap_table.write().await;
     let port = binding.table.get(&entry).copied();
     let result = match port {
         None => {

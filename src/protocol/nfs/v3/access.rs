@@ -14,7 +14,7 @@
 
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -55,7 +55,17 @@ pub async fn nfsproc3_access(
     let access = deserialize::<u32>(input)?;
     debug!("nfsproc3_access({:?},{:?},{:?})", xid, handle, access);
 
-    let id = context.vfs.fh_to_id(&handle);
+    let fs_id = handle.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&handle);
     // Fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -66,7 +76,7 @@ pub async fn nfsproc3_access(
     let id = id.unwrap();
 
     // Get object attributes
-    let obj_attr = match context.vfs.getattr(id).await {
+    let obj_attr = match export.vfs.getattr(id).await {
         Ok(v) => nfs3::post_op_attr::Some(v),
         Err(stat) => {
             // If we can't get attributes, return an error
@@ -107,7 +117,7 @@ pub async fn nfsproc3_access(
     match attr.ftype {
         nfs3::ftype3::NF3REG => {
             // For regular files
-            if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+            if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
                 if access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
                     granted_access |= access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
@@ -123,7 +133,7 @@ pub async fn nfsproc3_access(
         }
         nfs3::ftype3::NF3DIR => {
             // For directories
-            if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+            if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
                 if access & nfs3::ACCESS3_READ != 0 {
                     granted_access |= nfs3::ACCESS3_READ;
