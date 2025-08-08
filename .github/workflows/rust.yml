@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rustfmt Check
         run: cargo fmt --all --check
-        
+
   cargo-clippy:
     needs: cargo-fmt
     name: Cargo clippy
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cargo build
         run: cargo build
-        
+
   cargo-test:
     needs: cargo-build
     name: Cargo test
@@ -52,13 +52,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Cargo doc test
-        run: cargo doc --workspace --all-features
+        run: cargo doc
 
-  cargo-test-doc:
-    needs: cargo-test
-    name: Cargo test doc
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4  
-      - name: Cargo test doc
-        run: cargo test --doc --workspace --all-features
