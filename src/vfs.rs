@@ -2,7 +2,7 @@
 //! and the underlying file system implementations.
 //!
 //! This module provides:
-//! - The core NFSFileSystem trait that must be implemented to create an NFS-exportable file system
+//! - The core `NFSFileSystem` trait that must be implemented to create an NFS-exportable file system
 //! - Support structures and enumerations for directory entries and file operations
 //! - File handle management with generation numbers for stale handle detection
 //! - Default implementations for common operations to simplify custom implementations
@@ -13,7 +13,7 @@
 //!
 //! Key features of the VFS design include:
 //! - Stateless operation, using file identifiers instead of open file handles
-//! - Support for all NFSv3 file operations (read, write, create, etc.)
+//! - Support for all `NFSv3` file operations (read, write, create, etc.)
 //! - Weak cache consistency through file attributes
 //! - Support for both synchronous and asynchronous I/O operations
 //! - File handle management that detects stale handles after server restarts
@@ -35,7 +35,7 @@ pub struct DirEntrySimple {
     pub name: nfs3::filename3,
 }
 
-/// Result returned by readdir_simple operations
+/// Result returned by `readdir_simple` operations
 ///
 /// Contains a vector of simplified directory entries and an EOF flag
 #[derive(Default, Debug)]
@@ -71,7 +71,7 @@ pub struct ReadDirResult {
 }
 
 impl ReadDirSimpleResult {
-    /// Converts a full ReadDirResult to a simplified ReadDirSimpleResult
+    /// Converts a full [`ReadDirResult`] to a simplified [`ReadDirSimpleResult`]
     ///
     /// This allows implementations to provide just the full readdir operation,
     /// and the simplified version can be derived automatically.
@@ -477,7 +477,7 @@ pub trait NFSFileSystem: Sync {
             wtmult: 1024 * 1024,
             dtpref: 1024 * 1024,
             maxfilesize: 128 * 1024 * 1024 * 1024,
-            time_delta: nfs3::nfstime3 { seconds: 0, nseconds: 1000000 },
+            time_delta: nfs3::nfstime3 { seconds: 0, nseconds: 1_000_000 },
             properties: nfs3::fs::FSF_SYMLINK
                 | nfs3::fs::FSF_HOMOGENEOUS
                 | nfs3::fs::FSF_CANSETTIME,

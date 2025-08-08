@@ -1,6 +1,6 @@
-//! Implementation of the NULL procedure (procedure 0) for port mapper protocol
+//! Implementation of the `NULL` procedure (procedure 0) for port mapper protocol
 //! as defined in RFC 1057 A.2 section.
-//! https://datatracker.ietf.org/doc/rfc1057/
+//! <https://datatracker.ietf.org/doc/rfc1057/>.
 
 use std::io::Write;
 
@@ -8,9 +8,9 @@ use tracing::debug;
 
 use crate::protocol::xdr::{self, Serialize};
 
-/// Handles PMAPPROC_NULL procedure.
+/// Handles `PMAPPROC_NULL` procedure.
 ///
-/// NULL is a no-operation RPC call used to check if the portmapper is responding.
+/// `NULL` is a no-operation RPC call used to check if the portmapper is responding.
 /// Takes no arguments and returns empty reply with successful status.
 ///
 /// # Arguments

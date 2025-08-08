@@ -1,7 +1,7 @@
-//! Implementation of the FSINFO procedure (procedure 19) for NFS version 3 protocol
+//! Implementation of the `FSINFO` procedure (procedure 19) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.19.
 //!
-//! The FSINFO procedure retrieves static information about the file system that
+//! The `FSINFO` procedure retrieves static information about the file system that
 //! is exported by the server. It is used by NFS clients to determine various
 //! configuration parameters and capabilities of the server implementation.
 //!
@@ -12,7 +12,7 @@
 //! - The file attributes for the file handle provided
 //! - Maximum and preferred read and write transfer sizes
 //! - Preferred directory read size
-//! - Server time precision (time_delta)
+//! - Server time precision (`time_delta`)
 //! - The file system properties (whether it supports hard links, symbolic links, etc.)
 //! - The maximum file size supported by the server
 
@@ -23,16 +23,16 @@ use tracing::{debug, error};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 FSINFO procedure (procedure 19)
+/// Handles `NFSv3` `FSINFO` procedure (procedure 19)
 ///
-/// FSINFO retrieves static file system information.
+/// `FSINFO` retrieves static file system information.
 /// Takes a file handle representing the file system.
 /// Returns various file system parameters and capabilities.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the FSINFO arguments
+/// * `input` - Input stream containing the `FSINFO` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///
@@ -56,6 +56,7 @@ pub async fn nfsproc3_fsinfo(
         nfs3::post_op_attr::None.serialize(output)?;
         return Ok(());
     }
+
     let id = id.unwrap();
 
     match context.vfs.fsinfo(id).await {
@@ -71,5 +72,6 @@ pub async fn nfsproc3_fsinfo(
             stat.serialize(output)?;
         }
     }
+
     Ok(())
 }

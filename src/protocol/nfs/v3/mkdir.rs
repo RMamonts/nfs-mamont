@@ -1,7 +1,7 @@
-//! Implementation of the MKDIR procedure (procedure 9) for NFS version 3 protocol
+//! Implementation of the `MKDIR` procedure (procedure 9) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.9.
 //!
-//! The MKDIR procedure creates a new directory in the specified parent directory.
+//! The `MKDIR` procedure creates a new directory in the specified parent directory.
 //! The client specifies:
 //! - The file handle of the parent directory
 //! - The name of the new directory
@@ -23,16 +23,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 MKDIR procedure (procedure 9)
+/// Handles `NFSv3` `MKDIR` procedure (procedure 9)
 ///
-/// MKDIR creates a new directory.
+/// `MKDIR` creates a new directory.
 /// Takes parent directory handle, name for new directory and attributes.
 /// Returns file handle and attributes of the newly created directory.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the MKDIR arguments
+/// * `input` - Input stream containing the `MKDIR` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

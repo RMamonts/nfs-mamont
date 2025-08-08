@@ -1,13 +1,13 @@
-//! Implementation of the WRITE procedure (procedure 7) for NFS version 3 protocol
+//! Implementation of the `WRITE` procedure (procedure 7) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.7.
 //!
-//! The WRITE procedure writes data to a regular file. It can be used for
+//! The `WRITE` procedure writes data to a regular file. It can be used for
 //! creating a file (with the CREATE procedure) or appending data to a file.
 //! The client specifies:
 //! - The file handle of the file to which data is to be written
 //! - The offset within the file where the write should begin
 //! - The amount of data to be written (count)
-//! - A stability level (UNSTABLE, DATA_SYNC, or FILE_SYNC)
+//! - A stability level (`UNSTABLE`, `DATA_SYNC`, or `FILE_SYNC`)
 //! - The data to be written
 //!
 //! On successful return, the server provides:
@@ -24,16 +24,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 WRITE procedure (procedure 7)
+/// Handles `NFSv3` `WRITE` procedure (procedure 7)
 ///
-/// WRITE writes data to a file on the server.
+/// `WRITE` writes data to a file on the server.
 /// It takes file handle, offset, stability flag and data to write.
 /// Returns amount of data written and file attributes after the operation.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the WRITE arguments
+/// * `input` - Input stream containing the `WRITE` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

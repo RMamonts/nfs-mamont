@@ -1,6 +1,6 @@
-//! Implementation of the EXPORT procedure (procedure 5) for MOUNT version 3 protocol
+//! Implementation of the EXPORT procedure (procedure 5) for `MOUNT` version 3 protocol
 //! as defined in RFC 1813 section 5.2.5.
-//! https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.5
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.5>.
 
 use std::io::Write;
 
@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, Serialize};
 
-/// Handles MOUNTPROC3_EXPORT procedure.
+/// Handles `MOUNTPROC3_EXPORT` procedure.
 ///
 /// Function returns a list of all the exported file
 /// systems and which clients are allowed to mount each one.

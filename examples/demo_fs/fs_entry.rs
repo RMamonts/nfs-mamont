@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use nfs_mamont::xdr::nfs3;
 
 use crate::fs_contents::FSContents;
@@ -43,7 +45,7 @@ pub fn make_file(name: &str, id: nfs3::fileid3, parent: nfs3::fileid3, contents:
         attr,
         name: name.as_bytes().into(),
         parent,
-        contents: FSContents::File(contents.to_vec()),
+        contents: FSContents::File(Arc::new(RwLock::new(contents.to_vec()))),
     }
 }
 

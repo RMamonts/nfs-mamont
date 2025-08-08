@@ -1,9 +1,9 @@
-//! Implementation of the FSSTAT procedure (procedure 18) for NFS version 3 protocol
+//! Implementation of the `FSSTAT` procedure (procedure 18) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.18.
 //!
-//! The FSSTAT procedure retrieves volatile file system state information.
+//! The `FSSTAT` procedure retrieves volatile file system state information.
 //! This differs from the FSINFO procedure which returns static information about
-//! the file system. FSSTAT provides statistics about total and free space, total
+//! the file system. `FSSTAT` provides statistics about total and free space, total
 //! and free file slots, and other dynamic information.
 //!
 //! The client specifies:
@@ -26,16 +26,16 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 
-/// Handles NFSv3 FSSTAT procedure (procedure 18)
+/// Handles `NFSv3` `FSSTAT` procedure (procedure 18)
 ///
-/// FSSTAT retrieves volatile file system state information.
+/// `FSSTAT` retrieves volatile file system state information.
 /// Takes a file handle representing the file system.
 /// Returns file attributes and dynamic file system information.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the FSSTAT arguments
+/// * `input` - Input stream containing the `FSSTAT` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

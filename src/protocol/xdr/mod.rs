@@ -8,7 +8,7 @@
 //! Its Rust-specific implementation is presented below.
 //! Where appropriate, the standard types of the XDR language have
 //! been replaced by similar types of the Rust language. For example,
-//! the 32-bit `Integer` type was replaced by the `i32`` type, and the
+//! the 32-bit `Integer` type was replaced by the `i32` type, and the
 //! `opaque<>` type was replaced by `[u8]`. All the places where such
 //! a replacement has been carried out have relevant comments.
 //!
@@ -362,7 +362,7 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
 impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         for i in self {
-            i.deserialize(src)?
+            i.deserialize(src)?;
         }
 
         Ok(())

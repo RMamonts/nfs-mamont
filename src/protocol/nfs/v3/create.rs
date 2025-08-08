@@ -1,7 +1,7 @@
-//! Implementation of the CREATE procedure (procedure 8) for NFS version 3 protocol
+//! Implementation of the `CREATE` procedure (procedure 8) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.8.
 //!
-//! The CREATE procedure creates a regular file in a specified directory.
+//! The `CREATE` procedure creates a regular file in a specified directory.
 //! The client specifies:
 //! - The file handle of the parent directory
 //! - The name for the new file
@@ -27,16 +27,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Deserialize, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 CREATE procedure (procedure 8)
+/// Handles `NFSv3` `CREATE` procedure (procedure 8)
 ///
-/// CREATE creates a regular file in a specified directory.
-/// It supports three modes: UNCHECKED, GUARDED, and EXCLUSIVE.
+/// `CREATE` creates a regular file in a specified directory.
+/// It supports three modes: `UNCHECKED`, `GUARDED`, and `EXCLUSIVE`.
 /// Returns file handle and attributes of the newly created file.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the CREATE arguments
+/// * `input` - Input stream containing the `CREATE` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

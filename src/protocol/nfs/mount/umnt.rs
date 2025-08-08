@@ -1,6 +1,6 @@
-//! Implementation of the UMNT procedure (procedure 3) for MOUNT version 3 protocol
+//! Implementation of the `UMNT` procedure (procedure 3) for MOUNT version 3 protocol
 //! as defined in RFC 1813 section 5.2.3
-//! https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
 
 use std::io::{Read, Write};
 
@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
-/// Handles MOUNTPROC3_UMNT procedure.
+/// Handles `MOUNTPROC3_UMNT` procedure.
 ///
 /// Function removes the mount entry from the mount list for
 /// the requested diretory.

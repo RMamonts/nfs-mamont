@@ -7,7 +7,7 @@
 //! decoding NFS version 3 protocol messages using XDR (External Data Representation).
 //!
 //! This module defines the constants, basic data types, and complex structures
-//! that form the foundation of the NFSv3 protocol as specified in RFC 1813.
+//! that form the foundation of the `NFSv3` protocol as specified in RFC 1813.
 
 // Allow unused code since we're implementing the full NFS3 protocol specification
 #![allow(dead_code)]
@@ -32,7 +32,7 @@ pub mod fs;
 
 // Section 2.2 Constants
 /// The RPC program number for NFS version 3 service.
-pub const PROGRAM: u32 = 100003;
+pub const PROGRAM: u32 = 100_003;
 /// The version number for NFS version 3 protocol.
 pub const VERSION: u32 = 3;
 
@@ -42,15 +42,15 @@ pub const VERSION: u32 = 3;
 pub const NFS3_FHSIZE: u32 = 64;
 
 /// The size in bytes of the opaque cookie verifier passed by
-/// READDIR and READDIRPLUS.
+/// `READDIR` and `READDIRPLUS`.
 pub const NFS3_COOKIEVERFSIZE: u32 = 8;
 
 /// The size in bytes of the opaque verifier used for
-/// exclusive CREATE.
+/// exclusive `CREATE`.
 pub const NFS3_CREATEVERFSIZE: u32 = 8;
 
 /// The size in bytes of the opaque verifier used for
-/// asynchronous WRITE.
+/// asynchronous `WRITE`.
 pub const NFS3_WRITEVERFSIZE: u32 = 8;
 
 // Section 2.5 Basic Data Types
@@ -190,16 +190,16 @@ pub type nfspath3 = nfsstring;
 /// A unique number that identifies a file within a filesystem
 pub type fileid3 = u64;
 /// Directory entry position cookie as defined in RFC 1813 section 2.5
-/// Used in READDIR and READDIRPLUS operations for iteration
+/// Used in `READDIR` and `READDIRPLUS` operations for iteration
 pub type cookie3 = u64;
 /// Cookie verifier for directory operations as defined in RFC 1813 section 2.5
 /// Used to detect when a directory being read has changed
 pub type cookieverf3 = [opaque; NFS3_COOKIEVERFSIZE as usize];
 /// Create verifier for exclusive file creation as defined in RFC 1813 section 2.5
-/// Used in CREATE operations with EXCLUSIVE mode to ensure uniqueness
+/// Used in CREATE operations with `EXCLUSIVE` mode to ensure uniqueness
 pub type createverf3 = [opaque; NFS3_CREATEVERFSIZE as usize];
 /// Write verifier for asynchronous writes as defined in RFC 1813 section 2.5
-/// Used to detect server reboots between asynchronous WRITE and COMMIT operations
+/// Used to detect server reboots between asynchronous `WRITE` and `COMMIT` operations
 pub type writeverf3 = [opaque; NFS3_WRITEVERFSIZE as usize];
 /// User ID as defined in RFC 1813 section 2.5
 /// Identifies the owner of a file
@@ -240,7 +240,7 @@ pub enum nfsstat3 {
     NFS3ERR_NXIO = 6,
     /// Permission denied. The caller does not have the correct
     /// permission to perform the requested operation. Contrast
-    /// this with NFS3ERR_PERM, which restricts itself to owner
+    /// this with `NFS3ERR_PERM`, which restricts itself to owner
     /// or privileged user permission failures.
     NFS3ERR_ACCES = 13,
     /// File exists. The file specified already exists.
@@ -365,7 +365,7 @@ SerializeStruct!(specdata3, specdata1, specdata2);
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct nfs_fh3 {
-    /// Raw file handle data (up to NFS3_FHSIZE bytes)
+    /// Raw file handle data (up to `NFS3_FHSIZE` bytes)
     pub data: Vec<u8>,
 }
 DeserializeStruct!(nfs_fh3, data);
@@ -386,7 +386,7 @@ SerializeStruct!(nfstime3, seconds, nseconds);
 
 impl From<nfstime3> for filetime::FileTime {
     fn from(time: nfstime3) -> Self {
-        filetime::FileTime::from_unix_time(time.seconds as i64, time.nseconds)
+        Self::from_unix_time(time.seconds as i64, time.nseconds)
     }
 }
 
@@ -485,11 +485,11 @@ pub type set_uid3 = Option<uid3>;
 pub type set_gid3 = Option<gid3>;
 pub type set_size3 = Option<size3>;
 
-/// Specifies how to modify the last access time (atime) during a SETATTR operation.
+/// Specifies how to modify the last access time (atime) during a `SETATTR` operation.
 /// This enum allows the client to either:
-/// - Leave the atime unchanged (DONT_CHANGE)
-/// - Set it to the server's current time (SET_TO_SERVER_TIME)
-/// - Set it to a specific client-provided time (SET_TO_CLIENT_TIME)
+/// - Leave the atime unchanged (`DONT_CHANGE`)
+/// - Set it to the server's current time (`SET_TO_SERVER_TIME`)
+/// - Set it to a specific client-provided time (`SET_TO_CLIENT_TIME`)
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
@@ -544,13 +544,13 @@ impl Deserialize for set_atime {
     }
 }
 
-/// Specifies how to modify the last modification time (mtime) during a SETATTR operation.
+/// Specifies how to modify the last modification time (mtime) during a `SETATTR` operation.
 /// This enum allows the client to either:
 /// - Leave the mtime unchanged
 /// - Set it to the server's current time
 /// - Set it to a specific client-provided time
 ///
-/// The discriminant value follows the time_how enumeration from RFC 1813
+/// The discriminant value follows the `time_how` enumeration from RFC 1813
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
@@ -605,7 +605,7 @@ impl Deserialize for set_mtime {
     }
 }
 
-/// Set of file attributes to change in SETATTR operations
+/// Set of file attributes to change in `SETATTR` operations
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 pub struct sattr3 {
@@ -681,7 +681,7 @@ pub const ACCESS3_DELETE: u32 = 0x0010;
 /// Access permission to execute a file or traverse a directory as defined in RFC 1813 section 3.3.4
 pub const ACCESS3_EXECUTE: u32 = 0x0020;
 
-/// File creation modes for CREATE operations
+/// File creation modes for `CREATE` operations
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
@@ -699,7 +699,7 @@ impl DeserializeEnum for createmode3 {}
 
 pub type sattrguard3 = Option<nfstime3>;
 
-/// Arguments for SETATTR operations
+/// Arguments for `SETATTR` operations
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct SETATTR3args {

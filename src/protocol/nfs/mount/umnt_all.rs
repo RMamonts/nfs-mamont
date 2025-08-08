@@ -1,6 +1,6 @@
 //! Implementation of the UMNTALL procedure (procedure 4) for MOUNT version 3 protocol
 //! as defined in RFC 1813 section 5.2.4
-//! https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
 
 use std::io::Write;
 
@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, mount, Serialize};
 
-/// Handles MOUNTPROC3_UMNTALL procedure.
+/// Handles `MOUNTPROC3_UMNTALL` procedure.
 ///
 /// Function removes all of the mount entries for
 /// this client previously recorded by calls to MNT.

@@ -1,7 +1,7 @@
-//! Implementation of the SETATTR procedure (procedure 2) for NFS version 3 protocol
+//! Implementation of the `SETATTR` procedure (procedure 2) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.2.
 //!
-//! The SETATTR procedure changes file system object attributes on the server.
+//! The `SETATTR` procedure changes file system object attributes on the server.
 //! It allows clients to modify mode, user/group ownership, size, access/modify times,
 //! and other attributes of a file.
 //!
@@ -15,7 +15,7 @@
 //! - A specific file ctime value - only modify if the current ctime matches
 //!
 //! On successful return, the server provides:
-//! - The attributes of the object before and after the SETATTR operation (weak cache consistency)
+//! - The attributes of the object before and after the `SETATTR` operation (weak cache consistency)
 //!
 //! This procedure is critical for maintaining file consistency across multiple
 //! clients that share access to the same files.
@@ -28,16 +28,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 SETATTR procedure (procedure 2)
+/// Handles `NFSv3` `SETATTR` procedure (procedure 2)
 ///
-/// SETATTR changes the attributes of a file system object.
+/// `SETATTR` changes the attributes of a file system object.
 /// It takes a file handle, new attributes and optional guard condition.
 /// Returns file attributes before and after the operation.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the SETATTR arguments
+/// * `input` - Input stream containing the `SETATTR` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

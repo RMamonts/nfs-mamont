@@ -1,3 +1,6 @@
+//! Module for NFSv4 protocol implementation.
+//! Provides functionality for working with NFS version 4 protocol context and operations.
+
 use std::io::{Read, Write};
 
 use tracing::error;
@@ -10,6 +13,13 @@ use crate::{
 mod operations;
 
 pub const VERSION: u32 = 4;
+
+/// Represents the context for NFSv4 operations.
+/// Contains necessary state and configuration for NFSv4 protocol handling.
+#[derive(Default)]
+pub struct NFSv4Context {
+    // TODO: find out what should be here
+}
 
 /// Main handler for NFSv4 protocol
 ///

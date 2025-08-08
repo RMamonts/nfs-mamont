@@ -1,7 +1,7 @@
-//! Implementation of the RENAME procedure (procedure 14) for NFS version 3 protocol
+//! Implementation of the `RENAME` procedure (procedure 14) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.14.
 //!
-//! The RENAME procedure changes the name of a file system object in the directory
+//! The `RENAME` procedure changes the name of a file system object in the directory
 //! hierarchy. The operation renames a file or directory, possibly by moving it to
 //! a different directory.
 //!
@@ -18,11 +18,11 @@
 //! of the renaming operation.
 //!
 //! Common errors:
-//! - NFS3ERR_NOENT: Source file/directory doesn't exist
-//! - NFS3ERR_ACCES: Permission denied
-//! - NFS3ERR_XDEV: Attempt to move between file systems
-//! - NFS3ERR_ROFS: Write attempted on read-only file system
-//! - NFS3ERR_NOTDIR: A component of path prefix is not a directory
+//! - `NFS3ERR_NOENT`: Source file/directory doesn't exist
+//! - `NFS3ERR_ACCES`: Permission denied
+//! - `NFS3ERR_XDEV`: Attempt to move between file systems
+//! - `NFS3ERR_ROFS`: Write attempted on read-only file system
+//! - `NFS3ERR_NOTDIR`: A component of path prefix is not a directory
 
 use std::io::{Read, Write};
 
@@ -32,9 +32,9 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 RENAME procedure (procedure 14)
+/// Handles `NFSv3` `RENAME` procedure (procedure 14)
 ///
-/// RENAME changes the name of a file system object.
+/// `RENAME` changes the name of a file system object.
 /// Takes source directory handle, source name, target directory handle, and target name.
 /// Returns attributes of both source and target directories before and after the operation.
 ///
@@ -45,7 +45,7 @@ use crate::vfs;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the RENAME arguments
+/// * `input` - Input stream containing the `RENAME` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

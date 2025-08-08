@@ -1,7 +1,7 @@
-//! Implementation of the LINK procedure (procedure 15) for NFS version 3 protocol
+//! Implementation of the `LINK` procedure (procedure 15) for NFS version 3 protocol
 //! as defined in RFC 1813 section 3.3.15.
 //!
-//! The LINK procedure creates a hard link from one file to another. A hard link
+//! The `LINK` procedure creates a hard link from one file to another. A hard link
 //! is a second directory entry referring to the same file with an identical
 //! file system object.
 //!
@@ -14,7 +14,7 @@
 //! - The attributes of the directory before and after the operation (weak cache consistency)
 //!
 //! Hard links can be created only within a single file system (volume).
-//! Servers should return NFS3ERR_XDEV if a cross-device link is attempted.
+//! Servers should return `NFS3ERR_XDEV` if a cross-device link is attempted.
 
 use std::io::{Read, Write};
 
@@ -24,16 +24,16 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
-/// Handles NFSv3 LINK procedure (procedure 15)
+/// Handles `NFSv3` `LINK` procedure (procedure 15)
 ///
-/// LINK creates a hard link to an existing file.
+/// `LINK` creates a hard link to an existing file.
 /// Takes file handle for target file, directory handle, and name for the new link.
 /// Returns file attributes and directory attributes before and after the operation.
 ///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the LINK arguments
+/// * `input` - Input stream containing the `LINK` arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///
