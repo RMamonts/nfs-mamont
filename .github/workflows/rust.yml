@@ -42,6 +42,24 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -Dwarnings
 
+  # Build
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargo build
+        run: cargo build
+
+  # Test
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargo test
+        run: cargo test
+
   # Security audit
   security:
     name: Security Audit
@@ -62,9 +80,9 @@ jobs:
       - name: Run security audit
         run: cargo audit
 
-  # Build and test
-  test:
-    name: Build and Test
+  # Build and test with matrix
+  test-matrix:
+    name: Build and Test (Matrix)
     runs-on: ubuntu-latest
     strategy:
       matrix:
