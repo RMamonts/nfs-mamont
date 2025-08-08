@@ -122,9 +122,6 @@ jobs:
       
       - name: Run tests
         run: cargo test --target ${{ matrix.target }}
-      
-      - name: Run doc tests
-        run: cargo test --doc --target ${{ matrix.target }}
 
   # Documentation
   docs:
