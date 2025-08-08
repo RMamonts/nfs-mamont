@@ -319,39 +319,45 @@ impl vfs::NFSFileSystem for DemoFS {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         }
 
-        // Find the file in the directory
-        let file_id = {
-            if let FSContents::Directory(dir) = &fs[dirid as usize].contents {
-                let mut file_id = None;
-                for &id in dir {
-                    if let Some(file) = fs.get(id as usize) {
-                        if file.name[..] == filename[..] {
-                            file_id = Some(id);
-                            break;
-                        }
-                    }
-                }
-                file_id.ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?
+        // Find object in the directory
+        let id_to_remove = {
+            if let FSContents::Directory(dir_contents) = &fs[dirid as usize].contents {
+                dir_contents
+                    .iter()
+                    .find(|&&id| fs.get(id as usize).map_or(false, |e| e.name[..] == filename[..]))
+                    .map(|&id| id)
+                    .ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?
             } else {
                 return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
             }
         };
 
-        // Check that it's not a directory
-        if let FSContents::Directory(_) = fs[file_id as usize].contents {
-            // If trying to remove a directory using remove, return an error
-            return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
+        // Type check
+        if let Some(target_entry) = fs.get(id_to_remove as usize) {
+            match &target_entry.contents {
+                FSContents::File(_) => {
+                    // File is OK - do not check
+                }
+                FSContents::Directory(contents) => {
+                    // Check is there something inside dir
+                    if !contents.is_empty() {
+                        return Err(nfs3::nfsstat3::NFS3ERR_NOTEMPTY);
+                    }
+                }
+            }
+        } else {
+            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
         }
 
         // Remove the file from the directory list
         if let FSContents::Directory(dir) = &mut fs[dirid as usize].contents {
-            dir.retain(|&id| id != file_id);
+            dir.retain(|&id| id != id_to_remove);
         }
 
         // Mark the file as deleted (in a real FS, we would completely remove it)
         // In our simple implementation, we just clear the name and contents
-        fs[file_id as usize].name = Vec::new().into();
-        fs[file_id as usize].contents = FSContents::File(Arc::new(RwLock::new(Vec::new())));
+        fs[id_to_remove as usize].name.0.clear();
+        fs[id_to_remove as usize].contents = FSContents::File(Arc::new(RwLock::new(Vec::new())));
 
         Ok(())
     }
