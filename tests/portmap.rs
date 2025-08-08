@@ -177,7 +177,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
         result.push(Context {
             local_port: DEFAULT_PROG,
             client_addr: format!("0.0.0.0:{}", i),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -341,7 +341,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -365,7 +365,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -395,7 +395,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -421,7 +421,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -525,7 +525,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -547,7 +547,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -573,7 +573,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
@@ -584,7 +584,7 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         let args_udp = multiple_mappings(amount, IPPROTO_UDP);
-        let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
+        let args_tcp = multiple_mappings(amount, IPPROTO_UDP);
 
         for arg in &args_udp {
             call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true);

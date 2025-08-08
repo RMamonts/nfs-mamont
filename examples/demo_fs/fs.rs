@@ -209,28 +209,19 @@ impl vfs::NFSFileSystem for DemoFS {
                 entry.attr.mtime.nseconds = d.subsec_nanos();
             }
         };
-        match setattr.uid {
-            nfs3::set_uid3::Some(u) => {
-                entry.attr.uid = u;
-            }
-            nfs3::set_uid3::None => {}
+        if let Some(u) = setattr.uid {
+            entry.attr.uid = u
         }
-        match setattr.gid {
-            nfs3::set_gid3::Some(u) => {
-                entry.attr.gid = u;
-            }
-            nfs3::set_gid3::None => {}
+        if let Some(u) = setattr.gid {
+            entry.attr.gid = u
         }
-        match setattr.size {
-            nfs3::set_size3::Some(s) => {
-                entry.attr.size = s;
-                entry.attr.used = s;
-                if let FSContents::File(shared_bytes) = &mut entry.contents {
-                    let mut bytes = shared_bytes.write().unwrap();
-                    bytes.resize(s as usize, 0);
-                }
+        if let Some(s) = setattr.size {
+            entry.attr.size = s;
+            entry.attr.used = s;
+            if let FSContents::File(shared_bytes) = &mut entry.contents {
+                let mut bytes = shared_bytes.write().unwrap();
+                bytes.resize(s as usize, 0);
             }
-            nfs3::set_size3::None => {}
         }
         Ok(entry.attr)
     }
@@ -675,15 +666,15 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Apply any additional attributes
-        if let nfs3::set_mode3::Some(mode) = attrs.mode {
+        if let Some(mode) = attrs.mode {
             entry.attr.mode = mode;
         }
 
-        if let nfs3::set_uid3::Some(uid) = attrs.uid {
+        if let Some(uid) = attrs.uid {
             entry.attr.uid = uid;
         }
 
-        if let nfs3::set_gid3::Some(gid) = attrs.gid {
+        if let Some(gid) = attrs.gid {
             entry.attr.gid = gid;
         }
 

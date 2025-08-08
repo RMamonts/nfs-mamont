@@ -66,10 +66,11 @@ pub async fn handle_rpc(
     let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
     if let xdr::rpc::rpc_body::CALL(call) = recv.body {
-        if let xdr::rpc::auth_flavor::AUTH_UNIX = call.cred.flavor {
-            context.auth = deserialize(&mut Cursor::new(&call.cred.body))?;
+        if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
+            let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
+            context.auth = Some(auth);
         }
-        if call.rpcvers != 2 {
+        if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
             warn!("Invalid RPC version {} != 2", call.rpcvers);
             xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
             return Ok(true);
