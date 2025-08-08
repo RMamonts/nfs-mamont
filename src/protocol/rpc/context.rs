@@ -45,7 +45,7 @@ pub struct Context {
 
     /// UNIX-style authentication credentials from the client
     /// Contains user ID, group IDs, and other identity information
-    pub auth: xdr::rpc::auth_unix,
+    pub auth: Option<xdr::rpc::auth_unix>,
 
     /// Virtual File System implementation that handles actual file operations
     /// Abstracts the underlying storage system for NFS operations

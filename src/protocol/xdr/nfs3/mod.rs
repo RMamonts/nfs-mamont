@@ -119,8 +119,8 @@ impl Serialize for nfsstring {
 }
 
 impl Deserialize for nfsstring {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.0.deserialize(src)
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
+        Ok(nfsstring(Deserialize::deserialize(src)?))
     }
 }
 
@@ -521,26 +521,16 @@ impl Serialize for set_atime {
     }
 }
 impl Deserialize for set_atime {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => {
-                *self = set_atime::DONT_CHANGE;
-            }
-            1 => {
-                *self = set_atime::SET_TO_SERVER_TIME;
-            }
-            2 => {
-                *self = set_atime::SET_TO_CLIENT_TIME(deserialize(src)?);
-            }
-            c => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid set_atime value: {c}"),
-                ));
-            }
+            0 => Ok(set_atime::DONT_CHANGE),
+            1 => Ok(set_atime::SET_TO_SERVER_TIME),
+            2 => Ok(set_atime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            c => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid set_atime value: {c}"),
+            )),
         }
-
-        Ok(())
     }
 }
 
@@ -582,26 +572,16 @@ impl Serialize for set_mtime {
     }
 }
 impl Deserialize for set_mtime {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => {
-                *self = set_mtime::DONT_CHANGE;
-            }
-            1 => {
-                *self = set_mtime::SET_TO_SERVER_TIME;
-            }
-            2 => {
-                *self = set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?);
-            }
-            c => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid set_mtime value: {c}"),
-                ));
-            }
+            0 => Ok(set_mtime::DONT_CHANGE),
+            1 => Ok(set_mtime::SET_TO_SERVER_TIME),
+            2 => Ok(set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            c => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid set_mtime value: {c}"),
+            )),
         }
-
-        Ok(())
     }
 }
 
