@@ -356,7 +356,9 @@ pub trait NFSFileSystem: Sync {
         start_after: nfs3::fileid3,
         count: usize,
     ) -> Result<ReadDirSimpleResult, nfs3::nfsstat3> {
-        Ok(ReadDirSimpleResult::from_readdir_result(&self.readdir(dirid, start_after, count).await?))
+        Ok(ReadDirSimpleResult::from_readdir_result(
+            &self.readdir(dirid, start_after, count).await?,
+        ))
     }
 
     /// Creates a symbolic link
