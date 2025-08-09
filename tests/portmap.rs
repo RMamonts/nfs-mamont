@@ -682,7 +682,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             vfs: Arc::new(DemoFS { _root: String::default() }),
             mount_signal: None,
             export_name: Arc::from(DEFAULT_EXPORT_NAME.to_string()),
