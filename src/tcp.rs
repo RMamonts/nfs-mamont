@@ -297,7 +297,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             let context = rpc::Context {
                 local_port: self.port,
                 client_addr: socket.peer_addr()?.to_string(),
-                auth: xdr::rpc::auth_unix::default(),
+                auth: Some(xdr::rpc::auth_unix::default()),
                 vfs: self.arcfs.clone(),
                 mount_signal: self.mount_signal.clone(),
                 export_name: self.export_name.clone(),
