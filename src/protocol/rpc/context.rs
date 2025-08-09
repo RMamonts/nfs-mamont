@@ -14,13 +14,13 @@
 //! server configuration.
 
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::RwLock;
 
 use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::xdr;
-use crate::vfs;
+use crate::tcp::NFSExportTable;
 
 /// Represents the execution context for RPC operations
 ///
@@ -47,16 +47,8 @@ pub struct Context {
     /// Contains user ID, group IDs, and other identity information
     pub auth: xdr::rpc::auth_unix,
 
-    /// Virtual File System implementation that handles actual file operations
-    /// Abstracts the underlying storage system for NFS operations
-    pub vfs: Arc<dyn vfs::NFSFileSystem + Send + Sync>,
-
-    /// Channel for sending mount/unmount notifications
-    /// Used to track file system mount status changes
-    pub mount_signal: Option<mpsc::Sender<bool>>,
-
-    /// Name of the exported file system available to clients
-    pub export_name: Arc<String>,
+    /// List containing all exported file systems
+    pub export_table: Arc<RwLock<NFSExportTable>>,
 
     /// Transaction state tracker for handling retransmissions
     /// Maintains idempotency by detecting duplicate RPC calls

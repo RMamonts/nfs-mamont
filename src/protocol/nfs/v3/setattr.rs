@@ -50,28 +50,40 @@ pub async fn nfsproc3_setattr(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    let args = deserialize::<nfs3::SETATTR3args>(input)?;
+    debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
+
+    let fs_id = args.object.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let args = deserialize::<nfs3::SETATTR3args>(input)?;
-    debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
 
-    let id = context.vfs.fh_to_id(&args.object);
+    let id = export.vfs.fh_to_id(&args.object);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
 
     let ctime;
 
-    let pre_op_attr = match context.vfs.getattr(id).await {
+    let pre_op_attr = match export.vfs.getattr(id).await {
         Ok(v) => {
             let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
             ctime = v.ctime;
@@ -93,7 +105,7 @@ pub async fn nfsproc3_setattr(
         }
     }
 
-    match context.vfs.setattr(id, args.new_attribute).await {
+    match export.vfs.setattr(id, args.new_attribute).await {
         Ok(post_op_attr) => {
             debug!(" setattr success {:?} --> {:?}", xid, post_op_attr);
             let wcc_res = nfs3::wcc_data {
