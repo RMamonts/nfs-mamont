@@ -96,7 +96,7 @@ async fn process_socket(
                     }
                     Err(e) => {
                         debug!("Message handling closed : {:?}", e);
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
 
