@@ -39,6 +39,9 @@ use crate::protocol::{nfs, rpc};
 const NFS_ACL_PROGRAM: u32 = 100227;
 /// RPC program number for NFS ID Mapping
 const NFS_ID_MAP_PROGRAM: u32 = 100270;
+/// RPC program number for LOCALIO auxiliary RPC protocol
+/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
+const NFS_LOCALIO_PROGRAM: u32 = 400122;
 /// RPC program number for NFS Metadata
 const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
@@ -114,6 +117,11 @@ pub async fn handle_rpc(
             || prog == NFS_METADATA_PROGRAM =>
         {
             trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+        NFS_LOCALIO_PROGRAM => {
+            trace!("Ignoring NFS_LOCALIO packet");
             xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
             Ok(())
         }
