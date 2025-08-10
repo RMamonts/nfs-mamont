@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::RwLock;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
+use tokio::sync::RwLock;
 
 use nfs_mamont::vfs;
 use nfs_mamont::xdr::nfs3;
@@ -117,7 +117,10 @@ impl vfs::NFSFileSystem for DemoFS {
         {
             let mut fs = self.fs.write().await;
             newid = fs.len() as nfs3::fileid3;
-            fs.insert(newid, make_file(std::str::from_utf8(filename).unwrap(), newid, dirid, "".as_bytes()));
+            fs.insert(
+                newid,
+                make_file(std::str::from_utf8(filename).unwrap(), newid, dirid, "".as_bytes()),
+            );
             if let Some(FSContents::Directory(dir)) = fs.get_mut(&dirid).map(|e| &mut e.contents) {
                 dir.push(newid);
             }
@@ -141,8 +144,8 @@ impl vfs::NFSFileSystem for DemoFS {
         dirid: nfs3::fileid3,
         filename: &nfs3::filename3,
     ) -> Result<nfs3::fileid3, nfs3::nfsstat3> {
-    let fs = self.fs.read().await;
-    let entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let fs = self.fs.read().await;
+        let entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::File(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         } else if let FSContents::Directory(dir) = &entry.contents {
@@ -167,9 +170,9 @@ impl vfs::NFSFileSystem for DemoFS {
 
     /// Gets the attributes of a file system entry.
     async fn getattr(&self, id: nfs3::fileid3) -> Result<nfs3::fattr3, nfs3::nfsstat3> {
-    let fs = self.fs.read().await;
-    let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
-    Ok(entry.attr)
+        let fs = self.fs.read().await;
+        let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        Ok(entry.attr)
     }
 
     /// Sets attributes for a file system entry.
@@ -179,8 +182,8 @@ impl vfs::NFSFileSystem for DemoFS {
         id: nfs3::fileid3,
         setattr: nfs3::sattr3,
     ) -> Result<nfs3::fattr3, nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
-    let entry = fs.get_mut(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let mut fs = self.fs.write().await;
+        let entry = fs.get_mut(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         match setattr.atime {
             nfs3::set_atime::DONT_CHANGE => {}
             nfs3::set_atime::SET_TO_CLIENT_TIME(c) => {
@@ -237,8 +240,8 @@ impl vfs::NFSFileSystem for DemoFS {
         offset: u64,
         count: u32,
     ) -> Result<(Vec<u8>, bool), nfs3::nfsstat3> {
-    let fs = self.fs.read().await;
-    let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let fs = self.fs.read().await;
+        let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::Directory(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
         } else if let FSContents::File(shared_bytes) = &entry.contents {
@@ -266,8 +269,8 @@ impl vfs::NFSFileSystem for DemoFS {
         start_after: nfs3::fileid3,
         max_entries: usize,
     ) -> Result<vfs::ReadDirResult, nfs3::nfsstat3> {
-    let fs = self.fs.read().await;
-    let entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let fs = self.fs.read().await;
+        let entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::File(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         } else if let FSContents::Directory(dir) = &entry.contents {
@@ -308,8 +311,8 @@ impl vfs::NFSFileSystem for DemoFS {
         dirid: nfs3::fileid3,
         filename: &nfs3::filename3,
     ) -> Result<(), nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
-    let dir_entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let mut fs = self.fs.write().await;
+        let dir_entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
 
         if let FSContents::File(_) = dir_entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
@@ -334,7 +337,7 @@ impl vfs::NFSFileSystem for DemoFS {
         };
 
         // Check that it's not a directory
-    if let FSContents::Directory(_) = fs.get(&file_id).unwrap().contents {
+        if let FSContents::Directory(_) = fs.get(&file_id).unwrap().contents {
             // If trying to remove a directory using remove, return an error
             return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
         }
@@ -363,7 +366,7 @@ impl vfs::NFSFileSystem for DemoFS {
         to_dirid: nfs3::fileid3,
         to_filename: &nfs3::filename3,
     ) -> Result<(), nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
+        let mut fs = self.fs.write().await;
 
         // Find the file in the source directory
         let file_id = {
@@ -392,7 +395,8 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Find ID of the file to remove (if it exists)
-        let to_remove_id = if let FSContents::Directory(dir) = &fs.get(&to_dirid).unwrap().contents {
+        let to_remove_id = if let FSContents::Directory(dir) = &fs.get(&to_dirid).unwrap().contents
+        {
             let mut to_remove = None;
             for &id in dir {
                 if let Some(file) = fs.get(&id) {
@@ -446,22 +450,16 @@ impl vfs::NFSFileSystem for DemoFS {
         dirid: nfs3::fileid3,
         dirname: &nfs3::filename3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
+        let mut fs = self.fs.write().await;
 
         // Check that the parent directory exists
-        if !fs
-            .get(&dirid)
-            .is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_)))
-        {
+        if !fs.get(&dirid).is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_))) {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         }
 
         // Check that a directory with this name doesn't already exist
         if let FSContents::Directory(dir) = &fs.get(&dirid).unwrap().contents {
-            if dir
-                .iter()
-                .any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == dirname[..]))
-            {
+            if dir.iter().any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == dirname[..])) {
                 return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
             }
         }
@@ -496,13 +494,10 @@ impl vfs::NFSFileSystem for DemoFS {
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
         // In our simple implementation, we'll just create a special file
         // with contents representing the path the link points to
-    let mut fs = self.fs.write().await;
+        let mut fs = self.fs.write().await;
 
         // Check that the parent directory exists
-        if !fs
-            .get(&dirid)
-            .is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_)))
-        {
+        if !fs.get(&dirid).is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_))) {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         }
 
@@ -533,10 +528,10 @@ impl vfs::NFSFileSystem for DemoFS {
 
     /// Reads the target of a symbolic link.
     async fn readlink(&self, id: nfs3::fileid3) -> Result<nfs3::nfspath3, nfs3::nfsstat3> {
-    let fs = self.fs.read().await;
+        let fs = self.fs.read().await;
 
-    // Check that the file exists
-    let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        // Check that the file exists
+        let entry = fs.get(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
 
         // Use matching instead of comparing with ftype3::NF3LNK
         match entry.attr.ftype {
@@ -560,13 +555,13 @@ impl vfs::NFSFileSystem for DemoFS {
         target_dir_id: nfs3::fileid3,
         link_name: &nfs3::filename3,
     ) -> Result<nfs3::fattr3, nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
+        let mut fs = self.fs.write().await;
 
-    // Check that the source file exists
-    let source_file = fs.get(&file_id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        // Check that the source file exists
+        let source_file = fs.get(&file_id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
 
         // Check that the source is a file, not a directory
-    if let FSContents::Directory(_) = source_file.contents {
+        if let FSContents::Directory(_) = source_file.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_ISDIR);
         }
 
@@ -580,9 +575,7 @@ impl vfs::NFSFileSystem for DemoFS {
 
         // Check if a file with the same name already exists in the target directory
         if let FSContents::Directory(dir) = &fs.get(&target_dir_id).unwrap().contents {
-            if dir
-                .iter()
-                .any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == link_name[..]))
+            if dir.iter().any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == link_name[..]))
             {
                 return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
             }
@@ -625,22 +618,17 @@ impl vfs::NFSFileSystem for DemoFS {
         device_spec: nfs3::specdata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
-    let mut fs = self.fs.write().await;
+        let mut fs = self.fs.write().await;
 
         // Check that the parent directory exists
-        if !fs
-            .get(&dir_id)
-            .is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_)))
+        if !fs.get(&dir_id).is_some_and(|entry| matches!(entry.contents, FSContents::Directory(_)))
         {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         }
 
         // Check if a file with the same name already exists
         if let FSContents::Directory(dir) = &fs.get(&dir_id).unwrap().contents {
-            if dir
-                .iter()
-                .any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == name[..]))
-            {
+            if dir.iter().any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == name[..])) {
                 return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
             }
         }
@@ -725,8 +713,8 @@ impl vfs::NFSFileSystem for DemoFS {
         // For this demo, we'll just update the file's modification time
         // and return the attributes.
 
-    let mut fs = self.fs.write().await;
-    let entry = fs.get_mut(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
+        let mut fs = self.fs.write().await;
+        let entry = fs.get_mut(&id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
 
         // Update the file's modification time
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
