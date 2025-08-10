@@ -30,7 +30,8 @@ use crate::vfs::NFSFileSystem;
 pub struct NFSExportTableEntry {
     /// Arc reference to the NFS file system implementation
     pub vfs: Arc<dyn NFSFileSystem + Send + Sync + 'static>,
-    /// Optional channel for sending mount/unmount notifications
+    /// Channel for mount/unmount notifications
+    /// If `Some(sender)`, it will be used to notify when a client mounts (`true`) or unmounts (`false`) the file system.
     pub mount_signal: Option<mpsc::Sender<bool>>,
     /// Name of the exported file system path
     pub export_name: String,
