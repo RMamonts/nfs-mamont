@@ -71,22 +71,15 @@ pub async fn handle_portmap(
     let prog =
         portmap::PortmapProgram::from_u32(call.proc).unwrap_or(portmap::PortmapProgram::INVALID);
 
+    #[rustfmt::skip]
     match prog {
         portmap::PortmapProgram::PMAPPROC_NULL => pmapproc_null(xid, output)?,
-        portmap::PortmapProgram::PMAPPROC_GETPORT => {
-            pmapproc_getport(xid, input, output, context).await?
-        }
-        portmap::PortmapProgram::PMAPPROC_SET => {
-            pmapproc_setport(xid, input, output, context).await?
-        }
+        portmap::PortmapProgram::PMAPPROC_GETPORT => pmapproc_getport(xid, input, output, context).await?,
+        portmap::PortmapProgram::PMAPPROC_SET => pmapproc_setport(xid, input, output, context).await?,
         portmap::PortmapProgram::PMAPPROC_DUMP => pmapproc_dump(xid, output, context).await?,
-        portmap::PortmapProgram::PMAPPROC_UNSET => {
-            pmapproc_unsetport(xid, input, output, context).await?
-        }
-        _ => {
-            xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
-        }
-    }
+        portmap::PortmapProgram::PMAPPROC_UNSET => pmapproc_unsetport(xid, input, output, context).await?,
+        _ =>  xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?
+    };
     Ok(())
 }
 
