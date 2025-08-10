@@ -482,6 +482,12 @@ pub struct wcc_attr {
 DeserializeStruct!(wcc_attr, size, mtime, ctime);
 SerializeStruct!(wcc_attr, size, mtime, ctime);
 
+impl From<fattr3> for wcc_attr {
+    fn from(attr: fattr3) -> Self {
+        wcc_attr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
+    }
+}
+
 /// Pre-operation attributes for weak cache consistency as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state before an operation was performed
 /// Used together with post-operation attributes to determine if file state changed

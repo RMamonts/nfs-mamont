@@ -85,9 +85,8 @@ pub async fn nfsproc3_setattr(
 
     let pre_op_attr = match export.vfs.getattr(id).await {
         Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
             ctime = v.ctime;
-            nfs3::pre_op_attr::Some(wccattr)
+            nfs3::pre_op_attr::Some(v.into())
         }
         Err(stat) => {
             xdr::rpc::make_success_reply(xid).serialize(output)?;

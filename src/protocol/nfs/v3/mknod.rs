@@ -85,12 +85,7 @@ pub async fn nfsproc3_mknod(
     let dir_id = dir_id.unwrap();
 
     // get the object attributes before the operation
-    let pre_dir_attr = export
-        .vfs
-        .getattr(dir_id)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
 
     // Create default attributes if necessary
     let attr = nfs3::sattr3::default();

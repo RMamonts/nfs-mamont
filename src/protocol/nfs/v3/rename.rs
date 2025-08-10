@@ -128,10 +128,7 @@ pub async fn nfsproc3_rename(
 
     // get the object attributes before the write
     let pre_from_dir_attr = match export.vfs.getattr(from_dir_id).await {
-        Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wccattr)
-        }
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -144,10 +141,7 @@ pub async fn nfsproc3_rename(
 
     // get the object attributes before the write
     let pre_to_dir_attr = match export.vfs.getattr(to_dir_id).await {
-        Ok(v) => {
-            let wcc_attr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wcc_attr)
-        }
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
