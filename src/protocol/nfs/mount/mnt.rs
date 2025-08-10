@@ -86,7 +86,7 @@ pub async fn mountproc3_mnt(
             ],
         };
         debug!("{:?} --> {:?}", xid, response);
-        if let Some(ref chan) = mount_entry.mount_signal {
+        if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(true).await;
         }
         xdr::rpc::make_success_reply(xid).serialize(output)?;
