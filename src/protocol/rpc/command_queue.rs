@@ -4,7 +4,8 @@
 //! are processed in the exact order they were received, preserving FIFO semantics
 //! necessary for proper NFS protocol operation.
 
-use anyhow::anyhow;
+use std::io;
+
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace};
 
@@ -61,15 +62,14 @@ pub struct RpcCommand {
 }
 
 /// Command processing result
-pub type CommandResult = Result<Option<ResponseBuffer>, anyhow::Error>;
+pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 
 /// Type for asynchronous RPC command processor
 pub type AsyncCommandProcessor = for<'a> fn(
     data: &[u8],
     output: &'a mut ResponseBuffer,
     context: rpc::Context,
-)
-    -> futures::future::BoxFuture<'a, anyhow::Result<bool>>;
+) -> futures::future::BoxFuture<'a, io::Result<bool>>;
 
 /// Queue for sequential processing of RPC commands
 ///
@@ -159,15 +159,9 @@ impl CommandQueue {
     ///
     /// # Returns
     ///
-    /// `Ok(())` if command was successfully submitted,
-    /// `Err` if submission failed (e.g. if queue was closed)
-    pub fn submit_command(
-        &self,
-        data: Vec<u8>,
-        context: rpc::Context,
-    ) -> Result<(), anyhow::Error> {
-        self.command_sender
-            .send(RpcCommand { data, context })
-            .map_err(|e| anyhow!("Failed to send command: {}", e))
+    /// `true` if command was successfully submitted,
+    /// `false` if submission failed (e.g. if queue was closed)
+    pub fn submit_command(&self, data: Vec<u8>, context: rpc::Context) -> bool {
+        self.command_sender.send(RpcCommand { data, context }).is_ok()
     }
 }

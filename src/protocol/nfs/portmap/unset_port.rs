@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{Read, Write};
 
 use crate::protocol::nfs::portmap::PortmapKey;
@@ -24,13 +25,13 @@ use crate::xdr::{deserialize, Serialize};
 /// - `Ok(())` on success, serializing:
 ///   - RPC success header (via `make_success_reply`).
 ///   - Boolean `true` if at least one port was removed, `false` otherwise.
-/// - `Err(anyhow::Error)` on deserialization or serialization failures.
+/// - `std::io::Error` on deserialization or serialization failures.
 pub fn pmapproc_unsetport(
     xid: u32,
     read: &mut impl Read,
     output: &mut impl Write,
     context: &Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let mapping = deserialize::<mapping>(read)?;
     let mut binding = context.portmap_table.write().unwrap();
     let tcp_removed = binding

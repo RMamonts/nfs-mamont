@@ -16,6 +16,7 @@
 //! Hard links can be created only within a single file system (volume).
 //! Servers should return `NFS3ERR_XDEV` if a cross-device link is attempted.
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::{debug, warn};
@@ -39,13 +40,13 @@ use crate::vfs;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_link(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     // if we do not have write capabilities
     if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");

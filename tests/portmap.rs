@@ -1,3 +1,4 @@
+use std::io;
 use std::io::Cursor;
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
@@ -193,7 +194,7 @@ fn send_get_port(
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let body = call_body {
         rpcvers: DEFAULT_VERSION,
         prog: xdr::portmap::PROGRAM,
@@ -219,7 +220,7 @@ fn send_set_port(
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let body = call_body {
         rpcvers: DEFAULT_VERSION,
         prog: xdr::portmap::PROGRAM,
@@ -244,7 +245,7 @@ fn send_dump(
     context: &mut Context,
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let body = call_body {
         rpcvers: 2,
         prog: xdr::portmap::PROGRAM,
@@ -266,7 +267,7 @@ fn send_unset_port(
     input: &mut Cursor<Vec<u8>>,
     output: &mut Cursor<Vec<u8>>,
     mapping_args: mapping,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let body = call_body {
         rpcvers: DEFAULT_VERSION,
         prog: xdr::portmap::PROGRAM,
@@ -314,12 +315,7 @@ fn call_assert<F, T>(
     mapping: mapping,
     expected: T,
 ) where
-    F: FnOnce(
-        &mut Context,
-        &mut Cursor<Vec<u8>>,
-        &mut Cursor<Vec<u8>>,
-        mapping,
-    ) -> Result<(), anyhow::Error>,
+    F: FnOnce(&mut Context, &mut Cursor<Vec<u8>>, &mut Cursor<Vec<u8>>, mapping) -> io::Result<()>,
     T: PartialEq + Default + xdr::Deserialize + std::fmt::Debug,
 {
     input.set_position(0);
