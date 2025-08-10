@@ -333,20 +333,14 @@ impl vfs::NFSFileSystem for DemoFS {
         };
 
         // Type check
-        if let Some(target_entry) = fs.get(id_to_remove as usize) {
-            match &target_entry.contents {
-                FSContents::File(_) => {
-                    // File is OK - do not check
-                }
-                FSContents::Directory(contents) => {
-                    // Check is there something inside dir
-                    if !contents.is_empty() {
-                        return Err(nfs3::nfsstat3::NFS3ERR_NOTEMPTY);
-                    }
-                }
-            }
-        } else {
+        let Some(target_entry) = fs.get(id_to_remove as usize) else {
             return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+        };
+
+        if let FSContents::Directory(contents) = &target_entry.contents {
+            if !contents.is_empty() {
+                return Err(nfs3::nfsstat3::NFS3ERR_NOTEMPTY);
+            }
         }
 
         // Remove the file from the directory list
