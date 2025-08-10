@@ -21,7 +21,7 @@ use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{deserialize, Deserialize, Serialize};
-use crate::xdr::{DeserializeEnum, SerializeEnum};
+use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
 use crate::{DeserializeStruct, SerializeStruct};
 
 // Modules for different operation types
@@ -382,7 +382,7 @@ const _: () = {
 // and thus needs to be encoded with its length as the first 4 bytes.
 impl Deserialize for nfs_fh3 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let _len = deserialize::<u32>(src)?;
+        let _len = deserialize::<UsizeAsU32>(src)?;
         self.gen = deserialize::<u64>(src)?;
         self.fs_id = deserialize::<fs_id>(src)?;
         self.id = deserialize::<fileid3>(src)?;
@@ -392,7 +392,7 @@ impl Deserialize for nfs_fh3 {
 
 impl Serialize for nfs_fh3 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
-        (size_of::<Self>() as u32).serialize(dest)?;
+        UsizeAsU32(size_of::<Self>()).serialize(dest)?;
         self.gen.serialize(dest)?;
         self.fs_id.serialize(dest)?;
         self.id.serialize(dest)?;
