@@ -90,10 +90,7 @@ pub async fn nfsproc3_create(
 
     // get the object attributes before the write
     let pre_dir_attr = match export.vfs.getattr(dirid).await {
-        Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wccattr)
-        }
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;

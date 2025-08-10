@@ -104,12 +104,7 @@ pub async fn nfsproc3_link(
     let dir_id = dir_id.unwrap();
 
     // Get the directory attributes before the operation
-    let pre_dir_attr = export
-        .vfs
-        .getattr(dir_id)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
 
     // Call VFS link method
     match export.vfs.link(file_id, dir_id, &args.link.name).await {

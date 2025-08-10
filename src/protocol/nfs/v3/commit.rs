@@ -72,12 +72,7 @@ pub async fn nfsproc3_commit(
     let id = id.unwrap();
 
     // get the object attributes before the commit
-    let pre_obj_attr = export
-        .vfs
-        .getattr(id)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::wcc_attr::from).ok();
 
     // Call VFS commit method
     match export.vfs.commit(id, args.offset, args.count).await {
