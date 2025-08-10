@@ -12,7 +12,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 /// NFS version 4 status codes as defined in RFC 7530
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive, PartialEq, Eq)]
-#[repr(u32)]
 pub enum nfsstat4 {
     #[default]
     NFS4_OK = 0,
@@ -137,7 +136,6 @@ impl xdr::DeserializeEnum for nfsstat4 {}
 /// NFS operation numbers as defined in RFC 7530
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
 pub enum nfs_opnum4 {
     OP_NULL = 0,
     OP_COMPOUND = 1,
