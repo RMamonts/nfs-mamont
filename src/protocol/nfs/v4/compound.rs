@@ -50,7 +50,6 @@ pub async fn nfsproc4_compound(
         args.argarray.len()
     );
 
-    // Create response structure
     let response = nfs4::COMPOUND4res {
         status: nfs4::nfsstat4::NFS4_OK,
         tag: args.tag.clone(),
