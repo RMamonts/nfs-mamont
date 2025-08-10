@@ -5,7 +5,7 @@
 use std::io::{Read, Write};
 
 use num_traits::cast::ToPrimitive;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
@@ -40,7 +40,12 @@ pub async fn mountproc3_mnt(
         return Ok(());
     }
 
-    let utf8path = std::str::from_utf8(&path).unwrap_or_default();
+    let Ok(utf8path) = std::str::from_utf8(&path) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
+        return Ok(());
+    };
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
 
     let export_table = context.export_table.read().await;

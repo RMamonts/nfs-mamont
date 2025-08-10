@@ -4,7 +4,7 @@
 
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
@@ -39,7 +39,10 @@ pub async fn mountproc3_umnt(
     context: &rpc::Context,
 ) -> Result<(), anyhow::Error> {
     let path = deserialize::<Vec<_>>(input)?;
-    let utf8path = std::str::from_utf8(&path).unwrap_or_default();
+    let Ok(utf8path) = std::str::from_utf8(&path) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+        return Ok(());
+    };
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);
 
     let export_table = context.export_table.read().await;
