@@ -68,65 +68,74 @@ pub async fn handle_rpc(
 ) -> Result<bool, anyhow::Error> {
     let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
-    if let xdr::rpc::rpc_body::CALL(call) = recv.body {
-        if let xdr::rpc::auth_flavor::AUTH_UNIX = call.cred.flavor {
-            context.auth = deserialize(&mut Cursor::new(&call.cred.body))?;
-        }
-        if call.rpcvers != 2 {
-            warn!("Invalid RPC version {} != 2", call.rpcvers);
-            xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
-            return Ok(true);
-        }
 
-        if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
-            // This is a retransmission
-            // Drop the message and return
-            debug!(
-                "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-                xid, context.client_addr, call
-            );
-            return Ok(false);
+    let call = match recv.body {
+        xdr::rpc::rpc_body::CALL(call) => call,
+        _ => {
+            error!("Unexpectedly received a Reply instead of a Call");
+            return Err(anyhow!("Bad RPC Call format"));
         }
+    };
 
-        let res = {
-            match call.prog {
-                nfs3::PROGRAM => match call.vers {
-                    nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
-                    _ => {
-                        error!("NFSv4 not implemented");
-                        Err(anyhow!("NFSv4 protocol error"))
-                    }
-                },
-                portmap::PROGRAM => {
-                    nfs::portmap::handle_portmap(xid, &call, input, output, &mut context)
-                }
-                mount::PROGRAM => {
-                    nfs::mount::handle_mount(xid, call, input, output, &context).await
-                }
-                NFS_ACL_PROGRAM | NFS_ID_MAP_PROGRAM | NFS_METADATA_PROGRAM => {
-                    trace!("ignoring NFS_ACL packet");
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
-                }
-                NFS_LOCALIO_PROGRAM => {
-                    trace!("Ignoring NFS_LOCALIO packet");
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
-                }
-                unknown_number => {
-                    warn!("Unknown RPC Program number {} != {}", unknown_number, nfs3::PROGRAM);
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
-                }
-            }
-        }
-        .map(|_| true);
-        context.transaction_tracker.mark_processed(xid, &context.client_addr);
-        res
-    } else {
-        error!("Unexpectedly received a Reply instead of a Call");
-        Err(anyhow!("Bad RPC Call format"))
+    if let xdr::rpc::auth_flavor::AUTH_UNIX = call.cred.flavor {
+        context.auth = deserialize(&mut Cursor::new(&call.cred.body))?;
     }
+
+    if call.rpcvers != 2 {
+        warn!("Invalid RPC version {} != 2", call.rpcvers);
+        xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
+        return Ok(true);
+    }
+
+    if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+        debug!(
+            "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
+            xid, context.client_addr, call
+        );
+        return Ok(false);
+    }
+
+    let result = match call.prog {
+        nfs3::PROGRAM => match call.vers {
+            nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
+            nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, &context).await,
+            v => {
+                warn!("Unsupported NFS version: {}", v);
+                xdr::rpc::prog_version_range_mismatch_reply_message(
+                    xid,
+                    nfs3::VERSION,
+                    nfs::v4::VERSION,
+                )
+                .serialize(output)?;
+                Ok(())
+            }
+        },
+        portmap::PROGRAM => nfs::portmap::handle_portmap(xid, &call, input, output, &mut context),
+        mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
+        prog if prog == NFS_ACL_PROGRAM
+            || prog == NFS_ID_MAP_PROGRAM
+            || prog == NFS_METADATA_PROGRAM =>
+        {
+            trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+        NFS_LOCALIO_PROGRAM => {
+            trace!("Ignoring NFS_LOCALIO packet");
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+        _ => {
+            warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+    }
+    .map(|_| true);
+
+    context.transaction_tracker.mark_processed(xid, &context.client_addr);
+
+    result
 }
 
 /// Reads a single record-marked fragment from a stream
