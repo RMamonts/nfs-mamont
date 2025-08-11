@@ -319,7 +319,7 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Find the file in the directory
-        let file_id = {
+        let id_to_remove = {
             if let FSContents::Directory(dir) = &fs.get(&dirid).unwrap().contents {
                 let mut file_id = None;
                 for &id in dir {
@@ -337,7 +337,7 @@ impl vfs::NFSFileSystem for DemoFS {
         };
 
         // Type check
-        let Some(target_entry) = fs.get(id_to_remove as usize) else {
+        let Some(target_entry) = fs.get(&id_to_remove) else {
             return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
         };
 
@@ -349,12 +349,12 @@ impl vfs::NFSFileSystem for DemoFS {
 
         // Remove the file from the directory list
         if let FSContents::Directory(dir) = &mut fs.get_mut(&dirid).unwrap().contents {
-            dir.retain(|&id| id != file_id);
+            dir.retain(|&id| id != id_to_remove);
         }
 
         // Mark the file as deleted (in a real FS, we would completely remove it)
         // In our simple implementation, we just clear the name and contents
-        if let Some(entry) = fs.get_mut(&file_id) {
+        if let Some(entry) = fs.get_mut(&id_to_remove) {
             entry.name = Vec::new().into();
             entry.contents = FSContents::File(Arc::new(RwLock::new(Vec::new())));
         }
