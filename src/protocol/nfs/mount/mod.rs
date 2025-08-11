@@ -1,6 +1,7 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -34,14 +35,14 @@ use umnt_all::mountproc3_umnt_all;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_mount(
     xid: u32,
     call: xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::INVALID);
 
     match prog {

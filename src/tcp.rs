@@ -14,7 +14,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use std::{io, net::IpAddr};
 
-use anyhow;
 use async_trait::async_trait;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -23,6 +22,7 @@ use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::{rpc, xdr};
+use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
@@ -66,7 +66,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 async fn process_socket(
     mut socket: tokio::net::TcpStream,
     context: rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let (mut message_handler, mut socksend, mut msgrecvchan) =
         rpc::SocketMessageHandler::new(&context);
     let _ = socket.set_nodelay(true);
@@ -96,7 +96,7 @@ async fn process_socket(
                     }
                     Err(e) => {
                         debug!("Message handling closed : {:?}", e);
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
 
@@ -113,7 +113,7 @@ async fn process_socket(
                         }
                     }
                     None => {
-                        return Err(anyhow::anyhow!("Unexpected socket context termination"));
+                        return io_other("Unexpected socket context termination");
                     }
                 }
             }

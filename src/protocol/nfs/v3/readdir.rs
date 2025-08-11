@@ -19,6 +19,7 @@
 //!   * A cookie for retrieving the next batch of entries
 //! - A flag indicating whether the end of the directory was reached
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::{debug, error, trace};
@@ -41,13 +42,13 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_readdir(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let args = deserialize::<nfs3::dir::READDIR3args>(input)?;
     debug!("nfsproc3_readdirplus({:?},{:?}) ", xid, args);
 

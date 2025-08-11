@@ -16,6 +16,7 @@
 //! the server should return `NFS3ERR_INVAL`. The `READLINK` operation is only allowed on
 //! objects of type NF3LNK.
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::debug;
@@ -38,7 +39,7 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 ///
 /// # Errors
 ///
@@ -51,7 +52,7 @@ pub async fn nfsproc3_readlink(
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_readlink({:?},{:?}) ", xid, handle);
 

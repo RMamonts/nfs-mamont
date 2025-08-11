@@ -22,7 +22,7 @@
 //!
 //! Each operation handler follows the same pattern as NFSv3, taking RPC parameters
 //! and returning appropriate responses via the output stream.
-
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -53,14 +53,14 @@ pub const VERSION: u32 = 4;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_nfs(
     xid: u32,
     call: xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     if call.vers != VERSION {
         warn!("Invalid NFS Version number {} != {}", call.vers, VERSION);
         xdr::rpc::prog_mismatch_reply_message(xid, VERSION).serialize(output)?;

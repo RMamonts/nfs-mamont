@@ -2,6 +2,7 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::ToPrimitive;
@@ -27,13 +28,13 @@ use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn mountproc3_mnt(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let path = deserialize::<Vec<u8>>(input)?;
     let utf8path = std::str::from_utf8(&path).unwrap_or_default();
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);

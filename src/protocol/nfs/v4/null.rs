@@ -8,6 +8,7 @@
 //!
 //! NULL takes no arguments and returns no results, just an RPC response indicating success.
 
+use std::io;
 use std::io::Write;
 
 use tracing::debug;
@@ -27,7 +28,7 @@ use crate::protocol::xdr::{self, Serialize};
 /// # Returns
 ///
 /// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
-pub fn nfsproc4_null(xid: u32, output: &mut impl Write) -> Result<(), anyhow::Error> {
+pub fn nfsproc4_null(xid: u32, output: &mut impl Write) -> io::Result<()> {
     debug!("nfsproc4_null({:?})", xid);
     let msg = xdr::rpc::make_success_reply(xid);
     debug!("\t{:?} --> {:?}", xid, msg);

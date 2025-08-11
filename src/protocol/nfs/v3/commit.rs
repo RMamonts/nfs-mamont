@@ -18,6 +18,7 @@
 //! - A write verifier that the client can compare with the one from previous WRITEs
 //!   to detect server reboots that might have lost uncommitted data
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::debug;
@@ -40,13 +41,13 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_commit(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let args = deserialize::<nfs3::file::COMMIT3args>(input)?;
     debug!("nfsproc3_commit({:?}, {:?}) ", xid, args);
 

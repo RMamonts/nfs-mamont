@@ -13,6 +13,7 @@
 //! - An EOF flag indicating whether the read reached the end of file
 //! - The data read from the file
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::{debug, error};
@@ -35,13 +36,13 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_read(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let args = deserialize::<nfs3::file::READ3args>(input)?;
     debug!("nfsproc3_read({:?},{:?}) ", xid, args);
 

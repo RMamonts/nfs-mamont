@@ -2,6 +2,7 @@
 //! <https://datatracker.ietf.org/doc/rfc1057/>.
 
 use std::collections::HashMap;
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -55,14 +56,14 @@ pub struct PortmapKey {
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub fn handle_portmap(
     xid: u32,
     call: &xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &mut Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     if call.vers != portmap::VERSION {
         error!("Invalid Portmap Version number {} != {}", call.vers, portmap::VERSION);
         xdr::rpc::prog_mismatch_reply_message(xid, portmap::VERSION).serialize(output)?;
