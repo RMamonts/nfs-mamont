@@ -116,6 +116,8 @@ pub async fn handle_nfs(
 ) -> io::Result<()> {
     if call.vers != nfs3::VERSION {
         warn!("Invalid NFS Version number {} != {}", call.vers, nfs3::VERSION);
+        // TODO: Use prog_version_range_mismatch_reply_message with proper version range
+        // Currently this only reports NFS v3 support, but server actually supports v3-v4
         xdr::rpc::prog_mismatch_reply_message(xid, nfs3::VERSION).serialize(output)?;
         return Ok(());
     }
