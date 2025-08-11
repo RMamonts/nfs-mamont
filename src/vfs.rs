@@ -345,6 +345,7 @@ pub trait NFSFileSystem: Sync {
     ///
     /// # Arguments
     /// * `dirid` - The directory ID to read
+    /// * `start_after` - The file ID after which to start listing (0 means start from beginning)
     /// * `count` - Maximum number of entries to return
     ///
     /// # Returns
@@ -352,9 +353,12 @@ pub trait NFSFileSystem: Sync {
     async fn readdir_simple(
         &self,
         dirid: nfs3::fileid3,
+        start_after: nfs3::fileid3,
         count: usize,
     ) -> Result<ReadDirSimpleResult, nfs3::nfsstat3> {
-        Ok(ReadDirSimpleResult::from_readdir_result(&self.readdir(dirid, 0, count).await?))
+        Ok(ReadDirSimpleResult::from_readdir_result(
+            &self.readdir(dirid, start_after, count).await?,
+        ))
     }
 
     /// Creates a symbolic link
