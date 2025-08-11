@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{Read, Write};
 
 use crate::protocol::nfs::portmap::PortmapKey;
@@ -15,7 +16,7 @@ use crate::xdr::{deserialize, Serialize};
 /// * `context` - Shared RPC context containing the portmap table
 ///
 /// # Returns
-/// `Result<(), anyhow::Error>` indicating success or failure
+/// `io::Result<()>` indicating success or failure
 ///
 /// # Behavior
 /// 1. Deserializes the mapping request
@@ -27,7 +28,7 @@ pub fn pmapproc_setport(
     read: &mut impl Read,
     output: &mut impl Write,
     context: &mut Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let mapping = deserialize::<mapping>(read)?;
     let entry = PortmapKey { prog: mapping.prog, vers: mapping.vers, prot: mapping.prot };
     let mut binding = context.portmap_table.write().unwrap();

@@ -37,6 +37,7 @@
 //! - Better attribute caching with the `ACCESS` procedure
 //! - Enhanced directory reading with `READDIRPLUS`
 
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -105,14 +106,14 @@ use write::nfsproc3_write;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_nfs(
     xid: u32,
     call: xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     if call.vers != nfs3::VERSION {
         warn!("Invalid NFS Version number {} != {}", call.vers, nfs3::VERSION);
         // TODO: Use prog_version_range_mismatch_reply_message with proper version range

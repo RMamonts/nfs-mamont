@@ -2,6 +2,7 @@
 //! as defined in RFC 1057 A.2 section.
 //! <https://datatracker.ietf.org/doc/rfc1057/>.
 
+use std::io;
 use std::io::{Read, Write};
 
 use crate::protocol::nfs::portmap::{get_port, PortmapKey};
@@ -25,7 +26,7 @@ use crate::protocol::xdr::{self, deserialize, portmap::mapping, Serialize};
 /// * `context` - Shared RPC context containing the portmap table (read-only)
 ///
 /// # Returns
-/// `Result<(), anyhow::Error>` indicating:
+/// `io::Result<()>` indicating:
 /// - `Ok(())` on successful operation
 /// - `Err` if deserialization or serialization fails
 ///
@@ -41,7 +42,7 @@ pub fn pmapproc_getport(
     read: &mut impl Read,
     output: &mut impl Write,
     context: &Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let mapping = deserialize::<mapping>(read)?;
     let entry = PortmapKey { prog: mapping.prog, vers: mapping.vers, prot: mapping.prot };
     let port = get_port(context, &entry);

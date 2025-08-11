@@ -10,6 +10,7 @@
 //! Each COMPOUND request contains an array of individual operations, and the
 //! server executes them sequentially, stopping on the first error.
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::debug;
@@ -38,7 +39,7 @@ pub async fn nfsproc4_compound(
     input: &mut impl Read,
     output: &mut impl Write,
     _context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     debug!("nfsproc4_compound({:?})", xid);
 
     // Deserialize compound arguments

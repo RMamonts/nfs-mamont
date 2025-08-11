@@ -2,6 +2,7 @@
 //! as defined in RFC 1057 A.2 section.
 //! <https://datatracker.ietf.org/doc/rfc1057/>.
 
+use std::io;
 use std::io::Write;
 
 use tracing::debug;
@@ -20,8 +21,8 @@ use crate::protocol::xdr::{self, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
-pub fn pmapproc_null(xid: u32, output: &mut impl Write) -> Result<(), anyhow::Error> {
+/// * `io::Result<()>` - Ok(()) on success or an error
+pub fn pmapproc_null(xid: u32, output: &mut impl Write) -> io::Result<()> {
     debug!("pmapproc_null({:?}) ", xid);
     // build an RPC reply
     let msg = xdr::rpc::make_success_reply(xid);

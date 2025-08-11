@@ -17,10 +17,10 @@
 //! This module is essential for maintaining proper message boundaries in TCP
 //! while providing efficient transmission of RPC messages of any size.
 
+use std::io;
 use std::io::Cursor;
 use std::io::{Read, Write};
 
-use anyhow::anyhow;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
@@ -30,6 +30,7 @@ use tracing::{debug, error, trace, warn};
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
+use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
 // https://datatracker.ietf.org/doc/html/rfc5531
@@ -65,7 +66,7 @@ pub async fn handle_rpc(
     input: &mut impl Read,
     output: &mut impl Write,
     mut context: rpc::Context,
-) -> Result<bool, anyhow::Error> {
+) -> io::Result<bool> {
     let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
 
@@ -73,7 +74,7 @@ pub async fn handle_rpc(
         xdr::rpc::rpc_body::CALL(call) => call,
         _ => {
             error!("Unexpectedly received a Reply instead of a Call");
-            return Err(anyhow!("Bad RPC Call format"));
+            return io_other("Bad RPC Call format");
         }
     };
 
@@ -152,10 +153,7 @@ pub async fn handle_rpc(
 ///
 /// Returns true if this was the last fragment in the RPC record, false otherwise.
 /// This allows for reassembly of multi-fragment RPC messages.
-async fn read_fragment(
-    socket: &mut DuplexStream,
-    append_to: &mut Vec<u8>,
-) -> Result<bool, anyhow::Error> {
+async fn read_fragment(socket: &mut DuplexStream, append_to: &mut Vec<u8>) -> io::Result<bool> {
     let mut header_buf = [0_u8; 4];
     socket.read_exact(&mut header_buf).await?;
     let fragment_header = u32::from_be_bytes(header_buf);
@@ -184,10 +182,7 @@ async fn read_fragment(
 ///
 /// This ensures reliable transmission of RPC messages over TCP with proper
 /// message framing and enables receivers to allocate appropriate buffer space.
-pub async fn write_fragment(
-    socket: &mut tokio::net::TcpStream,
-    buf: &[u8],
-) -> Result<(), anyhow::Error> {
+pub async fn write_fragment(socket: &mut tokio::net::TcpStream, buf: &[u8]) -> io::Result<()> {
     // Maximum fragment size is 2^31 - 1 bytes
     const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
@@ -217,7 +212,7 @@ pub async fn write_fragment(
     Ok(())
 }
 
-pub type SocketMessageType = Result<Vec<u8>, anyhow::Error>;
+pub type SocketMessageType = io::Result<Vec<u8>>;
 
 /// Handles RPC message processing over a TCP connection
 ///
@@ -299,7 +294,7 @@ impl SocketMessageHandler {
     /// the current message buffer. If the fragment is the last one in the record,
     /// submits a command to the queue for processing in order.
     /// Should be called in a loop to continuously process incoming messages.
-    pub async fn read(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn read(&mut self) -> io::Result<()> {
         let is_last =
             read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await?;
         if is_last {
@@ -308,9 +303,9 @@ impl SocketMessageHandler {
             let context = self.context.clone();
 
             // Submit command to queue for ordered processing
-            if let Err(e) = self.command_queue.submit_command(fragment_data, context) {
-                error!("Failed to submit command to queue: {:?}", e);
-                return Err(anyhow::anyhow!("Command queue error: {}", e));
+            if !self.command_queue.submit_command(fragment_data, context) {
+                error!("Failed to submit command to queue");
+                return io_other("Command queue error");
             }
         }
         Ok(())
@@ -339,7 +334,7 @@ pub fn process_rpc_command<'a>(
     data: &[u8],
     output: &'a mut ResponseBuffer,
     context: rpc::Context,
-) -> futures::future::BoxFuture<'a, anyhow::Result<bool>> {
+) -> futures::future::BoxFuture<'a, io::Result<bool>> {
     // Clone data to own it in closure
     let data_clone = data.to_vec();
 
