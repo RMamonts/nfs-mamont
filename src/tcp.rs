@@ -354,7 +354,7 @@ impl NFSTcp for NFSTcpListener {
             .write()
             .await
             .get_mut(&fs_id)
-            .ok_or_else(|| io::ErrorKind::NotFound)?
+            .ok_or(io::ErrorKind::NotFound)?
             .mount_signal = Some(signal);
         Ok(())
     }
