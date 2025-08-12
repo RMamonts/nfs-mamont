@@ -15,9 +15,6 @@ use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 /// Function removes the mount entry from the mount list for
 /// the requested diretory.
 ///
-/// TODO: Currently directory path is not used and only single
-/// mount point is removed. Need to extend functionality.
-///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
@@ -28,6 +25,14 @@ use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 /// # Returns
 ///
 /// * `io::Result<()>` - Ok(()) on success or an error
+///
+/// # Notes
+///
+/// Clients not always call `umnt` when unmounting a filesystem.
+///
+/// - Unmounting with 'umount' from 'util-linux' package doesn't call 'umnt'.
+///
+/// - Unmounting with 'umount.nfs' from 'nfs-utils' package does call 'umnt'.
 pub async fn mountproc3_umnt(
     xid: u32,
     input: &mut impl Read,
@@ -37,8 +42,14 @@ pub async fn mountproc3_umnt(
     let path = deserialize::<Vec<_>>(input)?;
     let utf8path = std::str::from_utf8(&path).unwrap_or_default();
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);
-    if let Some(ref chan) = context.mount_signal {
-        let _ = chan.send(false).await;
+
+    let export_table = context.export_table.read().await;
+    if let Some(mount_entry) =
+        export_table.values().find(|entry| utf8path.starts_with(&entry.export_name))
+    {
+        if let Some(ref chan) = mount_entry.mount_signal {
+            let _ = chan.send(false).await;
+        }
     }
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     mount::mountstat3::MNT3_OK.serialize(output)?;

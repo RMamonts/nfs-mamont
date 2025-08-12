@@ -57,7 +57,7 @@ pub struct PortmapKey {
 /// # Returns
 ///
 /// * `io::Result<()>` - Ok(()) on success or an error
-pub fn handle_portmap(
+pub async fn handle_portmap(
     xid: u32,
     call: &xdr::rpc::call_body,
     input: &mut impl Read,
@@ -74,10 +74,16 @@ pub fn handle_portmap(
 
     match prog {
         portmap::PortmapProgram::PMAPPROC_NULL => pmapproc_null(xid, output)?,
-        portmap::PortmapProgram::PMAPPROC_GETPORT => pmapproc_getport(xid, input, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_SET => pmapproc_setport(xid, input, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_DUMP => pmapproc_dump(xid, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_UNSET => pmapproc_unsetport(xid, input, output, context)?,
+        portmap::PortmapProgram::PMAPPROC_GETPORT => {
+            pmapproc_getport(xid, input, output, context).await?
+        }
+        portmap::PortmapProgram::PMAPPROC_SET => {
+            pmapproc_setport(xid, input, output, context).await?
+        }
+        portmap::PortmapProgram::PMAPPROC_DUMP => pmapproc_dump(xid, output, context).await?,
+        portmap::PortmapProgram::PMAPPROC_UNSET => {
+            pmapproc_unsetport(xid, input, output, context).await?
+        }
         _ => {
             xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
         }
@@ -86,7 +92,7 @@ pub fn handle_portmap(
 }
 
 /// Looks up a port in the Portmap table using the specified entry
-fn get_port(context: &Context, entry: &PortmapKey) -> Option<u16> {
-    let binding = context.portmap_table.read().unwrap();
+async fn get_port(context: &Context, entry: &PortmapKey) -> Option<u16> {
+    let binding = context.portmap_table.read().await;
     binding.table.get(entry).copied()
 }

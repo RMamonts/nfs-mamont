@@ -26,14 +26,14 @@ use crate::xdr::{deserialize, Serialize};
 ///   - RPC success header (via `make_success_reply`).
 ///   - Boolean `true` if at least one port was removed, `false` otherwise.
 /// - `std::io::Error` on deserialization or serialization failures.
-pub fn pmapproc_unsetport(
+pub async fn pmapproc_unsetport(
     xid: u32,
     read: &mut impl Read,
     output: &mut impl Write,
     context: &Context,
 ) -> io::Result<()> {
     let mapping = deserialize::<mapping>(read)?;
-    let mut binding = context.portmap_table.write().unwrap();
+    let mut binding = context.portmap_table.write().await;
     let tcp_removed = binding
         .table
         .remove(&PortmapKey { prog: mapping.prog, vers: mapping.vers, prot: IPPROTO_TCP })

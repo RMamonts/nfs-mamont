@@ -64,8 +64,21 @@ pub async fn nfsproc3_remove(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
+    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    debug!("nfsproc3_remove({:?}, {:?}) ", xid, dir_ops);
+
+    let fs_id = dir_ops.dir.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
     // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
@@ -73,13 +86,9 @@ pub async fn nfsproc3_remove(
         return Ok(());
     }
 
-    let dirops = deserialize::<nfs3::diropargs3>(input)?;
-
-    debug!("nfsproc3_remove({:?}, {:?}) ", xid, dirops);
-
     // find the directory with the file
-    let dirid = context.vfs.fh_to_id(&dirops.dir);
-    if let Err(stat) = dirid {
+    let dir_id = export.vfs.fh_to_id(&dir_ops.dir);
+    if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
@@ -87,10 +96,10 @@ pub async fn nfsproc3_remove(
         error!("Directory does not exist");
         return Ok(());
     }
-    let dirid = dirid.unwrap();
+    let dir_id = dir_id.unwrap();
 
     // get the object attributes before the write
-    let pre_dir_attr = match context.vfs.getattr(dirid).await {
+    let pre_dir_attr = match export.vfs.getattr(dir_id).await {
         Ok(v) => {
             let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
             nfs3::pre_op_attr::Some(wccattr)
@@ -105,10 +114,10 @@ pub async fn nfsproc3_remove(
     };
 
     // delete!
-    let res = context.vfs.remove(dirid, &dirops.name).await;
+    let res = export.vfs.remove(dir_id, &dir_ops.name).await;
 
     // Re-read dir attributes for post op attr
-    let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+    let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
     let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 
     match res {

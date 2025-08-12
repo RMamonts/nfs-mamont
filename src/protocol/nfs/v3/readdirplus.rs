@@ -26,7 +26,7 @@
 use std::io;
 use std::io::{Read, Write};
 
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -56,20 +56,30 @@ pub async fn nfsproc3_readdirplus(
     let args = deserialize::<nfs3::dir::READDIRPLUS3args>(input)?;
     debug!("nfsproc3_readdirplus({:?},{:?}) ", xid, args);
 
-    let dirid = context.vfs.fh_to_id(&args.dir);
+    let fs_id = args.dir.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let dir_id = export.vfs.fh_to_id(&args.dir);
     // fail if unable to convert file handle
-    if let Err(stat) = dirid {
+    if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         nfs3::post_op_attr::None.serialize(output)?;
         return Ok(());
     }
-    let dirid = dirid.unwrap();
-    let dir_attr_maybe = context.vfs.getattr(dirid).await;
+    let dir_id = dir_id.unwrap();
+    let dir_attr_maybe = export.vfs.getattr(dir_id).await;
 
     let dir_attr = dir_attr_maybe.ok();
 
-    let dirversion = if let Ok(ref dir_attr) = dir_attr_maybe {
+    let dir_version = if let Ok(ref dir_attr) = dir_attr_maybe {
         let cvf_version =
             ((dir_attr.mtime.seconds as u64) << 32) | (dir_attr.mtime.nseconds as u64);
         cvf_version.to_be_bytes()
@@ -77,7 +87,7 @@ pub async fn nfsproc3_readdirplus(
         nfs3::cookieverf3::default()
     };
     debug!(" -- Dir attr {:?}", dir_attr);
-    debug!(" -- Dir version {:?}", dirversion);
+    debug!(" -- Dir version {:?}", dir_version);
     let has_version = args.cookieverf != nfs3::cookieverf3::default();
     // initial call should hve empty cookie verf
     // subsequent calls should have cvf_version as defined above
@@ -149,7 +159,7 @@ pub async fn nfsproc3_readdirplus(
     let estimated_max_results = args.dircount / 16;
     let max_dircount_bytes = args.dircount as usize;
     let mut ctr = 0;
-    match context.vfs.readdir(dirid, args.cookie, estimated_max_results as usize).await {
+    match export.vfs.readdir(dir_id, args.cookie, estimated_max_results as usize).await {
         Ok(result) => {
             // we count dir_count seperately as it is just a subset of fields
             let mut accumulated_dircount: usize = 0;
@@ -162,10 +172,10 @@ pub async fn nfsproc3_readdirplus(
             xdr::rpc::make_success_reply(xid).serialize(&mut counting_output)?;
             nfs3::nfsstat3::NFS3_OK.serialize(&mut counting_output)?;
             dir_attr.serialize(&mut counting_output)?;
-            dirversion.serialize(&mut counting_output)?;
+            dir_version.serialize(&mut counting_output)?;
             for entry in result.entries {
                 let obj_attr = entry.attr;
-                let handle = nfs3::post_op_fh3::Some(context.vfs.id_to_fh(entry.fileid));
+                let handle = nfs3::post_op_fh3::Some(export.vfs.id_to_fh(entry.fileid, fs_id));
 
                 let entry = nfs3::dir::entryplus3 {
                     fileid: entry.fileid,
@@ -219,7 +229,7 @@ pub async fn nfsproc3_readdirplus(
             }
             debug!(
                 "readir {}, has_version {},  start at {}, flushing {} entries, complete {}",
-                dirid, has_version, args.cookie, ctr, all_entries_written
+                dir_id, has_version, args.cookie, ctr, all_entries_written
             );
         }
         Err(stat) => {

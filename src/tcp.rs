@@ -8,16 +8,17 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
 
 use async_trait::async_trait;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
@@ -25,19 +26,29 @@ use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
+/// Entry in the NFS export table that represents a single exported file system.
+pub struct NFSExportTableEntry {
+    /// Arc reference to the NFS file system implementation
+    pub vfs: Arc<dyn NFSFileSystem + Send + Sync + 'static>,
+    /// Optional channel for sending mount/unmount notifications
+    pub mount_signal: Option<mpsc::Sender<bool>>,
+    /// Name of the exported file system path
+    pub export_name: String,
+}
+
+/// Hash map that stores all exported file systems for an NFS server.
+pub type NFSExportTable = HashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
+
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
-pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
+pub struct NFSTcpListener {
+    next_id: AtomicU64,
     /// TCP Listener for accepting incoming connections
     listener: TcpListener,
     /// Port on which the server is listening
     port: u16,
-    /// Arc reference to the NFS file system implementation
-    arcfs: Arc<T>,
-    /// Optional channel for sending mount/unmount notifications
-    mount_signal: Option<mpsc::Sender<bool>>,
-    /// Name of the exported file system path
-    export_name: Arc<String>,
+    /// Table of NFS exports managed by this server
+    export_table: Arc<RwLock<NFSExportTable>>,
     /// Tracker for RPC transactions to handle retransmissions
     transaction_tracker: Arc<rpc::TransactionTracker>,
     /// Portmap table storing port-to-program mappings
@@ -151,7 +162,16 @@ pub trait NFSTcp: Send + Sync {
     /// * `signal` - MPSC sender that will receive boolean values:
     ///   * `true` when a client mounts the file system
     ///   * `false` when a client unmounts the file system
-    fn set_mount_listener(&mut self, signal: mpsc::Sender<bool>);
+    ///
+    /// # Returns
+    /// `io::Result<()>` indicating:
+    /// - `Ok(())` on successful operation
+    /// - `Err` if the export ID is not found in the export table
+    async fn set_mount_listener(
+        &mut self,
+        fs_id: xdr::nfs3::fs_id,
+        signal: mpsc::Sender<bool>,
+    ) -> io::Result<()>;
 
     /// Starts the NFS server and processes client connections
     ///
@@ -166,35 +186,33 @@ pub trait NFSTcp: Send + Sync {
     async fn handle_forever(&self) -> io::Result<()>;
 }
 
-impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
+impl NFSTcpListener {
     /// Creates a new NFS TCP listener bound to the specified IP address and port
     ///
     /// # Arguments
     ///
     /// * `ipstr` - IP address and port in the format "IP:PORT" (e.g. "127.0.0.1:2049")
     ///   Special value "auto:PORT" attempts to find an available local address
-    /// * `fs` - Implementation of the [`NFSFileSystem`] trait that will handle NFS operations
     ///
     /// # Returns
     ///
     /// A Result containing either the new [`NFSTcpListener`] or an IO error
-    pub async fn bind(ipstr: &str, fs: T) -> io::Result<NFSTcpListener<T>> {
+    pub async fn bind(ipstr: &str) -> io::Result<NFSTcpListener> {
         let (ip, port) = ipstr.split_once(':').ok_or_else(|| {
             io::Error::new(io::ErrorKind::AddrNotAvailable, "IP Address must be of form ip:port")
         })?;
         let port = port.parse::<u16>().map_err(|_| {
             io::Error::new(io::ErrorKind::AddrNotAvailable, "Port not in range 0..=65535")
         })?;
-        let arcfs: Arc<T> = Arc::new(fs);
 
         if ip != "auto" {
-            return NFSTcpListener::bind_internal(ip, port, arcfs).await;
+            return NFSTcpListener::bind_internal(ip, port).await;
         }
 
         const NUM_TRIES: u16 = 32;
         for try_ip in 1..=NUM_TRIES {
             let ip = generate_host_ip(try_ip);
-            let result = NFSTcpListener::bind_internal(&ip, port, arcfs.clone()).await;
+            let result = NFSTcpListener::bind_internal(&ip, port).await;
 
             if result.is_ok() {
                 return result;
@@ -210,28 +228,43 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
     ///
     /// * `ip` - IP address to bind to
     /// * `port` - Port number to bind to
-    /// * `arcfs` - Arc reference to the NFS file system implementation
-    async fn bind_internal(ip: &str, port: u16, arcfs: Arc<T>) -> io::Result<NFSTcpListener<T>> {
+    async fn bind_internal(ip: &str, port: u16) -> io::Result<NFSTcpListener> {
         let ipstr = format!("{ip}:{port}");
         let listener = TcpListener::bind(&ipstr).await?;
         info!("Listening on {:?}", &ipstr);
 
-        let port = match listener.local_addr().unwrap() {
+        let port = match listener.local_addr()? {
             SocketAddr::V4(s) => s.port(),
             SocketAddr::V6(s) => s.port(),
         };
+
         Ok(NFSTcpListener {
+            next_id: AtomicU64::new(0),
             listener,
             port,
-            arcfs,
-            mount_signal: None,
-            export_name: Arc::from("/".to_string()),
+            export_table: Arc::new(RwLock::new(HashMap::new())),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         })
     }
 
-    /// Sets an optional NFS export name.
+    /// Registers a new NFS file system export. Export name defaults to "/".
+    ///
+    /// # Arguments
+    ///
+    /// * `fs` - Implementation of the NFSFileSystem trait that will handle NFS operations
+    ///
+    /// # Returns
+    ///
+    /// A Result containing either the generated filesystem ID or an error if registration fails
+    pub async fn register_export<T>(&mut self, fs: T) -> io::Result<xdr::nfs3::fs_id>
+    where
+        T: NFSFileSystem + Send + Sync + 'static,
+    {
+        self.register_export_with_name(fs, "").await
+    }
+
+    /// Registers a new NFS file system export with a custom export name
     ///
     /// The export name defines the path that clients will use to mount the file system.
     /// This method normalizes the provided name by adding a leading slash and removing
@@ -239,17 +272,46 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
     ///
     /// # Arguments
     ///
-    /// * `export_name`: The desired export name without slashes.
-    pub fn with_export_name<S: AsRef<str>>(&mut self, export_name: S) {
-        self.export_name = Arc::new(format!(
-            "/{}",
-            export_name.as_ref().trim_end_matches('/').trim_start_matches('/')
-        ));
+    /// * `fs` - Implementation of the NFSFileSystem trait that will handle NFS operations
+    /// * `export_name` - The name/path for this export (e.g., "data" becomes "/data")
+    ///
+    /// # Returns
+    ///
+    /// A Result containing either the generated filesystem ID or an error if:
+    /// - The export name already exists
+    /// - Registration fails for another reason
+    pub async fn register_export_with_name<T, S>(
+        &mut self,
+        fs: T,
+        export_name: S,
+    ) -> io::Result<xdr::nfs3::fs_id>
+    where
+        T: NFSFileSystem + Send + Sync + 'static,
+        S: AsRef<str>,
+    {
+        let fs_id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let export_name = format!("/{}", export_name.as_ref().trim_matches('/'));
+
+        if self.export_table.read().await.values().any(|entry| entry.export_name == export_name) {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("Export with name '{export_name}' already exists"),
+            ));
+        }
+
+        debug!("Registering export with ID {fs_id} and name {export_name}");
+        self.export_table.write().await.insert(
+            fs_id,
+            NFSExportTableEntry { vfs: Arc::new(fs), export_name, mount_signal: None },
+        );
+
+        Ok(fs_id)
     }
 }
 
 #[async_trait]
-impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
+impl NFSTcp for NFSTcpListener {
     /// Returns the actual port number on which the server is listening
     ///
     /// This is especially useful when binding to port 0, which allows the OS
@@ -277,8 +339,23 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
     /// * `signal` - MPSC sender that will receive boolean values:
     ///   * `true` when a client mounts the file system
     ///   * `false` when a client unmounts the file system
-    fn set_mount_listener(&mut self, signal: mpsc::Sender<bool>) {
-        self.mount_signal = Some(signal);
+    ///
+    /// # Returns
+    /// `io::Result<()>` indicating:
+    /// - `Ok(())` on successful operation
+    /// - `Err` if the export ID is not found in the export table
+    async fn set_mount_listener(
+        &mut self,
+        fs_id: xdr::nfs3::fs_id,
+        signal: mpsc::Sender<bool>,
+    ) -> io::Result<()> {
+        self.export_table
+            .write()
+            .await
+            .get_mut(&fs_id)
+            .ok_or_else(|| io::ErrorKind::NotFound)?
+            .mount_signal = Some(signal);
+        Ok(())
     }
 
     /// Starts the NFS server and processes client connections
@@ -298,9 +375,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
                 local_port: self.port,
                 client_addr: socket.peer_addr()?.to_string(),
                 auth: xdr::rpc::auth_unix::default(),
-                vfs: self.arcfs.clone(),
-                mount_signal: self.mount_signal.clone(),
-                export_name: self.export_name.clone(),
+                export_table: self.export_table.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
             };
