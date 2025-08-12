@@ -10,6 +10,8 @@ use tracing::{debug, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
+use super::matches_export_path;
+
 /// Handles `MOUNTPROC3_UMNT` procedure.
 ///
 /// Function removes the mount entry from the mount list for
@@ -48,7 +50,7 @@ pub async fn mountproc3_umnt(
 
     let export_table = context.export_table.read().await;
     if let Some(mount_entry) =
-        export_table.values().find(|entry| utf8path.starts_with(&entry.export_name))
+        export_table.values().find(|entry| matches_export_path(utf8path, &entry.export_name))
     {
         if let Some(ref chan) = mount_entry.mount_signal {
             let _ = chan.send(false).await;

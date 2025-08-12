@@ -11,6 +11,8 @@ use tracing::{debug, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
+use super::matches_export_path;
+
 /// Handles `MOUNTPROC3_MNT` procedure.
 ///
 /// Function returns file handle for the requested
@@ -52,8 +54,9 @@ pub async fn mountproc3_mnt(
     let export_table = context.export_table.read().await;
 
     // Find the matching export
-    let Some((&fs_id, mount_entry)) =
-        export_table.iter().find(|(_fs_id, entry)| utf8path.starts_with(&entry.export_name))
+    let Some((&fs_id, mount_entry)) = export_table
+        .iter()
+        .find(|(_fs_id, entry)| matches_export_path(utf8path, &entry.export_name))
     else {
         // invalid export
         debug!("{:?} --> no matching export", xid);
