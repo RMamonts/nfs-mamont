@@ -307,7 +307,7 @@ async fn send_unset_port(
 }
 /// Assisting macro for RPC portmap operation (`GETPORT`, `SET`, or `UNSET`) to ease operations with Cursors and asserts
 ///
-/// This macro::
+/// This macro:
 /// 1. Resets the input/output cursor positions (to ensure clean state).
 /// 2. Executes the provided portmap operation (`function`) with the given arguments.
 /// 3. Deserializes the output buffer into type `T` (expected result type).
