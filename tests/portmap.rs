@@ -332,7 +332,7 @@ macro_rules! call_assert {
         $output.set_position(0);
         $function($context, $input, $output, $mapping).await.expect("can't proceed operation");
         $output.set_position(RPC_MSG_SIZE);
-        let res = crate::xdr::deserialize::<$ty>($output).expect("can't get result");
+        let res = $crate::xdr::deserialize::<$ty>($output).expect("can't get result");
         assert_eq!(res, $expected);
     };
 }
