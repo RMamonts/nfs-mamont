@@ -22,7 +22,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{deserialize, Deserialize, Serialize};
 use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
-use crate::{DeserializeStruct, SerializeStruct};
+use crate::{xdr, DeserializeStruct, SerializeStruct};
 
 // Modules for different operation types
 pub mod dir;
@@ -383,6 +383,9 @@ const _: () = {
 impl Deserialize for nfs_fh3 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
         let _len = deserialize::<UsizeAsU32>(src)?;
+        if _len.0 != size_of::<nfs_fh3>() {
+            return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
+        }
         self.gen = deserialize::<u64>(src)?;
         self.fs_id = deserialize::<fs_id>(src)?;
         self.id = deserialize::<fileid3>(src)?;
