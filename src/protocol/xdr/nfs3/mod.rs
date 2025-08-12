@@ -375,7 +375,7 @@ pub struct nfs_fh3 {
     pub id: fileid3,
 }
 const _: () = {
-    assert!(size_of::<nfs_fh3>() < NFS3_FHSIZE as usize);
+    assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
 };
 
 // Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
