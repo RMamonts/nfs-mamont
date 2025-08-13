@@ -236,9 +236,13 @@ trait NfsProc {
 #[macro_export]
 macro_rules! check_write_capabilities_or_return {
     ($export:expr, $xid:expr, $output:expr) => {
-        if !matches!($export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
-            warn!("No write capabilities.");
-            Self::error_reply_default($xid, $output, nfs3::nfsstat3::NFS3ERR_ROFS)?;
+        if !matches!($export.vfs.capabilities(), $crate::vfs::Capabilities::ReadWrite) {
+            tracing::warn!("No write capabilities.");
+            Self::error_reply_default(
+                $xid,
+                $output,
+                $crate::protocol::xdr::nfs3::nfsstat3::NFS3ERR_ROFS,
+            )?;
             return Ok(());
         }
     };
