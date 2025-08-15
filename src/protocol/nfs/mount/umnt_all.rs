@@ -33,7 +33,7 @@ pub async fn mountproc3_umnt_all(
 
     for mount_entry in context.export_table.read().await.values() {
         // Notify the mount signal channel if it exists
-        if let Some(ref chan) = mount_entry.mount_signal {
+        if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(false).await;
         }
     }

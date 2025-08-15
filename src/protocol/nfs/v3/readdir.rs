@@ -75,7 +75,7 @@ pub async fn nfsproc3_readdir(
 
     let dir_attr = dir_attr_maybe.ok();
 
-    let dir_version = if let Ok(ref dir_attr) = dir_attr_maybe {
+    let dir_version = if let Ok(dir_attr) = dir_attr_maybe {
         let cvf_version =
             ((dir_attr.mtime.seconds as u64) << 32) | (dir_attr.mtime.nseconds as u64);
         cvf_version.to_be_bytes()

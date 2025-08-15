@@ -52,7 +52,7 @@ pub async fn mountproc3_umnt(
     if let Some(mount_entry) =
         export_table.values().find(|entry| matches_export_path(utf8path, &entry.export_name))
     {
-        if let Some(ref chan) = mount_entry.mount_signal {
+        if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(false).await;
         }
     }
