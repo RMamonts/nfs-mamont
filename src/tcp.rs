@@ -258,7 +258,7 @@ impl NFSTcpListener {
     /// # Returns
     ///
     /// A Result containing either the generated filesystem ID or an error if registration fails
-    pub async fn register_export<T>(&mut self, fs: T) -> io::Result<xdr::nfs3::fs_id>
+    pub async fn register_root_export<T>(&mut self, fs: T) -> io::Result<xdr::nfs3::fs_id>
     where
         T: NFSFileSystem + Send + Sync + 'static,
     {

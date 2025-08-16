@@ -35,7 +35,7 @@ async fn main() {
     let mut listener = NFSTcpListener::bind(&format!("0.0.0.0:{HOSTPORT}")).await.unwrap();
     if !args.multi_export {
         let fs = fs::DemoFS::default();
-        listener.register_export(fs).await.unwrap();
+        listener.register_root_export(fs).await.unwrap();
     } else {
         let fs_one = fs::DemoFS::default();
         let fs_two = fs::DemoFS::default();
