@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io;
 use std::io::Cursor;
 use std::string::ToString;
@@ -18,7 +19,7 @@ use nfs_mamont::xdr::nfs3::{
 };
 use nfs_mamont::xdr::portmap::{mapping, IPPROTO_TCP, IPPROTO_UDP};
 use nfs_mamont::xdr::rpc::call_body;
-use nfs_mamont::xdr::{nfs3, Serialize};
+use nfs_mamont::xdr::{deserialize, nfs3, Serialize};
 use nfs_mamont::{vfs, xdr};
 
 pub struct DemoFS {
@@ -305,9 +306,9 @@ async fn send_unset_port(
     )
     .await
 }
-/// Assisting macro for RPC portmap operation (`GETPORT`, `SET`, or `UNSET`) to ease operations with Cursors and asserts
+/// Assisting function for RPC portmap operation (`GETPORT`, `SET`, or `UNSET`) to ease operations with Cursors and asserts
 ///
-/// This macro:
+/// This function:
 /// 1. Resets the input/output cursor positions (to ensure clean state).
 /// 2. Executes the provided portmap operation (`function`) with the given arguments.
 /// 3. Deserializes the output buffer into type `T` (expected result type).
@@ -320,21 +321,33 @@ async fn send_unset_port(
 /// - `output`: Mutable cursor where the RPC response will be written.
 /// - `mapping`: Portmap arguments (program, port, protocol, etc.).
 /// - `expected`: The expected deserialized result (e.g., `0` for failure, port number for success).
-/// - `ty`: The type of the expected result, because compiler cannot figure it out.
 ///
 /// # Type Constraints
 /// - `T` must be deserializable (via `xdr::Deserialize`), comparable (`PartialEq`),
 ///   and have a default value (`Default`). Used for the response type.
 /// - `F`: A closure or function pointer matching one of the portmap operations.
-macro_rules! call_assert {
-    ($function:expr, $context:expr, $input:expr, $output:expr, $mapping:expr, $expected:expr, $ty:ty) => {
-        $input.set_position(0);
-        $output.set_position(0);
-        $function($context, $input, $output, $mapping).await.expect("can't proceed operation");
-        $output.set_position(RPC_MSG_SIZE);
-        let res = $crate::xdr::deserialize::<$ty>($output).expect("can't get result");
-        assert_eq!(res, $expected);
-    };
+async fn call_assert<F, T>(
+    function: F,
+    context: &mut Context,
+    input: &mut Cursor<Vec<u8>>,
+    output: &mut Cursor<Vec<u8>>,
+    mapping: mapping,
+    expected: T,
+) where
+    F: AsyncFnOnce(
+        &mut Context,
+        &mut Cursor<Vec<u8>>,
+        &mut Cursor<Vec<u8>>,
+        mapping,
+    ) -> io::Result<()>,
+    T: PartialEq + Default + xdr::Deserialize + Debug,
+{
+    input.set_position(0);
+    output.set_position(0);
+    function(context, input, output, mapping).await.expect("can't proceed operation");
+    output.set_position(RPC_MSG_SIZE);
+    let res = deserialize::<T>(output).expect("can't get result");
+    assert_eq!(res, expected);
 }
 
 #[cfg(test)]
@@ -363,7 +376,7 @@ mod tests {
             prot: IPPROTO_TCP,
             port: port as u32,
         };
-        call_assert!(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0, u32);
+        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0).await;
     }
 
     ///simple test to assure, that after SET_PORT operation for program without
@@ -385,16 +398,8 @@ mod tests {
             prot: IPPROTO_TCP,
             port: port as u32,
         };
-        call_assert!(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0, u32);
-        call_assert!(
-            send_set_port,
-            &mut context,
-            &mut input,
-            &mut output,
-            mapping_args,
-            true,
-            bool
-        );
+        call_assert(send_get_port, &mut context, &mut input, &mut output, mapping_args, 0).await;
+        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true).await;
     }
 
     ///simple test of GET_PORT after SET_PORT
@@ -415,24 +420,16 @@ mod tests {
         };
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-        call_assert!(
-            send_set_port,
-            &mut context,
-            &mut input,
-            &mut output,
-            mapping_args,
-            true,
-            bool
-        );
-        call_assert!(
+        call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true).await;
+        call_assert(
             send_get_port,
             &mut context,
             &mut input,
             &mut output,
             mapping_args,
             port as u32,
-            u32
-        );
+        )
+        .await;
     }
 
     ///test of multiple GET_PORT after SET_PORT
@@ -450,27 +447,20 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         for mapping_arg in maps.clone() {
-            call_assert!(
-                send_set_port,
-                &mut context,
-                &mut input,
-                &mut output,
-                mapping_arg,
-                true,
-                bool
-            );
+            call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_arg, true)
+                .await;
         }
 
         for mapping_arg in maps {
-            call_assert!(
+            call_assert(
                 send_get_port,
                 &mut context,
                 &mut input,
                 &mut output,
                 mapping_arg,
                 mapping_arg.prog + mapping_arg.vers * 1000,
-                u32
-            );
+            )
+            .await;
         }
     }
 
@@ -490,51 +480,51 @@ mod tests {
                     block_on(async move {
                         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                        call_assert!(
+                        call_assert(
                             send_get_port,
                             &mut context,
                             &mut input,
                             &mut output,
                             mappings_1,
                             0,
-                            u32
-                        );
-                        call_assert!(
+                        )
+                        .await;
+                        call_assert(
                             send_set_port,
                             &mut context,
                             &mut input,
                             &mut output,
                             mappings_1,
                             true,
-                            bool
-                        );
-                        call_assert!(
+                        )
+                        .await;
+                        call_assert(
                             send_set_port,
                             &mut context,
                             &mut input,
                             &mut output,
                             mappings_2,
                             true,
-                            bool
-                        );
-                        call_assert!(
+                        )
+                        .await;
+                        call_assert(
                             send_get_port,
                             &mut context,
                             &mut input,
                             &mut output,
                             mappings_1,
                             mappings_1.prog + mappings_1.vers * 1000,
-                            u32
-                        );
-                        call_assert!(
+                        )
+                        .await;
+                        call_assert(
                             send_get_port,
                             &mut context,
                             &mut input,
                             &mut output,
                             mappings_2,
                             mappings_2.prog + mappings_2.vers * 1000,
-                            u32
-                        );
+                        )
+                        .await;
                     })
                 });
             }
@@ -544,15 +534,15 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         for mapping_arg in mappings {
-            call_assert!(
+            call_assert(
                 send_get_port,
                 &mut contexts[0],
                 &mut input,
                 &mut output,
                 mapping_arg,
                 mapping_arg.prog + mapping_arg.vers * 1000,
-                u32
-            );
+            )
+            .await;
         }
     }
     ///test of UNSET when programs that haven't been mapped to port
@@ -571,7 +561,7 @@ mod tests {
         let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
 
         for arg in args_tcp {
-            call_assert!(send_unset_port, &mut context, &mut input, &mut output, arg, false, bool);
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, arg, false).await;
         }
     }
 
@@ -591,11 +581,11 @@ mod tests {
         let args = multiple_mappings(amount, IPPROTO_UDP);
 
         for arg in &args {
-            call_assert!(send_set_port, &mut context, &mut input, &mut output, *arg, true, bool);
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true).await;
         }
 
         for arg in args {
-            call_assert!(send_unset_port, &mut context, &mut input, &mut output, arg, true, bool);
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, arg, true).await;
         }
     }
 
@@ -616,34 +606,20 @@ mod tests {
         let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
 
         for arg in &args_udp {
-            call_assert!(send_set_port, &mut context, &mut input, &mut output, *arg, true, bool);
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true).await;
         }
 
         for arg in &args_tcp {
-            call_assert!(send_set_port, &mut context, &mut input, &mut output, *arg, true, bool);
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true).await;
         }
 
         for mapping in args_tcp {
-            call_assert!(
-                send_unset_port,
-                &mut context,
-                &mut input,
-                &mut output,
-                mapping,
-                true,
-                bool
-            );
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, mapping, true)
+                .await;
         }
         for mapping in args_udp {
-            call_assert!(
-                send_unset_port,
-                &mut context,
-                &mut input,
-                &mut output,
-                mapping,
-                false,
-                bool
-            );
+            call_assert(send_unset_port, &mut context, &mut input, &mut output, mapping, false)
+                .await;
         }
     }
 
@@ -664,66 +640,66 @@ mod tests {
                 scope.spawn(async move || {
                     let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
                     let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
-                    call_assert!(
+                    call_assert(
                         send_unset_port,
                         &mut context,
                         &mut input,
                         &mut output,
                         mappings_2,
                         false,
-                        bool
-                    );
-                    call_assert!(
+                    )
+                    .await;
+                    call_assert(
                         send_set_port,
                         &mut context,
                         &mut input,
                         &mut output,
                         mappings_2,
                         true,
-                        bool
-                    );
-                    call_assert!(
+                    )
+                    .await;
+                    call_assert(
                         send_set_port,
                         &mut context,
                         &mut input,
                         &mut output,
                         mappings_1,
                         true,
-                        bool
-                    );
-                    call_assert!(
+                    )
+                    .await;
+                    call_assert(
                         send_unset_port,
                         &mut context,
                         &mut input,
                         &mut output,
                         mappings_1,
                         true,
-                        bool
-                    );
-                    call_assert!(
+                    )
+                    .await;
+                    call_assert(
                         send_unset_port,
                         &mut context,
                         &mut input,
                         &mut output,
                         mappings_2,
                         false,
-                        bool
-                    );
+                    )
+                    .await;
                 });
             }
         });
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         for mapping in mapping_udp {
-            call_assert!(
+            call_assert(
                 send_get_port,
                 &mut context[0].clone(),
                 &mut input,
                 &mut output,
                 mapping,
                 0,
-                u32
-            );
+            )
+            .await;
         }
     }
 
@@ -741,15 +717,7 @@ mod tests {
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         for mapping in &mappings {
-            call_assert!(
-                send_set_port,
-                &mut context,
-                &mut input,
-                &mut output,
-                *mapping,
-                true,
-                bool
-            );
+            call_assert(send_set_port, &mut context, &mut input, &mut output, *mapping, true).await;
         }
         output.set_position(0);
         send_dump(&mut context, &mut input, &mut output).await.unwrap();
@@ -782,15 +750,8 @@ mod tests {
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         for mapping in mappings {
-            call_assert!(
-                send_set_port,
-                &mut contexts[0],
-                &mut input,
-                &mut output,
-                *mapping,
-                true,
-                bool
-            );
+            call_assert(send_set_port, &mut contexts[0], &mut input, &mut output, *mapping, true)
+                .await;
         }
         std::thread::scope(|scope| {
             for context in &mut contexts {
