@@ -46,22 +46,32 @@ pub async fn nfsproc3_mkdir(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
+    let args = deserialize::<nfs3::dir::MKDIR3args>(input)?;
+    debug!("nfsproc3_mkdir({:?}, {:?}) ", xid, args);
+
+    let fs_id = args.dirops.dir.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
     // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let args = deserialize::<nfs3::dir::MKDIR3args>(input)?;
-
-    debug!("nfsproc3_mkdir({:?}, {:?}) ", xid, args);
 
     // find the directory we are supposed to create the
     // new file in
-    let dirid = context.vfs.fh_to_id(&args.dirops.dir);
-    if let Err(stat) = dirid {
+    let dir_id = export.vfs.fh_to_id(&args.dirops.dir);
+    if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
@@ -70,14 +80,11 @@ pub async fn nfsproc3_mkdir(
         return Ok(());
     }
     // found the directory, get the attributes
-    let dirid = dirid.unwrap();
+    let dir_id = dir_id.unwrap();
 
     // get the object attributes before the write
-    let pre_dir_attr = match context.vfs.getattr(dirid).await {
-        Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wccattr)
-        }
+    let pre_dir_attr = match export.vfs.getattr(dir_id).await {
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -87,10 +94,10 @@ pub async fn nfsproc3_mkdir(
         }
     };
 
-    let res = context.vfs.mkdir(dirid, &args.dirops.name).await;
+    let res = export.vfs.mkdir(dir_id, &args.dirops.name).await;
 
     // Re-read dir attributes for post op attr
-    let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+    let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
     let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 
     match res {
@@ -99,7 +106,7 @@ pub async fn nfsproc3_mkdir(
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             nfs3::nfsstat3::NFS3_OK.serialize(output)?;
             // serialize CREATE3resok
-            let fh = context.vfs.id_to_fh(fid);
+            let fh = export.vfs.id_to_fh(fid, fs_id);
             nfs3::post_op_fh3::Some(fh).serialize(output)?;
             nfs3::post_op_attr::Some(fattr).serialize(output)?;
             wcc_res.serialize(output)?;

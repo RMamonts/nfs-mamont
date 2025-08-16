@@ -21,7 +21,7 @@
 use std::io;
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -51,7 +51,17 @@ pub async fn nfsproc3_commit(
     let args = deserialize::<nfs3::file::COMMIT3args>(input)?;
     debug!("nfsproc3_commit({:?}, {:?}) ", xid, args);
 
-    let id = context.vfs.fh_to_id(&args.file);
+    let fs_id = args.file.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&args.file);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -62,21 +72,16 @@ pub async fn nfsproc3_commit(
     let id = id.unwrap();
 
     // get the object attributes before the commit
-    let pre_obj_attr = context
-        .vfs
-        .getattr(id)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::wcc_attr::from).ok();
 
     // Call VFS commit method
-    match context.vfs.commit(id, args.offset, args.count).await {
+    match export.vfs.commit(id, args.offset, args.count).await {
         Ok(fattr) => {
             let post_obj_attr = nfs3::post_op_attr::Some(fattr);
 
             let res = nfs3::file::COMMIT3resok {
                 file_wcc: nfs3::wcc_data { before: pre_obj_attr, after: post_obj_attr },
-                verf: context.vfs.server_id(),
+                verf: export.vfs.server_id(),
             };
 
             debug!("nfsproc3_commit success");
@@ -85,7 +90,7 @@ pub async fn nfsproc3_commit(
             res.serialize(output)?;
         }
         Err(stat) => {
-            let post_obj_attr = context.vfs.getattr(id).await.ok();
+            let post_obj_attr = export.vfs.getattr(id).await.ok();
 
             let wcc_data = nfs3::wcc_data { before: pre_obj_attr, after: post_obj_attr };
 

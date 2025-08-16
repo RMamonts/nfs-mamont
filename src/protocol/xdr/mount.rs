@@ -12,10 +12,10 @@
 
 use std::io::{Read, Write};
 
-use crate::xdr::{DeserializeEnum, SerializeEnum};
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use super::*;
+use crate::xdr::{nfs3, Deserialize, DeserializeEnum, Serialize, SerializeEnum};
+use crate::{DeserializeStruct, SerializeStruct};
 
 /// MOUNT program number for RPC
 pub const PROGRAM: u32 = 100005;
@@ -30,7 +30,7 @@ pub const MNTNAMLEN: u32 = 255;
 pub const FHSIZE3: u32 = 64;
 
 /// File handle for NFS version 3
-pub type fhandle3 = Vec<u8>;
+pub type fhandle3 = nfs3::nfs_fh3;
 /// Directory path on the server
 pub type dirpath = Vec<u8>;
 /// Name in the directory

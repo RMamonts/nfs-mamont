@@ -19,7 +19,7 @@
 use std::io;
 use std::io::{Read, Write};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -49,7 +49,17 @@ pub async fn nfsproc3_fsinfo(
     let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_fsinfo({:?},{:?}) ", xid, handle);
 
-    let id = context.vfs.fh_to_id(&handle);
+    let fs_id = handle.fs_id;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -60,7 +70,7 @@ pub async fn nfsproc3_fsinfo(
 
     let id = id.unwrap();
 
-    match context.vfs.fsinfo(id).await {
+    match export.vfs.fsinfo(id).await {
         Ok(fsinfo) => {
             debug!(" {:?} --> {:?}", xid, fsinfo);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -71,6 +81,7 @@ pub async fn nfsproc3_fsinfo(
             error!("nfsproc3_fsinfo error {:?} --> {:?}", xid, stat);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
+            nfs3::post_op_attr::None.serialize(output)?;
         }
     }
 

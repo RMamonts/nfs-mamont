@@ -59,82 +59,106 @@ pub async fn nfsproc3_rename(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
-        warn!("No write capabilities.");
+    let from_dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    let to_dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    debug!("nfsproc3_rename({:?}, {:?}, {:?}) ", xid, from_dir_ops, to_dir_ops);
+
+    let from_fs_id = from_dir_ops.dir.fs_id;
+    let to_fs_id = to_dir_ops.dir.fs_id;
+
+    if to_fs_id != from_fs_id {
+        // RFC states:
+        // To.dir and from.dir must reside on the same file system and server.
+        // ...
+        // If they reside on different file systems, the error, NFS3ERR_XDEV
+        error!("Files should be in the same filesystem");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_XDEV.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
 
-    let fromdirops = deserialize::<nfs3::diropargs3>(input)?;
-    let todirops = deserialize::<nfs3::diropargs3>(input)?;
+    let guard = context.export_table.read().await;
+    let Some(export) = guard.get(&from_fs_id) else {
+        warn!("No export found for fs_id: {}", from_fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
 
-    debug!("nfsproc3_rename({:?}, {:?}, {:?}) ", xid, fromdirops, todirops);
+    // if we do not have write capabilities
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+        warn!("No write capabilities.");
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    }
 
     // find the from directory
-    let from_dirid = context.vfs.fh_to_id(&fromdirops.dir);
-    if let Err(stat) = from_dirid {
+    let from_dir_id = export.vfs.fh_to_id(&from_dir_ops.dir);
+    if let Err(stat) = from_dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         error!("Directory does not exist");
         return Ok(());
     }
 
     // find the to directory
-    let to_dirid = context.vfs.fh_to_id(&todirops.dir);
-    if let Err(stat) = to_dirid {
+    let to_dir_id = export.vfs.fh_to_id(&to_dir_ops.dir);
+    if let Err(stat) = to_dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         error!("Directory does not exist");
         return Ok(());
     }
 
     // found the directory, get the attributes
-    let from_dirid = from_dirid.unwrap();
-    let to_dirid = to_dirid.unwrap();
+    let from_dir_id = from_dir_id.unwrap();
+    let to_dir_id = to_dir_id.unwrap();
 
     // get the object attributes before the write
-    let pre_from_dir_attr = match context.vfs.getattr(from_dirid).await {
-        Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wccattr)
-        }
+    let pre_from_dir_attr = match export.vfs.getattr(from_dir_id).await {
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
+            nfs3::wcc_data::default().serialize(output)?;
             nfs3::wcc_data::default().serialize(output)?;
             return Ok(());
         }
     };
 
     // get the object attributes before the write
-    let pre_to_dir_attr = match context.vfs.getattr(to_dirid).await {
-        Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
-            nfs3::pre_op_attr::Some(wccattr)
-        }
+    let pre_to_dir_attr = match export.vfs.getattr(to_dir_id).await {
+        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
+            nfs3::wcc_data::default().serialize(output)?;
             nfs3::wcc_data::default().serialize(output)?;
             return Ok(());
         }
     };
 
     // rename!
-    let res = context.vfs.rename(from_dirid, &fromdirops.name, to_dirid, &todirops.name).await;
+    let res = export.vfs.rename(from_dir_id, &from_dir_ops.name, to_dir_id, &to_dir_ops.name).await;
 
     // Re-read dir attributes for post op attr
-    let post_from_dir_attr = context.vfs.getattr(from_dirid).await.ok();
-    let post_to_dir_attr = context.vfs.getattr(to_dirid).await.ok();
+    let post_from_dir_attr = export.vfs.getattr(from_dir_id).await.ok();
+    let post_to_dir_attr = export.vfs.getattr(to_dir_id).await.ok();
     let from_wcc_res = nfs3::wcc_data { before: pre_from_dir_attr, after: post_from_dir_attr };
 
     let to_wcc_res = nfs3::wcc_data { before: pre_to_dir_attr, after: post_to_dir_attr };
