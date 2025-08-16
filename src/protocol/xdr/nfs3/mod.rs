@@ -382,8 +382,8 @@ const _: () = {
 // and thus needs to be encoded with its length as the first 4 bytes.
 impl Deserialize for nfs_fh3 {
     fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        let _len = deserialize::<UsizeAsU32>(src)?;
-        if _len.0 != size_of::<nfs_fh3>() {
+        let len = deserialize::<UsizeAsU32>(src)?;
+        if len.0 != size_of::<nfs_fh3>() {
             return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
         }
         self.gen = deserialize::<u64>(src)?;
