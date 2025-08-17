@@ -36,14 +36,9 @@ use umnt_all::mountproc3_umnt_all;
 ///
 /// * `bool` - true if the requested path properly matches the export
 fn matches_export_path(requested_path: &str, export_name: &str) -> bool {
-    if requested_path == export_name {
-        true
-    } else if requested_path.starts_with(export_name) {
-        // Check that the character after the export name is a path separator
-        requested_path.chars().nth(export_name.len()) == Some('/')
-    } else {
-        false
-    }
+    requested_path == export_name
+        || (requested_path.starts_with(export_name)
+            && requested_path.chars().nth(export_name.len()) == Some('/'))
 }
 
 /// Main handler for `MOUNT` procedures of version 3 protocol.
