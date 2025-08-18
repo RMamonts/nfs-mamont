@@ -22,14 +22,24 @@
 //!
 //! Each operation handler follows the same pattern as NFSv3, taking RPC parameters
 //! and returning appropriate responses via the output stream.
+
+use dashmap::DashMap;
+use num_traits::cast::FromPrimitive;
+use std::collections::HashMap;
 use std::io;
 use std::io::{Read, Write};
-
-use num_traits::cast::FromPrimitive;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tracing::warn;
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
+use crate::vfs::NFSv4FileSystem;
+use crate::xdr::nfs4::operations::{nfs_argop4, nfs_resop4};
+use crate::xdr::nfs4::{
+    clientid4, delegation_type, filehandle, nfs_client_id, nfs_fh4, nfs_ftype4, seqid4,
+    state_owner_type, state_type, stateid4,
+};
 
 mod compound;
 mod null;
@@ -85,7 +95,80 @@ pub async fn handle_nfs(
 
 /// Represents the context for NFSv4 operations.
 /// Contains necessary state and configuration for NFSv4 protocol handling.
-#[derive(Default)]
+
+/// NFSv4.1 operation context (RFC 7530 Section 15.4)
+/// Contains the current execution state for NFS operations
 pub struct NFSv4Context {
-    // TODO: find out what should be here
+    /// CURRENT filehandle - target of current operation (RFC 7530 Section 15.4.1)
+    _current_file_handler: filehandle,
+    /// SAVED filehandle - saved for compound operations (RFC 7530 Section 15.4.2)
+    _saved_file_handler: filehandle,
+    /// CURRENT stateid - for operations requiring state (OPEN, LOCK, etc.)
+    _current_stateid: stateid4,
+    /// SAVED stateid - saved state for compound operations
+    _saved_stateid: stateid4,
+    /// NFS minor version being used (0 for v4.0, 1 for v4.1)
+    _minor_version: u32,
+    /// Server-wide state management
+    _nfsv4state: NFSv4State,
+}
+
+/// Server-wide NFSv4.0 state (RFC 7530 Section 9)
+/// Manages all client-visible server state
+pub struct NFSv4State {
+    /// Client ID to client details mapping (RFC 7530 Section 9.1.2)
+    clients: Arc<DashMap<clientid4, nfs_client_id>>,
+    /// Per-client state table
+    state_table: Arc<DashMap<clientid4, Vec<State>>>,
+    /// Filesystem abstraction layer instances
+    fs: Arc<DashMap<String, NFSv4FS>>,
+}
+
+/// Represents a single state object on server (RFC 7530 Section 9.1.4)
+/// Can be OPEN, LOCK, DELEGATION
+pub struct State {
+    /// All state entries for this file (organized by clientid)
+    states: Arc<DashMap<clientid4, Vec<Arc<state_type>>>>,
+    /// Associated filehandle
+    filehandle: filehandle,
+    /// Type of state (OPEN, LOCK, etc.)
+    state_type: state_type,
+    /// State owner information
+    state_owner: Arc<RwLock<StateOwner>>,
+    /// Last used sequence ID (for operation ordering)
+    last_sequid: seqid4,
+    /// Generation number for state recovery
+    generation_number: u32,
+}
+
+/// State owner information
+/// Identifies the owner of a particular state (open/lock owner)
+pub struct StateOwner {
+    /// OPEN/LOCK/DELEGATION owner type
+    owner_type: state_owner_type,
+    /// Opaque owner identifier
+    owner_name: Vec<u8>,
+    /// Client ID that owns this state
+    client: clientid4,
+    /// Client information
+    client_info: nfs_client_id,
+    /// Current sequence ID (for operation ordering)
+    seqid: seqid4,
+    /// All states owned by this owner (organized by nfs_fh4)
+    states: Arc<DashMap<nfs_fh4, Vec<state_type>>>,
+    /// Lease expiration time (RFC 7530 Section 9.1.4.4)
+    expiration: Duration,
+    /// Optional filehandle reference (RFC 5661 Section 2.4.1)
+    filehandle: filehandle,
+}
+
+/// Filesystem abstraction (RFC 7530 Section 5.1)
+/// Represents an exported filesystem with its objects
+pub struct NFSv4FS {
+    /// Filesystem name/identifier
+    fs_name: Vec<u8>,
+    /// Exported objects (RFC 7530 Section 5.5)
+    exports: Arc<DashMap<nfs_fh4, filehandle>>,
+    /// Virtual filesystem implementation (RFC 7530 Section 5.1)
+    vfs: Arc<dyn NFSv4FileSystem>,
 }

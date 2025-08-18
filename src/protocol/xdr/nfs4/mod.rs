@@ -4,11 +4,20 @@
 //! as specified in RFC 7530.
 
 pub mod operations;
-pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 
+use dashmap::DashMap;
+pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
+use std::sync::{Arc, RwLock};
+
+use crate::protocol::nfs::v4::{NFSv4FS, State};
+use crate::vfs::NFSv4FileSystem;
 use crate::xdr;
 use num_derive::{FromPrimitive, ToPrimitive};
 
+#[allow(non_camel_case_types)]
+pub type seqid4 = u32;
+#[allow(non_camel_case_types)]
+pub type clientid4 = u64;
 /// NFS version 4 status codes as defined in RFC 7530
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive, PartialEq, Eq)]
@@ -219,3 +228,136 @@ pub enum nfs_opnum4 {
 
 impl xdr::SerializeEnum for nfs_opnum4 {}
 impl xdr::DeserializeEnum for nfs_opnum4 {}
+
+/// NFSv4 filehandle (RFC 7530 Section 2.2)
+/// Opaque reference to filesystem object with maximum size NFS4_FHSIZE (128 bytes)
+#[allow(non_camel_case_types)]
+#[derive(Clone, Debug, Default)]
+pub struct nfs_fh4 {
+    /// Opaque filehandle data (RFC 7530 Section 14.1.6.1)
+    pub data: Vec<u8>, // Maximum size NFS4_FHSIZE (128 bytes)
+}
+
+/// NFSv4 stateid (RFC 7530 Section 9.1.4.1)
+/// Identifies state held by client (open/lock/delegation)
+#[allow(non_camel_case_types)]
+#[derive(Default)]
+pub struct stateid4 {
+    /// Sequence ID for stateid validation (RFC 7530 Section 9.1.4.1)
+    seqid: u32,
+    /// Opaque identifier (typically 12 bytes for NFSv4.1)
+    other: Vec<u8>, // Normally NFS4_STATEID_OTHER_SIZE (12 bytes)
+}
+
+/// NFS file type
+#[allow(non_camel_case_types)]
+#[derive(Default)]
+pub enum nfs_ftype4 {
+    #[default]
+    NO_FILE_TYPE = 0,
+    REGULAR_FILE = 1,
+    CHARACTER_FILE = 2,
+    BLOCK_FILE = 3,
+    SYMBOLIC_LINK = 4,
+    SOCKET_FILE = 5,
+    FIFO_FILE = 6,
+    DIRECTORY = 7,
+}
+
+/// Delegation type (RFC 7530 Section 10.4)
+#[allow(non_camel_case_types)]
+pub enum delegation_type {
+    OPEN_DELEGATE_READ,  // READ delegation
+    OPEN_DELEGATE_WRITE, // WRITE delegation
+}
+
+/// State type classification
+#[allow(non_camel_case_types)]
+#[derive(Default)]
+pub enum state_type {
+    #[default]
+    STATE_TYPE_NONE,
+    STATE_TYPE_OPEN(open_state),        // Open file state
+    STATE_TYPE_DELEG(delegation_state), // Delegation state
+    STATE_TYPE_LOCK(lock_state),        // Byte-range lock
+}
+
+/// State owner type
+#[allow(non_camel_case_types)]
+#[derive(Default)]
+pub enum state_owner_type {
+    #[default]
+    INVALID,
+    OPEN(open_owner),             // Owner of OPEN state
+    LOCK(lock_owner),             // Owner of LOCK state
+    DELEGATION(delegation_owner), // Delegation owner
+}
+
+/// OPEN state information
+#[allow(non_camel_case_types)]
+pub struct open_state {
+    /// Client ID holding this open (RFC 7530 Section 9.1.2)
+    clientid: clientid4,
+    /// Associated locks (RFC 7530 Section 16.12)
+    locks: Arc<RwLock<Vec<lock_state>>>,
+    /// Reference to parent state container
+    state: Arc<RwLock<State>>,
+    // TODO: Add open flags, access modes, deny modes (RFC 7530 Section 16.16.2)
+    // anything more?
+}
+
+/// LOCK state information (RFC 7530 Section 16.12)
+#[allow(non_camel_case_types)]
+pub struct lock_state {
+    /// Client ID holding this lock
+    clientid: clientid4,
+    /// Associated open state (required for file locks)
+    open_state: Arc<open_state>,
+    // TODO: Add lock type, byte ranges (RFC 7530 Section 16.12.1)
+}
+
+/// DELEGATION state information (RFC 7530 Section 10)
+#[allow(non_camel_case_types)]
+pub struct delegation_state {
+    // TODO: Add delegation type, recall status, space reservation info
+}
+
+/// Filehandle with extended attributes (RFC 7530 Section 14)
+#[allow(non_camel_case_types)]
+pub struct filehandle {
+    /// Filesystem instance this handle belongs to
+    fsal: Arc<RwLock<NFSv4FS>>,
+    /// File type
+    obj_type: nfs_ftype4,
+    /// Base NFS filehandle
+    nfs_fh4: nfs_fh4,
+    /// Persistent filesystem identifier
+    fileid: u64,
+    /// All states associated with this file (organized by client)
+    states: Arc<DashMap<clientid4, Vec<Arc<state_type>>>>,
+}
+
+/// Client identification (RFC 7530 Section 9.1.2)
+#[allow(non_camel_case_types)]
+pub struct nfs_client_id {
+    // TODO: Implement verifier, ID string, callback info
+    // nfs_client_id_t in nfs-ganesha
+}
+
+/// OPEN owner information
+#[allow(non_camel_case_types)]
+pub struct open_owner {
+    // TODO: Add owner string, seqid tracking (RFC 7530 Section 16.16.2)
+}
+
+/// LOCK owner information
+#[allow(non_camel_case_types)]
+pub struct lock_owner {
+    // TODO: Add owner string, lock sequencing (RFC 7530 Section 16.12.1)
+}
+
+/// DELEGATION owner information
+#[allow(non_camel_case_types)]
+pub struct delegation_owner {
+    // TODO: Add recall callback info, delegation type
+}

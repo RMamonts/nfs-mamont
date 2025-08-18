@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 async-trait = "0.1.9"
 byteorder = "1.5"
+dashmap = "6.1.0"
 filetime = "0.2"
 futures = "0.3.31"
 num-derive = "0.4"
