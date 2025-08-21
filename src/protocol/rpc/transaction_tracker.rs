@@ -13,9 +13,11 @@
 //! semantics required by NFS and other RPC-based protocols, where duplicate
 //! operations (like file writes) could cause data corruption.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, SystemTime};
+
+use dashmap::DashMap;
+use tracing::info;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///
@@ -25,7 +27,11 @@ use std::time::{Duration, SystemTime};
 /// and maintains transaction state for a configurable retention period.
 pub struct TransactionTracker {
     retention_period: Duration,
-    transactions: Mutex<HashMap<(u32, String), TransactionState>>,
+    transactions: DashMap<(u32, String), TransactionState>,
+    /// Counter to track operations for periodic cleanup
+    operation_count: AtomicU64,
+    /// How often to run cleanup (every N operations)
+    cleanup_threshold: u64,
 }
 
 impl TransactionTracker {
@@ -35,7 +41,12 @@ impl TransactionTracker {
     /// for the given duration. This helps balance memory usage with the ability
     /// to detect retransmissions over time.
     pub fn new(retention_period: Duration) -> Self {
-        Self { retention_period, transactions: Mutex::new(HashMap::new()) }
+        Self {
+            retention_period,
+            transactions: DashMap::new(),
+            operation_count: AtomicU64::new(0),
+            cleanup_threshold: 10_000, // Run cleanup every 1000 operations
+        }
     }
 
     /// Checks if a transaction is a retransmission
@@ -43,17 +54,32 @@ impl TransactionTracker {
     /// Identifies whether the transaction with given XID and client address
     /// has been seen before. If it's a new transaction, marks it as in-progress.
     /// Returns true for retransmissions, false for new transactions.
+    ///
+    /// Optimized to minimize locking and reduce overhead on the hot path.
     pub fn is_retransmission(&self, xid: u32, client_addr: &str) -> bool {
-        let key = (xid, client_addr.to_string());
-        let mut transactions =
-            self.transactions.lock().expect("unable to unlock transactions mutex");
-        housekeeping(&mut transactions, self.retention_period);
-        if let std::collections::hash_map::Entry::Vacant(e) = transactions.entry(key) {
-            e.insert(TransactionState::InProgress);
-            false
-        } else {
-            true
+        // Fast path: check if transaction already exists without acquiring lock
+        if self.transactions.contains_key(&(xid, client_addr.to_string())) {
+            return true;
         }
+
+        // Increment operation count and check if cleanup is needed
+        let should_cleanup = {
+            let count = self.operation_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            info!("should_cleanup: count {}", count);
+            count % self.cleanup_threshold == 0
+        };
+
+        // Perform cleanup periodically to avoid accumulation
+        if should_cleanup {
+            housekeeping(&self.transactions, self.retention_period);
+
+            // TODO: reset self.operation_count
+        }
+
+        // Insert new transaction
+        self.transactions.insert((xid, client_addr.to_string()), TransactionState::InProgress);
+
+        false
     }
 
     /// Marks a transaction as successfully processed
@@ -64,9 +90,7 @@ impl TransactionTracker {
     pub fn mark_processed(&self, xid: u32, client_addr: &str) {
         let key = (xid, client_addr.to_string());
         let completion_time = SystemTime::now();
-        let mut transactions =
-            self.transactions.lock().expect("unable to unlock transactions mutex");
-        if let Some(tx) = transactions.get_mut(&key) {
+        if let Some(mut tx) = self.transactions.get_mut(&key) {
             *tx = TransactionState::Completed(completion_time);
         }
     }
@@ -77,7 +101,7 @@ impl TransactionTracker {
 /// Cleans up completed transactions that have exceeded the maximum retention age.
 /// Keeps in-progress transactions regardless of age to prevent processing duplicates.
 /// Called during transaction checks to maintain memory efficiency.
-fn housekeeping(transactions: &mut HashMap<(u32, String), TransactionState>, max_age: Duration) {
+fn housekeeping(transactions: &DashMap<(u32, String), TransactionState>, max_age: Duration) {
     let mut cutoff = SystemTime::now() - max_age;
     transactions.retain(|_, v| match v {
         TransactionState::InProgress => true,
