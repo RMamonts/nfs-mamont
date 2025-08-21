@@ -36,13 +36,9 @@ impl TransactionTracker {
     /// to detect retransmissions over time.
     pub fn new(retention_period: Duration) -> Self {
         // Use a cache with TTL - we only care about existence, not value
-        let cache = Cache::builder()
-            .time_to_live(retention_period)
-            .build();
+        let cache = Cache::builder().time_to_live(retention_period).build();
 
-        Self {
-            transactions: cache,
-        }
+        Self { transactions: cache }
     }
 
     /// Checks if a transaction is a retransmission
