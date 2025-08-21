@@ -16,7 +16,6 @@
 use std::time::Duration;
 
 use moka::sync::Cache;
-use dashmap::DashSet;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///
@@ -25,8 +24,8 @@ use dashmap::DashSet;
 /// Helps prevent duplicate processing of retransmitted requests
 /// and maintains transaction state for a configurable retention period.
 pub struct TransactionTracker {
-    in_progress_transactions: Cache<(u32, String), ()>,
-    completed_transactions: DashSet<(u32, String)>,
+    /// Cache for tracking transactions with TTL
+    transactions: Cache<(u32, String), ()>,
 }
 
 impl TransactionTracker {
@@ -36,9 +35,14 @@ impl TransactionTracker {
     /// for the given duration. This helps balance memory usage with the ability
     /// to detect retransmissions over time.
     pub fn new(retention_period: Duration) -> Self {
-        let cache = Cache::builder().time_to_live(retention_period).build();
+        // Use a cache with TTL - we only care about existence, not value
+        let cache = Cache::builder()
+            .time_to_live(retention_period)
+            .build();
 
-        Self {in_progress_transactions: cache, completed_transactions: DashSet::new() }
+        Self {
+            transactions: cache,
+        }
     }
 
     /// Checks if a transaction is a retransmission
@@ -49,25 +53,14 @@ impl TransactionTracker {
     pub fn is_retransmission(&self, xid: u32, client_addr: &str) -> bool {
         let key = (xid, client_addr.to_string());
 
-        if self.completed_transactions.get(&key).is_none() && self.in_progress_transactions.get(&key).is_none() {
-            self.in_progress_transactions.insert(key, ());
-            false
-        } else {
+        // Check if transaction already exists in cache
+        if self.transactions.get(&key).is_some() {
+            // Transaction exists - this is a retransmission
             true
-        }
-    }
-
-    /// Marks a transaction as successfully processed
-    ///
-    /// Updates the state of a transaction from in-progress to completed,
-    /// recording the completion time for retention period calculations.
-    /// Called after a transaction has been fully processed and responded to.
-    pub fn mark_processed(&self, xid: u32, client_addr: &str) {
-        let key = (xid, client_addr.to_string());
-
-        if let Some(_) = self.in_progress_transactions.remove(&key) {
-            self.completed_transactions.insert(key);
+        } else {
+            // Transaction doesn't exist - mark as in-progress
+            self.transactions.insert(key, ());
+            false
         }
     }
 }
-
