@@ -16,7 +16,7 @@
 use std::time::Duration;
 
 use moka::sync::Cache;
-use dashmap::DashMap;
+use dashmap::DashSet;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///
@@ -25,8 +25,8 @@ use dashmap::DashMap;
 /// Helps prevent duplicate processing of retransmitted requests
 /// and maintains transaction state for a configurable retention period.
 pub struct TransactionTracker {
-    in_progress_transactions: Cache<(u32, String), TransactionState>,
-    completed_transactions: DashMap<(u32, String), TransactionState>,
+    in_progress_transactions: Cache<(u32, String), ()>,
+    completed_transactions: DashSet<(u32, String)>,
 }
 
 impl TransactionTracker {
@@ -38,7 +38,7 @@ impl TransactionTracker {
     pub fn new(retention_period: Duration) -> Self {
         let cache = Cache::builder().time_to_live(retention_period).build();
 
-        Self {in_progress_transactions: cache, completed_transactions: DashMap::new() }
+        Self {in_progress_transactions: cache, completed_transactions: DashSet::new() }
     }
 
     /// Checks if a transaction is a retransmission
@@ -50,7 +50,7 @@ impl TransactionTracker {
         let key = (xid, client_addr.to_string());
 
         if self.completed_transactions.get(&key).is_none() && self.in_progress_transactions.get(&key).is_none() {
-            self.in_progress_transactions.insert(key, TransactionState::InProgress);
+            self.in_progress_transactions.insert(key, ());
             false
         } else {
             true
@@ -66,18 +66,8 @@ impl TransactionTracker {
         let key = (xid, client_addr.to_string());
 
         if let Some(_) = self.in_progress_transactions.remove(&key) {
-            self.completed_transactions.insert(key, TransactionState::Completed);
+            self.completed_transactions.insert(key);
         }
     }
 }
 
-/// Represents the current state of an RPC transaction
-///
-/// Either in-progress (currently being processed) or
-/// completed (successfully processed with timestamp).
-/// Used for tracking transaction lifecycle and retransmission detection.
-#[derive(Clone)]
-enum TransactionState {
-    InProgress,
-    Completed,
-}
