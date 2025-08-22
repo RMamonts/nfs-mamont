@@ -134,6 +134,8 @@ pub async fn handle_rpc(
     }
     .map(|_| true);
 
+    context.transaction_tracker.mark_processed(xid, &context.client_addr);
+
     result
 }
 
