@@ -226,7 +226,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
             arcfs,
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(10))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         })
     }
