@@ -24,18 +24,21 @@
 //! and returning appropriate responses via the output stream.
 #![allow(dead_code)]
 #![allow(unused_variables)]
+use std::collections::HashMap;
 use std::io;
 use std::io::{Read, Write};
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use num_traits::cast::FromPrimitive;
+use tokio::sync::RwLock;
 use tracing::warn;
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
 use crate::vfs::NFSv4FileSystem;
-use crate::xdr::nfs4::{clientid4, filehandle, nfs_client_id, nfs_fh4, state_type, stateid4};
+use crate::xdr::nfs4::{
+    clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
+};
 
 mod compound;
 mod null;
@@ -111,28 +114,28 @@ pub struct NFSv4Context {
 /// in RFC 7530 Section 9. This structure is shared across all client connections.
 pub struct NFSv4State {
     /// Mapping of client IDs to their full management structures
-    clients: DashMap<clientid4, nfs_client_id>,
+    clients: RwLock<HashMap<clientid4, Arc<RwLock<nfs_client_id>>>>,
     /// Global registry of all active state identifiers and their associated state objects
-    state_table: DashMap<stateid4, state_type>,
+    state_table: RwLock<HashMap<stateid4, state_type>>,
     /// Reverse index: filehandle -> list of OPEN stateids for that file
-    opens_by_file: DashMap<nfs_fh4, Vec<stateid4>>,
+    opens_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
     /// Reverse index: filehandle -> list of LOCK stateids for that file
-    locks_by_file: DashMap<nfs_fh4, Vec<stateid4>>,
+    locks_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
     /// Reverse index: filehandle -> list of DELEGATION stateids for that file
-    delegations_by_file: DashMap<nfs_fh4, Vec<stateid4>>,
-    /// Reverse index: client ID -> list of all stateids owned by that client
-    states_by_client: DashMap<clientid4, Vec<stateid4>>,
+    delegations_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
+    /// Reverse index: client ID -> list of all state-owners owned by that client
+    state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
     /// Managed filesystem instances, keyed by export name or identifier
-    fs: DashMap<String, NFSv4FS>,
+    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>,
 }
 
 /// Represents a single exported filesystem instance and its properties.
 /// Referenced to RFC 7530 Section 7.3
 pub struct NFSv4FS {
     /// Human-readable name identifier for this filesystem export
-    _fs_name: Vec<u8>,
+    fs_name: String,
     /// Mapping of NFS filehandles to internal filehandle representations for this export
-    _exports: DashMap<nfs_fh4, filehandle>,
+    exports: RwLock<HashMap<nfs_fh4, filehandle>>,
     /// Reference to the underlying filesystem abstraction implementation (VFS layer)
-    _vfs: Arc<dyn NFSv4FileSystem>,
+    vfs: Arc<dyn NFSv4FileSystem>,
 }

@@ -6,18 +6,22 @@
 #![allow(unused_variables)]
 pub mod operations;
 
+use std::io;
+use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use num_derive::{FromPrimitive, ToPrimitive};
-pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
+use tokio::sync::RwLock;
 
-use crate::protocol::nfs::v4::NFSv4FS;
+pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 use crate::xdr;
 
+const NFS4_FHSIZE: u32 = 128;
 #[allow(non_camel_case_types)]
-pub type seqid4 = u32;
+pub type seqid4 = AtomicU32;
 #[allow(non_camel_case_types)]
 pub type clientid4 = u64;
 /// NFS version 4 status codes as defined in RFC 7530
@@ -231,26 +235,48 @@ pub enum nfs_opnum4 {
 impl xdr::SerializeEnum for nfs_opnum4 {}
 impl xdr::DeserializeEnum for nfs_opnum4 {}
 
-/// NFSv4 filehandle structure (RFC 7530 Section 2.2).
-/// An opaque, variable-length byte string used to uniquely identify
-/// a filesystem object within a single export. Maximum size is NFS4_FHSIZE (128 bytes).
+/// NFSv4 filehandle (RFC 7530 Section 2.2)
+/// Opaque reference to a filesystem object within an export
+/// Maximum size: NFS4_FHSIZE (128 bytes)
 #[allow(non_camel_case_types)]
-#[derive(Clone, Debug, Default)]
 pub struct nfs_fh4 {
-    /// Opaque filehandle byte data
-    pub data: Vec<u8>, // Maximum size NFS4_FHSIZE (128 bytes)
+    /// Opaque filehandle byte string
+    pub data: Vec<u8>,
 }
 
-/// NFSv4 state identifier.
-/// Uniquely identifies a state object (open, lock, delegation) held by a client
-/// on the server. The structure includes sequencing for replay protection.
+impl nfs_fh4 {
+    fn create(arg: Vec<u8>) -> io::Result<Self> {
+        if arg.len() > NFS4_FHSIZE as usize {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("Filehandle too large: {} > {}", arg.len(), NFS4_FHSIZE),
+            ));
+        }
+        Ok(Self { data: arg })
+    }
+}
+
+/// NFSv4 state identifier
+/// Uniquely identifies server state (open, lock, delegation) for replay protection
 #[allow(non_camel_case_types)]
 #[derive(Default)]
 pub struct stateid4 {
-    /// Sequence identifier for stateid validation and replay protection (RFC 7530 Section 9.1.4.1)
+    /// Sequence ID for state validation and replay protection
     seqid: u32,
-    /// Opaque identifier bytes (typically 12 bytes for NFSv4.1)
-    other: Vec<u8>, // Normally NFS4_STATEID_OTHER_SIZE (12 bytes)
+    /// Opaque identifier bytes
+    other: Vec<u8>,
+}
+
+impl stateid4 {
+    fn create(seqid: u32, other: Vec<u8>) -> io::Result<Self> {
+        if other.len() > NFS4_FHSIZE as usize {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("StateID other too large: {} > {}", other.len(), NFS4_FHSIZE),
+            ));
+        }
+        Ok(Self { seqid, other })
+    }
 }
 
 /// NFS file type enumeration
@@ -268,54 +294,59 @@ pub enum nfs_ftype4 {
     DIRECTORY = 7,
 }
 
-/// Delegation type classification (RFC 7530 Section 10.4)
+/// Delegation type classification
 #[allow(non_camel_case_types)]
 pub enum delegation_type4 {
-    OPEN_DELEGATE_READ,  // Read delegation (client can cache data safely)
-    OPEN_DELEGATE_WRITE, // Write delegation (exclusive write access)
+    /// Read delegation - client can cache data safely
+    OPEN_DELEGATE_READ,
+    /// Write delegation - exclusive write access to client
+    OPEN_DELEGATE_WRITE,
 }
 
-/// Classification of state types stored in the global state table.
-/// Acts as a tagged union for different state objects.
+/// State type classification
+/// Tagged union for different state objects in global state table
 #[allow(non_camel_case_types)]
 #[derive(Default)]
 pub enum state_type {
     #[default]
     STATE_TYPE_NONE,
-    STATE_TYPE_OPEN(open_state),        // Open file state
-    STATE_TYPE_DELEG(delegation_state), // Delegation state
-    STATE_TYPE_LOCK(lock_state),        // Byte-range lock state
+    /// Open file state (RFC 7530 Section 16.18)
+    STATE_TYPE_OPEN(open_state),
+    /// Delegation state (RFC 7530 Section 10)
+    STATE_TYPE_DELEG(delegation_state),
+    /// Byte-range lock state (RFC 7530 Section 16.12)
+    STATE_TYPE_LOCK(lock_state),
 }
 
-/// Classification of state owner types for ownership validation.
+/// State owner type classification
+/// Used for ownership validation of state objects
 #[allow(non_camel_case_types)]
 #[derive(Default)]
 pub enum state_owner_type {
     #[default]
     INVALID,
-    OPEN(open_owner),      // Owner of OPEN state
-    LOCK(lock_owner),      // Owner of LOCK state
-    DELEGATION(clientid4), // Delegation owner (the client itself)
+    /// Owner of OPEN state
+    OPEN(open_owner),
+    /// Owner of LOCK state
+    LOCK(lock_owner),
+    /// Delegation owner (the client itself)
+    DELEGATION(clientid4),
 }
 
-/// Represents an open file instance
+/// Open file instance (RFC 7530 Section 16.18)
+/// Represents a client's open file context on the server
 #[allow(non_camel_case_types)]
 pub struct open_state {
+    /// State identifier for this open
     stateid: stateid4,
-    /// List of lock stateids associated with this open instance
-    locks: Vec<stateid4>,
     /// The filehandle this open state refers to
     filehandle: filehandle,
     /// The owner who opened this file
-    open_owner: Arc<RwLock<open_owner>>,
-    /// Share access modes (READ, WRITE, BOTH) for this open
+    open_owner: open_owner,
+    /// Share access modes (READ, WRITE, BOTH)
     share_access: u32,
-    /// Share denial modes (READ, WRITE, BOTH) for this open
+    /// Share denial modes (READ, WRITE, BOTH)
     share_deny: u32,
-    /// Last sequence ID used for operation ordering
-    last_sequid: seqid4,
-    /// Generation number for state recovery after server reboot
-    generation_number: u64,
 }
 
 /// NFS lock type classification (RFC 7530 Section 16.12.1)
@@ -327,46 +358,43 @@ enum nfs_lock_type4 {
     WRITEW_LT = 4, // Blocking write lock
 }
 
-/// Represents a byte-range lock on a file (RFC 7530 Section 16.12)
+/// Byte-range lock on a file (RFC 7530 Section 16.12)
+/// Represents a client's lock on a specific file range
 #[allow(non_camel_case_types)]
 pub struct lock_state {
+    /// State identifier for this lock
     stateid: stateid4,
     /// The open state this lock is associated with
-    open_state: Arc<RwLock<open_state>>,
+    open_state: open_state,
     /// The specific owner of this lock
-    lock_owner: Arc<RwLock<lock_owner>>,
+    lock_owner: lock_owner,
     /// Type of lock (read/write, blocking/non-blocking)
     lock_type: nfs_lock_type4,
-    /// Locked byte range (offset, length)
+    /// Locked byte range (start offset, end offset)
     range: (u64, u64),
     /// The filehandle this lock protects
     filehandle: filehandle,
-    /// Last sequence ID used for operation ordering
-    last_sequid: seqid4,
-    /// Generation number for state recovery
-    generation_number: u64,
 }
 
 /// Delegation state information (RFC 7530 Section 10)
-/// Represents a delegated authority to cache file data locally
+/// Represents delegated authority for client to cache file data locally
 #[allow(non_camel_case_types)]
 pub struct delegation_state {
+    /// State identifier for this delegation
     stateid: stateid4,
-    /// Associated open state (required for maintaining file access context)
-    open_state: Arc<RwLock<open_state>>,
+    /// Associated open state for file access context
+    open_state: open_state,
     /// Type of delegation (read or write)
     delegation_type: delegation_type4,
     /// Client information for callback operations
-    nfs_client_id: nfs_client_id,
+    nfs_client_id: Arc<RwLock<nfs_client_id>>,
     /// The filehandle being delegated
     filehandle: filehandle,
 }
 
-/// Enhanced filehandle with extended attributes and state tracking
+/// Enhanced filehandle with extended attributes
 #[allow(non_camel_case_types)]
 pub struct filehandle {
-    /// Filesystem instance this handle belongs to
-    fsal: Arc<RwLock<NFSv4FS>>,
     /// Type of the referenced filesystem object
     obj_type: nfs_ftype4,
     /// Base NFS filehandle data
@@ -375,26 +403,31 @@ pub struct filehandle {
     fileid: u64,
 }
 
-/// Client ID confirmation state machine states
+/// Client ID confirmation state machine states (RFC 7530 Section 9.1.2)
 #[allow(non_camel_case_types)]
 enum nfs_clientid_confirm_state {
-    UNCONFIRMED_CLIENT_ID, // Client ID created but not yet confirmed
-    CONFIRMED_CLIENT_ID,   // Client ID confirmed and active
-    EXPIRED_CLIENT_ID,     // Client ID expired (lease timeout)
-    STALE_CLIENT_ID,       // Client ID no longer valid
+    /// Client ID created but not yet confirmed
+    UNCONFIRMED_CLIENT_ID,
+    /// Client ID confirmed and active
+    CONFIRMED_CLIENT_ID,
+    /// Client ID expired (lease timeout)
+    EXPIRED_CLIENT_ID,
+    /// Client ID no longer valid
+    STALE_CLIENT_ID,
 }
 
-/// Client authentication credentials container
+/// Client authentication credentials container (RFC 7530 Section 3.2)
 #[allow(non_camel_case_types)]
 struct nfs_credentials {
     /// Authentication flavor (UNIX, Kerberos, etc.)
     flavour: u32,
     /// Length of credential data
     length: u32,
-    // TODO: Implement proper credential storage based on RFC 7530 Section 3.2
+    // TODO: Implement proper credential storage
 }
 
 /// Callback channel information for server-to-client communication
+/// Used for delegation recall and layout recall operations
 pub struct CallbackInfo {
     /// Unique callback identifier
     identifier: u32,
@@ -403,13 +436,15 @@ pub struct CallbackInfo {
     /// RPC program number for callback service
     rpc_program: u32,
     /// RPC version number for callback service
-    rpc_version: u32, // TODO: Add authentication information for secure callback channels
+    rpc_version: u32,
+    // TODO: Add authentication information
 }
 
 /// Complete client management structure (RFC 7530 Section 9.1.2)
 /// Contains all server-side state related to a specific NFS client
 #[allow(non_camel_case_types)]
 pub struct nfs_client_id {
+    /// Unique client identifier
     clientid: clientid4,
     /// Verifier for client ID establishment
     verifier: [u8; 8],
@@ -417,42 +452,66 @@ pub struct nfs_client_id {
     last_verifier: [u8; 8],
     /// Lease duration for this client
     lease_duration: Duration,
-    /// CURRENT lease expiration time - must be updated on each client request
+    /// Current lease expiration time (updated on each request)
     lease_time: Instant,
     /// Current confirmation status
     confirm_status: nfs_clientid_confirm_state,
     /// Client authentication credentials
     credentials: nfs_credentials,
     /// All open owners belonging to this client
-    open_owners: Vec<Arc<RwLock<open_owner>>>,
+    open_owners: Vec<open_owner>,
     /// All lock owners belonging to this client
-    lock_owners: Vec<Arc<RwLock<lock_owner>>>,
+    lock_owners: Vec<lock_owner>,
     /// Filehandles with active delegations for this client
     delegations: Vec<nfs_fh4>,
-    /// All stateids owned by this client
-    states: Vec<stateid4>,
     /// Callback channel information for this client
     callback_info: CallbackInfo,
 }
 
-/// OPEN owner context (RFC 7530 Section 16.16.2)
+/// OPEN owner context
 /// Represents a specific opener context within a client
 #[allow(non_camel_case_types)]
 pub struct open_owner {
-    /// Client ID of the owner
-    clientid: clientid4,
+    /// OPEN owner identification
+    open_owner4: Arc<open_owner4>,
     /// All stateids owned by this open context
     states: Vec<stateid4>,
+    /// Last sequence ID for operation ordering
+    last_sequid: seqid4,
+    /// Generation number for state recovery
+    generation_number: AtomicU64,
+}
+
+/// OPEN owner identification structure
+#[allow(non_camel_case_types)]
+struct open_owner4 {
+    /// Client ID of the owner
+    clientid: clientid4,
+    /// Opaque owner identifier
+    owner: Vec<u8>,
+}
+
+/// LOCK owner identification structure
+#[allow(non_camel_case_types)]
+struct lock_owner4 {
+    /// Client ID of the owner
+    clientid: clientid4,
+    /// Opaque owner identifier
+    owner: Vec<u8>,
 }
 
 /// LOCK owner context
 /// Represents a specific lock owner within an open context
 #[allow(non_camel_case_types)]
 pub struct lock_owner {
-    /// Client ID of the owner
-    clientid: clientid4,
+    /// LOCK owner identification
+    lock_owner4: Arc<lock_owner4>,
     /// The open owner this lock owner belongs to
-    open_owner: Arc<RwLock<open_owner>>,
+    open_owner: Arc<open_owner4>,
     /// All lock stateids owned by this lock context
     states: Vec<stateid4>,
+    /// Last sequence ID for operation ordering
+    last_sequid: seqid4,
+    /// Generation number for state recovery
+    generation_number: AtomicU64,
 }
