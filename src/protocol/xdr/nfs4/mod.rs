@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 use num_derive::{FromPrimitive, ToPrimitive};
 use tokio::sync::RwLock;
 
-pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 use crate::xdr;
+pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 
 const NFS4_FHSIZE: u32 = 128;
 #[allow(non_camel_case_types)]
