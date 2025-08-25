@@ -26,6 +26,9 @@ use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
+/// Default transaction retention period
+const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
+
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
     /// Arc reference to the NFS file system implementation
@@ -244,7 +247,9 @@ impl NFSTcpListener {
             listener,
             port,
             export_table: Arc::new(RwLock::new(HashMap::new())),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+            transaction_tracker: Arc::new(rpc::TransactionTracker::new(
+                TRANSACTION_RETENTION_PERIOD,
+            )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         })
     }
