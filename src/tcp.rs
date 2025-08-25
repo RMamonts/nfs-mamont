@@ -314,6 +314,26 @@ impl NFSTcpListener {
 
         Ok(fs_id)
     }
+
+    /// Unregisters an existing NFS file system export by its filesystem ID
+    ///
+    /// # Arguments
+    ///
+    /// * `fs_id` - The filesystem ID of the export to remove
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Export was successfully removed
+    /// * `Err(io::Error)` - Export with the given ID was not found
+    pub async fn unregister_export(&mut self, fs_id: xdr::nfs3::fs_id) -> io::Result<()> {
+        if self.export_table.remove(&fs_id).is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Export with ID '{fs_id}' not found"),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
