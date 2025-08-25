@@ -20,10 +20,9 @@ use std::io::{Read, Write};
 use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::xdr::{DeserializeEnum, SerializeEnum};
-use crate::{DeserializeStruct, SerializeStruct};
-
 use super::{deserialize, Deserialize, Serialize};
+use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
+use crate::{xdr, DeserializeStruct, SerializeStruct};
 
 // Modules for different operation types
 pub mod dir;
@@ -219,6 +218,9 @@ pub type mode3 = u32;
 /// Used for various counting purposes in NFS operations
 pub type count3 = u32;
 
+/// Used in [nfs_fh3] to identify the file system
+pub type fs_id = u64;
+
 /// Status codes returned by NFS version 3 operations
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
@@ -365,11 +367,41 @@ SerializeStruct!(specdata3, specdata1, specdata2);
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct nfs_fh3 {
-    /// Raw file handle data (up to `NFS3_FHSIZE` bytes)
-    pub data: Vec<u8>,
+    /// Used for stale handle detection
+    pub gen: u64,
+    /// File system identifier
+    pub fs_id: fs_id,
+    /// Unique file identifier within the file system
+    pub id: fileid3,
 }
-DeserializeStruct!(nfs_fh3, data);
-SerializeStruct!(nfs_fh3, data);
+const _: () = {
+    assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
+};
+
+// Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
+// and thus needs to be encoded with its length as the first 4 bytes.
+impl Deserialize for nfs_fh3 {
+    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+        let len = deserialize::<UsizeAsU32>(src)?;
+        if len.0 != size_of::<nfs_fh3>() {
+            return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
+        }
+        self.gen = deserialize::<u64>(src)?;
+        self.fs_id = deserialize::<fs_id>(src)?;
+        self.id = deserialize::<fileid3>(src)?;
+        Ok(())
+    }
+}
+
+impl Serialize for nfs_fh3 {
+    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        UsizeAsU32(size_of::<Self>()).serialize(dest)?;
+        self.gen.serialize(dest)?;
+        self.fs_id.serialize(dest)?;
+        self.id.serialize(dest)?;
+        Ok(())
+    }
+}
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
@@ -452,6 +484,12 @@ pub struct wcc_attr {
 }
 DeserializeStruct!(wcc_attr, size, mtime, ctime);
 SerializeStruct!(wcc_attr, size, mtime, ctime);
+
+impl From<fattr3> for wcc_attr {
+    fn from(attr: fattr3) -> Self {
+        wcc_attr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
+    }
+}
 
 /// Pre-operation attributes for weak cache consistency as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state before an operation was performed

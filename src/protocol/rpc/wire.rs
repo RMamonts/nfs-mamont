@@ -111,7 +111,9 @@ pub async fn handle_rpc(
                 Ok(())
             }
         },
-        portmap::PROGRAM => nfs::portmap::handle_portmap(xid, &call, input, output, &mut context),
+        portmap::PROGRAM => {
+            nfs::portmap::handle_portmap(xid, &call, input, output, &mut context).await
+        }
         mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
         prog if prog == NFS_ACL_PROGRAM
             || prog == NFS_ID_MAP_PROGRAM
