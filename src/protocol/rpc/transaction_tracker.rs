@@ -13,9 +13,10 @@
 //! semantics required by NFS and other RPC-based protocols, where duplicate
 //! operations (like file writes) could cause data corruption.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+
+use dashmap::DashSet;
+use moka::sync::Cache;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///
@@ -24,8 +25,8 @@ use std::time::{Duration, SystemTime};
 /// Helps prevent duplicate processing of retransmitted requests
 /// and maintains transaction state for a configurable retention period.
 pub struct TransactionTracker {
-    retention_period: Duration,
-    transactions: Mutex<HashMap<(u32, String), TransactionState>>,
+    in_progress_transactions: DashSet<(u32, String)>,
+    completed_transactions: Cache<(u32, String), ()>,
 }
 
 impl TransactionTracker {
@@ -35,7 +36,9 @@ impl TransactionTracker {
     /// for the given duration. This helps balance memory usage with the ability
     /// to detect retransmissions over time.
     pub fn new(retention_period: Duration) -> Self {
-        Self { retention_period, transactions: Mutex::new(HashMap::new()) }
+        let cache = Cache::builder().time_to_live(retention_period).build();
+
+        Self { in_progress_transactions: DashSet::new(), completed_transactions: cache }
     }
 
     /// Checks if a transaction is a retransmission
@@ -45,52 +48,20 @@ impl TransactionTracker {
     /// Returns true for retransmissions, false for new transactions.
     pub fn is_retransmission(&self, xid: u32, client_addr: &str) -> bool {
         let key = (xid, client_addr.to_string());
-        let mut transactions =
-            self.transactions.lock().expect("unable to unlock transactions mutex");
-        housekeeping(&mut transactions, self.retention_period);
-        if let std::collections::hash_map::Entry::Vacant(e) = transactions.entry(key) {
-            e.insert(TransactionState::InProgress);
-            false
-        } else {
-            true
-        }
+
+        self.completed_transactions.get(&key).is_some()
+            || !self.in_progress_transactions.insert(key)
     }
 
     /// Marks a transaction as successfully processed
     ///
-    /// Updates the state of a transaction from in-progress to completed,
-    /// recording the completion time for retention period calculations.
+    /// Moves a transaction to completed cache with TTL
     /// Called after a transaction has been fully processed and responded to.
     pub fn mark_processed(&self, xid: u32, client_addr: &str) {
         let key = (xid, client_addr.to_string());
-        let completion_time = SystemTime::now();
-        let mut transactions =
-            self.transactions.lock().expect("unable to unlock transactions mutex");
-        if let Some(tx) = transactions.get_mut(&key) {
-            *tx = TransactionState::Completed(completion_time);
+
+        if self.in_progress_transactions.remove(&key).is_some() {
+            self.completed_transactions.insert(key, ());
         }
     }
-}
-
-/// Removes expired transactions from the tracking map
-///
-/// Cleans up completed transactions that have exceeded the maximum retention age.
-/// Keeps in-progress transactions regardless of age to prevent processing duplicates.
-/// Called during transaction checks to maintain memory efficiency.
-fn housekeeping(transactions: &mut HashMap<(u32, String), TransactionState>, max_age: Duration) {
-    let mut cutoff = SystemTime::now() - max_age;
-    transactions.retain(|_, v| match v {
-        TransactionState::InProgress => true,
-        TransactionState::Completed(completion_time) => completion_time >= &mut cutoff,
-    });
-}
-
-/// Represents the current state of an RPC transaction
-///
-/// Either in-progress (currently being processed) or
-/// completed (successfully processed with timestamp).
-/// Used for tracking transaction lifecycle and retransmission detection.
-enum TransactionState {
-    InProgress,
-    Completed(SystemTime),
 }
