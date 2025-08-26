@@ -99,8 +99,6 @@ pub async fn mountproc3_mnt(
         debug!("client_list: {machine_name} += {utf8path}");
         context
             .client_list
-            .write()
-            .await
             .entry(machine_name)
             .or_insert(HashSet::new())
             .insert(utf8path.to_string());

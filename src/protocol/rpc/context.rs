@@ -13,10 +13,11 @@
 //! to process requests correctly in accordance with client permissions and
 //! server configuration.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use tokio::sync::RwLock;
 
 use crate::protocol::nfs::portmap::PortmapTable;
@@ -60,7 +61,7 @@ pub struct Context {
     pub portmap_table: Arc<RwLock<PortmapTable>>,
 
     /// List of connected clients and file systems they have mounted
-    pub client_list: Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    pub client_list: Arc<DashMap<String, HashSet<String>>>,
 }
 
 impl fmt::Debug for Context {

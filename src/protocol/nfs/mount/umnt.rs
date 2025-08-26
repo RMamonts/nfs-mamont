@@ -60,7 +60,7 @@ pub async fn mountproc3_umnt(
 
     if let Ok(machine_name) = String::from_utf8(context.auth.machinename.clone()) {
         debug!("client_list: {machine_name} -= {utf8path}");
-        context.client_list.write().await.entry(machine_name).and_modify(|set| {
+        context.client_list.entry(machine_name).and_modify(|set| {
             set.remove(&utf8path.to_string());
         });
     } else {
