@@ -188,10 +188,10 @@ trait NfsProc {
     async fn get_export_or_reply<'a>(
         xid: u32,
         output: &mut impl Write,
-        guard: &'a RwLockReadGuard<'_, NFSExportTable>,
+        context: &'a rpc::Context,
         fs_id: nfs3::fs_id,
-    ) -> io::Result<Option<&'a NFSExportTableEntry>> {
-        let Some(export) = guard.get(&fs_id) else {
+    ) -> io::Result<Option<dashmap::mapref::one::Ref<'a, nfs3::fs_id, NFSExportTableEntry>>> {
+        let Some(export) = context.export_table.get(&fs_id) else {
             warn!("No export found for fs_id: {}", fs_id);
             Self::error_reply_default(xid, output, nfs3::nfsstat3::NFS3ERR_BADHANDLE)?;
             return Ok(None);
