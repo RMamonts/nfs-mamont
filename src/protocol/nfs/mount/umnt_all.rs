@@ -31,7 +31,7 @@ pub async fn mountproc3_umnt_all(
 ) -> io::Result<()> {
     debug!("mountproc3_umnt_all({:?}) ", xid);
 
-    for mount_entry in context.export_table.read().await.values() {
+    for mount_entry in context.export_table.iter() {
         // Notify the mount signal channel if it exists
         if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(false).await;

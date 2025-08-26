@@ -48,7 +48,7 @@ pub struct Context {
     pub auth: xdr::rpc::auth_unix,
 
     /// List containing all exported file systems
-    pub export_table: Arc<RwLock<NFSExportTable>>,
+    pub export_table: Arc<NFSExportTable>,
 
     /// Transaction state tracker for handling retransmissions
     /// Maintains idempotency by detecting duplicate RPC calls

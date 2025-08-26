@@ -53,8 +53,7 @@ pub async fn nfsproc3_readdir(
     debug!("nfsproc3_readdirplus({:?},{:?}) ", xid, args);
 
     let fs_id = args.dir.fs_id;
-    let guard = context.export_table.read().await;
-    let Some(export) = guard.get(&fs_id) else {
+    let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;

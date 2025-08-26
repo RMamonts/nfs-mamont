@@ -175,8 +175,8 @@ fn multiple_mappings(amount: u32, prot: u32) -> Vec<mapping> {
     result
 }
 
-fn create_export_table() -> Arc<RwLock<nfs_mamont::tcp::NFSExportTable>> {
-    let mut export_table = nfs_mamont::tcp::NFSExportTable::default();
+fn create_export_table() -> Arc<nfs_mamont::tcp::NFSExportTable> {
+    let export_table = nfs_mamont::tcp::NFSExportTable::default();
     export_table.insert(
         0,
         NFSExportTableEntry {
@@ -185,7 +185,7 @@ fn create_export_table() -> Arc<RwLock<nfs_mamont::tcp::NFSExportTable>> {
             export_name: DEFAULT_EXPORT_NAME.to_string(),
         },
     );
-    Arc::new(RwLock::new(export_table))
+    Arc::new(export_table)
 }
 
 fn multiple_contexts(amount: u32) -> Vec<Context> {

@@ -30,10 +30,9 @@ pub async fn mountproc3_export(
     context: &rpc::Context,
 ) -> io::Result<()> {
     debug!("mountproc3_export({:?}) ", xid);
-    let export_table = context.export_table.read().await;
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     // Serialize each export entry
-    for mount_entry in export_table.values() {
+    for mount_entry in context.export_table.iter() {
         true.serialize(output)?;
         // Dirpath of the export
         mount_entry.export_name.as_bytes().serialize(output)?;

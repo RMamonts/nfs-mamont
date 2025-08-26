@@ -8,7 +8,6 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -16,6 +15,7 @@ use std::time::Duration;
 use std::{io, net::IpAddr};
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
@@ -41,7 +41,7 @@ pub struct NFSExportTableEntry {
 }
 
 /// Hash map that stores all exported file systems for an NFS server.
-pub type NFSExportTable = HashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
+pub type NFSExportTable = DashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
@@ -52,7 +52,7 @@ pub struct NFSTcpListener {
     /// Port on which the server is listening
     port: u16,
     /// Table of NFS exports managed by this server
-    export_table: Arc<RwLock<NFSExportTable>>,
+    export_table: Arc<NFSExportTable>,
     /// Tracker for RPC transactions to handle retransmissions
     transaction_tracker: Arc<rpc::TransactionTracker>,
     /// Portmap table storing port-to-program mappings
@@ -246,7 +246,7 @@ impl NFSTcpListener {
             next_id: AtomicU64::new(0),
             listener,
             port,
-            export_table: Arc::new(RwLock::new(HashMap::new())),
+            export_table: Arc::new(DashMap::new()),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(
                 TRANSACTION_RETENTION_PERIOD,
             )),
@@ -299,7 +299,7 @@ impl NFSTcpListener {
 
         let export_name = format!("/{}", export_name.as_ref().trim_matches('/'));
 
-        if self.export_table.read().await.values().any(|entry| entry.export_name == export_name) {
+        if self.export_table.iter().any(|entry| entry.export_name == export_name) {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!("Export with name '{export_name}' already exists"),
@@ -307,7 +307,7 @@ impl NFSTcpListener {
         }
 
         debug!("Registering export with ID {fs_id} and name {export_name}");
-        self.export_table.write().await.insert(
+        self.export_table.insert(
             fs_id,
             NFSExportTableEntry { vfs: Arc::new(fs), export_name, mount_signal: None },
         );
@@ -355,12 +355,8 @@ impl NFSTcp for NFSTcpListener {
         fs_id: xdr::nfs3::fs_id,
         signal: mpsc::Sender<bool>,
     ) -> io::Result<()> {
-        self.export_table
-            .write()
-            .await
-            .get_mut(&fs_id)
-            .ok_or(io::ErrorKind::NotFound)?
-            .mount_signal = Some(signal);
+        self.export_table.get_mut(&fs_id).ok_or(io::ErrorKind::NotFound)?.mount_signal =
+            Some(signal);
         Ok(())
     }
 

@@ -48,9 +48,8 @@ pub async fn mountproc3_umnt(
     };
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);
 
-    let export_table = context.export_table.read().await;
     if let Some(mount_entry) =
-        export_table.values().find(|entry| matches_export_path(utf8path, &entry.export_name))
+        context.export_table.iter().find(|entry| matches_export_path(utf8path, &entry.export_name))
     {
         if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(false).await;

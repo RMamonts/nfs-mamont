@@ -79,8 +79,7 @@ pub async fn nfsproc3_rename(
         return Ok(());
     }
 
-    let guard = context.export_table.read().await;
-    let Some(export) = guard.get(&from_fs_id) else {
+    let Some(export) = context.export_table.get(&from_fs_id) else {
         warn!("No export found for fs_id: {}", from_fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;

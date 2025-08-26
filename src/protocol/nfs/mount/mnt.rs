@@ -51,12 +51,9 @@ pub async fn mountproc3_mnt(
     };
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
 
-    let export_table = context.export_table.read().await;
-
     // Find the matching export
-    let Some((&fs_id, mount_entry)) = export_table
-        .iter()
-        .find(|(_fs_id, entry)| matches_export_path(utf8path, &entry.export_name))
+    let Some(mount_entry) =
+        context.export_table.iter().find(|entry| matches_export_path(utf8path, &entry.export_name))
     else {
         // invalid export
         debug!("{:?} --> no matching export", xid);
@@ -82,7 +79,7 @@ pub async fn mountproc3_mnt(
 
     if let Ok(fileid) = vfs.path_to_id(&path).await {
         let response = mount::mountres3_ok {
-            fhandle: vfs.id_to_fh(fileid, fs_id),
+            fhandle: vfs.id_to_fh(fileid, *mount_entry.key()),
             auth_flavors: vec![
                 xdr::rpc::auth_flavor::AUTH_NULL.to_u32().unwrap(),
                 xdr::rpc::auth_flavor::AUTH_UNIX.to_u32().unwrap(),
