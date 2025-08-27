@@ -100,11 +100,7 @@ pub async fn mountproc3_mnt(
                 "<unknown>".to_string()
             });
         debug!("client_list: {machine_name} += {utf8path}");
-        context
-            .client_list
-            .entry(machine_name)
-            .or_insert(HashSet::new())
-            .insert(utf8path.to_string());
+        context.client_list.entry(machine_name).or_default().insert(utf8path.to_string());
     } else {
         debug!("{:?} --> MNT3ERR_NOENT", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
