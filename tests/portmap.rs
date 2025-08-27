@@ -603,7 +603,7 @@ mod tests {
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
         let args_udp = multiple_mappings(amount, IPPROTO_UDP);
-        let args_tcp = multiple_mappings(amount, IPPROTO_UDP);
+        let args_tcp = multiple_mappings(amount, IPPROTO_TCP);
 
         for arg in &args_udp {
             call_assert(send_set_port, &mut context, &mut input, &mut output, *arg, true).await;
