@@ -428,7 +428,11 @@ impl<T: Serialize> Serialize for Option<T> {
 // XDR Optional-Data deserialization implementation.
 impl<T: Deserialize> Deserialize for Option<T> {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
-        Ok(deserialize::<bool>(src)?.then_some(deserialize(src)?))
+        if deserialize::<bool>(src)? {
+            Ok(Some(deserialize(src)?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
