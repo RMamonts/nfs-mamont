@@ -47,8 +47,31 @@ pub async fn nfsproc3_link(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
+    let args = deserialize::<nfs3::file::LINK3args>(input)?;
+    debug!("nfsproc3_link({:?}, {:?}) ", xid, args);
+
+    let file_fs_id = args.file.fs_id;
+    let link_fs_id = args.link.dir.fs_id;
+
+    if file_fs_id != link_fs_id {
+        warn!("Trying to hard link across different file systems");
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_XDEV.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    }
+
+    let Some(export) = context.export_table.get(&file_fs_id) else {
+        warn!("No export found for fs_id: {}", file_fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
     // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
@@ -57,47 +80,39 @@ pub async fn nfsproc3_link(
         return Ok(());
     }
 
-    let args = deserialize::<nfs3::file::LINK3args>(input)?;
-    debug!("nfsproc3_link({:?}, {:?}) ", xid, args);
-
     // Get the file id
-    let fileid = context.vfs.fh_to_id(&args.file);
-    if let Err(stat) = fileid {
+    let file_id = export.vfs.fh_to_id(&args.file);
+    if let Err(stat) = file_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         nfs3::post_op_attr::None.serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let fileid = fileid.unwrap();
+    let file_id = file_id.unwrap();
 
     // Get the directory id
-    let dirid = context.vfs.fh_to_id(&args.link.dir);
-    if let Err(stat) = dirid {
+    let dir_id = export.vfs.fh_to_id(&args.link.dir);
+    if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         nfs3::post_op_attr::None.serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let dirid = dirid.unwrap();
+    let dir_id = dir_id.unwrap();
 
     // Get the directory attributes before the operation
-    let pre_dir_attr = context
-        .vfs
-        .getattr(dirid)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
 
     // Call VFS link method
-    match context.vfs.link(fileid, dirid, &args.link.name).await {
+    match export.vfs.link(file_id, dir_id, &args.link.name).await {
         Ok(fattr) => {
             // Get file attributes
             let file_attr = nfs3::post_op_attr::Some(fattr);
 
             // Get the directory attributes after the operation
-            let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+            let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
             let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 
@@ -109,10 +124,10 @@ pub async fn nfsproc3_link(
         }
         Err(stat) => {
             // Get file attributes
-            let file_attr = context.vfs.getattr(fileid).await.ok();
+            let file_attr = export.vfs.getattr(file_id).await.ok();
 
             // Get the directory attributes after the operation (unchanged)
-            let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+            let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
             let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 

@@ -15,8 +15,6 @@ use crate::protocol::xdr::{self, Serialize};
 /// Function returns a list of all the exported file
 /// systems and which clients are allowed to mount each one.
 ///
-/// TODO: Currently function returns only one mount point in the list without groups.
-///
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
@@ -26,19 +24,22 @@ use crate::protocol::xdr::{self, Serialize};
 /// # Returns
 ///
 /// * `io::Result<()>` - Ok(()) on success or an error
-pub fn mountproc3_export(
+pub async fn mountproc3_export(
     xid: u32,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
     debug!("mountproc3_export({:?}) ", xid);
     xdr::rpc::make_success_reply(xid).serialize(output)?;
-    true.serialize(output)?;
-    // Dirpath of one export
-    context.export_name.as_bytes().serialize(output)?;
-    // No groups
-    false.serialize(output)?;
-    // No next exports
+    // Serialize each export entry
+    for mount_entry in context.export_table.iter() {
+        true.serialize(output)?;
+        // Dirpath of the export
+        mount_entry.export_name.as_bytes().serialize(output)?;
+        // No groups
+        false.serialize(output)?;
+    }
+    // No more exports
     false.serialize(output)?;
     Ok(())
 }
