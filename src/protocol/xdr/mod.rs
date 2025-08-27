@@ -16,6 +16,7 @@
 //! types must be respected.
 
 use std::io::{Read, Write};
+use std::mem::MaybeUninit;
 
 use byteorder::BigEndian;
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -42,7 +43,7 @@ pub trait Serialize {
     fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()>;
 }
 
-pub trait Deserialize {
+pub trait Deserialize: Sized {
     /// Deserializes data from the provided reader into the implementing type.
     ///
     /// ## Parameters
@@ -50,24 +51,18 @@ pub trait Deserialize {
     ///
     /// ## Returns
     /// * `std::io::Result<()>` - Ok(()) on success, or an error if deserialization fails.
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()>;
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self>;
 }
 
-/// Deserialization based on the [Default] trait of the type T.
+/// Free standing deserialization helper.
 ///
 /// # Parameters
 /// * src - From where the value will be deserialized
 ///
 /// # Returns
-/// * `std::io::Result<()>` - Ok(()) on success, or an error if deserialization fails.
-pub fn deserialize<T>(src: &mut impl Read) -> std::io::Result<T>
-where
-    T: Deserialize + Default,
-{
-    let mut val = T::default();
-    val.deserialize(src)?;
-
-    Ok(val)
+/// * `std::io::Result<T>` - Ok on success, or an error if deserialization fails.
+pub fn deserialize<T: Deserialize>(src: &mut impl Read) -> std::io::Result<T> {
+    Deserialize::deserialize(src)
 }
 
 /// Marker trait for XDR `enum` type serialization.
@@ -88,11 +83,10 @@ pub trait DeserializeEnum: FromPrimitive {}
 
 /// Enumerations have the same representation as signed integers.
 impl<T: DeserializeEnum> Deserialize for T {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<T> {
         let val = src.read_i32::<XDREndian>()?;
         if let Some(val) = FromPrimitive::from_i32(val) {
-            *self = val;
-            return Ok(());
+            return Ok(val);
         }
 
         Err(utils::invalid_data("Invalid enum value"))
@@ -132,13 +126,12 @@ impl Serialize for bool {
 ///
 /// Thus, the `bool` type is deserialized as an enum, i.e. in `i32`.
 impl Deserialize for bool {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<bool> {
         match src.read_i32::<XDREndian>()? {
-            0 => *self = false,
-            1 => *self = true,
-            _ => return Err(utils::invalid_data("Invalid value for bool enum")),
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(utils::invalid_data("Invalid value for bool enum")),
         }
-        Ok(())
     }
 }
 
@@ -151,9 +144,8 @@ impl Serialize for i32 {
 
 /// XDR `int` type deserialization implementation.
 impl Deserialize for i32 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_i32::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<i32> {
+        src.read_i32::<XDREndian>()
     }
 }
 
@@ -166,9 +158,8 @@ impl Serialize for i64 {
 
 /// XDR `hyper` type deserialization implementation.
 impl Deserialize for i64 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_i64::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<i64> {
+        src.read_i64::<XDREndian>()
     }
 }
 
@@ -181,9 +172,8 @@ impl Serialize for u32 {
 
 /// XDR `unsigned int` type deserialization implementation.
 impl Deserialize for u32 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_u32::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<u32> {
+        src.read_u32::<XDREndian>()
     }
 }
 
@@ -196,9 +186,8 @@ impl Serialize for u64 {
 
 /// XDR `unsigned hyper` type deserialization implementation.
 impl Deserialize for u64 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_u64::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<u64> {
+        src.read_u64::<XDREndian>()
     }
 }
 
@@ -211,9 +200,8 @@ impl Serialize for f32 {
 
 /// XDR `float` type deserialization implementation.
 impl Deserialize for f32 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_f32::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<f32> {
+        src.read_f32::<XDREndian>()
     }
 }
 
@@ -226,9 +214,8 @@ impl Serialize for f64 {
 
 /// XDR `double` type deserialization implementation.
 impl Deserialize for f64 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        *self = src.read_f64::<XDREndian>()?;
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<f64> {
+        src.read_f64::<XDREndian>()
     }
 }
 
@@ -252,17 +239,19 @@ impl<const N: usize> Serialize for [u8; N] {
 /// opaque identifier[n];
 /// ```
 impl<const N: usize> Deserialize for [u8; N] {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        src.read_exact(self)?;
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<[u8; N]> {
+        let mut result = [0; N];
+        src.read_exact(&mut result)?;
+
         utils::read_padding(N, src)?;
 
-        Ok(())
+        Ok(result)
     }
 }
 
 /// Object lengths in XDR are always serialized as [u32]. This wrapper
 /// type provides a way to serialize the [usize] type common to Rust as [u32].
-#[derive(Default)]
+#[derive(Debug)]
 struct UsizeAsU32(usize);
 
 /// Try to convert [usize] to [u32] and serialize.
@@ -278,13 +267,12 @@ impl Serialize for UsizeAsU32 {
 
 /// Try to deserialize [u32] and convert to [usize].
 impl Deserialize for UsizeAsU32 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<UsizeAsU32> {
         let Some(val) = deserialize::<u32>(src)?.to_usize() else {
             return Err(utils::invalid_data("cannot cast `u32` to `usize`"));
         };
 
-        self.0 = val;
-        Ok(())
+        Ok(UsizeAsU32(val))
     }
 }
 
@@ -301,14 +289,14 @@ impl Serialize for [u8] {
 
 /// XDR Variable-Length Opaque Data deserialization implementation.
 impl Deserialize for Vec<u8> {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Vec<u8>> {
         let length = deserialize::<UsizeAsU32>(src)?.0;
-        self.resize(length, 0);
+        let mut dest = vec![0u8; length];
 
-        src.read_exact(self)?;
+        src.read_exact(&mut dest)?;
         utils::read_padding(length, src)?;
 
-        Ok(())
+        Ok(dest)
     }
 }
 
@@ -321,22 +309,9 @@ impl Serialize for str {
 
 /// XDR String deserialization implementation.
 impl Deserialize for String {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        // SAFETY: we clear buffer on every step until verification
-        unsafe {
-            if let err @ Err(_) = self.as_mut_vec().deserialize(src) {
-                self.clear();
-                return err;
-            }
-
-            // XDR String is always ascii
-            if !self.as_mut_vec().is_ascii() {
-                self.clear();
-                return Err(utils::invalid_data("Not ASCII string"));
-            }
-        };
-
-        Ok(())
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<String> {
+        let buf = deserialize::<Vec<u8>>(src)?;
+        String::from_utf8(buf).map_err(|_| utils::invalid_data("Not ASCII string"))
     }
 }
 
@@ -361,12 +336,15 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
 /// opaque identifier[n];
 /// ```
 impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        for i in self {
-            i.deserialize(src)?;
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<[T; N]> {
+        let mut buf: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
+
+        for elem in buf.iter_mut() {
+            elem.write(T::deserialize(src)?);
         }
 
-        Ok(())
+        // mem::transmute can't cast here for now
+        Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
     }
 }
 
@@ -384,14 +362,15 @@ impl<T: Serialize> Serialize for [T] {
     }
 }
 
-impl<T: Deserialize + Clone + Default> Deserialize for Vec<T> {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+impl<T: Deserialize> Deserialize for Vec<T> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         let length = deserialize::<UsizeAsU32>(src)?.0;
-        self.resize(length, T::default()); // TODO(test)
-        for i in self {
-            i.deserialize(src)?;
+
+        let mut buf = Vec::with_capacity(length);
+        for _ in 0..length {
+            buf.push(deserialize(src)?);
         }
-        Ok(())
+        Ok(buf)
     }
 }
 
@@ -423,9 +402,10 @@ macro_rules! DeserializeStruct {
         $($element:ident),*
     ) => {
         impl Deserialize for $t {
-            fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-                $(self.$element.deserialize(src)?;)*
-                Ok(())
+            fn deserialize<R: Read>(src: &mut R) -> std::io::Result<$t> {
+                Ok($t {
+                    $($element: Deserialize::deserialize(src)?,)*
+                })
             }
         }
     };
@@ -447,15 +427,13 @@ impl<T: Serialize> Serialize for Option<T> {
 }
 
 // XDR Optional-Data deserialization implementation.
-impl<T: Deserialize + Default> Deserialize for Option<T> {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+impl<T: Deserialize> Deserialize for Option<T> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         if deserialize::<bool>(src)? {
-            *self = Some(deserialize::<T>(src)?);
+            Ok(Some(deserialize(src)?))
         } else {
-            *self = None;
+            Ok(None)
         }
-
-        Ok(())
     }
 }
 

@@ -45,7 +45,7 @@ pub struct Context {
 
     /// UNIX-style authentication credentials from the client
     /// Contains user ID, group IDs, and other identity information
-    pub auth: xdr::rpc::auth_unix,
+    pub auth: Option<xdr::rpc::auth_unix>,
 
     /// List containing all exported file systems
     pub export_table: Arc<NFSExportTable>,

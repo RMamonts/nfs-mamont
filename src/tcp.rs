@@ -396,7 +396,7 @@ impl NFSTcp for NFSTcpListener {
             let context = rpc::Context {
                 local_port: self.port,
                 client_addr: socket.peer_addr()?.to_string(),
-                auth: xdr::rpc::auth_unix::default(),
+                auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),

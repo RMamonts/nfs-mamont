@@ -5,7 +5,10 @@
 
 use std::io::{Read, Write};
 
-use crate::xdr::{Deserialize, DeserializeStruct, Serialize, SerializeStruct};
+use crate::{
+    utils::error::io_other,
+    xdr::{Deserialize, DeserializeStruct, Serialize, SerializeStruct},
+};
 
 use super::{nfs_opnum4, nfsstat4};
 
@@ -15,8 +18,8 @@ use super::{nfs_opnum4, nfsstat4};
 pub struct NULL4args {}
 
 impl Deserialize for NULL4args {
-    fn deserialize<R: Read>(&mut self, _src: &mut R) -> std::io::Result<()> {
-        Ok(())
+    fn deserialize<R: Read>(_src: &mut R) -> std::io::Result<NULL4args> {
+        Ok(NULL4args {})
     }
 }
 
@@ -66,36 +69,25 @@ impl Default for nfs_argop4 {
 }
 
 impl Deserialize for nfs_argop4 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.argop.deserialize(src)?;
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<nfs_argop4> {
+        let argop = nfs_opnum4::deserialize(src)?;
 
-        match self.argop {
+        match argop {
             nfs_opnum4::OP_NULL => {
-                let mut args = NULL4args::default();
-                args.deserialize(src)?;
-                self.op_data = nfs_argop4_u::OpNull(args);
+                let args = NULL4args::deserialize(src)?;
+                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpNull(args) })
             }
             nfs_opnum4::OP_COMPOUND => {
-                let mut args = COMPOUND4args::default();
-                args.deserialize(src)?;
-                self.op_data = nfs_argop4_u::OpCompound(args);
+                let args = COMPOUND4args::deserialize(src)?;
+                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpCompound(args) })
             }
-            nfs_opnum4::OP_ILLEGAL => {
-                self.op_data = nfs_argop4_u::OpIllegal;
-            }
-            _ => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("Not implemented operation: {:?}", self.argop),
-                ));
-            }
+            nfs_opnum4::OP_ILLEGAL => Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpIllegal }),
+            _ => io_other("Not implemented operation: {argop:?}"),
         }
-
-        Ok(())
     }
 }
 
-/// NFS resop4 - operation result structure  
+/// NFS resop4 - operation result structure
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
 pub struct nfs_resop4 {

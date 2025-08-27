@@ -195,7 +195,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
         result.push(Context {
             local_port: DEFAULT_PROG,
             client_addr: format!("0.0.0.0:{}", i),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: table.clone(),
@@ -363,7 +363,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -385,7 +385,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -413,7 +413,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -438,7 +438,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -550,7 +550,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -570,7 +570,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -594,7 +594,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
@@ -709,7 +709,7 @@ mod tests {
         let mut context = Context {
             local_port: DEFAULT_PORT,
             client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: xdr::rpc::auth_unix::default(),
+            auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),

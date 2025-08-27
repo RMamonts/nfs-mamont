@@ -81,8 +81,8 @@ pub async fn mountproc3_mnt(
         let response = mount::mountres3_ok {
             fhandle: vfs.id_to_fh(fileid, *mount_entry.key()),
             auth_flavors: vec![
-                xdr::rpc::auth_flavor::AUTH_NULL.to_u32().unwrap(),
-                xdr::rpc::auth_flavor::AUTH_UNIX.to_u32().unwrap(),
+                xdr::rpc::auth_flavor::AUTH_NONE.to_u32().unwrap(),
+                xdr::rpc::auth_flavor::AUTH_SYS.to_u32().unwrap(),
             ],
         };
         debug!("{:?} --> {:?}", xid, response);
