@@ -36,10 +36,10 @@ pub async fn mountproc3_dump(
     debug!("client list: {:?}", context.client_list);
 
     xdr::rpc::make_success_reply(xid).serialize(output)?;
-    context.client_list.iter().try_for_each(|paths| {
-        paths.iter().try_for_each(|path| {
+    context.client_list.iter().try_for_each(|client_entry| {
+        client_entry.iter().try_for_each(|path| {
             true.serialize(output)?;
-            paths.key().serialize(output)?;
+            client_entry.key().serialize(output)?;
             path.serialize(output)?;
             io::Result::Ok(())
         })
