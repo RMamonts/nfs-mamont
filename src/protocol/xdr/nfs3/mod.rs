@@ -381,15 +381,16 @@ const _: () = {
 // Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
 // and thus needs to be encoded with its length as the first 4 bytes.
 impl Deserialize for nfs_fh3 {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         let len = deserialize::<UsizeAsU32>(src)?;
         if len.0 != size_of::<nfs_fh3>() {
             return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
         }
-        self.gen = deserialize::<u64>(src)?;
-        self.fs_id = deserialize::<fs_id>(src)?;
-        self.id = deserialize::<fileid3>(src)?;
-        Ok(())
+        Ok(nfs_fh3 {
+            gen: deserialize::<u64>(src)?,
+            fs_id: deserialize::<fs_id>(src)?,
+            id: deserialize::<fileid3>(src)?,
+        })
     }
 }
 

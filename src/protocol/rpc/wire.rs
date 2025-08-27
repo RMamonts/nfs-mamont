@@ -134,7 +134,7 @@ pub async fn handle_rpc(
 
     } else {
         error!("Unexpectedly received a Reply instead of a Call");
-        Err(anyhow!("Bad RPC Call format"))
+        io_other("Bad RPC Call format")
     }
 }
 
