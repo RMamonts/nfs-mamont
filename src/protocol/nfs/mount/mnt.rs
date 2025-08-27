@@ -95,7 +95,10 @@ pub async fn mountproc3_mnt(
         response.serialize(output)?;
 
         let machine_name =
-            String::from_utf8(context.auth.machinename.clone()).unwrap_or("<unknown>".to_string());
+            String::from_utf8(context.auth.machinename.clone()).unwrap_or_else(|e| {
+                warn!("Invalid UTF-8 in machine name: {:?}", e);
+                "<unknown>".to_string()
+            });
         debug!("client_list: {machine_name} += {utf8path}");
         context
             .client_list
