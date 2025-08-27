@@ -5,7 +5,10 @@
 
 use std::io::{Read, Write};
 
-use crate::{utils::error::io_other, xdr::{Deserialize, DeserializeStruct, Serialize, SerializeStruct}};
+use crate::{
+    utils::error::io_other,
+    xdr::{Deserialize, DeserializeStruct, Serialize, SerializeStruct},
+};
 
 use super::{nfs_opnum4, nfsstat4};
 
@@ -72,27 +75,14 @@ impl Deserialize for nfs_argop4 {
         match argop {
             nfs_opnum4::OP_NULL => {
                 let args = NULL4args::deserialize(src)?;
-                Ok(nfs_argop4 {
-                    argop,
-                    op_data: nfs_argop4_u::OpNull(args),
-                })
+                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpNull(args) })
             }
             nfs_opnum4::OP_COMPOUND => {
                 let args = COMPOUND4args::deserialize(src)?;
-                Ok(nfs_argop4 {
-                    argop,
-                    op_data: nfs_argop4_u::OpCompound(args),
-                })
+                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpCompound(args) })
             }
-            nfs_opnum4::OP_ILLEGAL => {
-                Ok(nfs_argop4 {
-                    argop,
-                    op_data: nfs_argop4_u::OpIllegal,
-                })
-            }
-            _ => {
-                io_other("Not implemented operation: {argop:?}")
-            }
+            nfs_opnum4::OP_ILLEGAL => Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpIllegal }),
+            _ => io_other("Not implemented operation: {argop:?}"),
         }
     }
 }

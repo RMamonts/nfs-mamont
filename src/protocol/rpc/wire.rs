@@ -80,58 +80,57 @@ pub async fn handle_rpc(
             return Ok(true);
         }
 
-    if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
-        debug!(
-            "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-            xid, context.client_addr, call
-        );
-        return Ok(false);
-    }
+        if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+            debug!(
+                "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
+                xid, context.client_addr, call
+            );
+            return Ok(false);
+        }
 
-    let result = match call.prog {
-        nfs3::PROGRAM => match call.vers {
-            nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
-            nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, &context).await,
-            v => {
-                warn!("Unsupported NFS version: {}", v);
-                xdr::rpc::prog_version_range_mismatch_reply_message(
-                    xid,
-                    nfs3::VERSION,
-                    nfs::v4::VERSION,
-                )
-                .serialize(output)?;
+        let result = match call.prog {
+            nfs3::PROGRAM => match call.vers {
+                nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
+                nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, &context).await,
+                v => {
+                    warn!("Unsupported NFS version: {}", v);
+                    xdr::rpc::prog_version_range_mismatch_reply_message(
+                        xid,
+                        nfs3::VERSION,
+                        nfs::v4::VERSION,
+                    )
+                    .serialize(output)?;
+                    Ok(())
+                }
+            },
+            portmap::PROGRAM => {
+                nfs::portmap::handle_portmap(xid, &call, input, output, &mut context).await
+            }
+            mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
+            prog if prog == NFS_ACL_PROGRAM
+                || prog == NFS_ID_MAP_PROGRAM
+                || prog == NFS_METADATA_PROGRAM =>
+            {
+                trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
                 Ok(())
             }
-        },
-        portmap::PROGRAM => {
-            nfs::portmap::handle_portmap(xid, &call, input, output, &mut context).await
+            NFS_LOCALIO_PROGRAM => {
+                trace!("Ignoring NFS_LOCALIO packet");
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
+            _ => {
+                warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
         }
-        mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
-        prog if prog == NFS_ACL_PROGRAM
-            || prog == NFS_ID_MAP_PROGRAM
-            || prog == NFS_METADATA_PROGRAM =>
-        {
-            trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
-            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-            Ok(())
-        }
-        NFS_LOCALIO_PROGRAM => {
-            trace!("Ignoring NFS_LOCALIO packet");
-            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-            Ok(())
-        }
-        _ => {
-            warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
-            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-            Ok(())
-        }
-    }
-    .map(|_| true);
+        .map(|_| true);
 
-    context.transaction_tracker.mark_processed(xid, &context.client_addr);
+        context.transaction_tracker.mark_processed(xid, &context.client_addr);
 
-    result
-
+        result
     } else {
         error!("Unexpectedly received a Reply instead of a Call");
         io_other("Bad RPC Call format")
