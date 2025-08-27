@@ -325,7 +325,7 @@ impl NFSTcpListener {
     ///
     /// * `Ok(())` - Export was successfully removed
     /// * `Err(io::Error)` - Export with the given ID was not found
-    pub async fn unregister_export(&mut self, fs_id: xdr::nfs3::fs_id) -> io::Result<()> {
+    pub fn unregister_export(&mut self, fs_id: xdr::nfs3::fs_id) -> io::Result<()> {
         if self.export_table.remove(&fs_id).is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
