@@ -100,7 +100,7 @@ enum accept_stat {
     /// Program can't support procedure.
     PROC_UNAVAIL = 3,
     /// Procedure can't decode params.
-    GARGAGE_ARGS = 4,
+    GARBAGE_ARGS = 4,
     /// System error, e. g. memory allocation failure.
     SYSTEM_ERR = 5,
 }
@@ -326,20 +326,20 @@ impl Serialize for accept_body {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             accept_body::SUCCESS => {
-                0_u32.serialize(dest)?;
+                accept_stat::SUCCESS.serialize(dest)?;
             }
             accept_body::PROG_UNAVAIL => {
-                1_u32.serialize(dest)?;
+                accept_stat::PROG_UNAVAIL.serialize(dest)?;
             }
             accept_body::PROG_MISMATCH(v) => {
-                2_u32.serialize(dest)?;
+                accept_stat::PROG_MISMATTCH.serialize(dest)?;
                 v.serialize(dest)?;
             }
             accept_body::PROC_UNAVAIL => {
-                3_u32.serialize(dest)?;
+                accept_stat::PROC_UNAVAIL.serialize(dest)?;
             }
             accept_body::GARBAGE_ARGS => {
-                4_u32.serialize(dest)?;
+                accept_stat::GARBAGE_ARGS.serialize(dest)?;
             }
         }
 
@@ -396,11 +396,11 @@ impl Serialize for rejected_reply {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
             rejected_reply::RPC_MISMATCH(v) => {
-                0_u32.serialize(dest)?;
+                reject_stat::RPC_MISMATCH.serialize(dest)?;
                 v.serialize(dest)?;
             }
             rejected_reply::AUTH_ERROR(v) => {
-                1_u32.serialize(dest)?;
+                reject_stat::AUTH_ERROR.serialize(dest)?;
                 (*v as u32).serialize(dest)?;
             }
         }
