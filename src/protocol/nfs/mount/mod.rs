@@ -1,6 +1,7 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -20,6 +21,26 @@ use null::mountproc3_null;
 use umnt::mountproc3_umnt;
 use umnt_all::mountproc3_umnt_all;
 
+/// Checks if a requested path matches an export path with proper path separator handling.
+///
+/// This function prevents incorrect matches like `/data2/file` matching `/data` export
+/// by ensuring that after the export name prefix, we either have the end of the string
+/// or a path separator (`/`).
+///
+/// # Arguments
+///
+/// * `requested_path` - The path being requested by the client
+/// * `export_name` - The export path to match against
+///
+/// # Returns
+///
+/// * `bool` - true if the requested path properly matches the export
+fn matches_export_path(requested_path: &str, export_name: &str) -> bool {
+    requested_path == export_name
+        || (requested_path.starts_with(export_name)
+            && requested_path.chars().nth(export_name.len()) == Some('/'))
+}
+
 /// Main handler for `MOUNT` procedures of version 3 protocol.
 ///
 /// TODO: `MOUNTPROC3_DUMP` function is not implemented.
@@ -34,14 +55,14 @@ use umnt_all::mountproc3_umnt_all;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_mount(
     xid: u32,
     call: xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::INVALID);
 
     match prog {
@@ -53,7 +74,7 @@ pub async fn handle_mount(
         mount::MountProgram::MOUNTPROC3_UMNTALL => {
             mountproc3_umnt_all(xid, output, context).await?;
         }
-        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context)?,
+        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await?,
         _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,
     }
     Ok(())

@@ -81,6 +81,6 @@ mod tests {
     fn test_invalid_data() {
         let error = invalid_data("Test error message");
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(format!("{}", error), "Test error message");
+        assert_eq!(format!("{error}"), "Test error message");
     }
 }

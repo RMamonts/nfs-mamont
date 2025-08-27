@@ -453,6 +453,22 @@ pub fn prog_mismatch_reply_message(xid: u32, accepted_ver: u32) -> rpc_msg {
     rpc_msg { xid, body: rpc_body::REPLY(reply) }
 }
 
+/// Creates a reply message indicating a program version mismatch with supported version range
+pub fn prog_version_range_mismatch_reply_message(
+    xid: u32,
+    low_version: u32,
+    high_version: u32,
+) -> rpc_msg {
+    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
+        verf: opaque_auth::default(),
+        reply_data: accept_body::PROG_MISMATCH(mismatch_info {
+            low: low_version,
+            high: high_version,
+        }),
+    });
+    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+}
+
 /// Creates a reply message indicating that the arguments could not be decoded
 pub fn garbage_args_reply_message(xid: u32) -> rpc_msg {
     let reply = reply_body::MSG_ACCEPTED(accepted_reply {

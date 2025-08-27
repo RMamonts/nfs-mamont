@@ -2,20 +2,20 @@
 //! as defined in RFC 1813 section 5.2.3
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
 
+use std::io;
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
+
+use super::matches_export_path;
 
 /// Handles `MOUNTPROC3_UMNT` procedure.
 ///
 /// Function removes the mount entry from the mount list for
 /// the requested diretory.
-///
-/// TODO: Currently directory path is not used and only single
-/// mount point is removed. Need to extend functionality.
 ///
 /// # Arguments
 ///
@@ -26,18 +26,34 @@ use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
+///
+/// # Notes
+///
+/// Clients not always call `umnt` when unmounting a filesystem.
+///
+/// - Unmounting with 'umount' from 'util-linux' package doesn't call 'umnt'.
+///
+/// - Unmounting with 'umount.nfs' from 'nfs-utils' package does call 'umnt'.
 pub async fn mountproc3_umnt(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let path = deserialize::<Vec<_>>(input)?;
-    let utf8path = std::str::from_utf8(&path).unwrap_or_default();
+    let Ok(utf8path) = std::str::from_utf8(&path) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+        return Ok(());
+    };
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);
-    if let Some(ref chan) = context.mount_signal {
-        let _ = chan.send(false).await;
+
+    if let Some(mount_entry) =
+        context.export_table.iter().find(|entry| matches_export_path(utf8path, &entry.export_name))
+    {
+        if let Some(chan) = &mount_entry.mount_signal {
+            let _ = chan.send(false).await;
+        }
     }
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     mount::mountstat3::MNT3_OK.serialize(output)?;

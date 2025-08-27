@@ -1,4 +1,6 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
 
 use nfs_mamont::xdr::nfs3;
 
@@ -6,10 +8,10 @@ use crate::fs_contents::FSContents;
 
 /// Represents a file system entry in the demo NFS file system.
 /// Can be either a file or a directory depending on its contents.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FSEntry {
     /// Unique identifier for the file system entry
+    #[allow(dead_code)]
     pub id: nfs3::fileid3,
     /// File attributes containing metadata like type, permissions, size, etc.
     pub attr: nfs3::fattr3,

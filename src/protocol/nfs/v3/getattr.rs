@@ -10,9 +10,10 @@
 //! `GETATTR` takes a file handle as input and returns the complete file attribute
 //! structure defined in RFC 1813 section 2.3.5 (fattr3).
 
+use std::io;
 use std::io::{Read, Write};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -31,25 +32,34 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_getattr(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_getattr({:?},{:?}) ", xid, handle);
 
-    let id = context.vfs.fh_to_id(&handle);
+    let fs_id = handle.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
         return Ok(());
     }
-    let id = id.unwrap();
-    match context.vfs.getattr(id).await {
+    let file_id = id.unwrap();
+
+    match export.vfs.getattr(file_id).await {
         Ok(fh) => {
             debug!(" {:?} --> {:?}", xid, fh);
             xdr::rpc::make_success_reply(xid).serialize(output)?;

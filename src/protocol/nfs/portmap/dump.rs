@@ -1,3 +1,4 @@
+use std::io;
 use std::io::Write;
 
 use crate::protocol::rpc::Context;
@@ -21,12 +22,8 @@ use crate::xdr::Serialize;
 ///    - RPC reply header (success/failure)
 ///    - pmaplist (linked list of mappings)
 /// 2. Empty list is represented by zero-length array
-pub fn pmapproc_dump(
-    xid: u32,
-    output: &mut impl Write,
-    context: &Context,
-) -> Result<(), anyhow::Error> {
-    let binding = context.portmap_table.read().unwrap();
+pub async fn pmapproc_dump(xid: u32, output: &mut impl Write, context: &Context) -> io::Result<()> {
+    let binding = context.portmap_table.read().await;
     let entries: Vec<mapping> = binding
         .table
         .iter()

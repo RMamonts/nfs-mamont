@@ -13,9 +13,10 @@
 //! - An EOF flag indicating whether the read reached the end of file
 //! - The data read from the file
 
+use std::io;
 use std::io::{Read, Write};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -35,17 +36,26 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_read(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     let args = deserialize::<nfs3::file::READ3args>(input)?;
     debug!("nfsproc3_read({:?},{:?}) ", xid, args);
 
-    let id = context.vfs.fh_to_id(&args.file);
+    let fs_id = args.file.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&args.file);
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
@@ -54,8 +64,8 @@ pub async fn nfsproc3_read(
     }
     let id = id.unwrap();
 
-    let obj_attr = context.vfs.getattr(id).await.ok();
-    match context.vfs.read(id, args.offset, args.count).await {
+    let obj_attr = export.vfs.getattr(id).await.ok();
+    match export.vfs.read(id, args.offset, args.count).await {
         Ok((bytes, eof)) => {
             let res = nfs3::file::READ3resok {
                 file_attributes: obj_attr,

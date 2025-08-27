@@ -345,6 +345,7 @@ pub trait NFSFileSystem: Sync {
     ///
     /// # Arguments
     /// * `dirid` - The directory ID to read
+    /// * `start_after` - The file ID after which to start listing (0 means start from beginning)
     /// * `count` - Maximum number of entries to return
     ///
     /// # Returns
@@ -352,9 +353,12 @@ pub trait NFSFileSystem: Sync {
     async fn readdir_simple(
         &self,
         dirid: nfs3::fileid3,
+        start_after: nfs3::fileid3,
         count: usize,
     ) -> Result<ReadDirSimpleResult, nfs3::nfsstat3> {
-        Ok(ReadDirSimpleResult::from_readdir_result(&self.readdir(dirid, 0, count).await?))
+        Ok(ReadDirSimpleResult::from_readdir_result(
+            &self.readdir(dirid, start_after, count).await?,
+        ))
     }
 
     /// Creates a symbolic link
@@ -493,15 +497,12 @@ pub trait NFSFileSystem: Sync {
     ///
     /// # Arguments
     /// * `id` - The file ID to convert
+    /// * `fs_id` - The file system's ID in the server export table
     ///
     /// # Returns
     /// * `nfs_fh3` - The opaque NFS file handle
-    fn id_to_fh(&self, id: nfs3::fileid3) -> nfs3::nfs_fh3 {
-        let gennum = self.generation();
-        let mut ret: Vec<u8> = Vec::new();
-        ret.extend_from_slice(&gennum.to_le_bytes());
-        ret.extend_from_slice(&id.to_le_bytes());
-        nfs3::nfs_fh3 { data: ret }
+    fn id_to_fh(&self, id: nfs3::fileid3, fs_id: nfs3::fs_id) -> nfs3::nfs_fh3 {
+        nfs3::nfs_fh3 { gen: self.generation(), id, fs_id }
     }
 
     /// Converts an opaque NFS file handle to a file ID
@@ -516,17 +517,11 @@ pub trait NFSFileSystem: Sync {
     /// * `Result<fileid3, nfsstat3>` - The file ID on success, or an NFS error code
     ///   Returns NFS3ERR_STALE if the file handle is from a previous server instance
     ///   Returns NFS3ERR_BADHANDLE if the file handle is malformed
-    fn fh_to_id(&self, id: &nfs3::nfs_fh3) -> Result<nfs3::fileid3, nfs3::nfsstat3> {
-        if id.data.len() != 16 {
-            return Err(nfs3::nfsstat3::NFS3ERR_BADHANDLE);
-        }
-        let gen = u64::from_le_bytes(id.data[0..8].try_into().unwrap());
-        let id = u64::from_le_bytes(id.data[8..16].try_into().unwrap());
-        let gennum = self.generation();
-        match gen.cmp(&gennum) {
+    fn fh_to_id(&self, nfs_fh: &nfs3::nfs_fh3) -> Result<nfs3::fileid3, nfs3::nfsstat3> {
+        match self.generation().cmp(&nfs_fh.gen) {
             Ordering::Less => Err(nfs3::nfsstat3::NFS3ERR_STALE),
             Ordering::Greater => Err(nfs3::nfsstat3::NFS3ERR_BADHANDLE),
-            Ordering::Equal => Ok(id),
+            Ordering::Equal => Ok(nfs_fh.id),
         }
     }
 

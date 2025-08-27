@@ -17,10 +17,10 @@
 //! This module is essential for maintaining proper message boundaries in TCP
 //! while providing efficient transmission of RPC messages of any size.
 
+use std::io;
 use std::io::Cursor;
 use std::io::{Read, Write};
 
-use anyhow::anyhow;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
@@ -30,6 +30,7 @@ use tracing::{debug, error, trace, warn};
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
+use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
 // https://datatracker.ietf.org/doc/html/rfc5531
@@ -39,6 +40,9 @@ use crate::protocol::{nfs, rpc};
 const NFS_ACL_PROGRAM: u32 = 100227;
 /// RPC program number for NFS ID Mapping
 const NFS_ID_MAP_PROGRAM: u32 = 100270;
+/// RPC program number for LOCALIO auxiliary RPC protocol
+/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
+const NFS_LOCALIO_PROGRAM: u32 = 400122;
 /// RPC program number for NFS Metadata
 const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
@@ -62,7 +66,7 @@ pub async fn handle_rpc(
     input: &mut impl Read,
     output: &mut impl Write,
     mut context: rpc::Context,
-) -> Result<bool, anyhow::Error> {
+) -> io::Result<bool> {
     let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
     if let xdr::rpc::rpc_body::CALL(call) = recv.body {
@@ -76,44 +80,58 @@ pub async fn handle_rpc(
             return Ok(true);
         }
 
-        if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
-            // This is a retransmission
-            // Drop the message and return
-            debug!(
-                "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-                xid, context.client_addr, call
-            );
-            return Ok(false);
-        }
+    if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+        debug!(
+            "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
+            xid, context.client_addr, call
+        );
+        return Ok(false);
+    }
 
-        let res = {
-            if call.prog == nfs3::PROGRAM {
-                if call.vers == nfs3::VERSION {
-                    nfs::v3::handle_nfs(xid, call, input, output, &context).await
-                } else {
-                    error!("NFSv4 not implemented");
-                    Err(anyhow!("NFSv4 protocol error"))
-                }
-            } else if call.prog == portmap::PROGRAM {
-                nfs::portmap::handle_portmap(xid, &call, input, output, &mut context)
-            } else if call.prog == mount::PROGRAM {
-                nfs::mount::handle_mount(xid, call, input, output, &context).await
-            } else if call.prog == NFS_ACL_PROGRAM
-                || call.prog == NFS_ID_MAP_PROGRAM
-                || call.prog == NFS_METADATA_PROGRAM
-            {
-                trace!("ignoring NFS_ACL packet");
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
-            } else {
-                warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+    let result = match call.prog {
+        nfs3::PROGRAM => match call.vers {
+            nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
+            nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, &context).await,
+            v => {
+                warn!("Unsupported NFS version: {}", v);
+                xdr::rpc::prog_version_range_mismatch_reply_message(
+                    xid,
+                    nfs3::VERSION,
+                    nfs::v4::VERSION,
+                )
+                .serialize(output)?;
                 Ok(())
             }
+        },
+        portmap::PROGRAM => {
+            nfs::portmap::handle_portmap(xid, &call, input, output, &mut context).await
         }
-        .map(|_| true);
-        context.transaction_tracker.mark_processed(xid, &context.client_addr);
-        res
+        mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
+        prog if prog == NFS_ACL_PROGRAM
+            || prog == NFS_ID_MAP_PROGRAM
+            || prog == NFS_METADATA_PROGRAM =>
+        {
+            trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+        NFS_LOCALIO_PROGRAM => {
+            trace!("Ignoring NFS_LOCALIO packet");
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+        _ => {
+            warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
+            xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+            Ok(())
+        }
+    }
+    .map(|_| true);
+
+    context.transaction_tracker.mark_processed(xid, &context.client_addr);
+
+    result
+
     } else {
         error!("Unexpectedly received a Reply instead of a Call");
         Err(anyhow!("Bad RPC Call format"))
@@ -134,10 +152,7 @@ pub async fn handle_rpc(
 ///
 /// Returns true if this was the last fragment in the RPC record, false otherwise.
 /// This allows for reassembly of multi-fragment RPC messages.
-async fn read_fragment(
-    socket: &mut DuplexStream,
-    append_to: &mut Vec<u8>,
-) -> Result<bool, anyhow::Error> {
+async fn read_fragment(socket: &mut DuplexStream, append_to: &mut Vec<u8>) -> io::Result<bool> {
     let mut header_buf = [0_u8; 4];
     socket.read_exact(&mut header_buf).await?;
     let fragment_header = u32::from_be_bytes(header_buf);
@@ -166,10 +181,7 @@ async fn read_fragment(
 ///
 /// This ensures reliable transmission of RPC messages over TCP with proper
 /// message framing and enables receivers to allocate appropriate buffer space.
-pub async fn write_fragment(
-    socket: &mut tokio::net::TcpStream,
-    buf: &[u8],
-) -> Result<(), anyhow::Error> {
+pub async fn write_fragment(socket: &mut tokio::net::TcpStream, buf: &[u8]) -> io::Result<()> {
     // Maximum fragment size is 2^31 - 1 bytes
     const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
@@ -199,7 +211,7 @@ pub async fn write_fragment(
     Ok(())
 }
 
-pub type SocketMessageType = Result<Vec<u8>, anyhow::Error>;
+pub type SocketMessageType = io::Result<Vec<u8>>;
 
 /// Handles RPC message processing over a TCP connection
 ///
@@ -281,7 +293,7 @@ impl SocketMessageHandler {
     /// the current message buffer. If the fragment is the last one in the record,
     /// submits a command to the queue for processing in order.
     /// Should be called in a loop to continuously process incoming messages.
-    pub async fn read(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn read(&mut self) -> io::Result<()> {
         let is_last =
             read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await?;
         if is_last {
@@ -290,9 +302,9 @@ impl SocketMessageHandler {
             let context = self.context.clone();
 
             // Submit command to queue for ordered processing
-            if let Err(e) = self.command_queue.submit_command(fragment_data, context) {
-                error!("Failed to submit command to queue: {:?}", e);
-                return Err(anyhow::anyhow!("Command queue error: {}", e));
+            if !self.command_queue.submit_command(fragment_data, context) {
+                error!("Failed to submit command to queue");
+                return io_other("Command queue error");
             }
         }
         Ok(())
@@ -321,7 +333,7 @@ pub fn process_rpc_command<'a>(
     data: &[u8],
     output: &'a mut ResponseBuffer,
     context: rpc::Context,
-) -> futures::future::BoxFuture<'a, anyhow::Result<bool>> {
+) -> futures::future::BoxFuture<'a, io::Result<bool>> {
     // Clone data to own it in closure
     let data_clone = data.to_vec();
 

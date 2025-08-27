@@ -2,6 +2,7 @@
 //! <https://datatracker.ietf.org/doc/rfc1057/>.
 
 use std::collections::HashMap;
+use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
@@ -55,14 +56,14 @@ pub struct PortmapKey {
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
-pub fn handle_portmap(
+/// * `io::Result<()>` - Ok(()) on success or an error
+pub async fn handle_portmap(
     xid: u32,
     call: &xdr::rpc::call_body,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &mut Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
     if call.vers != portmap::VERSION {
         error!("Invalid Portmap Version number {} != {}", call.vers, portmap::VERSION);
         xdr::rpc::prog_mismatch_reply_message(xid, portmap::VERSION).serialize(output)?;
@@ -71,21 +72,20 @@ pub fn handle_portmap(
     let prog =
         portmap::PortmapProgram::from_u32(call.proc).unwrap_or(portmap::PortmapProgram::INVALID);
 
+    #[rustfmt::skip]
     match prog {
         portmap::PortmapProgram::PMAPPROC_NULL => pmapproc_null(xid, output)?,
-        portmap::PortmapProgram::PMAPPROC_GETPORT => pmapproc_getport(xid, input, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_SET => pmapproc_setport(xid, input, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_DUMP => pmapproc_dump(xid, output, context)?,
-        portmap::PortmapProgram::PMAPPROC_UNSET => pmapproc_unsetport(xid, input, output, context)?,
-        _ => {
-            xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
-        }
-    }
+        portmap::PortmapProgram::PMAPPROC_GETPORT => pmapproc_getport(xid, input, output, context).await?,
+        portmap::PortmapProgram::PMAPPROC_SET => pmapproc_setport(xid, input, output, context).await?,
+        portmap::PortmapProgram::PMAPPROC_DUMP => pmapproc_dump(xid, output, context).await?,
+        portmap::PortmapProgram::PMAPPROC_UNSET => pmapproc_unsetport(xid, input, output, context).await?,
+        _ =>  xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?
+    };
     Ok(())
 }
 
 /// Looks up a port in the Portmap table using the specified entry
-fn get_port(context: &Context, entry: &PortmapKey) -> Option<u16> {
-    let binding = context.portmap_table.read().unwrap();
+async fn get_port(context: &Context, entry: &PortmapKey) -> Option<u16> {
+    let binding = context.portmap_table.read().await;
     binding.table.get(entry).copied()
 }

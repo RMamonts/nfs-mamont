@@ -20,6 +20,7 @@
 //! This procedure is critical for maintaining file consistency across multiple
 //! clients that share access to the same files.
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::{debug, error, warn};
@@ -43,39 +44,49 @@ use crate::vfs;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_setattr(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+) -> io::Result<()> {
+    let args = deserialize::<nfs3::SETATTR3args>(input)?;
+    debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
+
+    let fs_id = args.object.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
         nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
-    let args = deserialize::<nfs3::SETATTR3args>(input)?;
-    debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
 
-    let id = context.vfs.fh_to_id(&args.object);
+    let id = export.vfs.fh_to_id(&args.object);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
 
     let ctime;
 
-    let pre_op_attr = match context.vfs.getattr(id).await {
+    let pre_op_attr = match export.vfs.getattr(id).await {
         Ok(v) => {
-            let wccattr = nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime };
             ctime = v.ctime;
-            nfs3::pre_op_attr::Some(wccattr)
+            nfs3::pre_op_attr::Some(v.into())
         }
         Err(stat) => {
             xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -93,7 +104,7 @@ pub async fn nfsproc3_setattr(
         }
     }
 
-    match context.vfs.setattr(id, args.new_attribute).await {
+    match export.vfs.setattr(id, args.new_attribute).await {
         Ok(post_op_attr) => {
             debug!(" setattr success {:?} --> {:?}", xid, post_op_attr);
             let wcc_res = nfs3::wcc_data {

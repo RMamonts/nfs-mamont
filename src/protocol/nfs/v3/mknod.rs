@@ -19,6 +19,7 @@
 //! This procedure is primarily used by Unix clients to create device files and
 //! other special file types.
 
+use std::io;
 use std::io::{Read, Write};
 
 use tracing::{debug, error, warn};
@@ -42,15 +43,27 @@ use crate::vfs;
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_mknod(
     xid: u32,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> Result<(), anyhow::Error> {
+) -> io::Result<()> {
+    let args = deserialize::<nfs3::dir::MKNOD3args>(input)?;
+    debug!("nfsproc3_mknod({:?}, {:?}) ", xid, args);
+
+    let fs_id = args.where_dir.dir.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
     // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
@@ -58,12 +71,9 @@ pub async fn nfsproc3_mknod(
         return Ok(());
     }
 
-    let args = deserialize::<nfs3::dir::MKNOD3args>(input)?;
-    debug!("nfsproc3_mknod({:?}, {:?}) ", xid, args);
-
     // find the directory we are supposed to create the special file in
-    let dirid = context.vfs.fh_to_id(&args.where_dir.dir);
-    if let Err(stat) = dirid {
+    let dir_id = export.vfs.fh_to_id(&args.where_dir.dir);
+    if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
@@ -72,37 +82,32 @@ pub async fn nfsproc3_mknod(
         return Ok(());
     }
     // found the directory, get the attributes
-    let dirid = dirid.unwrap();
+    let dir_id = dir_id.unwrap();
 
     // get the object attributes before the operation
-    let pre_dir_attr = context
-        .vfs
-        .getattr(dirid)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
 
     // Create default attributes if necessary
     let attr = nfs3::sattr3::default();
 
     // Call VFS mknod method
-    match context
+    match export
         .vfs
-        .mknod(dirid, &args.where_dir.name, args.what.mknod_type, args.what.device.device, &attr)
+        .mknod(dir_id, &args.where_dir.name, args.what.mknod_type, args.what.device.device, &attr)
         .await
     {
         Ok((fid, fattr)) => {
             debug!("nfsproc3_mknod success --> {:?}, {:?}", fid, fattr);
 
             // Get the directory attributes after the operation
-            let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+            let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
             let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             nfs3::nfsstat3::NFS3_OK.serialize(output)?;
             // serialize MKNOD3resok
-            let fh = context.vfs.id_to_fh(fid);
+            let fh = export.vfs.id_to_fh(fid, fs_id);
             nfs3::post_op_fh3::Some(fh).serialize(output)?;
             nfs3::post_op_attr::Some(fattr).serialize(output)?;
             wcc_res.serialize(output)?;
@@ -111,7 +116,7 @@ pub async fn nfsproc3_mknod(
             debug!("nfsproc3_mknod error --> {:?}", stat);
 
             // Get the directory attributes after the operation (unchanged)
-            let post_dir_attr = context.vfs.getattr(dirid).await.ok();
+            let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
             let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
 
