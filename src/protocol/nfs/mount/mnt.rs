@@ -2,7 +2,6 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
-use std::collections::HashSet;
 use std::io;
 use std::io::{Read, Write};
 
