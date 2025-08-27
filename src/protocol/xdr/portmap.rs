@@ -57,15 +57,8 @@ impl Serialize for pmaplist {
 impl Deserialize for pmaplist {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         let map = deserialize::<mapping>(src)?;
-        let next = deserialize::<Option<bool>>(src)?;
-
-        if let Some(true) = next {
-            let pmaplist = deserialize::<pmaplist>(src)?;
-
-            Ok(pmaplist { map, next: Box::new(Some(pmaplist)) })
-        } else {
-            Ok(pmaplist { map, next: Box::new(None) })
-        }
+        let next = deserialize::<Option<pmaplist>>(src)?;
+        Ok(pmaplist { map, next: Box::new(next) })
     }
 }
 
