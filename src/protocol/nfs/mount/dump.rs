@@ -4,7 +4,7 @@
 //!
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 use tracing::debug;
 
 use crate::protocol::rpc::Context;
@@ -28,7 +28,6 @@ use crate::xdr::Serialize;
 ///
 pub async fn mountproc3_dump(
     xid: u32,
-    _input: &mut impl Read,
     output: &mut impl Write,
     context: &Context,
 ) -> io::Result<()> {

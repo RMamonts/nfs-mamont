@@ -68,9 +68,7 @@ pub async fn handle_mount(
     match prog {
         mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
         mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_DUMP => {
-            mountproc3_dump(xid, input, output, context).await?;
-        }
+        mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await?,
         mount::MountProgram::MOUNTPROC3_UMNT => {
             mountproc3_umnt(xid, input, output, context).await?;
         }
