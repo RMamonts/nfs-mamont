@@ -25,7 +25,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Deserialize, Serialize};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles `NFSv3` `CREATE` procedure (procedure 8)

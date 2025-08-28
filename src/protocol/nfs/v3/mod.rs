@@ -41,7 +41,6 @@ use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
-use tokio::sync::RwLockReadGuard;
 use tracing::warn;
 
 use crate::protocol::rpc;
@@ -69,7 +68,7 @@ mod setattr;
 mod symlink;
 mod write;
 
-use crate::tcp::{NFSExportTable, NFSExportTableEntry};
+use crate::tcp::NFSExportTableEntry;
 use crate::xdr::rpc::make_success_reply;
 use crate::xdr::Deserialize;
 use access::nfsproc3_access;
