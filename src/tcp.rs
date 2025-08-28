@@ -318,6 +318,26 @@ impl NFSTcpListener {
 
         Ok(fs_id)
     }
+
+    /// Unregisters an existing NFS file system export by its filesystem ID
+    ///
+    /// # Arguments
+    ///
+    /// * `fs_id` - The filesystem ID of the export to remove
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Export was successfully removed
+    /// * `Err(io::Error)` - Export with the given ID was not found
+    pub fn unregister_export(&mut self, fs_id: xdr::nfs3::fs_id) -> io::Result<()> {
+        if self.export_table.remove(&fs_id).is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Export with ID '{fs_id}' not found"),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -380,7 +400,7 @@ impl NFSTcp for NFSTcpListener {
             let context = rpc::Context {
                 local_port: self.port,
                 client_addr: socket.peer_addr()?.to_string(),
-                auth: xdr::rpc::auth_unix::default(),
+                auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),

@@ -25,7 +25,7 @@ use std::io::{Read, Write};
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Deserialize, Serialize};
+use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
 
 /// Handles `NFSv3` `CREATE` procedure (procedure 8)
@@ -102,11 +102,11 @@ pub async fn nfsproc3_create(
 
     match create_mode {
         nfs3::createmode3::UNCHECKED => {
-            target_attributes.deserialize(input)?;
+            target_attributes = deserialize(input)?;
             debug!("create unchecked {:?}", target_attributes);
         }
         nfs3::createmode3::GUARDED => {
-            target_attributes.deserialize(input)?;
+            target_attributes = deserialize(input)?;
             debug!("create guarded {:?}", target_attributes);
             if export.vfs.lookup(dirid, &dir_ops.name).await.is_ok() {
                 // file exists. Fail with NFS3ERR_EXIST.

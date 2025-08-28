@@ -38,9 +38,20 @@ use umnt_all::mountproc3_umnt_all;
 ///
 /// * `bool` - true if the requested path properly matches the export
 fn matches_export_path(requested_path: &str, export_name: &str) -> bool {
-    requested_path == export_name
-        || (requested_path.starts_with(export_name)
-            && requested_path.chars().nth(export_name.len()) == Some('/'))
+    if requested_path == export_name {
+        // Exact match
+        true
+    } else if export_name == "/" && requested_path.starts_with("/") {
+        // Special case: root export matches any absolute path
+        true
+    } else if requested_path.starts_with(export_name)
+        && requested_path.chars().nth(export_name.len()) == Some('/')
+    {
+        // Export name is a prefix and is followed by a path separator
+        true
+    } else {
+        false
+    }
 }
 
 /// Main handler for `MOUNT` procedures of version 3 protocol.

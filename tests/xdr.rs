@@ -7,8 +7,8 @@ struct Context {
     buf: Vec<u8>,
 }
 
-trait TestValue: Deserialize + Serialize + Eq + Default + Debug + Clone {}
-impl<T: Deserialize + Serialize + Eq + Default + Debug + Clone> TestValue for T {}
+trait TestValue: Deserialize + Serialize + Eq + Debug {}
+impl<T: Deserialize + Serialize + Eq + Debug> TestValue for T {}
 
 impl Context {
     fn check<T: TestValue>(&mut self, src_value: &T) {
@@ -33,7 +33,7 @@ impl Context {
     }
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct TestForVecU8(Vec<u8>);
 
 impl Serialize for TestForVecU8 {
@@ -43,12 +43,12 @@ impl Serialize for TestForVecU8 {
 }
 
 impl Deserialize for TestForVecU8 {
-    fn deserialize<R: std::io::Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.0.deserialize(src)
+    fn deserialize<R: std::io::Read>(src: &mut R) -> std::io::Result<Self> {
+        Ok(TestForVecU8(deserialize::<Vec<u8>>(src)?))
     }
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct TestForVec<T>(Vec<T>);
 
 impl<T: TestValue> Serialize for TestForVec<T> {
@@ -58,12 +58,12 @@ impl<T: TestValue> Serialize for TestForVec<T> {
 }
 
 impl<T: TestValue> Deserialize for TestForVec<T> {
-    fn deserialize<R: std::io::Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.0.deserialize(src)
+    fn deserialize<R: std::io::Read>(src: &mut R) -> std::io::Result<Self> {
+        Ok(TestForVec(deserialize::<Vec<T>>(src)?))
     }
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct TestForString(String);
 
 impl Serialize for TestForString {
@@ -73,8 +73,8 @@ impl Serialize for TestForString {
 }
 
 impl Deserialize for TestForString {
-    fn deserialize<R: std::io::Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.0.deserialize(src)
+    fn deserialize<R: std::io::Read>(src: &mut R) -> std::io::Result<Self> {
+        Ok(TestForString(deserialize::<String>(src)?))
     }
 }
 
