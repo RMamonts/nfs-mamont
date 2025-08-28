@@ -5,7 +5,7 @@
 use std::io;
 use std::io::{Read, Write};
 
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
@@ -58,13 +58,15 @@ pub async fn mountproc3_umnt(
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     mount::mountstat3::MNT3_OK.serialize(output)?;
 
-    if let Ok(machine_name) = String::from_utf8(context.auth.machinename.clone()) {
-        debug!("client_list: {machine_name} -= {utf8path}");
-        context.client_list.entry(machine_name).and_modify(|set| {
-            set.remove(&utf8path.to_string());
-        });
-    } else {
-        error!("Failed to convert machine name to UTF-8");
+    if let Some(auth) = &context.auth {
+        if let Ok(machine_name) = String::from_utf8(auth.machinename.clone()) {
+            debug!("client_list: {machine_name} -= {utf8path}");
+            context.client_list.entry(machine_name).and_modify(|set| {
+                set.remove(&utf8path.to_string());
+            });
+        } else {
+            warn!("Failed to convert machine name to UTF-8");
+        }
     }
 
     Ok(())
