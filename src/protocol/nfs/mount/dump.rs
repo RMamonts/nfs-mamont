@@ -24,8 +24,8 @@ use crate::xdr::Serialize;
 /// * `context` - RPC context containing client mount information
 ///
 /// # Returns
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
 ///
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn mountproc3_dump(
     xid: u32,
     output: &mut impl Write,
