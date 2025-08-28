@@ -52,8 +52,12 @@ pub async fn mountproc3_mnt(
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
 
     // Find the matching export
-    let Some(mount_entry) =
-        context.export_table.iter().find(|entry| matches_export_path(utf8path, &entry.export_name))
+    let Some(mount_entry) = context
+        .export_table
+        .iter()
+        .filter(|entry| matches_export_path(utf8path, &entry.export_name))
+        // Prefer the longest matching export path
+        .max_by_key(|entry| entry.export_name.len())
     else {
         // invalid export
         debug!("{:?} --> no matching export", xid);
