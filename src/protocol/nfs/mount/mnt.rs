@@ -96,6 +96,15 @@ pub async fn mountproc3_mnt(
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3_OK.serialize(output)?;
         response.serialize(output)?;
+
+        if let Some(auth) = &context.auth {
+            if let Ok(machine_name) = String::from_utf8(auth.machinename.clone()) {
+                debug!("client_list: {machine_name} += {utf8path}");
+                context.client_list.entry(machine_name).or_default().insert(utf8path.to_string());
+            } else {
+                warn!("Failed to convert machine name to UTF-8");
+            }
+        }
     } else {
         debug!("{:?} --> MNT3ERR_NOENT", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
