@@ -560,3 +560,7 @@ pub trait NFSFileSystem: Sync {
         self.generation().to_le_bytes()
     }
 }
+
+pub trait NFSv4FileSystem {
+    // TODO
+}
