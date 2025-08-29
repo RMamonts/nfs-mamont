@@ -20,10 +20,9 @@ use std::io::{Read, Write};
 use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::xdr::{DeserializeEnum, SerializeEnum};
-use crate::{DeserializeStruct, SerializeStruct};
-
 use super::{deserialize, Deserialize, Serialize};
+use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
+use crate::{xdr, DeserializeStruct, SerializeStruct};
 
 // Modules for different operation types
 pub mod dir;
@@ -119,8 +118,8 @@ impl Serialize for nfsstring {
 }
 
 impl Deserialize for nfsstring {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
-        self.0.deserialize(src)
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
+        Ok(nfsstring(Deserialize::deserialize(src)?))
     }
 }
 
@@ -218,6 +217,9 @@ pub type mode3 = u32;
 /// Count of bytes or entries as defined in RFC 1813 section 2.5
 /// Used for various counting purposes in NFS operations
 pub type count3 = u32;
+
+/// Used in [nfs_fh3] to identify the file system
+pub type fs_id = u64;
 
 /// Status codes returned by NFS version 3 operations
 #[allow(non_camel_case_types)]
@@ -365,11 +367,42 @@ SerializeStruct!(specdata3, specdata1, specdata2);
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct nfs_fh3 {
-    /// Raw file handle data (up to `NFS3_FHSIZE` bytes)
-    pub data: Vec<u8>,
+    /// Used for stale handle detection
+    pub gen: u64,
+    /// File system identifier
+    pub fs_id: fs_id,
+    /// Unique file identifier within the file system
+    pub id: fileid3,
 }
-DeserializeStruct!(nfs_fh3, data);
-SerializeStruct!(nfs_fh3, data);
+const _: () = {
+    assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
+};
+
+// Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
+// and thus needs to be encoded with its length as the first 4 bytes.
+impl Deserialize for nfs_fh3 {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
+        let len = deserialize::<UsizeAsU32>(src)?;
+        if len.0 != size_of::<nfs_fh3>() {
+            return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
+        }
+        Ok(nfs_fh3 {
+            gen: deserialize::<u64>(src)?,
+            fs_id: deserialize::<fs_id>(src)?,
+            id: deserialize::<fileid3>(src)?,
+        })
+    }
+}
+
+impl Serialize for nfs_fh3 {
+    fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
+        UsizeAsU32(size_of::<Self>()).serialize(dest)?;
+        self.gen.serialize(dest)?;
+        self.fs_id.serialize(dest)?;
+        self.id.serialize(dest)?;
+        Ok(())
+    }
+}
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
@@ -453,6 +486,12 @@ pub struct wcc_attr {
 DeserializeStruct!(wcc_attr, size, mtime, ctime);
 SerializeStruct!(wcc_attr, size, mtime, ctime);
 
+impl From<fattr3> for wcc_attr {
+    fn from(attr: fattr3) -> Self {
+        wcc_attr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
+    }
+}
+
 /// Pre-operation attributes for weak cache consistency as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state before an operation was performed
 /// Used together with post-operation attributes to determine if file state changed
@@ -521,26 +560,16 @@ impl Serialize for set_atime {
     }
 }
 impl Deserialize for set_atime {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => {
-                *self = set_atime::DONT_CHANGE;
-            }
-            1 => {
-                *self = set_atime::SET_TO_SERVER_TIME;
-            }
-            2 => {
-                *self = set_atime::SET_TO_CLIENT_TIME(deserialize(src)?);
-            }
-            c => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid set_atime value: {c}"),
-                ));
-            }
+            0 => Ok(set_atime::DONT_CHANGE),
+            1 => Ok(set_atime::SET_TO_SERVER_TIME),
+            2 => Ok(set_atime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            c => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid set_atime value: {c}"),
+            )),
         }
-
-        Ok(())
     }
 }
 
@@ -582,26 +611,16 @@ impl Serialize for set_mtime {
     }
 }
 impl Deserialize for set_mtime {
-    fn deserialize<R: Read>(&mut self, src: &mut R) -> std::io::Result<()> {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => {
-                *self = set_mtime::DONT_CHANGE;
-            }
-            1 => {
-                *self = set_mtime::SET_TO_SERVER_TIME;
-            }
-            2 => {
-                *self = set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?);
-            }
-            c => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid set_mtime value: {c}"),
-                ));
-            }
+            0 => Ok(set_mtime::DONT_CHANGE),
+            1 => Ok(set_mtime::SET_TO_SERVER_TIME),
+            2 => Ok(set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            c => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid set_mtime value: {c}"),
+            )),
         }
-
-        Ok(())
     }
 }
 

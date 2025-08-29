@@ -6,18 +6,17 @@ use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::ToPrimitive;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
+
+use super::matches_export_path;
 
 /// Handles `MOUNTPROC3_MNT` procedure.
 ///
 /// Function returns file handle for the requested
 /// mount point and supported authentication flavors.
-///
-/// TODO: Currently there is only one mount point, to support
-/// full functionality we need to extend support for multiple mount points.
 ///
 /// # Arguments
 ///
@@ -36,31 +35,62 @@ pub async fn mountproc3_mnt(
     context: &rpc::Context,
 ) -> io::Result<()> {
     let path = deserialize::<Vec<u8>>(input)?;
-    let utf8path = std::str::from_utf8(&path).unwrap_or_default();
+
+    if path.len() > mount::MNTPATHLEN as usize {
+        debug!("{:?} --> MNT3ERR_NAMETOOLONG", xid);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        mount::mountstat3::MNT3ERR_NAMETOOLONG.serialize(output)?;
+        return Ok(());
+    }
+
+    let Ok(utf8path) = std::str::from_utf8(&path) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
+        return Ok(());
+    };
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
-    let path = if let Some(path) = utf8path.strip_prefix(context.export_name.as_str()) {
-        let path = path.trim_start_matches('/').trim_end_matches('/').trim().as_bytes();
-        let mut new_path = Vec::with_capacity(path.len() + 1);
-        new_path.push(b'/');
-        new_path.extend_from_slice(path);
-        new_path
-    } else {
+
+    // Find the matching export
+    let Some(mount_entry) = context
+        .export_table
+        .iter()
+        .filter(|entry| matches_export_path(utf8path, &entry.export_name))
+        // Prefer the longest matching export path
+        .max_by_key(|entry| entry.export_name.len())
+    else {
         // invalid export
         debug!("{:?} --> no matching export", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
         return Ok(());
     };
-    if let Ok(fileid) = context.vfs.path_to_id(&path).await {
+
+    let vfs = mount_entry.vfs.clone();
+
+    let path = {
+        let path = utf8path
+            .strip_prefix(mount_entry.export_name.as_str())
+            .unwrap()
+            .trim_matches('/')
+            .trim()
+            .as_bytes();
+        let mut new_path = Vec::with_capacity(path.len() + 1);
+        new_path.push(b'/');
+        new_path.extend_from_slice(path);
+        new_path
+    };
+
+    if let Ok(fileid) = vfs.path_to_id(&path).await {
         let response = mount::mountres3_ok {
-            fhandle: context.vfs.id_to_fh(fileid).data,
+            fhandle: vfs.id_to_fh(fileid, *mount_entry.key()),
             auth_flavors: vec![
-                xdr::rpc::auth_flavor::AUTH_NULL.to_u32().unwrap(),
-                xdr::rpc::auth_flavor::AUTH_UNIX.to_u32().unwrap(),
+                xdr::rpc::auth_flavor::AUTH_NONE.to_u32().unwrap(),
+                xdr::rpc::auth_flavor::AUTH_SYS.to_u32().unwrap(),
             ],
         };
         debug!("{:?} --> {:?}", xid, response);
-        if let Some(ref chan) = context.mount_signal {
+        if let Some(chan) = &mount_entry.mount_signal {
             let _ = chan.send(true).await;
         }
         xdr::rpc::make_success_reply(xid).serialize(output)?;

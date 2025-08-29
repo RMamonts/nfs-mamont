@@ -47,8 +47,20 @@ pub async fn nfsproc3_write(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
+    let args = deserialize::<nfs3::file::WRITE3args>(input)?;
+    debug!("nfsproc3_write({:?},...) ", xid);
+
+    let fs_id = args.file.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::wcc_data::default().serialize(output)?;
+        return Ok(());
+    };
+
     // if we do not have write capabilities
-    if !matches!(context.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
@@ -56,15 +68,13 @@ pub async fn nfsproc3_write(
         return Ok(());
     }
 
-    let args = deserialize::<nfs3::file::WRITE3args>(input)?;
-    debug!("nfsproc3_write({:?},...) ", xid);
     // sanity check the length
     if args.data.len() != args.count as usize {
         xdr::rpc::garbage_args_reply_message(xid).serialize(output)?;
         return Ok(());
     }
 
-    let id = context.vfs.fh_to_id(&args.file);
+    let id = export.vfs.fh_to_id(&args.file);
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
@@ -74,14 +84,9 @@ pub async fn nfsproc3_write(
     let id = id.unwrap();
 
     // get the object attributes before the write
-    let pre_obj_attr = context
-        .vfs
-        .getattr(id)
-        .await
-        .map(|v| nfs3::wcc_attr { size: v.size, mtime: v.mtime, ctime: v.ctime })
-        .ok();
+    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::wcc_attr::from).ok();
 
-    match context.vfs.write(id, args.offset, &args.data).await {
+    match export.vfs.write(id, args.offset, &args.data).await {
         Ok(fattr) => {
             debug!("write success {:?} --> {:?}", xid, fattr);
             let res = nfs3::file::WRITE3resok {
@@ -91,7 +96,7 @@ pub async fn nfsproc3_write(
                 },
                 count: args.count,
                 committed: nfs3::file::stable_how::FILE_SYNC,
-                verf: context.vfs.server_id(),
+                verf: export.vfs.server_id(),
             };
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             nfs3::nfsstat3::NFS3_OK.serialize(output)?;

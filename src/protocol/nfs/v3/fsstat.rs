@@ -22,7 +22,7 @@
 use std::io;
 use std::io::{Read, Write};
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
@@ -51,7 +51,17 @@ pub async fn nfsproc3_fsstat(
 ) -> io::Result<()> {
     let handle = deserialize::<nfs3::nfs_fh3>(input)?;
     debug!("nfsproc3_fsstat({:?},{:?}) ", xid, handle);
-    let id = context.vfs.fh_to_id(&handle);
+
+    let fs_id = handle.fs_id;
+    let Some(export) = context.export_table.get(&fs_id) else {
+        warn!("No export found for fs_id: {}", fs_id);
+        xdr::rpc::make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::post_op_attr::None.serialize(output)?;
+        return Ok(());
+    };
+
+    let id = export.vfs.fh_to_id(&handle);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -61,7 +71,7 @@ pub async fn nfsproc3_fsstat(
     }
     let id = id.unwrap();
 
-    let obj_attr = context.vfs.getattr(id).await.ok();
+    let obj_attr = export.vfs.getattr(id).await.ok();
     let res = nfs3::fs::FSSTAT3resok {
         obj_attributes: obj_attr,
         tbytes: 1024 * 1024 * 1024 * 1024,
