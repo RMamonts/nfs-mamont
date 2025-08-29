@@ -137,5 +137,5 @@ pub struct NFSv4FS {
     /// Mapping of NFS filehandles to internal filehandle representations for this export
     exports: RwLock<HashMap<nfs_fh4, filehandle>>,
     /// Reference to the underlying filesystem abstraction implementation (VFS layer)
-    vfs: Arc<dyn NFSv4FileSystem>,
+    vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
 }

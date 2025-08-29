@@ -20,6 +20,7 @@ use crate::xdr;
 pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 
 const NFS4_FHSIZE: u32 = 128;
+const NFS4_OTHER_SIZE: usize = 12;
 #[allow(non_camel_case_types)]
 pub type seqid4 = AtomicU32;
 #[allow(non_camel_case_types)]
@@ -259,24 +260,12 @@ impl nfs_fh4 {
 /// NFSv4 state identifier
 /// Uniquely identifies server state (open, lock, delegation) for replay protection
 #[allow(non_camel_case_types)]
-#[derive(Default)]
+#[derive(Default, PartialEq, Clone, Hash)]
 pub struct stateid4 {
     /// Sequence ID for state validation and replay protection
     seqid: u32,
     /// Opaque identifier bytes
-    other: Vec<u8>,
-}
-
-impl stateid4 {
-    fn create(seqid: u32, other: Vec<u8>) -> io::Result<Self> {
-        if other.len() > NFS4_FHSIZE as usize {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                format!("StateID other too large: {} > {}", other.len(), NFS4_FHSIZE),
-            ));
-        }
-        Ok(Self { seqid, other })
-    }
+    other: [u8; NFS4_OTHER_SIZE],
 }
 
 /// NFS file type enumeration
@@ -351,7 +340,7 @@ pub struct open_state {
 
 /// NFS lock type classification (RFC 7530 Section 16.12.1)
 #[allow(non_camel_case_types)]
-enum nfs_lock_type4 {
+pub enum nfs_lock_type4 {
     READ_LT = 1,   // Shared read lock
     WRITE_LT = 2,  // Exclusive write lock
     READW_LT = 3,  // Blocking read lock
