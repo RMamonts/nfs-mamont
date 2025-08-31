@@ -14,11 +14,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use num_derive::{FromPrimitive, ToPrimitive};
-use tokio::sync::RwLock;
 
 use crate::xdr;
-pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 use crate::xdr::nfs3::nfsstring;
+pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
 
 const NFS4_FHSIZE: u32 = 128;
 const NFS4_OTHER_SIZE: usize = 12;
@@ -33,7 +32,7 @@ pub type filename4 = nfsstring;
 #[allow(non_camel_case_types)]
 pub type bitmap4 = Vec<u32>;
 #[allow(non_camel_case_types)]
-
+pub type attrlist4 = Vec<u8>;
 /// NFS version 4 status codes as defined in RFC 7530
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive, PartialEq, Eq)]
@@ -277,6 +276,12 @@ pub struct stateid4 {
     seqid: u32,
     /// Opaque identifier bytes
     other: [u8; NFS4_OTHER_SIZE],
+}
+
+#[allow(non_camel_case_types)]
+pub struct fattr4 {
+    attrmask: bitmap4,
+    attr_vals: attrlist4,
 }
 
 /// NFS file type enumeration

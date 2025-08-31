@@ -19,7 +19,7 @@ use tracing::{debug, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
-use crate::vfs;
+use crate::vfs::v3;
 
 /// Handles `NFSv3` `ACCESS` procedure (procedure 4)
 ///
@@ -117,7 +117,7 @@ pub async fn nfsproc3_access(
     match attr.ftype {
         nfs3::ftype3::NF3REG => {
             // For regular files
-            if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+            if !matches!(export.vfs.capabilities(), v3::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
                 if access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
                     granted_access |= access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
@@ -133,7 +133,7 @@ pub async fn nfsproc3_access(
         }
         nfs3::ftype3::NF3DIR => {
             // For directories
-            if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+            if !matches!(export.vfs.capabilities(), v3::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
                 if access & nfs3::ACCESS3_READ != 0 {
                     granted_access |= nfs3::ACCESS3_READ;
