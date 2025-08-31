@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::xdr;
 use crate::tcp::NFSExportTable;
 
@@ -57,6 +58,10 @@ pub struct Context {
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     pub portmap_table: Arc<RwLock<PortmapTable>>,
+
+    /// NFSv4-specific state information including client ID, session management,
+    /// open file states, locks, and other protocol-specific context.
+    pub nfsv4_context: Arc<NFSv4State>,
 }
 
 impl fmt::Debug for Context {

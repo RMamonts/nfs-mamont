@@ -22,9 +22,10 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
-use crate::vfs::NFSFileSystem;
+use crate::vfs::v3::NFSFileSystem;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
@@ -58,6 +59,9 @@ pub struct NFSTcpListener {
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     portmap_table: Arc<RwLock<PortmapTable>>,
+    /// NFSv4-specific state information including client ID, session management,
+    /// open file states, locks, and other protocol-specific context.
+    nfsv4_context: Arc<NFSv4State>,
 }
 
 /// Generates a local loopback IP address from a 16-bit host number
@@ -251,6 +255,7 @@ impl NFSTcpListener {
                 TRANSACTION_RETENTION_PERIOD,
             )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            nfsv4_context: Arc::new(NFSv4State::default()),
         })
     }
 
@@ -400,6 +405,7 @@ impl NFSTcp for NFSTcpListener {
                 export_table: self.export_table.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
+                nfsv4_context: self.nfsv4_context.clone(),
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);

@@ -35,10 +35,10 @@ use tracing::warn;
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
+use crate::vfs::v4::NFSv4FileSystem;
 use crate::xdr::nfs4::{
     clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
 };
-use crate::vfs::v4::NFSv4FileSystem;
 
 mod compound;
 mod null;
@@ -125,7 +125,7 @@ pub struct NFSv4State {
     /// Reverse index: client ID -> list of all state-owners owned by that client
     state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
     /// Managed filesystem instances, keyed by export name or identifier
-    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>
+    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>,
 }
 
 /// Represents a single exported filesystem instance and its properties.

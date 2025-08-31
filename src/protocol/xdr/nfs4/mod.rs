@@ -252,7 +252,7 @@ impl xdr::DeserializeEnum for nfs_opnum4 {}
 #[derive(Default, Clone, Hash, PartialEq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
 
 impl nfs_fh4 {
@@ -380,7 +380,7 @@ pub struct lock_state {
     /// Locked byte range (start offset, end offset)
     range: (u64, u64),
     /// The filehandle this lock protects
-    filehandle: filehandle
+    filehandle: filehandle,
 }
 
 /// Delegation state information (RFC 7530 Section 10)
