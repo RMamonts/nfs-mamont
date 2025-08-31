@@ -35,10 +35,10 @@ use tracing::warn;
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
-use crate::vfs::NFSv4FileSystem;
 use crate::xdr::nfs4::{
     clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
 };
+use crate::vfs::v4::NFSv4FileSystem;
 
 mod compound;
 mod null;
@@ -105,18 +105,17 @@ pub struct NFSv4Context {
     saved_stateid: stateid4,
     /// NFS minor version negotiated for this session (0 for v4.0, 1 for v4.1)
     minor_version: u32,
-    /// Reference to the global, shared server state management structure
-    nfsv4state: Arc<NFSv4State>,
 }
 
 /// Centralized repository for all server-wide NFSv4.0 state.
 /// Manages client identities, file states, locks, and delegations as defined
 /// in RFC 7530 Section 9. This structure is shared across all client connections.
+#[derive(Default)]
 pub struct NFSv4State {
     /// Mapping of client IDs to their full management structures
     clients: RwLock<HashMap<clientid4, Arc<RwLock<nfs_client_id>>>>,
     /// Global registry of all active state identifiers and their associated state objects
-    state_table: RwLock<HashMap<stateid4, state_type>>,
+    state_table: RwLock<HashMap<stateid4, Arc<state_type>>>,
     /// Reverse index: filehandle -> list of OPEN stateids for that file
     opens_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
     /// Reverse index: filehandle -> list of LOCK stateids for that file
@@ -126,7 +125,7 @@ pub struct NFSv4State {
     /// Reverse index: client ID -> list of all state-owners owned by that client
     state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
     /// Managed filesystem instances, keyed by export name or identifier
-    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>,
+    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>
 }
 
 /// Represents a single exported filesystem instance and its properties.

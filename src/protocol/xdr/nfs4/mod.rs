@@ -18,6 +18,7 @@ use tokio::sync::RwLock;
 
 use crate::xdr;
 pub use operations::{COMPOUND4args, COMPOUND4res, NULL4args, NULL4res};
+use crate::xdr::nfs3::nfsstring;
 
 const NFS4_FHSIZE: u32 = 128;
 const NFS4_OTHER_SIZE: usize = 12;
@@ -25,6 +26,14 @@ const NFS4_OTHER_SIZE: usize = 12;
 pub type seqid4 = AtomicU32;
 #[allow(non_camel_case_types)]
 pub type clientid4 = u64;
+#[allow(non_camel_case_types)]
+pub type fileid4 = u64;
+#[allow(non_camel_case_types)]
+pub type filename4 = nfsstring;
+#[allow(non_camel_case_types)]
+pub type bitmap4 = Vec<u32>;
+#[allow(non_camel_case_types)]
+
 /// NFS version 4 status codes as defined in RFC 7530
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive, PartialEq, Eq)]
@@ -240,9 +249,11 @@ impl xdr::DeserializeEnum for nfs_opnum4 {}
 /// Opaque reference to a filesystem object within an export
 /// Maximum size: NFS4_FHSIZE (128 bytes)
 #[allow(non_camel_case_types)]
+// looking not good
+#[derive(Default, Clone, Hash, PartialEq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
-    pub data: Vec<u8>,
+    pub data: Vec<u8>
 }
 
 impl nfs_fh4 {
@@ -270,7 +281,8 @@ pub struct stateid4 {
 
 /// NFS file type enumeration
 #[allow(non_camel_case_types)]
-#[derive(Default)]
+#[derive(Default, Clone)]
+#[repr(u32)]
 pub enum nfs_ftype4 {
     #[default]
     NO_FILE_TYPE = 0,
@@ -331,7 +343,7 @@ pub struct open_state {
     /// The filehandle this open state refers to
     filehandle: filehandle,
     /// The owner who opened this file
-    open_owner: open_owner,
+    open_owner: Arc<open_owner>,
     /// Share access modes (READ, WRITE, BOTH)
     share_access: u32,
     /// Share denial modes (READ, WRITE, BOTH)
@@ -340,6 +352,7 @@ pub struct open_state {
 
 /// NFS lock type classification (RFC 7530 Section 16.12.1)
 #[allow(non_camel_case_types)]
+#[repr(u32)]
 pub enum nfs_lock_type4 {
     READ_LT = 1,   // Shared read lock
     WRITE_LT = 2,  // Exclusive write lock
@@ -354,15 +367,15 @@ pub struct lock_state {
     /// State identifier for this lock
     stateid: stateid4,
     /// The open state this lock is associated with
-    open_state: open_state,
+    open_state: Arc<open_state>,
     /// The specific owner of this lock
-    lock_owner: lock_owner,
+    lock_owner: Arc<lock_owner>,
     /// Type of lock (read/write, blocking/non-blocking)
     lock_type: nfs_lock_type4,
     /// Locked byte range (start offset, end offset)
     range: (u64, u64),
     /// The filehandle this lock protects
-    filehandle: filehandle,
+    filehandle: filehandle
 }
 
 /// Delegation state information (RFC 7530 Section 10)
@@ -372,17 +385,18 @@ pub struct delegation_state {
     /// State identifier for this delegation
     stateid: stateid4,
     /// Associated open state for file access context
-    open_state: open_state,
+    open_state: Arc<open_state>,
     /// Type of delegation (read or write)
     delegation_type: delegation_type4,
     /// Client information for callback operations
-    nfs_client_id: Arc<RwLock<nfs_client_id>>,
+    delegation_owner: clientid4,
     /// The filehandle being delegated
     filehandle: filehandle,
 }
 
 /// Enhanced filehandle with extended attributes
 #[allow(non_camel_case_types)]
+#[derive(Clone)]
 pub struct filehandle {
     /// Type of the referenced filesystem object
     obj_type: nfs_ftype4,
@@ -448,10 +462,12 @@ pub struct nfs_client_id {
     /// Client authentication credentials
     credentials: nfs_credentials,
     /// All open owners belonging to this client
-    open_owners: Vec<open_owner>,
+    // required for new state creation - if we create new one or use existed
+    open_owners: Vec<Arc<open_owner4>>,
     /// All lock owners belonging to this client
-    lock_owners: Vec<lock_owner>,
+    lock_owners: Vec<Arc<lock_owner4>>,
     /// Filehandles with active delegations for this client
+    // find out what to change
     delegations: Vec<nfs_fh4>,
     /// Callback channel information for this client
     callback_info: CallbackInfo,
@@ -463,8 +479,6 @@ pub struct nfs_client_id {
 pub struct open_owner {
     /// OPEN owner identification
     open_owner4: Arc<open_owner4>,
-    /// All stateids owned by this open context
-    states: Vec<stateid4>,
     /// Last sequence ID for operation ordering
     last_sequid: seqid4,
     /// Generation number for state recovery
