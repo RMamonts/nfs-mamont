@@ -656,6 +656,17 @@ pub struct diropargs3 {
 DeserializeStruct!(diropargs3, dir, name);
 SerializeStruct!(diropargs3, dir, name);
 
+/// Data for creating a symbolic link
+#[derive(Debug, Default)]
+pub struct symlinkdata3 {
+    /// Attributes for the symbolic link
+    pub symlink_attributes: sattr3,
+    /// Target path for the symbolic link
+    pub symlink_data: nfspath3,
+}
+DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
     vec![0]

@@ -28,7 +28,7 @@ use super::{
     post_op_fh3, sattr3, specdata3, DeserializeEnum, DeserializeStruct, SerializeEnum,
     SerializeStruct,
 };
-use crate::xdr::nfs3::{nfspath3, wcc_data};
+use crate::xdr::nfs3::{symlinkdata3, wcc_data};
 
 /// Arguments for the MKDIR procedure (procedure 9) as defined in RFC 1813 section 3.3.9
 /// Used to create a new directory
@@ -63,17 +63,6 @@ pub struct MKDIR3resfail {
 }
 DeserializeStruct!(MKDIR3resfail, dir_wcc);
 SerializeStruct!(MKDIR3resfail, dir_wcc);
-
-/// Data for creating a symbolic link
-#[derive(Debug, Default)]
-pub struct symlinkdata3 {
-    /// Attributes for the symbolic link
-    pub symlink_attributes: sattr3,
-    /// Target path for the symbolic link
-    pub symlink_data: nfspath3,
-}
-DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
-SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
 
 /// Arguments for the SYMLINK procedure (procedure 10) as defined in RFC 1813 section 3.3.10
 /// Used to create a symbolic link
