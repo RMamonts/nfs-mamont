@@ -249,7 +249,7 @@ impl xdr::DeserializeEnum for nfs_opnum4 {}
 /// Maximum size: NFS4_FHSIZE (128 bytes)
 #[allow(non_camel_case_types)]
 // looking not good
-#[derive(Default, Clone, Hash, PartialEq)]
+#[derive(Default, Clone, Hash, PartialEq, Eq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
     pub data: Vec<u8>,
@@ -401,14 +401,14 @@ pub struct delegation_state {
 
 /// Enhanced filehandle with extended attributes
 #[allow(non_camel_case_types)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct filehandle {
     /// Type of the referenced filesystem object
-    obj_type: nfs_ftype4,
+    pub obj_type: nfs_ftype4,
     /// Base NFS filehandle data
-    nfs_fh4: nfs_fh4,
+    pub nfs_fh4: nfs_fh4,
     /// Persistent filesystem-unique identifier
-    fileid: u64,
+    pub fileid: u64,
 }
 
 /// Client ID confirmation state machine states (RFC 7530 Section 9.1.2)

@@ -26,7 +26,7 @@
 #![allow(unused_variables)]
 use std::collections::HashMap;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{Error, Read, Write};
 use std::sync::Arc;
 
 use num_traits::cast::FromPrimitive;
@@ -78,10 +78,11 @@ pub async fn handle_nfs(
 
     let prog = nfs4::nfs_opnum4::from_u32(call.proc).unwrap_or(nfs4::nfs_opnum4::OP_ILLEGAL);
 
+    let compound_context = NFSv4Context::new(context.nfsv4_context.clone()).await?;
     match prog {
         nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)?,
         nfs4::nfs_opnum4::OP_COMPOUND => {
-            compound::nfsproc4_compound(xid, input, output, context).await?
+            compound::nfsproc4_compound(xid, input, output, context, compound_context).await?
         }
         _ => {
             warn!("Unimplemented NFS v4 operation: {:?}", prog);
@@ -107,6 +108,26 @@ pub struct NFSv4Context {
     minor_version: u32,
 }
 
+impl NFSv4Context {
+    async fn new(state: Arc<NFSv4State>) -> io::Result<Self> {
+        let guard = state.exports.read().await;
+        let Some(root) = guard.get(&state.root_id) else {
+            return Err(Error::new(
+                io::ErrorKind::InvalidInput,
+                "No root was exported".to_string(),
+            ));
+        };
+
+        Ok(NFSv4Context {
+            current_file_handler: root.filehandle.clone(),
+            saved_file_handler: root.filehandle.clone(),
+            current_stateid: stateid4::default(),
+            saved_stateid: stateid4::default(),
+            minor_version: 0,
+        })
+    }
+}
+
 /// Centralized repository for all server-wide NFSv4.0 state.
 /// Manages client identities, file states, locks, and delegations as defined
 /// in RFC 7530 Section 9. This structure is shared across all client connections.
@@ -124,17 +145,17 @@ pub struct NFSv4State {
     delegations_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
     /// Reverse index: client ID -> list of all state-owners owned by that client
     state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
-    /// Managed filesystem instances, keyed by export name or identifier
-    fs: RwLock<HashMap<String, Arc<NFSv4FS>>>,
+    /// Mapping of NFS filehandles to internal filehandle representations for this export
+    pub exports: RwLock<HashMap<nfs_fh4, Arc<NFSv4FSobject>>>,
+
+    pub root_id: nfs_fh4,
 }
 
 /// Represents a single exported filesystem instance and its properties.
 /// Referenced to RFC 7530 Section 7.3
-pub struct NFSv4FS {
-    /// Human-readable name identifier for this filesystem export
-    fs_name: String,
+pub struct NFSv4FSobject {
     /// Mapping of NFS filehandles to internal filehandle representations for this export
-    exports: RwLock<HashMap<nfs_fh4, filehandle>>,
+    pub filehandle: filehandle,
     /// Reference to the underlying filesystem abstraction implementation (VFS layer)
-    vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
+    pub vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
 }

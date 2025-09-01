@@ -27,4 +27,6 @@ pub trait NFSv4FileSystem: Sync {
     /// This is used to validate and resolve file handles received from clients.
     /// Returns the corresponding file ID or an error if the file handle is invalid or stale.
     fn fh_to_id(&self, nfs_fh: &nfs4::nfs_fh4) -> Result<nfs4::fileid4, nfs4::nfsstat4>;
+
+    fn id_to_fh(&self, id: nfs4::fileid4) -> Result<nfs4::nfs_fh4, nfs4::nfsstat4>;
 }
