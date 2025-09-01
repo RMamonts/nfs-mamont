@@ -7,7 +7,9 @@
 //! decoding NFS version 3 protocol messages using XDR (External Data Representation).
 //!
 //! This module defines the constants, basic data types, and complex structures
-//! that form the foundation of the `NFSv3` protocol as specified in RFC 1813.
+//! that form the foundation of the `NFSv3` protocol as specified in RFC 1813, and
+//! data structures for the following operations:
+//! - MKNOD: Create a special device (procedure 11)
 
 // Allow unused code since we're implementing the full NFS3 protocol specification
 #![allow(dead_code)]
@@ -666,6 +668,82 @@ pub struct symlinkdata3 {
 }
 DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
 SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+
+/// Enumeration of device types for special files in NFS version 3 as defined in RFC 1813 section 3.3.11
+/// Used to identify the type of device when creating special files
+#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
+#[repr(u32)]
+pub enum devicetype3 {
+    /// Character special device
+    #[default]
+    NF3CHR = 0,
+    /// Block special device
+    NF3BLK = 1,
+    /// Socket
+    NF3SOCK = 2,
+    /// FIFO pipe
+    NF3FIFO = 3,
+}
+impl SerializeEnum for devicetype3 {}
+impl DeserializeEnum for devicetype3 {}
+
+/// Device data for special files as defined in RFC 1813 section 3.3.11
+/// Contains the device type and device numbers
+#[derive(Debug, Default)]
+pub struct devicedata3 {
+    /// Type of device (character, block, socket, or FIFO)
+    pub dev_attributes: devicetype3,
+    /// Major and minor device numbers for character and block devices
+    pub spec: specdata3,
+}
+DeserializeStruct!(devicedata3, dev_attributes, spec);
+SerializeStruct!(devicedata3, dev_attributes, spec);
+
+/// Data structure for creating special files as defined in RFC 1813 section 3.3.11
+/// Contains the file type and device information
+#[derive(Debug, Default)]
+pub struct mknoddata3 {
+    /// Type of file to create (regular, directory, special file etc)
+    pub mknod_type: ftype3,
+    /// Device information if creating a special file
+    pub device: devicedata3,
+}
+DeserializeStruct!(mknoddata3, mknod_type, device);
+SerializeStruct!(mknoddata3, mknod_type, device);
+
+/// Arguments for the MKNOD procedure (procedure 11) as defined in RFC 1813 section 3.3.11
+/// Used to create a special device file, FIFO, or socket
+#[derive(Debug, Default)]
+pub struct MKNOD3args {
+    /// Directory where the special file should be created and its name
+    pub where_: diropargs3,
+    /// Type and device information for the special file
+    pub what: mknoddata3,
+}
+DeserializeStruct!(MKNOD3args, where_, what);
+SerializeStruct!(MKNOD3args, where_, what);
+
+/// Successful response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
+#[derive(Debug, Default)]
+pub struct MKNOD3resok {
+    /// File handle for the newly created special file
+    pub obj: post_op_fh3,
+    /// Attributes for the newly created special file
+    pub obj_attributes: post_op_attr,
+    /// Weak cache consistency data for the directory
+    pub dir_wcc: wcc_data,
+}
+DeserializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
+SerializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
+
+/// Failed response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
+#[derive(Debug, Default)]
+pub struct MKNOD3resfail {
+    /// Weak cache consistency data for the directory
+    pub dir_wcc: wcc_data,
+}
+DeserializeStruct!(MKNOD3resfail, dir_wcc);
+SerializeStruct!(MKNOD3resfail, dir_wcc);
 
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
