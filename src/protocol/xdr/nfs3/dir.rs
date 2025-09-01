@@ -153,30 +153,6 @@ pub struct entry3 {
 DeserializeStruct!(entry3, fileid, name, cookie);
 SerializeStruct!(entry3, fileid, name, cookie);
 
-/// Directory list returned by READDIR operation as defined in RFC 1813 section 3.3.16
-#[derive(Debug, Default)]
-pub struct dirlist3 {
-    /// Zero or more directory entries
-    pub entries: Vec<entry3>,
-    /// TRUE if the last entry is the last entry in the directory
-    pub eof: bool,
-}
-DeserializeStruct!(dirlist3, entries, eof);
-SerializeStruct!(dirlist3, entries, eof);
-
-/// Successful response for the READDIR procedure as defined in RFC 1813 section 3.3.16
-#[derive(Debug, Default)]
-pub struct READDIR3resok {
-    /// Attributes of the directory
-    pub dir_attributes: post_op_attr,
-    /// Cookie verifier
-    pub cookieverf: cookieverf3,
-    /// Directory list
-    pub reply: dirlist3,
-}
-DeserializeStruct!(READDIR3resok, dir_attributes, cookieverf, reply);
-SerializeStruct!(READDIR3resok, dir_attributes, cookieverf, reply);
-
 /// Failed response for the READDIR procedure as defined in RFC 1813 section 3.3.16
 #[derive(Debug, Default)]
 pub struct READDIR3resfail {
@@ -221,30 +197,6 @@ pub struct entryplus3 {
 }
 DeserializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
 SerializeStruct!(entryplus3, fileid, name, cookie, name_attributes, name_handle);
-
-/// Directory list with attributes returned by READDIRPLUS operation as defined in RFC 1813 section 3.3.17
-#[derive(Debug, Default)]
-pub struct dirlistplus3 {
-    /// Zero or more directory entries with attributes and file handles
-    pub entries: Vec<entryplus3>,
-    /// TRUE if the last entry is the last entry in the directory
-    pub eof: bool,
-}
-DeserializeStruct!(dirlistplus3, entries, eof);
-SerializeStruct!(dirlistplus3, entries, eof);
-
-/// Successful response for the READDIRPLUS procedure as defined in RFC 1813 section 3.3.17
-#[derive(Debug, Default)]
-pub struct READDIRPLUS3resok {
-    /// Attributes of the directory
-    pub dir_attributes: post_op_attr,
-    /// Cookie verifier
-    pub cookieverf: cookieverf3,
-    /// Directory list with attributes
-    pub reply: dirlistplus3,
-}
-DeserializeStruct!(READDIRPLUS3resok, dir_attributes, cookieverf, reply);
-SerializeStruct!(READDIRPLUS3resok, dir_attributes, cookieverf, reply);
 
 /// Failed response for the READDIRPLUS procedure as defined in RFC 1813 section 3.3.17
 #[derive(Debug, Default)]
