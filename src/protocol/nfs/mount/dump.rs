@@ -19,7 +19,6 @@ use crate::xdr::Serialize;
 ///
 /// # Arguments
 /// * `xid` - RPC transaction identifier
-/// * `_input` - Input stream (unused for this procedure)
 /// * `output` - Output stream for writing the response
 /// * `context` - RPC context containing client mount information
 ///
