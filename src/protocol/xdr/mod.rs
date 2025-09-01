@@ -135,6 +135,18 @@ impl Deserialize for bool {
     }
 }
 
+impl Serialize for () {
+    fn serialize<W: Write>(&self, _dest: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Deserialize for () {
+    fn deserialize<R: Read>(_src: &mut R) -> std::io::Result<Self> {
+        Ok(())
+    }
+}
+
 /// XDR `int` type serialization implementation.
 impl Serialize for i32 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
@@ -386,7 +398,6 @@ macro_rules! SerializeStruct {
         $($element:ident),*
     ) => {
         impl $crate::xdr::Serialize for $t {
-            #[allow(unused_variables)]
             fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
                 $(self.$element.serialize(dest)?;)*
                 Ok(())
@@ -403,7 +414,6 @@ macro_rules! DeserializeStruct {
         $($element:ident),*
     ) => {
         impl $crate::xdr::Deserialize for $t {
-            #[allow(unused_variables)]
             fn deserialize<R: Read>(src: &mut R) -> std::io::Result<$t> {
                 Ok($t {
                     $($element: $crate::xdr::Deserialize::deserialize(src)?,)*
