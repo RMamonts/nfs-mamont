@@ -97,9 +97,9 @@ pub async fn handle_nfs(
 /// Manages the volatile state that changes during the processing of a request
 pub struct NFSv4Context {
     /// CURRENT filehandle - primary target of the current operation
-    current_file_handler: filehandle,
+    current_file_handler: Arc<NFSv4FSobject>,
     /// SAVED filehandle - preserved for complex compound operations
-    saved_file_handler: filehandle,
+    saved_file_handler: Arc<NFSv4FSobject>,
     /// CURRENT stateid - identifies state for stateful operations (OPEN, LOCK, etc.)
     current_stateid: stateid4,
     /// SAVED stateid - preserved state identifier for compound operations
@@ -119,8 +119,8 @@ impl NFSv4Context {
         };
 
         Ok(NFSv4Context {
-            current_file_handler: root.filehandle.clone(),
-            saved_file_handler: root.filehandle.clone(),
+            current_file_handler: root.clone(),
+            saved_file_handler: root.clone(),
             current_stateid: stateid4::default(),
             saved_stateid: stateid4::default(),
             minor_version: 0,
