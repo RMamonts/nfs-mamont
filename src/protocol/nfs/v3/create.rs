@@ -27,6 +27,7 @@ use tracing::{debug, error, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::file::createmode3;
 
 /// Handles `NFSv3` `CREATE` procedure (procedure 8)
 ///
@@ -101,12 +102,12 @@ pub async fn nfsproc3_create(
     let mut target_attributes = nfs3::sattr3::default();
 
     match create_mode {
-        nfs3::file::createmode3::UNCHECKED => {
-            target_attributes = deserialize(input)?;
+        createmode3::UNCHECKED(attr) => {
+            target_attributes = attr;
             debug!("create unchecked {:?}", target_attributes);
         }
-        nfs3::file::createmode3::GUARDED => {
-            target_attributes = deserialize(input)?;
+        createmode3::GUARDED(attr) => {
+            target_attributes = attr;
             debug!("create guarded {:?}", target_attributes);
             if export.vfs.lookup(dirid, &dir_ops.name).await.is_ok() {
                 // file exists. Fail with NFS3ERR_EXIST.
@@ -120,7 +121,7 @@ pub async fn nfsproc3_create(
                 return Ok(());
             }
         }
-        nfs3::file::createmode3::EXCLUSIVE => {
+        createmode3::EXCLUSIVE(_) => {
             debug!("create exclusive");
         }
     }
@@ -128,7 +129,7 @@ pub async fn nfsproc3_create(
     let fid: Result<nfs3::fileid3, nfs3::nfsstat3>;
     let postopattr: nfs3::post_op_attr;
     // fill in the fid and post op attr here
-    if matches!(create_mode, nfs3::file::createmode3::EXCLUSIVE) {
+    if matches!(create_mode, nfs3::file::createmode3::EXCLUSIVE(_)) {
         // the API for exclusive is very slightly different
         // We are not returning a post op attribute
         fid = export.vfs.create_exclusive(dirid, &dir_ops.name).await;

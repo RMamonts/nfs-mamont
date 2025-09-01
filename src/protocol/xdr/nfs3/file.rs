@@ -30,10 +30,10 @@ use std::io::{Read, Write};
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::{
-    count3, diropargs3, fattr3, nfs_fh3, offset3, post_op_attr, post_op_fh3, sattr3, wcc_data,
-    writeverf3, DeserializeEnum, DeserializeStruct, SerializeEnum, SerializeStruct,
+    count3, createverf3, diropargs3, fattr3, nfs_fh3, nfspath3, offset3, post_op_attr, post_op_fh3,
+    sattr3, sattrguard3, wcc_data, writeverf3, Deserialize, DeserializeEnum, DeserializeStruct,
+    Serialize, SerializeEnum, SerializeStruct,
 };
-use crate::xdr::nfs3::{nfspath3, sattrguard3};
 
 /// Arguments for the GETATTR procedure (procedure 1) as defined in RFC 1813 section 3.3.1
 /// Used to retrieve the attributes for a specified file system object
@@ -280,23 +280,69 @@ DeserializeStruct!(WRITE3resfail, file_wcc);
 SerializeStruct!(WRITE3resfail, file_wcc);
 
 /// File creation modes for `CREATE` operations
-#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
+#[derive(Debug)]
 #[repr(u32)]
 pub enum createmode3 {
     /// Normal file creation - doesn't error if file exists
-    #[default]
-    UNCHECKED = 0,
+    UNCHECKED(sattr3) = createmode3::UNCHECKED_DISCRIMINANT,
     /// Return error if file exists
-    GUARDED = 1,
+    GUARDED(sattr3) = createmode3::GUARDED_DISCRIMINANT,
     /// Use exclusive create mechanism (with verifier)
-    EXCLUSIVE = 2,
+    EXCLUSIVE(createverf3) = createmode3::EXCLUSIVE_DISCRIMINANT,
 }
-impl SerializeEnum for createmode3 {}
-impl DeserializeEnum for createmode3 {}
+impl createmode3 {
+    const UNCHECKED_DISCRIMINANT: u32 = 0;
+    const GUARDED_DISCRIMINANT: u32 = 1;
+    const EXCLUSIVE_DISCRIMINANT: u32 = 2;
+}
+
+impl Serialize for createmode3 {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            createmode3::UNCHECKED(attr) => {
+                createmode3::UNCHECKED_DISCRIMINANT.serialize(writer)?;
+                attr.serialize(writer)
+            }
+            createmode3::GUARDED(attr) => {
+                createmode3::GUARDED_DISCRIMINANT.serialize(writer)?;
+                attr.serialize(writer)
+            }
+            createmode3::EXCLUSIVE(verf) => {
+                createmode3::EXCLUSIVE_DISCRIMINANT.serialize(writer)?;
+                verf.serialize(writer)
+            }
+        }
+    }
+}
+
+impl Deserialize for createmode3 {
+    fn deserialize<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mode = u32::deserialize(reader)?;
+
+        match mode {
+            createmode3::UNCHECKED_DISCRIMINANT => {
+                let attr = sattr3::deserialize(reader)?;
+                Ok(createmode3::UNCHECKED(attr))
+            }
+            createmode3::GUARDED_DISCRIMINANT => {
+                let attr = sattr3::deserialize(reader)?;
+                Ok(createmode3::GUARDED(attr))
+            }
+            createmode3::EXCLUSIVE_DISCRIMINANT => {
+                let verf = createverf3::deserialize(reader)?;
+                Ok(createmode3::EXCLUSIVE(verf))
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid createmode3 value: {mode}"),
+            )),
+        }
+    }
+}
 
 /// Arguments for the CREATE procedure (procedure 8) as defined in RFC 1813 section 3.3.8
 /// Used to create a regular file
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CREATE3args {
     /// Location and name of the file to be created
     pub where_: diropargs3,
