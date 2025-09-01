@@ -5,10 +5,10 @@
 use std::io;
 use std::io::Write;
 
-use tracing::{debug, warn};
-
+use crate::protocol::nfs::mount::machine_name_from_context;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, mount, Serialize};
+use tracing::debug;
 
 /// Handles `MOUNTPROC3_UMNTALL` procedure.
 ///
@@ -40,12 +40,8 @@ pub async fn mountproc3_umnt_all(
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     mount::mountstat3::MNT3_OK.serialize(output)?;
 
-    if let Some(auth) = &context.auth {
-        if let Ok(machine_name) = String::from_utf8(auth.machinename.clone()) {
-            context.client_list.entry(machine_name).and_modify(|set| set.clear());
-        } else {
-            warn!("Failed to convert machine name to UTF-8");
-        }
+    if let Some(machine_name) = machine_name_from_context(context) {
+        context.client_list.entry(machine_name).and_modify(|set| set.clear());
     }
 
     Ok(())

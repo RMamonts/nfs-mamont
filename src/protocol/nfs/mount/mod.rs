@@ -4,10 +4,10 @@
 use std::io;
 use std::io::{Read, Write};
 
-use num_traits::cast::FromPrimitive;
-
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, mount, Serialize};
+use num_traits::cast::FromPrimitive;
+use tracing::warn;
 
 mod dump;
 mod export;
@@ -52,6 +52,20 @@ fn matches_export_path(requested_path: &str, export_name: &str) -> bool {
     } else {
         false
     }
+}
+
+/// Extracts the machine name from the RPC context's authentication information.
+fn machine_name_from_context(context: &rpc::Context) -> Option<String> {
+    if let Some(auth) = &context.auth {
+        if let Ok(machine_name) = String::from_utf8(auth.machinename.clone()) {
+            return Some(machine_name);
+        } else {
+            warn!("Failed to convert machine name to UTF-8");
+        }
+    } else {
+        warn!("No auth information in context to extract machine name");
+    }
+    None
 }
 
 /// Main handler for `MOUNT` procedures of version 3 protocol.
