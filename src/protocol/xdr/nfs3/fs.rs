@@ -118,7 +118,7 @@ SerializeStruct!(FSINFO3args, fsroot);
 
 /// File system information structure returned by FSINFO procedure as defined in RFC 1813 section 3.3.19
 #[derive(Debug, Default)]
-pub struct fsinfo3 {
+pub struct FSINFO3resok {
     /// File system attributes
     pub obj_attributes: post_op_attr,
     /// Maximum read request supported by server (bytes)
@@ -145,7 +145,7 @@ pub struct fsinfo3 {
     pub properties: u32,
 }
 DeserializeStruct!(
-    fsinfo3,
+    FSINFO3resok,
     obj_attributes,
     rtmax,
     rtpref,
@@ -159,7 +159,7 @@ DeserializeStruct!(
     properties
 );
 SerializeStruct!(
-    fsinfo3,
+    FSINFO3resok,
     obj_attributes,
     rtmax,
     rtpref,
@@ -172,9 +172,6 @@ SerializeStruct!(
     time_delta,
     properties
 );
-
-/// Successful response for the FSINFO procedure as defined in RFC 1813 section 3.3.19
-pub type FSINFO3resok = fsinfo3;
 
 /// Failed response for the FSINFO procedure as defined in RFC 1813 section 3.3.19
 #[derive(Debug, Default)]
