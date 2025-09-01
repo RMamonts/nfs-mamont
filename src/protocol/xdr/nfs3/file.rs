@@ -54,12 +54,6 @@ pub struct GETATTR3resok {
 DeserializeStruct!(GETATTR3resok, obj_attributes);
 SerializeStruct!(GETATTR3resok, obj_attributes);
 
-/// Failed response for the GETATTR procedure as defined in RFC 1813 section 3.3.1
-#[derive(Debug, Default)]
-pub struct GETATTR3resfail {}
-DeserializeStruct!(GETATTR3resfail,);
-SerializeStruct!(GETATTR3resfail,);
-
 /// Arguments for the SETATTR procedure (procedure 2) as defined in RFC 1813 section 3.3.2
 /// Used to set the attributes of a file system object
 #[derive(Debug, Default)]
