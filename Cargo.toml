@@ -14,7 +14,6 @@ doctest = false
 async-channel = "2.5.0"
 async-trait = "0.1.9"
 byteorder = "1.5"
-check = "1.0.0"
 dashmap = "6.1.0"
 filetime = "0.2"
 futures = "0.3.31"

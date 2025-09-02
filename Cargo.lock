@@ -160,12 +160,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9555578bc9e57714c812a1f84e4fc5b4d21fcb063490c624de019f7464c91268"
 
 [[package]]
-name = "check"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89beada3dfaf43501b20ab69f1d1dd2d43b4a600eb16ca05ea0e093a100634b1"
-
-[[package]]
 name = "clap"
 version = "4.5.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -569,7 +563,6 @@ dependencies = [
  "async-channel",
  "async-trait",
  "byteorder",
- "check",
  "clap",
  "clap_derive",
  "dashmap",
