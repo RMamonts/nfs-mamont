@@ -6,7 +6,6 @@
 
 use std::io;
 
-use tokio::sync::mpsc;
 use tracing::{debug, error, trace};
 
 use crate::protocol::rpc;
@@ -100,7 +99,7 @@ impl CommandQueue {
     /// * `buffer_capacity` - Initial capacity for response buffers
     pub fn new(
         processor: AsyncCommandProcessor,
-        result_sender: mpsc::UnboundedSender<CommandResult>,
+        result_sender: async_channel::Sender<CommandResult>,
         buffer_capacity: usize,
     ) -> Self {
         let (command_sender, command_receiver) = async_channel::unbounded::<RpcCommand>();
@@ -136,7 +135,7 @@ impl CommandQueue {
                     };
 
                 // Send result
-                if let Err(e) = result_sender.send(result) {
+                if let Err(e) = result_sender.send(result).await {
                     error!("Failed to send command processing result: {:?}", e);
                     break;
                 }

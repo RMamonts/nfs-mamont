@@ -246,7 +246,7 @@ impl SocketMessageHandler {
         let (msgsend, msgrecv) = mpsc::unbounded_channel();
 
         // Create separate channel for command results
-        let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+        let (result_sender, result_receiver) = async_channel::unbounded::<CommandResult>();
 
         // Create command queue with our RPC processing function
         let command_queue =
@@ -254,7 +254,7 @@ impl SocketMessageHandler {
 
         // Process results from command queue and send them to socket
         tokio::spawn(async move {
-            while let Some(result) = result_receiver.recv().await {
+            while let Ok(result) = result_receiver.recv().await {
                 match result {
                     Ok(Some(response_buffer)) if response_buffer.has_content() => {
                         let _ = msgsend.send(Ok(response_buffer.into_inner()));
