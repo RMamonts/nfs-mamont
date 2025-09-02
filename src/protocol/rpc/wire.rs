@@ -301,7 +301,7 @@ impl SocketMessageHandler {
             let context = self.context.clone();
 
             // Submit command to queue for ordered processing
-            if !self.command_queue.submit_command(fragment_data, context) {
+            if !self.command_queue.submit_command(fragment_data, context).await {
                 error!("Failed to submit command to queue");
                 return io_other("Command queue error");
             }

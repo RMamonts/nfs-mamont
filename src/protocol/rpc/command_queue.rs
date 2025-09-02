@@ -83,7 +83,7 @@ pub type AsyncCommandProcessor = for<'a> fn(
 #[derive(Debug, Clone)]
 pub struct CommandQueue {
     /// Channel for sending commands
-    command_sender: mpsc::UnboundedSender<RpcCommand>,
+    command_sender: async_channel::Sender<RpcCommand>,
 }
 
 impl CommandQueue {
@@ -103,14 +103,14 @@ impl CommandQueue {
         result_sender: mpsc::UnboundedSender<CommandResult>,
         buffer_capacity: usize,
     ) -> Self {
-        let (command_sender, mut command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
+        let (command_sender, command_receiver) = async_channel::unbounded::<RpcCommand>();
 
         // Start worker task that processes commands in order
         tokio::spawn(async move {
             // Create reusable buffer for responses
             let mut output_buffer = ResponseBuffer::with_capacity(buffer_capacity);
 
-            while let Some(command) = command_receiver.recv().await {
+            while let Ok(command) = command_receiver.recv().await {
                 trace!("Processing command from queue");
 
                 // Clear buffer for reuse
@@ -161,7 +161,7 @@ impl CommandQueue {
     ///
     /// `true` if command was successfully submitted,
     /// `false` if submission failed (e.g. if queue was closed)
-    pub fn submit_command(&self, data: Vec<u8>, context: rpc::Context) -> bool {
-        self.command_sender.send(RpcCommand { data, context }).is_ok()
+    pub async fn submit_command(&self, data: Vec<u8>, context: rpc::Context) -> bool {
+        self.command_sender.send(RpcCommand { data, context }).await.is_ok()
     }
 }
