@@ -282,55 +282,55 @@ SerializeStruct!(WRITE3resfail, file_wcc);
 /// File creation modes for `CREATE` operations
 #[derive(Debug)]
 #[repr(u32)]
-pub enum createmode3 {
+pub enum createhow3 {
     /// Normal file creation - doesn't error if file exists
-    UNCHECKED(sattr3) = createmode3::UNCHECKED_DISCRIMINANT,
+    UNCHECKED(sattr3) = createhow3::UNCHECKED_DISCRIMINANT,
     /// Return error if file exists
-    GUARDED(sattr3) = createmode3::GUARDED_DISCRIMINANT,
+    GUARDED(sattr3) = createhow3::GUARDED_DISCRIMINANT,
     /// Use exclusive create mechanism (with verifier)
-    EXCLUSIVE(createverf3) = createmode3::EXCLUSIVE_DISCRIMINANT,
+    EXCLUSIVE(createverf3) = createhow3::EXCLUSIVE_DISCRIMINANT,
 }
-impl createmode3 {
+impl createhow3 {
     const UNCHECKED_DISCRIMINANT: u32 = 0;
     const GUARDED_DISCRIMINANT: u32 = 1;
     const EXCLUSIVE_DISCRIMINANT: u32 = 2;
 }
 
-impl Serialize for createmode3 {
+impl Serialize for createhow3 {
     fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         match self {
-            createmode3::UNCHECKED(attr) => {
-                createmode3::UNCHECKED_DISCRIMINANT.serialize(writer)?;
+            createhow3::UNCHECKED(attr) => {
+                createhow3::UNCHECKED_DISCRIMINANT.serialize(writer)?;
                 attr.serialize(writer)
             }
-            createmode3::GUARDED(attr) => {
-                createmode3::GUARDED_DISCRIMINANT.serialize(writer)?;
+            createhow3::GUARDED(attr) => {
+                createhow3::GUARDED_DISCRIMINANT.serialize(writer)?;
                 attr.serialize(writer)
             }
-            createmode3::EXCLUSIVE(verf) => {
-                createmode3::EXCLUSIVE_DISCRIMINANT.serialize(writer)?;
+            createhow3::EXCLUSIVE(verf) => {
+                createhow3::EXCLUSIVE_DISCRIMINANT.serialize(writer)?;
                 verf.serialize(writer)
             }
         }
     }
 }
 
-impl Deserialize for createmode3 {
+impl Deserialize for createhow3 {
     fn deserialize<R: Read>(reader: &mut R) -> std::io::Result<Self> {
         let mode = u32::deserialize(reader)?;
 
         match mode {
-            createmode3::UNCHECKED_DISCRIMINANT => {
+            createhow3::UNCHECKED_DISCRIMINANT => {
                 let attr = sattr3::deserialize(reader)?;
-                Ok(createmode3::UNCHECKED(attr))
+                Ok(createhow3::UNCHECKED(attr))
             }
-            createmode3::GUARDED_DISCRIMINANT => {
+            createhow3::GUARDED_DISCRIMINANT => {
                 let attr = sattr3::deserialize(reader)?;
-                Ok(createmode3::GUARDED(attr))
+                Ok(createhow3::GUARDED(attr))
             }
-            createmode3::EXCLUSIVE_DISCRIMINANT => {
+            createhow3::EXCLUSIVE_DISCRIMINANT => {
                 let verf = createverf3::deserialize(reader)?;
-                Ok(createmode3::EXCLUSIVE(verf))
+                Ok(createhow3::EXCLUSIVE(verf))
             }
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -347,7 +347,7 @@ pub struct CREATE3args {
     /// Location and name of the file to be created
     pub where_: diropargs3,
     /// Discriminated union describing how the server should handle file creation
-    pub how: createmode3,
+    pub how: createhow3,
 }
 DeserializeStruct!(CREATE3args, where_, how);
 SerializeStruct!(CREATE3args, where_, how);
