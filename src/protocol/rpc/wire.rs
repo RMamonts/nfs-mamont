@@ -24,7 +24,6 @@ use std::io::{Read, Write};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
-use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
@@ -241,9 +240,9 @@ impl SocketMessageHandler {
     /// order of operations.
     pub fn new(
         context: &rpc::Context,
-    ) -> (Self, DuplexStream, mpsc::UnboundedReceiver<SocketMessageType>) {
+    ) -> (Self, DuplexStream, async_channel::Receiver<SocketMessageType>) {
         let (socksend, sockrecv) = tokio::io::duplex(256_000);
-        let (msgsend, msgrecv) = mpsc::unbounded_channel();
+        let (msgsend, msgrecv) = async_channel::unbounded();
 
         // Create separate channel for command results
         let (result_sender, result_receiver) = async_channel::unbounded::<CommandResult>();
@@ -257,7 +256,7 @@ impl SocketMessageHandler {
             while let Ok(result) = result_receiver.recv().await {
                 match result {
                     Ok(Some(response_buffer)) if response_buffer.has_content() => {
-                        let _ = msgsend.send(Ok(response_buffer.into_inner()));
+                        let _ = msgsend.send(Ok(response_buffer.into_inner())).await;
                     }
                     Ok(None) => {
                         // No response needed, so nothing to send
@@ -267,7 +266,7 @@ impl SocketMessageHandler {
                     }
                     Err(e) => {
                         error!("RPC error: {:?}", e);
-                        let _ = msgsend.send(Err(e));
+                        let _ = msgsend.send(Err(e)).await;
                     }
                 }
             }
