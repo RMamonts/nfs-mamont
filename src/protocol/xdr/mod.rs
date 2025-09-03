@@ -135,8 +135,8 @@ impl Deserialize for bool {
     }
 }
 
-impl Deserialize for () {
-    fn deserialize<R: Read>(_src: &mut R) -> std::io::Result<Self> {
+impl Serialize for () {
+    fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
         Ok(())
     }
 }
