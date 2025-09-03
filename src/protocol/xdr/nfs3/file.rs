@@ -221,7 +221,6 @@ SerializeStruct!(READ3resfail, file_attributes);
 /// Enumeration specifying how data should be written to storage
 /// as defined in RFC 1813 section 3.3.7
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
 pub enum stable_how {
     /// Data may be buffered before writing to stable storage
     /// The server may return before the data is committed to stable storage
