@@ -82,8 +82,7 @@ async fn process_socket(
     mut socket: tokio::net::TcpStream,
     context: rpc::Context,
 ) -> io::Result<()> {
-    let (mut message_handler, mut socksend, mut msgrecvchan) =
-        rpc::SocketMessageHandler::new(&context);
+    let (mut message_handler, mut socksend, msgrecvchan) = rpc::SocketMessageHandler::new(&context);
     let _ = socket.set_nodelay(true);
 
     tokio::spawn(async move {
@@ -118,16 +117,16 @@ async fn process_socket(
             },
             reply = msgrecvchan.recv() => {
                 match reply {
-                    Some(Err(e)) => {
+                    Ok(Err(e)) => {
                         debug!("Message handling closed : {:?}", e);
                         return Err(e);
                     }
-                    Some(Ok(msg)) => {
+                    Ok(Ok(msg)) => {
                         if let Err(e) = rpc::write_fragment(&mut socket, &msg).await {
                             error!("Write error {:?}", e);
                         }
                     }
-                    None => {
+                    _ => {
                         return io_other("Unexpected socket context termination");
                     }
                 }

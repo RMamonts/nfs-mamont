@@ -11,6 +11,7 @@ rust-version = "1.83.0"
 doctest = false
 
 [dependencies]
+async-channel = "2.5.0"
 async-trait = "0.1.89"
 byteorder = "1.5"
 dashmap = "6.1.0"
