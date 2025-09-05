@@ -51,7 +51,7 @@ pub async fn nfsproc3_setattr(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::SETATTR3args>(input)?;
+    let args = deserialize::<nfs3::file::SETATTR3args>(input)?;
     debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
 
     let fs_id = args.object.fs_id;
@@ -104,7 +104,7 @@ pub async fn nfsproc3_setattr(
         }
     }
 
-    match export.vfs.setattr(id, args.new_attribute).await {
+    match export.vfs.setattr(id, args.new_attributes).await {
         Ok(post_op_attr) => {
             debug!(" setattr success {:?} --> {:?}", xid, post_op_attr);
             let wcc_res = nfs3::wcc_data {

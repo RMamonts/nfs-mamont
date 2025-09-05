@@ -70,7 +70,7 @@ pub async fn nfsproc3_symlink(
     let args = deserialize::<nfs3::dir::SYMLINK3args>(input)?;
     debug!("nfsproc3_symlink({:?}, {:?}) ", xid, args);
 
-    let fs_id = args.dirops.dir.fs_id;
+    let fs_id = args.where_.dir.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -89,7 +89,7 @@ pub async fn nfsproc3_symlink(
     }
 
     // find the directory we are supposed to create the new file in
-    let dir_id = export.vfs.fh_to_id(&args.dirops.dir);
+    let dir_id = export.vfs.fh_to_id(&args.where_.dir);
     if let Err(stat) = dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -117,7 +117,7 @@ pub async fn nfsproc3_symlink(
         .vfs
         .symlink(
             dir_id,
-            &args.dirops.name,
+            &args.where_.name,
             &args.symlink.symlink_data,
             &args.symlink.symlink_attributes,
         )
