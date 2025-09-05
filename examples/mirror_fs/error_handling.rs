@@ -1,4 +1,4 @@
-use std::{io, path::Path};
+use std::io;
 
 use nfs_mamont::xdr::nfs3::nfsstat3;
 
@@ -38,13 +38,4 @@ pub enum RefreshResult {
     Reload,
     /// Nothing has changed
     Noop,
-}
-
-/// Helper function to check if a path exists without traversing symlinks
-pub fn exists_no_traverse(path: &Path) -> bool {
-    if let Ok(metadata) = std::fs::symlink_metadata(path) {
-        !metadata.is_symlink()
-    } else {
-        false
-    }
 }
