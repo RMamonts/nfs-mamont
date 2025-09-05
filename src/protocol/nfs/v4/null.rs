@@ -27,7 +27,7 @@ use crate::protocol::xdr::{self, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub fn nfsproc4_null(xid: u32, output: &mut impl Write) -> io::Result<()> {
     debug!("nfsproc4_null({:?})", xid);
     let msg = xdr::rpc::make_success_reply(xid);
