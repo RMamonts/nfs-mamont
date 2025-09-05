@@ -12,7 +12,7 @@ doctest = false
 
 [dependencies]
 async-channel = "2.5.0"
-async-trait = "0.1.9"
+async-trait = "0.1.89"
 byteorder = "1.5"
 dashmap = "6.1.0"
 filetime = "0.2"
@@ -24,10 +24,10 @@ tokio = { version = "1.47", features = ["full", "time"] }
 tracing = "0.1.41"
 
 [dev-dependencies]
-clap = "4.5.41"
-clap_derive = "4.5.41"
-intaglio = { version = "1.6" }
-tracing-subscriber = { version = "0.3", features = ["tracing-log"] }
+clap = "4.5.47"
+clap_derive = "4.5.47"
+intaglio = "1.10"
+tracing-subscriber = { version = "0.3.20", features = ["tracing-log"] }
 
 [[example]]
 name = "mirrorfs"
