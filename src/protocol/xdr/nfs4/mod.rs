@@ -346,6 +346,7 @@ pub struct fattr4 {
 /// NFS file type enumeration
 #[allow(non_camel_case_types)]
 #[derive(Default)]
+#[repr(u32)]
 pub enum nfs_ftype4 {
     #[default]
     NO_FILE_TYPE = 0,
