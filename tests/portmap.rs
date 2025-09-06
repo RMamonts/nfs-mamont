@@ -11,17 +11,20 @@ use num_traits::ToPrimitive;
 use tokio::sync::RwLock;
 
 use nfs_mamont::protocol::nfs::portmap::PortmapTable;
+use nfs_mamont::protocol::nfs::v4::NFSv4State;
 use nfs_mamont::protocol::rpc;
 use nfs_mamont::protocol::rpc::Context;
 use nfs_mamont::tcp::NFSExportTableEntry;
-use nfs_mamont::vfs::{Capabilities, ReadDirResult};
+use nfs_mamont::vfs::v3;
 use nfs_mamont::xdr::nfs3::{
     fattr3, fileid3, filename3, ftype3, nfspath3, nfsstat3, sattr3, specdata3,
 };
 use nfs_mamont::xdr::portmap::{mapping, IPPROTO_TCP, IPPROTO_UDP};
 use nfs_mamont::xdr::rpc::call_body;
 use nfs_mamont::xdr::{deserialize, nfs3, Serialize};
-use nfs_mamont::{vfs, xdr};
+
+use nfs_mamont::vfs::v3::{Capabilities, ReadDirResult};
+use nfs_mamont::xdr;
 
 pub struct DemoFS {
     _root: String,
@@ -37,7 +40,7 @@ const DEFAULT_EXPORT_NAME: &str = "default_name";
 const DEFAULT_ADDRESS: &str = "0.0.0.0:111";
 
 #[async_trait]
-impl vfs::NFSFileSystem for DemoFS {
+impl v3::NFSFileSystem for DemoFS {
     fn generation(&self) -> u64 {
         unimplemented!()
     }
@@ -198,6 +201,7 @@ fn create_default_context() -> Context {
         transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
         portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         client_list: Arc::new(DashMap::new()),
+        nfsv4_context: Arc::new(NFSv4State::default()),
     }
 }
 
@@ -213,6 +217,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: table.clone(),
             client_list: Arc::new(DashMap::new()),
+            nfsv4_context: Arc::new(NFSv4State::default()),
         });
     }
     result

@@ -21,6 +21,7 @@ use dashmap::DashMap;
 use tokio::sync::RwLock;
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::xdr;
 use crate::tcp::NFSExportTable;
 
@@ -62,6 +63,10 @@ pub struct Context {
 
     /// List of connected clients and file systems they have mounted
     pub client_list: Arc<DashMap<String, HashSet<String>>>,
+
+    /// NFSv4-specific state information including client ID, session management,
+    /// open file states, locks, and other protocol-specific context.
+    pub nfsv4_context: Arc<NFSv4State>,
 }
 
 impl fmt::Debug for Context {

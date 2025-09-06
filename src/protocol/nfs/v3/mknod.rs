@@ -26,7 +26,7 @@ use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
-use crate::vfs;
+use crate::vfs::v3;
 
 /// Handles `NFSv3` `MKNOD` procedure (procedure 11)
 ///
@@ -63,7 +63,7 @@ pub async fn nfsproc3_mknod(
     };
 
     // if we do not have write capabilities
-    if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
+    if !matches!(export.vfs.capabilities(), v3::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
