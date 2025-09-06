@@ -6,8 +6,6 @@
 #![allow(unused_variables)]
 pub mod operations;
 
-use std::io;
-use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
@@ -240,6 +238,12 @@ pub enum nfs_opnum4 {
     OP_REMOVEXATTR = 75,
     OP_ILLEGAL = 10044,
 }
+#[allow(non_camel_case_types)]
+#[derive(Hash, PartialEq)]
+pub struct fsid4 {
+    minor: u64,
+    major: u64
+}
 
 impl xdr::SerializeEnum for nfs_opnum4 {}
 impl xdr::DeserializeEnum for nfs_opnum4 {}
@@ -247,8 +251,15 @@ impl xdr::DeserializeEnum for nfs_opnum4 {}
 /// NFSv4 filehandle (RFC 7530 Section 2.2)
 /// Opaque reference to a filesystem object within an export
 /// Maximum size: NFS4_FHSIZE (128 bytes)
+///
+/// Filehandle data format (32 bytes total):
+/// Byte offsets:
+/// 0-3:  generation number (u32)
+/// 4-7:  file type (nfs_ftype4 as u32)
+/// 8-15: filesystem minor ID (u64)
+/// 16-23: filesystem major ID (u64)
+/// 24-31: file ID (u64)
 #[allow(non_camel_case_types)]
-// looking not good
 #[derive(Default, Clone, Hash, PartialEq, Eq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
@@ -256,14 +267,67 @@ pub struct nfs_fh4 {
 }
 
 impl nfs_fh4 {
-    fn create(arg: Vec<u8>) -> io::Result<Self> {
-        if arg.len() > NFS4_FHSIZE as usize {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                format!("Filehandle too large: {} > {}", arg.len(), NFS4_FHSIZE),
-            ));
+    pub fn new(gen: u32, ftype: nfs_ftype4, fsid: fsid4, fileid4: fileid4) -> Self {
+        let mut data = Vec::with_capacity(32);
+        data.extend_from_slice(&gen.to_be_bytes());
+        data.extend_from_slice(&(ftype as u32).to_be_bytes());
+        data.extend_from_slice(&fsid.minor.to_be_bytes());
+        data.extend_from_slice(&fsid.major.to_be_bytes());
+        data.extend_from_slice(&fileid4.to_be_bytes());
+        Self { data }
+    }
+
+    pub fn get_gen(&self) -> Result<u32, nfsstat4> {
+        if self.data.len() < 4 {
+            return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        Ok(Self { data: arg })
+        Ok(u32::from_be_bytes([
+            self.data[0], self.data[1], self.data[2], self.data[3]
+        ]))
+    }
+
+    pub fn get_type(&self) -> Result<nfs_ftype4, nfsstat4> {
+        if self.data.len() < 8 {
+            return Err(nfsstat4::NFS4ERR_BADHANDLE);
+        }
+        if let Ok(ftype_bytes) = self.data[4..8].try_into() {
+            let ftype = u32::from_be_bytes(ftype_bytes);
+            match nfs_ftype4::try_from(ftype) {
+                Ok(ft4) => {Ok(ft4)}
+                Err(_) => {Err(nfsstat4::NFS4ERR_BADHANDLE)}
+            }
+        } else {
+            Err(nfsstat4::NFS4ERR_BADHANDLE)
+        }
+    }
+
+    pub fn get_fsid(&self) -> Result<fsid4, nfsstat4> {
+        if self.data.len() < 24 {
+            return Err(nfsstat4::NFS4ERR_BADHANDLE);
+        }
+        let minor_bytes = self.data[8..16].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
+        let major_bytes = self.data[16..24].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
+        let minor = u64::from_be_bytes(minor_bytes);
+        let major = u64::from_be_bytes(major_bytes);
+        Ok(fsid4 {
+            minor,
+            major,
+        })
+    }
+
+    pub fn get_fileid(&self) -> Result<fileid4, nfsstat4> {
+        if self.data.len() < 32 {
+            return Err(nfsstat4::NFS4ERR_BADHANDLE);
+        }
+        if let Ok(bytes) = self.data[24..32].iter().try_into() {
+            let fid = u64::from_be_bytes(bytes);
+            match fileid4::try_from(fid) {
+                Ok(fileid) => {Ok(fileid)}
+                Err(_) => {Err(nfsstat4::NFS4ERR_BADHANDLE)}
+            }
+        } else {
+            Err(nfsstat4::NFS4ERR_BADHANDLE)
+        }
     }
 }
 
@@ -346,7 +410,7 @@ pub struct open_state {
     /// State identifier for this open
     stateid: stateid4,
     /// The filehandle this open state refers to
-    filehandle: filehandle,
+    filehandle: nfs_fh4,
     /// The owner who opened this file
     open_owner: Arc<open_owner>,
     /// Share access modes (READ, WRITE, BOTH)
@@ -380,7 +444,7 @@ pub struct lock_state {
     /// Locked byte range (start offset, end offset)
     range: (u64, u64),
     /// The filehandle this lock protects
-    filehandle: filehandle,
+    filehandle: nfs_fh4,
 }
 
 /// Delegation state information (RFC 7530 Section 10)
@@ -396,20 +460,9 @@ pub struct delegation_state {
     /// Client information for callback operations
     delegation_owner: clientid4,
     /// The filehandle being delegated
-    filehandle: filehandle,
+    filehandle: nfs_fh4,
 }
 
-/// Enhanced filehandle with extended attributes
-#[allow(non_camel_case_types)]
-#[derive(Clone, Default)]
-pub struct filehandle {
-    /// Type of the referenced filesystem object
-    pub obj_type: nfs_ftype4,
-    /// Base NFS filehandle data
-    pub nfs_fh4: nfs_fh4,
-    /// Persistent filesystem-unique identifier
-    pub fileid: u64,
-}
 
 /// Client ID confirmation state machine states (RFC 7530 Section 9.1.2)
 #[allow(non_camel_case_types)]
