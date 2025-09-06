@@ -10,12 +10,12 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::debug;
 
-use nfs_mamont::fs_util::{file_setattr, metadata_to_fattr3, path_setattr};
+use nfs_mamont::fs_util::{exists_no_traverse, file_setattr, metadata_to_fattr3, path_setattr};
 use nfs_mamont::vfs::v3;
 use nfs_mamont::xdr::nfs3;
 
 use crate::create_fs_object::CreateFSObject;
-use crate::error_handling::{exists_no_traverse, NFSResult, RefreshResult};
+use crate::error_handling::{NFSResult, RefreshResult};
 use crate::fs_map::FSMap;
 
 /// A file system implementation that mirrors a local directory

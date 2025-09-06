@@ -10,7 +10,7 @@ use tracing::{debug, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
-use super::matches_export_path;
+use super::{machine_name_from_context, matches_export_path};
 
 /// Handles `MOUNTPROC3_UMNT` procedure.
 ///
@@ -57,5 +57,12 @@ pub async fn mountproc3_umnt(
     }
     xdr::rpc::make_success_reply(xid).serialize(output)?;
     mount::mountstat3::MNT3_OK.serialize(output)?;
+
+    if let Some(machine_name) = machine_name_from_context(context) {
+        debug!("client_list: {machine_name} -= {utf8path}");
+        context.client_list.entry(machine_name).and_modify(|set| {
+            set.remove(&utf8path.to_string());
+        });
+    }
     Ok(())
 }

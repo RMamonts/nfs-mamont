@@ -13,9 +13,11 @@
 //! to process requests correctly in accordance with client permissions and
 //! server configuration.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use tokio::sync::RwLock;
 
 use crate::protocol::nfs::portmap::PortmapTable;
@@ -58,6 +60,9 @@ pub struct Context {
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     pub portmap_table: Arc<RwLock<PortmapTable>>,
+
+    /// List of connected clients and file systems they have mounted
+    pub client_list: Arc<DashMap<String, HashSet<String>>>,
 
     /// NFSv4-specific state information including client ID, session management,
     /// open file states, locks, and other protocol-specific context.

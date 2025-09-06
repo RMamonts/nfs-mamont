@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use num_traits::ToPrimitive;
 use tokio::sync::RwLock;
 
@@ -191,6 +192,19 @@ fn create_export_table() -> Arc<nfs_mamont::tcp::NFSExportTable> {
     Arc::new(export_table)
 }
 
+fn create_default_context() -> Context {
+    Context {
+        local_port: DEFAULT_PORT,
+        client_addr: DEFAULT_ADDRESS.to_string(),
+        auth: Some(xdr::rpc::auth_unix::default()),
+        export_table: create_export_table(),
+        transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
+        portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+        client_list: Arc::new(DashMap::new()),
+        nfsv4_context: Arc::new(NFSv4State::default()),
+    }
+}
+
 fn multiple_contexts(amount: u32) -> Vec<Context> {
     let mut result = Vec::<Context>::with_capacity(amount as usize);
     let table = Arc::from(RwLock::from(PortmapTable::default()));
@@ -202,6 +216,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: table.clone(),
+            client_list: Arc::new(DashMap::new()),
             nfsv4_context: Arc::new(NFSv4State::default()),
         });
     }
@@ -358,22 +373,13 @@ async fn call_assert<F, T>(
 mod tests {
     use super::*;
     use futures::executor::block_on;
-    use nfs_mamont::protocol::nfs::v4::NFSv4State;
     use nfs_mamont::xdr::deserialize;
     use nfs_mamont::xdr::portmap::pmaplist;
 
     /// simple test to assure, that result of GET_PORT operation is zero,
     /// when there is no attached port to corresponding program
     async fn get_port_zero_reply(port: u16) {
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         let mapping_args = mapping {
@@ -388,15 +394,7 @@ mod tests {
     ///simple test to assure, that after SET_PORT operation for program without
     /// associated port, entry creates and result of operation is TRUE
     async fn set_port_ok_reply(port: u16) {
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         let mapping_args = mapping {
@@ -417,15 +415,7 @@ mod tests {
             prot: IPPROTO_TCP,
             port: port as u32,
         };
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         call_assert(send_set_port, &mut context, &mut input, &mut output, mapping_args, true).await;
@@ -443,15 +433,7 @@ mod tests {
     ///test of multiple GET_PORT after SET_PORT
     async fn set_and_get_multiple(amount: u32) {
         let maps = multiple_mappings(amount, IPPROTO_TCP);
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
@@ -556,15 +538,7 @@ mod tests {
     }
     ///test of UNSET when programs that haven't been mapped to port
     async fn unset_empty_table(amount: u32) {
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
@@ -577,15 +551,7 @@ mod tests {
 
     ///test of UNSET, when only one of two (TCP or UDP) protocols are mapped
     async fn unset_single_protocol(amount: u32) {
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
@@ -602,15 +568,7 @@ mod tests {
 
     ///test of UNSET, when both protocols (TCP or UDP) are mapped
     async fn unset_both_protocols(amount: u32) {
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
 
@@ -718,15 +676,7 @@ mod tests {
     ///test of simple dump in single thread
     async fn dump_one_thread(entries_amount: u32) {
         let mappings = multiple_mappings(entries_amount, IPPROTO_TCP);
-        let mut context = Context {
-            local_port: DEFAULT_PORT,
-            client_addr: DEFAULT_ADDRESS.to_string(),
-            auth: Some(xdr::rpc::auth_unix::default()),
-            export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
-            nfsv4_context: Arc::new(NFSv4State::default()),
-        };
+        let mut context = create_default_context();
         let mut input = Cursor::new(Vec::with_capacity(INPUT_SIZE));
         let mut output = Cursor::new(Vec::with_capacity(OUTPUT_SIZE));
         for mapping in &mappings {
