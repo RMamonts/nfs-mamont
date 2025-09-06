@@ -239,10 +239,10 @@ pub enum nfs_opnum4 {
     OP_ILLEGAL = 10044,
 }
 #[allow(non_camel_case_types)]
-#[derive(Hash, PartialEq)]
+#[derive(Hash, PartialEq, Eq)]
 pub struct fsid4 {
-    minor: u64,
-    major: u64
+    pub minor: u64,
+    pub major: u64,
 }
 
 impl xdr::SerializeEnum for nfs_opnum4 {}
@@ -281,9 +281,7 @@ impl nfs_fh4 {
         if self.data.len() < 4 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        Ok(u32::from_be_bytes([
-            self.data[0], self.data[1], self.data[2], self.data[3]
-        ]))
+        Ok(u32::from_be_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]))
     }
 
     pub fn get_type(&self) -> Result<nfs_ftype4, nfsstat4> {
@@ -293,8 +291,8 @@ impl nfs_fh4 {
         if let Ok(ftype_bytes) = self.data[4..8].try_into() {
             let ftype = u32::from_be_bytes(ftype_bytes);
             match nfs_ftype4::try_from(ftype) {
-                Ok(ft4) => {Ok(ft4)}
-                Err(_) => {Err(nfsstat4::NFS4ERR_BADHANDLE)}
+                Ok(ft4) => Ok(ft4),
+                Err(_) => Err(nfsstat4::NFS4ERR_BADHANDLE),
             }
         } else {
             Err(nfsstat4::NFS4ERR_BADHANDLE)
@@ -309,21 +307,18 @@ impl nfs_fh4 {
         let major_bytes = self.data[16..24].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
         let minor = u64::from_be_bytes(minor_bytes);
         let major = u64::from_be_bytes(major_bytes);
-        Ok(fsid4 {
-            minor,
-            major,
-        })
+        Ok(fsid4 { minor, major })
     }
 
     pub fn get_fileid(&self) -> Result<fileid4, nfsstat4> {
         if self.data.len() < 32 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        if let Ok(bytes) = self.data[24..32].iter().try_into() {
+        if let Ok(bytes) = self.data[24..32].try_into() {
             let fid = u64::from_be_bytes(bytes);
             match fileid4::try_from(fid) {
-                Ok(fileid) => {Ok(fileid)}
-                Err(_) => {Err(nfsstat4::NFS4ERR_BADHANDLE)}
+                Ok(fileid) => Ok(fileid),
+                Err(_) => Err(nfsstat4::NFS4ERR_BADHANDLE),
             }
         } else {
             Err(nfsstat4::NFS4ERR_BADHANDLE)
@@ -350,8 +345,7 @@ pub struct fattr4 {
 
 /// NFS file type enumeration
 #[allow(non_camel_case_types)]
-#[derive(Default, Clone)]
-#[repr(u32)]
+#[derive(Default)]
 pub enum nfs_ftype4 {
     #[default]
     NO_FILE_TYPE = 0,
@@ -362,6 +356,24 @@ pub enum nfs_ftype4 {
     SOCKET_FILE = 5,
     FIFO_FILE = 6,
     DIRECTORY = 7,
+}
+
+impl TryFrom<u32> for nfs_ftype4 {
+    type Error = nfsstat4;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(nfs_ftype4::NO_FILE_TYPE),
+            1 => Ok(nfs_ftype4::REGULAR_FILE),
+            2 => Ok(nfs_ftype4::CHARACTER_FILE),
+            3 => Ok(nfs_ftype4::BLOCK_FILE),
+            4 => Ok(nfs_ftype4::SYMBOLIC_LINK),
+            5 => Ok(nfs_ftype4::SOCKET_FILE),
+            6 => Ok(nfs_ftype4::FIFO_FILE),
+            7 => Ok(nfs_ftype4::DIRECTORY),
+            _ => Err(nfsstat4::NFS4ERR_BADTYPE),
+        }
+    }
 }
 
 /// Delegation type classification
@@ -462,7 +474,6 @@ pub struct delegation_state {
     /// The filehandle being delegated
     filehandle: nfs_fh4,
 }
-
 
 /// Client ID confirmation state machine states (RFC 7530 Section 9.1.2)
 #[allow(non_camel_case_types)]

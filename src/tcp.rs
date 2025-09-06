@@ -8,7 +8,6 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use std::io::Error;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -23,13 +22,10 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
-use crate::protocol::nfs::v4::{NFSv4FSobject, NFSv4State};
+use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::v3::NFSFileSystem;
-use crate::vfs::v4::NFSv4FileSystem;
-use crate::xdr::nfs4;
-use crate::xdr::nfs4::filehandle;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
@@ -261,57 +257,6 @@ impl NFSTcpListener {
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
             nfsv4_state: Arc::new(NFSv4State::default()),
         })
-    }
-    #[allow(dead_code)]
-    async fn add_fs_root_nfs_v4<T>(&mut self, vfs: T) -> Result<Arc<NFSv4FSobject>, Error>
-    where
-        T: NFSv4FileSystem + Send + Sync + 'static,
-    {
-        let id = vfs.root_dir();
-        if let Ok(fh) = vfs.id_to_fh(id) {
-            if let Some(nfsv4_state) = Arc::get_mut(&mut self.nfsv4_state) {
-                nfsv4_state.root_id = fh;
-            } else {
-                return Err(Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Cannot modify - multiple references exist",
-                ));
-            };
-        } else {
-            return Err(Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Cannot find filehandle for '{id}'"),
-            ));
-        }
-        self.add_fs_object_nfs_v4(vfs, id).await
-    }
-    #[allow(dead_code)]
-    async fn add_fs_object_nfs_v4<T>(
-        &mut self,
-        vfs: T,
-        id: nfs4::fileid4,
-    ) -> Result<Arc<NFSv4FSobject>, Error>
-    where
-        T: NFSv4FileSystem + Send + Sync + 'static,
-    {
-        let fh = vfs.id_to_fh(id);
-        if let Ok(nfs_fh4) = fh {
-            let fsobject = NFSv4FSobject {
-                filehandle: filehandle {
-                    obj_type: nfs4::nfs_ftype4::DIRECTORY,
-                    nfs_fh4: nfs_fh4.clone(),
-                    fileid: id,
-                },
-                vfs: Arc::new(vfs),
-            };
-            let mut guard = self.nfsv4_state.exports.write().await;
-            Ok(guard.insert(nfs_fh4, Arc::new(fsobject)).unwrap())
-        } else {
-            Err(Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Cannot find filehandle for '{id}'"),
-            ))
-        }
     }
 
     /// Registers a new NFS file system export. Export name defaults to "/".

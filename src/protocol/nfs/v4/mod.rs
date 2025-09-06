@@ -26,7 +26,7 @@
 #![allow(unused_variables)]
 use std::collections::HashMap;
 use std::io;
-use std::io::{Error, Read, Write};
+use std::io::{Read, Write};
 use std::sync::Arc;
 
 use num_traits::cast::FromPrimitive;
@@ -36,9 +36,7 @@ use tracing::warn;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
 use crate::vfs::v4::NFSv4FileSystem;
-use crate::xdr::nfs4::{
-    clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
-};
+use crate::xdr::nfs4::{clientid4, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4};
 
 mod compound;
 mod null;
@@ -97,9 +95,9 @@ pub async fn handle_nfs(
 /// Manages the volatile state that changes during the processing of a request
 pub struct NFSv4Context {
     /// CURRENT filehandle - primary target of the current operation
-    current_file_handler: Arc<NFSv4FSobject>,
+    current_file_handler: nfs_fh4,
     /// SAVED filehandle - preserved for complex compound operations
-    saved_file_handler: Arc<NFSv4FSobject>,
+    saved_file_handler: nfs_fh4,
     /// CURRENT stateid - identifies state for stateful operations (OPEN, LOCK, etc.)
     current_stateid: stateid4,
     /// SAVED stateid - preserved state identifier for compound operations
@@ -110,17 +108,9 @@ pub struct NFSv4Context {
 
 impl NFSv4Context {
     async fn new(state: Arc<NFSv4State>) -> io::Result<Self> {
-        let guard = state.exports.read().await;
-        let Some(root) = guard.get(&state.root_id) else {
-            return Err(Error::new(
-                io::ErrorKind::InvalidInput,
-                "No root was exported".to_string(),
-            ));
-        };
-
         Ok(NFSv4Context {
-            current_file_handler: root.clone(),
-            saved_file_handler: root.clone(),
+            current_file_handler: state.root_id.clone(),
+            saved_file_handler: state.root_id.clone(),
             current_stateid: stateid4::default(),
             saved_stateid: stateid4::default(),
             minor_version: 0,
@@ -146,7 +136,7 @@ pub struct NFSv4State {
     /// Reverse index: client ID -> list of all state-owners owned by that client
     state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
     /// Mapping of NFS filehandles to internal filehandle representations for this export
-    pub exports: RwLock<HashMap<nfs_fh4, Arc<NFSv4FSobject>>>,
+    pub exports: RwLock<HashMap<nfs4::fsid4, Arc<NFSv4FSobject>>>,
 
     pub root_id: nfs_fh4,
 }
@@ -154,8 +144,6 @@ pub struct NFSv4State {
 /// Represents a single exported filesystem instance and its properties.
 /// Referenced to RFC 7530 Section 7.3
 pub struct NFSv4FSobject {
-    /// Mapping of NFS filehandles to internal filehandle representations for this export
-    pub filehandle: filehandle,
     /// Reference to the underlying filesystem abstraction implementation (VFS layer)
     pub vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
 }
