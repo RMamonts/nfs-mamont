@@ -248,6 +248,8 @@ pub struct fsid4 {
 impl xdr::SerializeEnum for nfs_opnum4 {}
 impl xdr::DeserializeEnum for nfs_opnum4 {}
 
+const NSF_FH4_SIZE: usize = 32;
+
 /// NFSv4 filehandle (RFC 7530 Section 2.2)
 /// Opaque reference to a filesystem object within an export
 /// Maximum size: NFS4_FHSIZE (128 bytes)
@@ -263,17 +265,17 @@ impl xdr::DeserializeEnum for nfs_opnum4 {}
 #[derive(Default, Clone, Hash, PartialEq, Eq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
-    pub data: Vec<u8>,
+    data: [u8; NSF_FH4_SIZE],
 }
 
 impl nfs_fh4 {
     pub fn new(gen: u32, ftype: nfs_ftype4, fsid: fsid4, fileid4: fileid4) -> Self {
-        let mut data = Vec::with_capacity(32);
-        data.extend_from_slice(&gen.to_be_bytes());
-        data.extend_from_slice(&(ftype as u32).to_be_bytes());
-        data.extend_from_slice(&fsid.minor.to_be_bytes());
-        data.extend_from_slice(&fsid.major.to_be_bytes());
-        data.extend_from_slice(&fileid4.to_be_bytes());
+        let mut data = [0u8; NSF_FH4_SIZE];
+        data[0..4].copy_from_slice(&gen.to_be_bytes());
+        data[4..8].copy_from_slice(&(ftype as u32).to_be_bytes());
+        data[8..16].copy_from_slice(&fsid.minor.to_be_bytes());
+        data[16..24].copy_from_slice(&fsid.major.to_be_bytes());
+        data[24..32].copy_from_slice(&fileid4.to_be_bytes());
         Self { data }
     }
 

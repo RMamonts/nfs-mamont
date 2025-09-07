@@ -22,11 +22,4 @@ pub trait NFSv4FileSystem: Sync {
     /// Returns a filled fattr4 structure containing the requested file attributes,
     /// or an NFS error code if the file doesn't exist or access is denied.
     async fn getattr(&self, id: nfs4::fileid4) -> Result<nfs4::fattr4, nfs4::nfsstat4>;
-
-    /// Converts an NFS file handle to an internal filesystem file ID.
-    /// This is used to validate and resolve file handles received from clients.
-    /// Returns the corresponding file ID or an error if the file handle is invalid or stale.
-    fn fh_to_id(&self, nfs_fh: &nfs4::nfs_fh4) -> Result<nfs4::fileid4, nfs4::nfsstat4>;
-
-    fn id_to_fh(&self, id: nfs4::fileid4) -> Result<nfs4::nfs_fh4, nfs4::nfsstat4>;
 }
