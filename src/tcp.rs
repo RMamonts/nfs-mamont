@@ -27,6 +27,8 @@ use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::v3::NFSFileSystem;
+use crate::vfs::v4::NFSv4FileSystem;
+use crate::xdr::nfs4::fsid4;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
@@ -342,6 +344,17 @@ impl NFSTcpListener {
             ));
         }
         Ok(())
+    }
+
+    pub async fn register_fsv4<T, S>(
+        &mut self,
+        fs: T,
+    ) -> Option<Arc<dyn NFSv4FileSystem + Send + Sync>>
+    where
+        T: NFSv4FileSystem + Send + Sync + 'static,
+    {
+        let mut guard = self.nfsv4_state.exports.write().await;
+        guard.insert(fsid4::default(), Arc::new(fs))
     }
 }
 

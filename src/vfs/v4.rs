@@ -9,7 +9,7 @@ pub trait NFSv4FileSystem: Sync {
     /// Returns the current generation number of the filesystem.
     /// This number should change on each filesystem state change (e.g., reboot, remount)
     /// and is used to detect stale state handles from clients after server restart.
-    fn generation(&self) -> u64;
+    fn generation(&self) -> u32;
 
     /// Returns the file ID of the root directory of the filesystem.
     /// This is the entry point for all path resolution operations.

@@ -26,7 +26,7 @@
 #![allow(unused_variables)]
 use std::collections::HashMap;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{Error, Read, Write};
 use std::sync::Arc;
 
 use num_traits::cast::FromPrimitive;
@@ -36,7 +36,9 @@ use tracing::warn;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
 use crate::vfs::v4::NFSv4FileSystem;
-use crate::xdr::nfs4::{clientid4, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4};
+use crate::xdr::nfs4::{
+    clientid4, fsid4, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
+};
 
 mod compound;
 mod null;
@@ -108,13 +110,24 @@ pub struct NFSv4Context {
 
 impl NFSv4Context {
     async fn new(state: Arc<NFSv4State>) -> io::Result<Self> {
-        Ok(NFSv4Context {
-            current_file_handler: state.root_id.clone(),
-            saved_file_handler: state.root_id.clone(),
-            current_stateid: stateid4::default(),
-            saved_stateid: stateid4::default(),
-            minor_version: 0,
-        })
+        let guard = state.exports.read().await;
+        if let Some(fs) = guard.get(&fsid4::default()) {
+            let root_fh4 = nfs_fh4::new(
+                fs.generation(),
+                nfs4::nfs_ftype4::DIRECTORY,
+                fsid4::default(),
+                fs.root_dir(),
+            );
+            Ok(NFSv4Context {
+                current_file_handler: root_fh4.clone(),
+                saved_file_handler: root_fh4,
+                current_stateid: stateid4::default(),
+                saved_stateid: stateid4::default(),
+                minor_version: 0,
+            })
+        } else {
+            Err(Error::new(io::ErrorKind::NotFound, "No vfs exported!"))
+        }
     }
 }
 
@@ -136,14 +149,5 @@ pub struct NFSv4State {
     /// Reverse index: client ID -> list of all state-owners owned by that client
     state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
     /// Mapping of NFS filehandles to internal filehandle representations for this export
-    pub exports: RwLock<HashMap<nfs4::fsid4, Arc<NFSv4FSobject>>>,
-
-    pub root_id: nfs_fh4,
-}
-
-/// Represents a single exported filesystem instance and its properties.
-/// Referenced to RFC 7530 Section 7.3
-pub struct NFSv4FSobject {
-    /// Reference to the underlying filesystem abstraction implementation (VFS layer)
-    pub vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
+    pub exports: RwLock<HashMap<fsid4, Arc<dyn NFSv4FileSystem + Send + Sync>>>,
 }
