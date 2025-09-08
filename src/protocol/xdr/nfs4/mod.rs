@@ -239,16 +239,17 @@ pub enum nfs_opnum4 {
     OP_ILLEGAL = 10044,
 }
 #[allow(non_camel_case_types)]
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Default)]
 pub struct fsid4 {
-    pub minor: u64,
-    pub major: u64,
+    minor: u64,
+    major: u64,
 }
 
 impl xdr::SerializeEnum for nfs_opnum4 {}
 impl xdr::DeserializeEnum for nfs_opnum4 {}
 
-const NSF_FH4_SIZE: usize = 32;
+const NSF_FH4_SIZE: usize = 33;
+pub const FH4VERSION: u8 = 1;
 
 /// NFSv4 filehandle (RFC 7530 Section 2.2)
 /// Opaque reference to a filesystem object within an export
@@ -256,41 +257,49 @@ const NSF_FH4_SIZE: usize = 32;
 ///
 /// Filehandle data format (32 bytes total):
 /// Byte offsets:
-/// 0-3:  generation number (u32)
-/// 4-7:  file type (nfs_ftype4 as u32)
-/// 8-15: filesystem minor ID (u64)
-/// 16-23: filesystem major ID (u64)
-/// 24-31: file ID (u64)
+/// 0: version (u8)
+/// 1-4:  generation number (u32)
+/// 5-8:  file type (nfs_ftype4 as u32)
+/// 9-15: filesystem minor ID (u64)
+/// 16-24: filesystem major ID (u64)
+/// 25-32: file ID (u64)
 #[allow(non_camel_case_types)]
-#[derive(Default, Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct nfs_fh4 {
     /// Opaque filehandle byte string
-    data: [u8; NSF_FH4_SIZE],
+    data: [u8; 33],
+}
+
+impl Default for nfs_fh4 {
+    fn default() -> Self {
+        Self { data: [0; 33] }
+    }
 }
 
 impl nfs_fh4 {
     pub fn new(gen: u32, ftype: nfs_ftype4, fsid: fsid4, fileid4: fileid4) -> Self {
         let mut data = [0u8; NSF_FH4_SIZE];
-        data[0..4].copy_from_slice(&gen.to_be_bytes());
-        data[4..8].copy_from_slice(&(ftype as u32).to_be_bytes());
-        data[8..16].copy_from_slice(&fsid.minor.to_be_bytes());
-        data[16..24].copy_from_slice(&fsid.major.to_be_bytes());
-        data[24..32].copy_from_slice(&fileid4.to_be_bytes());
+        data[0] = FH4VERSION;
+        data[1..5].copy_from_slice(&gen.to_be_bytes());
+        data[5..9].copy_from_slice(&(ftype as u32).to_be_bytes());
+        data[9..17].copy_from_slice(&fsid.minor.to_be_bytes());
+        data[17..25].copy_from_slice(&fsid.major.to_be_bytes());
+        data[25..33].copy_from_slice(&fileid4.to_be_bytes());
         Self { data }
     }
 
     pub fn get_gen(&self) -> Result<u32, nfsstat4> {
-        if self.data.len() < 4 {
+        if self.data.len() < 5 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        Ok(u32::from_be_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]))
+        Ok(u32::from_be_bytes([self.data[1], self.data[2], self.data[3], self.data[4]]))
     }
 
     pub fn get_type(&self) -> Result<nfs_ftype4, nfsstat4> {
-        if self.data.len() < 8 {
+        if self.data.len() < 9 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        if let Ok(ftype_bytes) = self.data[4..8].try_into() {
+        if let Ok(ftype_bytes) = self.data[5..9].try_into() {
             let ftype = u32::from_be_bytes(ftype_bytes);
             match nfs_ftype4::try_from(ftype) {
                 Ok(ft4) => Ok(ft4),
@@ -302,21 +311,21 @@ impl nfs_fh4 {
     }
 
     pub fn get_fsid(&self) -> Result<fsid4, nfsstat4> {
-        if self.data.len() < 24 {
+        if self.data.len() < 25 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        let minor_bytes = self.data[8..16].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
-        let major_bytes = self.data[16..24].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
+        let minor_bytes = self.data[9..17].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
+        let major_bytes = self.data[17..25].try_into().map_err(|_| nfsstat4::NFS4ERR_BADHANDLE)?;
         let minor = u64::from_be_bytes(minor_bytes);
         let major = u64::from_be_bytes(major_bytes);
         Ok(fsid4 { minor, major })
     }
 
     pub fn get_fileid(&self) -> Result<fileid4, nfsstat4> {
-        if self.data.len() < 32 {
+        if self.data.len() < 33 {
             return Err(nfsstat4::NFS4ERR_BADHANDLE);
         }
-        if let Ok(bytes) = self.data[24..32].try_into() {
+        if let Ok(bytes) = self.data[25..33].try_into() {
             let fid = u64::from_be_bytes(bytes);
             match fileid4::try_from(fid) {
                 Ok(fileid) => Ok(fileid),
