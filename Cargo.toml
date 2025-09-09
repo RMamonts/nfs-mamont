@@ -19,6 +19,7 @@ futures = "0.3.31"
 moka = { version = "0.12.10", features = ["sync"] }
 num-derive = "0.4"
 num-traits = "0.2"
+tempfile = "3.22.0"
 tokio = { version = "1.47", features = ["full", "time"] }
 tracing = "0.1.41"
 
