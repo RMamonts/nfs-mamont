@@ -15,8 +15,8 @@ use nfs_mamont::vfs;
 use nfs_mamont::xdr::nfs3;
 
 use crate::create_fs_object::CreateFSObject;
-use crate::error_handling::{NFSResult, RefreshResult};
 use crate::fs_map::FSMap;
+use crate::result::{NFSResult, RefreshResult};
 
 /// A file system implementation that mirrors a local directory
 #[derive(Debug)]
