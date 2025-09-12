@@ -8,6 +8,7 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -58,6 +59,8 @@ pub struct NFSTcpListener {
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     portmap_table: Arc<RwLock<PortmapTable>>,
+    /// List of connected clients and file systems they have mounted
+    client_list: Arc<DashMap<String, HashSet<String>>>,
 }
 
 /// Generates a local loopback IP address from a 16-bit host number
@@ -250,6 +253,7 @@ impl NFSTcpListener {
                 TRANSACTION_RETENTION_PERIOD,
             )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
+            client_list: Arc::new(DashMap::new()),
         })
     }
 
@@ -399,6 +403,7 @@ impl NFSTcp for NFSTcpListener {
                 export_table: self.export_table.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
+                client_list: self.client_list.clone(),
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);

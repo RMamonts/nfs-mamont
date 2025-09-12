@@ -33,7 +33,7 @@ use crate::protocol::xdr::{self, deserialize, nfs4, Serialize};
 ///
 /// # Returns
 ///
-/// * `Result<(), anyhow::Error>` - Ok(()) on success or an error
+/// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc4_compound(
     xid: u32,
     input: &mut impl Read,

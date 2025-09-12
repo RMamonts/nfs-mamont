@@ -23,7 +23,7 @@ use std::io::{Read, Write};
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::io::DuplexStream;
+use tokio::io::{ReadHalf, SimplexStream, WriteHalf};
 use tracing::{debug, error, trace, warn};
 
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
@@ -150,7 +150,10 @@ pub async fn handle_rpc(
 ///
 /// Returns true if this was the last fragment in the RPC record, false otherwise.
 /// This allows for reassembly of multi-fragment RPC messages.
-async fn read_fragment(socket: &mut DuplexStream, append_to: &mut Vec<u8>) -> io::Result<bool> {
+async fn read_fragment(
+    socket: &mut ReadHalf<SimplexStream>,
+    append_to: &mut Vec<u8>,
+) -> io::Result<bool> {
     let mut header_buf = [0_u8; 4];
     socket.read_exact(&mut header_buf).await?;
     let fragment_header = u32::from_be_bytes(header_buf);
@@ -222,7 +225,7 @@ pub struct SocketMessageHandler {
     /// Buffer for current fragment
     cur_fragment: Vec<u8>,
     /// Channel for receiving data from socket
-    socket_receive_channel: DuplexStream,
+    socket_receive_channel: ReadHalf<SimplexStream>,
     /// RPC context for request processing
     context: rpc::Context,
     /// Command queue for ordered processing
@@ -240,8 +243,8 @@ impl SocketMessageHandler {
     /// order of operations.
     pub fn new(
         context: &rpc::Context,
-    ) -> (Self, DuplexStream, async_channel::Receiver<SocketMessageType>) {
-        let (socksend, sockrecv) = tokio::io::duplex(256_000);
+    ) -> (Self, WriteHalf<SimplexStream>, async_channel::Receiver<SocketMessageType>) {
+        let (sockrecv, socksend) = tokio::io::simplex(256_000);
         let (msgsend, msgrecv) = async_channel::unbounded();
 
         // Create separate channel for command results

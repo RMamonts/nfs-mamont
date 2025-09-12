@@ -11,6 +11,7 @@ use tracing::{debug, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, mount, Serialize};
 
+use super::machine_name_from_context;
 use super::matches_export_path;
 
 /// Handles `MOUNTPROC3_MNT` procedure.
@@ -96,6 +97,11 @@ pub async fn mountproc3_mnt(
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3_OK.serialize(output)?;
         response.serialize(output)?;
+
+        if let Some(machine_name) = machine_name_from_context(context) {
+            debug!("client_list: {machine_name} += {utf8path}");
+            context.client_list.entry(machine_name).or_default().insert(utf8path.to_string());
+        }
     } else {
         debug!("{:?} --> MNT3ERR_NOENT", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
