@@ -24,6 +24,7 @@ use std::io::{Read, Write};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::{ReadHalf, SimplexStream, WriteHalf};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
@@ -183,7 +184,7 @@ async fn read_fragment(
 ///
 /// This ensures reliable transmission of RPC messages over TCP with proper
 /// message framing and enables receivers to allocate appropriate buffer space.
-pub async fn write_fragment(socket: &mut tokio::net::TcpStream, buf: &[u8]) -> io::Result<()> {
+pub async fn write_fragment(write_half: &mut WriteHalf<TcpStream>, buf: &[u8]) -> io::Result<()> {
     // Maximum fragment size is 2^31 - 1 bytes
     const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
@@ -202,10 +203,10 @@ pub async fn write_fragment(socket: &mut tokio::net::TcpStream, buf: &[u8]) -> i
             if is_last { fragment_size as u32 + (1 << 31) } else { fragment_size as u32 };
 
         let header_buf = u32::to_be_bytes(fragment_header);
-        socket.write_all(&header_buf).await?;
+        write_half.write_all(&header_buf).await?;
 
         trace!("Writing fragment length:{}, last:{}", fragment_size, is_last);
-        socket.write_all(&buf[offset..offset + fragment_size]).await?;
+        write_half.write_all(&buf[offset..offset + fragment_size]).await?;
 
         offset += fragment_size;
     }

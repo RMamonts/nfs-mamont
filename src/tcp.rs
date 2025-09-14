@@ -8,23 +8,21 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
+use async_trait::async_trait;
+use dashmap::DashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
-
-use async_trait::async_trait;
-use dashmap::DashMap;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::{rpc, xdr};
-use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
 /// Default transaction retention period
@@ -81,10 +79,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 ///
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
-async fn process_socket(
-    mut socket: tokio::net::TcpStream,
-    context: rpc::Context,
-) -> io::Result<()> {
+async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) -> io::Result<()> {
     let (mut message_handler, mut socksend, mut msgrecvchan) =
         rpc::SocketMessageHandler::new(&context);
     let _ = socket.set_nodelay(true);
@@ -97,46 +92,43 @@ async fn process_socket(
             }
         }
     });
-    loop {
-        tokio::select! {
-            _ = socket.readable() => {
-                let mut buf = [0; 128_000];
 
-                match socket.try_read(&mut buf) {
-                    Ok(0) => {
-                        return Ok(());
-                    }
-                    Ok(n) => {
-                        let _ = socksend.write_all(&buf[..n]).await;
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        // do nothing
-                    }
-                    Err(e) => {
-                        debug!("Message handling closed : {:?}", e);
-                        return Err(e);
-                    }
+    let (mut readhalf, mut writehalf) = tokio::io::split(socket);
+
+    tokio::spawn(async move {
+        loop {
+            let mut buf = [0; 128000];
+            match readhalf.read(&mut buf).await {
+                Ok(0) => return Ok(()),
+                Ok(n) => {
+                    let _ = socksend.write_all(&buf[..n]).await;
                 }
+                Err(e) => {
+                    debug!("Message handling closed : {:?}", e);
+                    return Err(e);
+                }
+            }
+        }
+    });
 
-            },
-            reply = msgrecvchan.recv() => {
-                match reply {
-                    Some(Err(e)) => {
-                        debug!("Message handling closed : {:?}", e);
-                        return Err(e);
-                    }
-                    Some(Ok(msg)) => {
-                        if let Err(e) = rpc::write_fragment(&mut socket, &msg).await {
-                            error!("Write error {:?}", e);
-                        }
-                    }
-                    None => {
-                        return io_other("Unexpected socket context termination");
+    tokio::spawn(async move {
+        while let Some(reply) = msgrecvchan.recv().await {
+            match reply {
+                Err(e) => {
+                    debug!("Message handling closed : {:?}", e);
+                    return Err(e);
+                }
+                Ok(msg) => {
+                    if let Err(e) = rpc::write_fragment(&mut writehalf, &msg).await {
+                        error!("Write error {:?}", e);
                     }
                 }
             }
         }
-    }
+        debug!("Channel closed, sending results to socket terminated");
+        Ok(())
+    });
+    Ok(())
 }
 
 /// Interface for NFS TCP servers that defines common operations
