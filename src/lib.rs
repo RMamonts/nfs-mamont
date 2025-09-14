@@ -50,4 +50,6 @@ pub mod vfs;
 
 pub use protocol::xdr;
 
+mod fs;
+
 mod utils;

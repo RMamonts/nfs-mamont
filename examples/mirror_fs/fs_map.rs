@@ -13,8 +13,8 @@ use tracing::debug;
 use nfs_mamont::fs_util::*;
 use nfs_mamont::xdr::nfs3;
 
-use crate::error_handling::{NFSResult, RefreshResult};
 use crate::fs_entry::FSEntry;
+use crate::result::{NFSResult, RefreshResult};
 
 /// A file system mapping structure that maintains the relationship between file IDs and paths
 #[derive(Debug)]

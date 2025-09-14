@@ -1,3 +1,7 @@
+//! Defines in-RAM NFS implementation for tests primarly.
+
+mod fs_entry;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -5,11 +9,10 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use nfs_mamont::vfs;
-use nfs_mamont::xdr::nfs3;
+use crate::vfs;
+use crate::xdr::nfs3;
 
-use crate::fs_contents::FSContents;
-use crate::fs_entry::{make_dir, make_file, FSEntry};
+use fs_entry::{make_dir, make_file, FSContents, FSEntry};
 
 /// Demo implementation of an NFS file system.
 /// Provides a simple in-memory file system that supports basic NFS operations.

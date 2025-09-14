@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use nfs_mamont::tcp::{NFSTcp, NFSTcpListener};
+use nfs_mamont::tcp::NFSTcpListener;
 
 const HOSTPORT: u32 = 11111;
 
 pub mod create_fs_object;
-pub mod error_handling;
 pub mod fs;
 pub mod fs_entry;
 pub mod fs_map;
+pub mod result;
 
 /// Main entry point for the mirror file system example
 ///

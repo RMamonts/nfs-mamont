@@ -207,7 +207,7 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
     for i in 1..=amount {
         result.push(Context {
             local_port: DEFAULT_PROG,
-            client_addr: format!("0.0.0.0:{}", i),
+            client_addr: format!("0.0.0.0:{i}"),
             auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),

@@ -2,9 +2,17 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use nfs_mamont::xdr::nfs3;
+use crate::xdr::nfs3;
 
-use crate::fs_contents::FSContents;
+/// Storage representation for file system entries.
+/// Used to represent either file data or directory listings.
+#[derive(Debug, Clone)]
+pub enum FSContents {
+    /// Contains link to file data as a byte vector
+    File(Arc<RwLock<Vec<u8>>>),
+    /// Contains a list of file IDs for directory entries
+    Directory(Vec<nfs3::fileid3>),
+}
 
 /// Represents a file system entry in the demo NFS file system.
 /// Can be either a file or a directory depending on its contents.

@@ -31,7 +31,3 @@ tracing-subscriber = { version = "0.3.20", features = ["tracing-log"] }
 [[example]]
 name = "mirrorfs"
 path = "examples/mirror_fs/main.rs"
-
-[[example]]
-name = "demofs"
-path = "examples/demo_fs/main.rs"
