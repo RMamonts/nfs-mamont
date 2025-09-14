@@ -15,6 +15,7 @@ use std::io::{Read, Write};
 
 use tracing::debug;
 
+use crate::protocol::nfs::v4::NFSv4Context;
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs4, Serialize};
 
@@ -39,6 +40,7 @@ pub async fn nfsproc4_compound(
     input: &mut impl Read,
     output: &mut impl Write,
     _context: &rpc::Context,
+    _compound_context: NFSv4Context,
 ) -> io::Result<()> {
     debug!("nfsproc4_compound({:?})", xid);
 

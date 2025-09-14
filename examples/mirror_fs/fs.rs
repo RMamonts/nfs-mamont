@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::debug;
 
 use nfs_mamont::fs_util::{exists_no_traverse, file_setattr, metadata_to_fattr3, path_setattr};
-use nfs_mamont::vfs;
+use nfs_mamont::vfs::v3;
 use nfs_mamont::xdr::nfs3;
 
 use crate::create_fs_object::CreateFSObject;
@@ -99,7 +99,7 @@ impl MirrorFS {
 }
 
 #[async_trait]
-impl vfs::NFSFileSystem for MirrorFS {
+impl v3::NFSFileSystem for MirrorFS {
     fn generation(&self) -> u64 {
         self.generation
     }
@@ -110,8 +110,8 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Returns the capabilities of this file system
-    fn capabilities(&self) -> vfs::Capabilities {
-        vfs::Capabilities::ReadWrite
+    fn capabilities(&self) -> v3::Capabilities {
+        v3::Capabilities::ReadWrite
     }
 
     /// Looks up a file in a directory
@@ -187,7 +187,7 @@ impl vfs::NFSFileSystem for MirrorFS {
         dirid: nfs3::fileid3,
         start_after: nfs3::fileid3,
         max_entries: usize,
-    ) -> NFSResult<vfs::ReadDirResult> {
+    ) -> NFSResult<v3::ReadDirResult> {
         let mut fsmap = self.fsmap.lock().await;
         fsmap.refresh_entry(dirid).await?;
         fsmap.refresh_dir_list(dirid).await?;
@@ -200,7 +200,7 @@ impl vfs::NFSFileSystem for MirrorFS {
         // we must have children here
         let children = entry.children.ok_or(nfs3::nfsstat3::NFS3ERR_IO)?;
 
-        let mut ret = vfs::ReadDirResult { entries: Vec::new(), end: false };
+        let mut ret = v3::ReadDirResult { entries: Vec::new(), end: false };
 
         let range_start =
             if start_after > 0 { Bound::Excluded(start_after) } else { Bound::Unbounded };
@@ -215,7 +215,7 @@ impl vfs::NFSFileSystem for MirrorFS {
             let fileent = fsmap.find_entry(fileid)?;
             let name = fsmap.sym_to_fname(&fileent.name).await;
             debug!("\t --- {:?} {:?}", fileid, name);
-            ret.entries.push(vfs::DirEntry {
+            ret.entries.push(v3::DirEntry {
                 fileid,
                 name: name.as_bytes().into(),
                 attr: fileent.fsmeta,

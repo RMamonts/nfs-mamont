@@ -23,9 +23,12 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::nfs::v4::NFSv4State;
 use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
-use crate::vfs::NFSFileSystem;
+use crate::vfs::v3::NFSFileSystem;
+use crate::vfs::v4::NFSv4FileSystem;
+use crate::xdr::nfs4::fsid4;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
@@ -61,6 +64,9 @@ pub struct NFSTcpListener {
     portmap_table: Arc<RwLock<PortmapTable>>,
     /// List of connected clients and file systems they have mounted
     client_list: Arc<DashMap<String, HashSet<String>>>,
+    /// NFSv4-specific state information including client ID, session management,
+    /// open file states, locks, and other protocol-specific context.
+    nfsv4_state: Arc<NFSv4State>,
 }
 
 /// Generates a local loopback IP address from a 16-bit host number
@@ -255,6 +261,7 @@ impl NFSTcpListener {
             )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
             client_list: Arc::new(DashMap::new()),
+            nfsv4_state: Arc::new(NFSv4State::default()),
         })
     }
 
@@ -338,6 +345,17 @@ impl NFSTcpListener {
         }
         Ok(())
     }
+
+    pub async fn register_fsv4<T, S>(
+        &mut self,
+        fs: T,
+    ) -> Option<Arc<dyn NFSv4FileSystem + Send + Sync>>
+    where
+        T: NFSv4FileSystem + Send + Sync + 'static,
+    {
+        let mut guard = self.nfsv4_state.exports.write().await;
+        guard.insert(fsid4::default(), Arc::new(fs))
+    }
 }
 
 #[async_trait]
@@ -405,6 +423,7 @@ impl NFSTcp for NFSTcpListener {
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
                 client_list: self.client_list.clone(),
+                nfsv4_context: self.nfsv4_state.clone(),
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);

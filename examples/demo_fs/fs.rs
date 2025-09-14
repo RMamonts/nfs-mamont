@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use nfs_mamont::vfs;
+use nfs_mamont::vfs::v3;
 use nfs_mamont::xdr::nfs3;
 
 use crate::fs_contents::FSContents;
@@ -41,7 +41,7 @@ impl Default for DemoFS {
 /// Implementation of the NFSFileSystem trait for DemoFS.
 /// Provides all required NFS operations for the demo file system.
 #[async_trait]
-impl vfs::NFSFileSystem for DemoFS {
+impl v3::NFSFileSystem for DemoFS {
     fn generation(&self) -> u64 {
         self.generation
     }
@@ -53,8 +53,8 @@ impl vfs::NFSFileSystem for DemoFS {
 
     /// Returns the capabilities of this file system.
     /// This demo supports both read and write operations.
-    fn capabilities(&self) -> vfs::Capabilities {
-        vfs::Capabilities::ReadWrite
+    fn capabilities(&self) -> v3::Capabilities {
+        v3::Capabilities::ReadWrite
     }
 
     /// Writes data to a file at the specified offset.
@@ -259,13 +259,13 @@ impl vfs::NFSFileSystem for DemoFS {
         dirid: nfs3::fileid3,
         start_after: nfs3::fileid3,
         max_entries: usize,
-    ) -> Result<vfs::ReadDirResult, nfs3::nfsstat3> {
+    ) -> Result<v3::ReadDirResult, nfs3::nfsstat3> {
         let fs = self.fs.read().await;
         let entry = fs.get(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?;
         if let FSContents::File(_) = entry.contents {
             return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
         } else if let FSContents::Directory(dir) = &entry.contents {
-            let mut ret = vfs::ReadDirResult { entries: Vec::new(), end: false };
+            let mut ret = v3::ReadDirResult { entries: Vec::new(), end: false };
             let mut start_index = 0;
             if start_after > 0 {
                 if let Some(pos) = dir.iter().position(|&r| r == start_after) {
@@ -278,7 +278,7 @@ impl vfs::NFSFileSystem for DemoFS {
 
             for i in dir[start_index..].iter() {
                 if let Some(f) = fs.get(i) {
-                    ret.entries.push(vfs::DirEntry {
+                    ret.entries.push(v3::DirEntry {
                         fileid: *i,
                         name: f.name.clone(),
                         attr: f.attr,
