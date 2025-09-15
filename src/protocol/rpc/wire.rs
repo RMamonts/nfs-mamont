@@ -28,10 +28,10 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
+use crate::protocol::rpc::command_queue::{CommandQueue};
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
-use crate::tcp::RpcCommand;
+use crate::tcp::{CommandResult, ResponseBuffer, RpcCommand};
 use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
@@ -139,52 +139,6 @@ pub async fn handle_rpc(
     }
 }
 
-/// Writes data as record-marked fragments to a TCP stream
-///
-/// Implements the RFC 5531 (previously RFC 1057 section 10) Record Marking Standard for TCP transport.
-/// This standard enables RPC to utilize TCP as a transport while maintaining proper
-/// message boundaries essential for RPC semantics.
-///
-/// The function:
-/// 1. Divides large buffers into manageable fragments (maximum 2GB each)
-/// 2. Prefixes each fragment with a 4-byte header
-///    - The lower 31 bits contain the fragment length
-///    - The highest bit indicates if this is the last fragment (1=last, 0=more)
-/// 3. Writes both header and data to the socket
-///
-/// This ensures reliable transmission of RPC messages over TCP with proper
-/// message framing and enables receivers to allocate appropriate buffer space.
-pub async fn write_fragment(write_half: &mut WriteHalf<TcpStream>, buf: &[u8]) -> io::Result<()> {
-    // Maximum fragment size is 2^31 - 1 bytes
-    const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
-
-    let mut offset = 0;
-    while offset < buf.len() {
-        // Calculate the size of this fragment
-        let remaining = buf.len() - offset;
-        let fragment_size = std::cmp::min(remaining, MAX_FRAGMENT_SIZE);
-
-        // Determine if this is the last fragment
-        let is_last = offset + fragment_size >= buf.len();
-
-        // Create the fragment header
-        // The highest bit indicates if this is the last fragment
-        let fragment_header =
-            if is_last { fragment_size as u32 + (1 << 31) } else { fragment_size as u32 };
-
-        let header_buf = u32::to_be_bytes(fragment_header);
-        write_half.write_all(&header_buf).await?;
-
-        trace!("Writing fragment length:{}, last:{}", fragment_size, is_last);
-        write_half.write_all(&buf[offset..offset + fragment_size]).await?;
-
-        offset += fragment_size;
-    }
-
-    Ok(())
-}
-
-pub type SocketMessageType = io::Result<Vec<u8>>;
 
 /// Handles RPC message processing over a TCP connection
 ///
@@ -207,8 +161,7 @@ impl SocketMessageHandler {
     ///
     /// This setup enables asynchronous processing of RPC messages while maintaining
     /// order of operations.
-    pub fn new() -> (Self, mpsc::UnboundedReceiver<SocketMessageType>) {
-        let (msgsend, msgrecv) = mpsc::unbounded_channel();
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<CommandResult>) {
 
         // Create separate channel for command results
         let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
@@ -217,33 +170,11 @@ impl SocketMessageHandler {
         let command_queue =
             CommandQueue::new(process_rpc_command, result_sender, DEFAULT_RESPONSE_BUFFER_CAPACITY);
 
-        // Process results from command queue and send them to socket
-        tokio::spawn(async move {
-            while let Some(result) = result_receiver.recv().await {
-                match result {
-                    Ok(Some(response_buffer)) if response_buffer.has_content() => {
-                        let _ = msgsend.send(Ok(response_buffer.into_inner()));
-                    }
-                    Ok(None) => {
-                        // No response needed, so nothing to send
-                    }
-                    Ok(Some(_)) => {
-                        // Buffer exists but contains no data to send
-                    }
-                    Err(e) => {
-                        error!("RPC error: {:?}", e);
-                        let _ = msgsend.send(Err(e));
-                    }
-                }
-            }
-            debug!("Command result handler finished");
-        });
-
         (
             Self {
                 command_queue,
             },
-            msgrecv,
+            result_receiver,
         )
     }
 }

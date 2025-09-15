@@ -12,51 +12,9 @@ use tracing::{debug, error, trace};
 
 use crate::protocol::rpc;
 use crate::protocol::rpc::Context;
-use crate::tcp::RpcCommand;
+use crate::tcp::{CommandResult, ResponseBuffer, RpcCommand};
 
-/// Represents a response buffer that minimizes data copying
-pub struct ResponseBuffer {
-    /// Internal buffer for writing data
-    buffer: Vec<u8>,
-    /// Indicates that the buffer contains data to send
-    has_content: bool,
-}
 
-impl ResponseBuffer {
-    /// Creates a new response buffer with pre-allocated capacity
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { buffer: Vec::with_capacity(capacity), has_content: false }
-    }
-
-    /// Gets the internal buffer for writing
-    pub fn get_mut_buffer(&mut self) -> &mut Vec<u8> {
-        &mut self.buffer
-    }
-
-    /// Marks the buffer as containing data to send
-    pub fn mark_has_content(&mut self) {
-        self.has_content = true;
-    }
-
-    /// Checks if the buffer contains data to send
-    pub fn has_content(&self) -> bool {
-        self.has_content
-    }
-
-    /// Takes the internal buffer, consuming the structure
-    pub fn into_inner(self) -> Vec<u8> {
-        self.buffer
-    }
-
-    /// Clears the buffer for reuse
-    pub fn clear(&mut self) {
-        self.buffer.clear();
-        self.has_content = false;
-    }
-}
-
-/// Command processing result
-pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 
 /// Type for asynchronous RPC command processor
 pub type AsyncCommandProcessor = for<'a> fn(
