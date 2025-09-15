@@ -13,9 +13,9 @@
 //! semantics required by NFS and other RPC-based protocols, where duplicate
 //! operations (like file writes) could cause data corruption.
 #![cfg(feature = "udp")]
-use std::time::Duration;
 use dashmap::DashSet;
 use moka::sync::Cache;
+use std::time::Duration;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///
