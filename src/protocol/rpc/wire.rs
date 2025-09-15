@@ -252,8 +252,7 @@ impl SocketMessageHandler {
         let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
 
         // Create command queue with our RPC processing function
-        let command_queue =
-            CommandQueue::new(process_rpc_command, result_sender, DEFAULT_RESPONSE_BUFFER_CAPACITY);
+        let command_queue = CommandQueue::new(result_sender, DEFAULT_RESPONSE_BUFFER_CAPACITY);
 
         // Process results from command queue and send them to socket
         tokio::spawn(async move {
@@ -331,26 +330,24 @@ impl SocketMessageHandler {
 /// `Ok(true)` if response needs to be sent
 /// `Ok(false)` if no response needed (e.g. retransmission)
 /// `Err` if processing error occurred
-pub fn process_rpc_command<'a>(
+pub async fn process_rpc_command(
     data: &[u8],
-    output: &'a mut ResponseBuffer,
+    output: &mut ResponseBuffer,
     context: rpc::Context,
-) -> futures::future::BoxFuture<'a, io::Result<bool>> {
+) -> io::Result<bool> {
     // Clone data to own it in closure
     let data_clone = data.to_vec();
 
-    Box::pin(async move {
-        // Create cursor for reading data
-        let mut input_cursor = Cursor::new(data_clone);
+    // Create cursor for reading data
+    let mut input_cursor = Cursor::new(data_clone);
 
-        // Get internal buffer for writing
-        let output_buffer = output.get_mut_buffer();
-        let mut output_cursor = Cursor::new(output_buffer);
+    // Get internal buffer for writing
+    let output_buffer = output.get_mut_buffer();
+    let mut output_cursor = Cursor::new(output_buffer);
 
-        // Call RPC handler
-        let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
+    // Call RPC handler
+    let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
 
-        // If response was generated, return true
-        Ok(result)
-    })
+    // If response was generated, return true
+    Ok(result)
 }

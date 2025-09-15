@@ -9,7 +9,7 @@ use std::io;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace};
 
-use crate::protocol::rpc;
+use crate::protocol::rpc::{self, wire::process_rpc_command};
 
 /// Represents a response buffer that minimizes data copying
 pub struct ResponseBuffer {
@@ -64,13 +64,6 @@ pub struct RpcCommand {
 /// Command processing result
 pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 
-/// Type for asynchronous RPC command processor
-pub type AsyncCommandProcessor = for<'a> fn(
-    data: &[u8],
-    output: &'a mut ResponseBuffer,
-    context: rpc::Context,
-) -> futures::future::BoxFuture<'a, io::Result<bool>>;
-
 /// Queue for sequential processing of RPC commands
 ///
 /// This structure manages an unbounded queue of RPC commands and processes
@@ -90,16 +83,13 @@ impl CommandQueue {
     /// Creates a new command queue with the given processor
     ///
     /// Initializes the command queue and starts a worker task that will
-    /// process submitted commands in order. The processor function is
-    /// responsible for handling each command and creating the result.
+    /// process submitted commands in order.
     ///
     /// # Arguments
     ///
-    /// * `processor` - Asynchronous function for processing RPC commands
     /// * `result_sender` - Channel for sending processing results
     /// * `buffer_capacity` - Initial capacity for response buffers
     pub fn new(
-        processor: AsyncCommandProcessor,
         result_sender: mpsc::UnboundedSender<CommandResult>,
         buffer_capacity: usize,
     ) -> Self {
@@ -116,9 +106,10 @@ impl CommandQueue {
                 // Clear buffer for reuse
                 output_buffer.clear();
 
-                // Call async processor
                 let result =
-                    match processor(&command.data, &mut output_buffer, command.context).await {
+                    match process_rpc_command(&command.data, &mut output_buffer, command.context)
+                        .await
+                    {
                         Ok(true) => {
                             // Processor indicated response needs to be sent
                             output_buffer.mark_has_content();
