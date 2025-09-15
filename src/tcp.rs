@@ -11,17 +11,19 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::collections::HashSet;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::rpc::Context;
 use crate::protocol::{rpc, xdr};
 use crate::vfs::NFSFileSystem;
 
@@ -67,6 +69,37 @@ pub fn generate_host_ip(hostnum: u16) -> String {
     format!("127.88.{}.{}", ((hostnum >> 8) & 0xFF) as u8, (hostnum & 0xFF) as u8)
 }
 
+/// RPC command type with context
+#[derive(Debug)]
+pub struct RpcCommand {
+    /// RPC message data
+    pub data: Vec<u8>,
+    /// Context associated with this command
+    pub context: Context,
+}
+
+impl RpcCommand {
+    pub async fn read_command_from_socket(
+        &mut self,
+        socket: &mut ReadHalf<TcpStream>,
+    ) -> io::Result<()> {
+        let mut is_last = true;
+        let mut header_buf = [0_u8; 4];
+        while !is_last {
+            socket.read_exact(&mut header_buf).await?;
+            let fragment_header = u32::from_be_bytes(header_buf);
+            is_last = (fragment_header & (1 << 31)) > 0;
+            let length = (fragment_header & ((1 << 31) - 1)) as usize;
+            trace!("Reading fragment length:{}, last:{}", length, is_last);
+            let start_offset = self.data.len();
+            self.data.resize(self.data.len() + length, 0);
+            socket.read_exact(&mut self.data[start_offset..]).await?;
+            trace!("Finishing Reading fragment length:{}, last:{}", length, is_last);
+        }
+        Ok(())
+    }
+}
+
 /// Processes an established TCP socket connection from an NFS client
 ///
 /// This function:
@@ -79,7 +112,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 ///
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
-async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
+async fn process_socket(socket: TcpStream, context: Context) {
     let (mut message_handler, mut socksend, mut msgrecvchan) =
         rpc::SocketMessageHandler::new(&context);
 

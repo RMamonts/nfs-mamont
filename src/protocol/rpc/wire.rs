@@ -31,6 +31,7 @@ use tracing::{debug, error, trace, warn};
 use crate::protocol::rpc::command_queue::{CommandQueue, CommandResult, ResponseBuffer};
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
+use crate::tcp::RpcCommand;
 use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
@@ -136,37 +137,6 @@ pub async fn handle_rpc(
         error!("Unexpectedly received a Reply instead of a Call");
         io_other("Bad RPC Call format")
     }
-}
-
-/// Reads a single record-marked fragment from a stream
-///
-/// Implements the RFC 5531 (previously RFC 1057 section 10) Record Marking Standard for TCP transport.
-/// The record marking standard addresses the problem of delimiting records in a
-/// stream protocol like TCP by prefixing each record with a 4-byte header.
-///
-/// This function:
-/// 1. Reads the 4-byte header from the socket
-/// 2. Extracts the fragment length (lower 31 bits) and last-fragment flag (highest bit)
-/// 3. Reads exactly that many bytes from the socket
-/// 4. Appends the read data to the provided buffer
-///
-/// Returns true if this was the last fragment in the RPC record, false otherwise.
-/// This allows for reassembly of multi-fragment RPC messages.
-async fn read_fragment(
-    socket: &mut ReadHalf<SimplexStream>,
-    append_to: &mut Vec<u8>,
-) -> io::Result<bool> {
-    let mut header_buf = [0_u8; 4];
-    socket.read_exact(&mut header_buf).await?;
-    let fragment_header = u32::from_be_bytes(header_buf);
-    let is_last = (fragment_header & (1 << 31)) > 0;
-    let length = (fragment_header & ((1 << 31) - 1)) as usize;
-    trace!("Reading fragment length:{}, last:{}", length, is_last);
-    let start_offset = append_to.len();
-    append_to.resize(append_to.len() + length, 0);
-    socket.read_exact(&mut append_to[start_offset..]).await?;
-    trace!("Finishing Reading fragment length:{}, last:{}", length, is_last);
-    Ok(is_last)
 }
 
 /// Writes data as record-marked fragments to a TCP stream
@@ -288,29 +258,6 @@ impl SocketMessageHandler {
             socksend,
             msgrecv,
         )
-    }
-
-    /// Reads and processes a fragment from the socket
-    ///
-    /// Reads a single record-marked fragment from the socket and appends it to
-    /// the current message buffer. If the fragment is the last one in the record,
-    /// submits a command to the queue for processing in order.
-    /// Should be called in a loop to continuously process incoming messages.
-    pub async fn read(&mut self) -> io::Result<()> {
-        let is_last =
-            read_fragment(&mut self.socket_receive_channel, &mut self.cur_fragment).await?;
-        if is_last {
-            // Take buffer and create new one for next fragment
-            let fragment_data = std::mem::take(&mut self.cur_fragment);
-            let context = self.context.clone();
-
-            // Submit command to queue for ordered processing
-            if !self.command_queue.submit_command(fragment_data, context) {
-                error!("Failed to submit command to queue");
-                return io_other("Command queue error");
-            }
-        }
-        Ok(())
     }
 }
 

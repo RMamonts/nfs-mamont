@@ -5,11 +5,14 @@
 //! necessary for proper NFS protocol operation.
 
 use std::io;
-
+use tokio::io::{AsyncReadExt, ReadHalf};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace};
 
 use crate::protocol::rpc;
+use crate::protocol::rpc::Context;
+use crate::tcp::RpcCommand;
 
 /// Represents a response buffer that minimizes data copying
 pub struct ResponseBuffer {
@@ -50,15 +53,6 @@ impl ResponseBuffer {
         self.buffer.clear();
         self.has_content = false;
     }
-}
-
-/// RPC command type with context
-#[derive(Debug)]
-pub struct RpcCommand {
-    /// RPC message data
-    pub data: Vec<u8>,
-    /// Context associated with this command
-    pub context: rpc::Context,
 }
 
 /// Command processing result
