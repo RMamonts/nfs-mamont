@@ -400,9 +400,7 @@ impl NFSTcp for NFSTcpListener {
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
-            tokio::spawn(async move {
-                let _ = process_socket(socket, context).await;
-            });
+            let _ = process_socket(socket, context).await;
         }
     }
 }
