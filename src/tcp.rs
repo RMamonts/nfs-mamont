@@ -79,10 +79,9 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 ///
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
-async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) -> io::Result<()> {
+async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
     let (mut message_handler, mut socksend, mut msgrecvchan) =
         rpc::SocketMessageHandler::new(&context);
-    let _ = socket.set_nodelay(true);
 
     tokio::spawn(async move {
         loop {
@@ -96,8 +95,8 @@ async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) ->
     let (mut readhalf, mut writehalf) = tokio::io::split(socket);
 
     tokio::spawn(async move {
+        let mut buf = [0; 128000];
         loop {
-            let mut buf = [0; 128000];
             match readhalf.read(&mut buf).await {
                 Ok(0) => return Ok(()),
                 Ok(n) => {
@@ -128,7 +127,6 @@ async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) ->
         debug!("Channel closed, sending results to socket terminated");
         Ok(())
     });
-    Ok(())
 }
 
 /// Interface for NFS TCP servers that defines common operations
@@ -400,7 +398,8 @@ impl NFSTcp for NFSTcpListener {
             };
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
-            let _ = process_socket(socket, context).await;
+            socket.set_nodelay(true)?;
+            process_socket(socket, context).await;
         }
     }
 }
