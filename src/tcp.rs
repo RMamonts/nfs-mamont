@@ -11,7 +11,6 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::collections::HashSet;
-use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -140,7 +139,10 @@ impl ResponseBuffer {
         self.buffer.clear();
         self.has_content = false;
     }
-    pub async fn write_fragment(&mut self, write_half: &mut WriteHalf<TcpStream>) -> io::Result<()> {
+    pub async fn write_fragment(
+        &mut self,
+        write_half: &mut WriteHalf<TcpStream>,
+    ) -> io::Result<()> {
         // Maximum fragment size is 2^31 - 1 bytes
         const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
@@ -169,8 +171,6 @@ impl ResponseBuffer {
 
         Ok(())
     }
-
-
 }
 
 /// Command processing result
@@ -189,30 +189,28 @@ pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
-    let (mut message_handler, mut msgrecvchan) =
-        rpc::SocketMessageHandler::new();
+    let (message_handler, mut msgrecvchan) = rpc::SocketMessageHandler::new();
 
     let (mut readhalf, mut writehalf) = tokio::io::split(socket);
 
     tokio::spawn(async move {
-            loop {
-                let mut command = RpcCommand { data: Vec::new(), context: context.clone() };
-                match command.read_command_from_socket(&mut readhalf).await {
-                    Ok(()) => {
-                        //here some processing - actually sending to processing rpc task
-                        if !message_handler.command_queue.submit_command(command) {
-                            error!("Failed to submit command to queue");
-                            return io_other("Command queue error");
-                        }
-                    },
-                    Err(e) => {
-                        error!("Message loop broken due to {:?}", e);
-                        return io_other("Socket reading error");
+        loop {
+            let mut command = RpcCommand { data: Vec::new(), context: context.clone() };
+            match command.read_command_from_socket(&mut readhalf).await {
+                Ok(()) => {
+                    //here some processing - actually sending to processing rpc task
+                    if !message_handler.command_queue.submit_command(command) {
+                        error!("Failed to submit command to queue");
+                        return io_other::<(), &str>("Command queue error");
                     }
                 }
+                Err(e) => {
+                    error!("Message loop broken due to {:?}", e);
+                    return Err(e);
+                }
             }
+        }
     });
-
 
     tokio::spawn(async move {
         while let Some(result) = msgrecvchan.recv().await {

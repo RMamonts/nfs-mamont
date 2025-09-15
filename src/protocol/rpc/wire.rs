@@ -21,17 +21,13 @@ use std::io;
 use std::io::Cursor;
 use std::io::{Read, Write};
 
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::io::{ReadHalf, SimplexStream, WriteHalf};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use crate::protocol::rpc::command_queue::{CommandQueue};
+use crate::protocol::rpc::command_queue::CommandQueue;
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
-use crate::tcp::{CommandResult, ResponseBuffer, RpcCommand};
+use crate::tcp::{CommandResult, ResponseBuffer};
 use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
@@ -139,7 +135,6 @@ pub async fn handle_rpc(
     }
 }
 
-
 /// Handles RPC message processing over a TCP connection
 ///
 /// Receives record-marked RPC messages from a TCP stream, processes
@@ -162,20 +157,14 @@ impl SocketMessageHandler {
     /// This setup enables asynchronous processing of RPC messages while maintaining
     /// order of operations.
     pub fn new() -> (Self, mpsc::UnboundedReceiver<CommandResult>) {
-
         // Create separate channel for command results
-        let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+        let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
 
         // Create command queue with our RPC processing function
         let command_queue =
             CommandQueue::new(process_rpc_command, result_sender, DEFAULT_RESPONSE_BUFFER_CAPACITY);
 
-        (
-            Self {
-                command_queue,
-            },
-            result_receiver,
-        )
+        (Self { command_queue }, result_receiver)
     }
 }
 
