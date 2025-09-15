@@ -97,10 +97,12 @@ async fn process_socket(
             }
         }
     });
+
+    let mut buf = [0; 128_000];
+
     loop {
         tokio::select! {
             _ = socket.readable() => {
-                let mut buf = [0; 128_000];
 
                 match socket.try_read(&mut buf) {
                     Ok(0) => {
