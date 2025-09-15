@@ -201,7 +201,7 @@ pub struct SocketMessageHandler {
     /// RPC context for request processing
     context: rpc::Context,
     /// Command queue for ordered processing
-    command_queue: CommandQueue,
+    pub command_queue: CommandQueue,
 }
 
 impl SocketMessageHandler {

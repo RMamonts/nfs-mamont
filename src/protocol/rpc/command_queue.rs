@@ -155,7 +155,7 @@ impl CommandQueue {
     ///
     /// `true` if command was successfully submitted,
     /// `false` if submission failed (e.g. if queue was closed)
-    pub fn submit_command(&self, data: Vec<u8>, context: rpc::Context) -> bool {
-        self.command_sender.send(RpcCommand { data, context }).is_ok()
+    pub fn submit_command(&self, command: RpcCommand) -> bool {
+        self.command_sender.send(command).is_ok()
     }
 }

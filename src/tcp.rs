@@ -25,6 +25,7 @@ use tracing::{debug, error, info, trace};
 use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::rpc::Context;
 use crate::protocol::{rpc, xdr};
+use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
 /// Default transaction retention period
@@ -116,32 +117,27 @@ async fn process_socket(socket: TcpStream, context: Context) {
     let (mut message_handler, mut socksend, mut msgrecvchan) =
         rpc::SocketMessageHandler::new(&context);
 
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = message_handler.read().await {
-                debug!("Message loop broken due to {:?}", e);
-                break;
-            }
-        }
-    });
-
     let (mut readhalf, mut writehalf) = tokio::io::split(socket);
 
     tokio::spawn(async move {
-        let mut buf = [0; 128000];
-        loop {
-            match readhalf.read(&mut buf).await {
-                Ok(0) => return Ok(()),
-                Ok(n) => {
-                    let _ = socksend.write_all(&buf[..n]).await;
-                }
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
+            loop {
+                let mut command = RpcCommand { data: Vec::new(), context: context.clone() };
+                match command.read_command_from_socket(&mut readhalf).await {
+                    Ok(()) => {
+                        //here some processing - actually sending to processing rpc task
+                        if !message_handler.command_queue.submit_command(command) {
+                            error!("Failed to submit command to queue");
+                            return io_other("Command queue error");
+                        }
+                    },
+                    Err(e) => {
+                        error!("Message loop broken due to {:?}", e);
+                        return io_other("Socket reading error");
+                    }
                 }
             }
-        }
     });
+
 
     tokio::spawn(async move {
         while let Some(reply) = msgrecvchan.recv().await {
