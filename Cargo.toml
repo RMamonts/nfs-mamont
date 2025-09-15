@@ -35,3 +35,6 @@ path = "examples/mirror_fs/main.rs"
 [[example]]
 name = "demofs"
 path = "examples/demo_fs/main.rs"
+
+[features]
+udp = []

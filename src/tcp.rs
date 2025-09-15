@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+#[cfg(feature = "udp")]
 use std::time::Duration;
 use std::{io, net::IpAddr};
 
@@ -28,6 +29,7 @@ use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
 /// Default transaction retention period
+#[cfg(feature = "udp")]
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
 
 /// Entry in the NFS export table that represents a single exported file system.
@@ -55,6 +57,7 @@ pub struct NFSTcpListener {
     /// Table of NFS exports managed by this server
     export_table: Arc<NFSExportTable>,
     /// Tracker for RPC transactions to handle retransmissions
+    #[cfg(feature = "udp")]
     transaction_tracker: Arc<rpc::TransactionTracker>,
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
@@ -250,6 +253,7 @@ impl NFSTcpListener {
             listener,
             port,
             export_table: Arc::new(DashMap::new()),
+            #[cfg(feature = "udp")]
             transaction_tracker: Arc::new(rpc::TransactionTracker::new(
                 TRANSACTION_RETENTION_PERIOD,
             )),
@@ -402,6 +406,7 @@ impl NFSTcp for NFSTcpListener {
                 client_addr: socket.peer_addr()?.to_string(),
                 auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
+                #[cfg(feature = "udp")]
                 transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
                 client_list: self.client_list.clone(),

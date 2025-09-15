@@ -30,5 +30,6 @@ mod transaction_tracker;
 mod wire;
 
 pub use context::Context;
+#[cfg(feature = "udp")]
 pub use transaction_tracker::TransactionTracker;
 pub use wire::{write_fragment, SocketMessageHandler};
