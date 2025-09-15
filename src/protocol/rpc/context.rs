@@ -54,6 +54,7 @@ pub struct Context {
 
     /// Transaction state tracker for handling retransmissions
     /// Maintains idempotency by detecting duplicate RPC calls
+    #[cfg(feature = "udp")]
     pub transaction_tracker: Arc<super::TransactionTracker>,
 
     /// Portmap table storing port-to-program mappings

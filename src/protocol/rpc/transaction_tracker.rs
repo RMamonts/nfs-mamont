@@ -12,11 +12,10 @@
 //! The transaction tracking system is essential for maintaining the at-most-once
 //! semantics required by NFS and other RPC-based protocols, where duplicate
 //! operations (like file writes) could cause data corruption.
-
-use std::time::Duration;
-
+#![cfg(feature = "udp")]
 use dashmap::DashSet;
 use moka::sync::Cache;
+use std::time::Duration;
 
 /// Tracks RPC transactions to detect and handle retransmissions
 ///

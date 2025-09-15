@@ -81,6 +81,7 @@ pub async fn handle_rpc(
             return Ok(true);
         }
 
+        #[cfg(feature = "udp")]
         if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
             debug!(
                 "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
@@ -129,6 +130,7 @@ pub async fn handle_rpc(
         }
         .map(|_| true);
 
+        #[cfg(feature = "udp")]
         context.transaction_tracker.mark_processed(xid, &context.client_addr);
 
         result
