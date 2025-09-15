@@ -24,11 +24,8 @@
 //! the NFS, MOUNT, and PORTMAP protocols, handling all aspects of message
 //! encoding, transmission, and routing.
 
-mod command_queue;
 mod context;
 mod transaction_tracker;
-mod wire;
 
 pub use context::Context;
 pub use transaction_tracker::TransactionTracker;
-pub use wire::SocketMessageHandler;

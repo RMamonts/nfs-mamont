@@ -11,23 +11,22 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::collections::HashSet;
+use std::io::{Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
-use std::io::{Cursor, Read, Write};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
-use tokio::sync::mpsc::error::SendError;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::rpc::Context;
-use crate::protocol::{nfs, rpc, xdr};
 use crate::protocol::xdr::{mount, portmap};
+use crate::protocol::{nfs, rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 use crate::xdr::{deserialize, nfs3, Serialize};
@@ -37,6 +36,15 @@ const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
 const MAX_RM_FRAGMENT_SIZE: usize = 2147483647;
 const LAST_FG_MASK: u32 = 2147483648;
 const COMMAND_INIT_SIZE: usize = 8192;
+/// RPC program number for NFS Access Control Lists
+const NFS_ACL_PROGRAM: u32 = 100227;
+/// RPC program number for NFS ID Mapping
+const NFS_ID_MAP_PROGRAM: u32 = 100270;
+/// RPC program number for LOCALIO auxiliary RPC protocol
+/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
+const NFS_LOCALIO_PROGRAM: u32 = 400122;
+/// RPC program number for NFS Metadata
+const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
 const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
 
@@ -52,7 +60,7 @@ pub struct NFSExportTableEntry {
 }
 
 /// Hash map that stores all exported file systems for an NFS server.
-pub type NFSExportTable = DashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
+pub type NFSExportTable = DashMap<nfs3::fs_id, NFSExportTableEntry>;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
@@ -83,9 +91,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 #[derive(Debug)]
 pub struct RpcCommand {
     /// RPC message data
-    pub data: Vec<u8>,
-    /// Context associated with this command
-    pub context: Context,
+    data: Vec<u8>,
 }
 
 fn parse_header(arg: u32) -> (bool, usize) {
@@ -204,55 +210,55 @@ pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
-
     let (readhalf, writehalf) = tokio::io::split(socket);
-    let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
-    let (command_sender, mut command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
+    //channel for result
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+    //channel for request
+    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
     // task which reads commands from socket and send them to task, that process them
-    spawn_reader_task(readhalf, command_sender, context);
+    spawn_reader_task(readhalf, command_sender);
 
     //task, that gets result from processor task and writes it into socket
     spawn_writer_task(writehalf, result_receiver);
 
     //task, that processes command
-    spawn_processor_task(command_receiver, result_sender);
+    spawn_processor_task(command_receiver, result_sender, context);
 }
 
 fn spawn_reader_task(
     mut readhalf: ReadHalf<TcpStream>,
     command_sender: UnboundedSender<RpcCommand>,
-    context: Context,
 ) {
     tokio::spawn(async move {
-            loop {
-                let mut command = RpcCommand { data: Vec::new(), context: context.clone() };
-                match command.read_command_from_socket(&mut readhalf).await {
-                    Ok(()) => {
-                        //here some processing - actually sending to processing rpc task
-                        match command_sender.send(command) {
-                            Ok(_) => { continue }
-                            Err(_) => {
-                                error!("Failed to submit command to queue");
-                                return io_other("Command queue error");
-                            }
+        loop {
+            let mut command = RpcCommand { data: Vec::with_capacity(COMMAND_INIT_SIZE) };
+            match command.read_command_from_socket(&mut readhalf).await {
+                Ok(()) => {
+                    //here some processing - actually sending to processing rpc task
+                    match command_sender.send(command) {
+                        Ok(_) => continue,
+                        Err(_) => {
+                            error!("Failed to submit command to queue");
+                            return io_other("Command queue error");
                         }
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                        return if command.data.is_empty() {
-                            trace!("Connection closed before receiving any data");
-                            Ok(())
-                        } else {
-                            error!("Connection closed during command transmission");
-                            io_other("Early socket closing")
-                        }
-                    }
-                    Err(e) => {
-                        error!("Message loop broken due to {:?}", e);
-                        return Err(e);
                     }
                 }
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    return if command.data.is_empty() {
+                        trace!("Connection closed before receiving any data");
+                        Ok(())
+                    } else {
+                        error!("Connection closed during command transmission");
+                        io_other("Early socket closing")
+                    }
+                }
+                Err(e) => {
+                    error!("Message loop broken due to {:?}", e);
+                    return Err(e);
+                }
             }
+        }
     });
 }
 
@@ -260,6 +266,7 @@ fn spawn_writer_task(
     mut writehalf: WriteHalf<TcpStream>,
     mut result_receiver: UnboundedReceiver<CommandResult>,
 ) {
+    //task to write to socket
     tokio::spawn(async move {
         while let Some(result) = result_receiver.recv().await {
             match result {
@@ -287,7 +294,8 @@ fn spawn_writer_task(
 
 fn spawn_processor_task(
     mut command_receiver: UnboundedReceiver<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>
+    result_sender: UnboundedSender<CommandResult>,
+    mut context: Context,
 ) {
     tokio::spawn(async move {
         // Create reusable buffer for responses
@@ -300,7 +308,7 @@ fn spawn_processor_task(
             output_buffer.clear();
             // Call async processor
             let result =
-                match process_rpc_command(&command.data, &mut output_buffer, command.context).await {
+                match process_rpc_command(command.data, &mut output_buffer, &mut context).await {
                     Ok(true) => {
                         // Processor indicated response needs to be sent
                         output_buffer.mark_has_content();
@@ -602,19 +610,6 @@ impl NFSTcp for NFSTcpListener {
     }
 }
 
-
-
-/// RPC program number for NFS Access Control Lists
-const NFS_ACL_PROGRAM: u32 = 100227;
-/// RPC program number for NFS ID Mapping
-const NFS_ID_MAP_PROGRAM: u32 = 100270;
-/// RPC program number for LOCALIO auxiliary RPC protocol
-/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
-const NFS_LOCALIO_PROGRAM: u32 = 400122;
-/// RPC program number for NFS Metadata
-const NFS_METADATA_PROGRAM: u32 = 200024;
-
-
 /// Processes a single RPC message
 ///
 /// This function forms the core of the RPC message dispatcher. It:
@@ -632,9 +627,8 @@ const NFS_METADATA_PROGRAM: u32 = 200024;
 pub async fn handle_rpc(
     input: &mut impl Read,
     output: &mut impl Write,
-    mut context: rpc::Context,
-) -> io::Result<bool>
-{
+    context: &mut Context,
+) -> io::Result<bool> {
     let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
     let xid = recv.xid;
     if let xdr::rpc::rpc_body::CALL(call) = recv.body {
@@ -658,8 +652,8 @@ pub async fn handle_rpc(
 
         let result = match call.prog {
             nfs3::PROGRAM => match call.vers {
-                nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, &context).await,
-                nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, &context).await,
+                nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, context).await,
+                nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, context).await,
                 v => {
                     warn!("Unsupported NFS version: {}", v);
                     xdr::rpc::prog_version_range_mismatch_reply_message(
@@ -667,22 +661,22 @@ pub async fn handle_rpc(
                         nfs3::VERSION,
                         nfs::v4::VERSION,
                     )
-                        .serialize(output)?;
+                    .serialize(output)?;
                     Ok(())
                 }
             },
             portmap::PROGRAM => {
-                nfs::portmap::handle_portmap(xid, &call, input, output, &mut context).await
+                nfs::portmap::handle_portmap(xid, &call, input, output, context).await
             }
-            mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, &context).await,
+            mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, context).await,
             prog if prog == NFS_ACL_PROGRAM
                 || prog == NFS_ID_MAP_PROGRAM
                 || prog == NFS_METADATA_PROGRAM =>
-                {
-                    trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
-                }
+            {
+                trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
             NFS_LOCALIO_PROGRAM => {
                 trace!("Ignoring NFS_LOCALIO packet");
                 xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
@@ -694,7 +688,7 @@ pub async fn handle_rpc(
                 Ok(())
             }
         }
-            .map(|_| true);
+        .map(|_| true);
 
         context.transaction_tracker.mark_processed(xid, &context.client_addr);
 
@@ -704,7 +698,6 @@ pub async fn handle_rpc(
         io_other("Bad RPC Call format")
     }
 }
-
 
 /// Standard async RPC processing function that can be used with `CommandQueue`
 ///
@@ -724,26 +717,21 @@ pub async fn handle_rpc(
 /// `Ok(true)` if response needs to be sent
 /// `Ok(false)` if no response needed (e.g. retransmission)
 /// `Err` if processing error occurred
-pub fn process_rpc_command<'a>(
-    data: &[u8],
-    output: &'a mut ResponseBuffer,
-    context: rpc::Context,
-) -> futures::future::BoxFuture<'a, io::Result<bool>> {
-    // Clone data to own it in closure
-    let data_clone = data.to_vec();
+pub async fn process_rpc_command(
+    data: Vec<u8>,
+    output: &mut ResponseBuffer,
+    context: &mut Context,
+) -> io::Result<bool> {
+    // Create cursor for reading data
+    let mut input_cursor = Cursor::new(data);
 
-    Box::pin(async move {
-        // Create cursor for reading data
-        let mut input_cursor = Cursor::new(data_clone);
+    // Get internal buffer for writing
+    let output_buffer = output.get_mut_buffer();
+    let mut output_cursor = Cursor::new(output_buffer);
 
-        // Get internal buffer for writing
-        let output_buffer = output.get_mut_buffer();
-        let mut output_cursor = Cursor::new(output_buffer);
+    // Call RPC handler
+    let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
 
-        // Call RPC handler
-        let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
-
-        // If response was generated, return true
-        Ok(result)
-    })
+    // If response was generated, return true
+    Ok(result)
 }
