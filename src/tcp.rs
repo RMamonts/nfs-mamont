@@ -114,8 +114,8 @@ impl RpcCommand {
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
-    let (mut message_handler, mut socksend, mut msgrecvchan) =
-        rpc::SocketMessageHandler::new(&context);
+    let (mut message_handler, mut msgrecvchan) =
+        rpc::SocketMessageHandler::new();
 
     let (mut readhalf, mut writehalf) = tokio::io::split(socket);
 

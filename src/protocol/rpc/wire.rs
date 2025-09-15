@@ -194,12 +194,6 @@ pub type SocketMessageType = io::Result<Vec<u8>>;
 /// for reliable message delimitation over TCP.
 #[derive(Debug)]
 pub struct SocketMessageHandler {
-    /// Buffer for current fragment
-    cur_fragment: Vec<u8>,
-    /// Channel for receiving data from socket
-    socket_receive_channel: ReadHalf<SimplexStream>,
-    /// RPC context for request processing
-    context: rpc::Context,
     /// Command queue for ordered processing
     pub command_queue: CommandQueue,
 }
@@ -213,10 +207,7 @@ impl SocketMessageHandler {
     ///
     /// This setup enables asynchronous processing of RPC messages while maintaining
     /// order of operations.
-    pub fn new(
-        context: &rpc::Context,
-    ) -> (Self, WriteHalf<SimplexStream>, mpsc::UnboundedReceiver<SocketMessageType>) {
-        let (sockrecv, socksend) = tokio::io::simplex(256_000);
+    pub fn new() -> (Self, mpsc::UnboundedReceiver<SocketMessageType>) {
         let (msgsend, msgrecv) = mpsc::unbounded_channel();
 
         // Create separate channel for command results
@@ -250,12 +241,8 @@ impl SocketMessageHandler {
 
         (
             Self {
-                cur_fragment: Vec::new(),
-                socket_receive_channel: sockrecv,
-                context: context.clone(),
                 command_queue,
             },
-            socksend,
             msgrecv,
         )
     }
