@@ -21,13 +21,17 @@ use std::io;
 use std::io::Cursor;
 use std::io::{Read, Write};
 
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::io::{ReadHalf, SimplexStream, WriteHalf};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error, trace, warn};
 
-use crate::protocol::rpc::command_queue::CommandQueue;
 use crate::protocol::xdr::{self, deserialize, mount, nfs3, portmap, Serialize};
 use crate::protocol::{nfs, rpc};
-use crate::tcp::{CommandResult, ResponseBuffer};
+use crate::tcp::{CommandResult, ResponseBuffer, RpcCommand};
 use crate::utils::error::io_other;
 
 // Information from RFC 5531 (ONC RPC v2)
@@ -144,7 +148,7 @@ pub async fn handle_rpc(
 #[derive(Debug)]
 pub struct SocketMessageHandler {
     /// Command queue for ordered processing
-    pub command_queue: CommandQueue,
+    pub command_queue: UnboundedSender<RpcCommand>,
 }
 
 impl SocketMessageHandler {
@@ -158,13 +162,55 @@ impl SocketMessageHandler {
     /// order of operations.
     pub fn new() -> (Self, mpsc::UnboundedReceiver<CommandResult>) {
         // Create separate channel for command results
-        let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+        let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+        let (command_sender, mut command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-        // Create command queue with our RPC processing function
-        let command_queue =
-            CommandQueue::new(process_rpc_command, result_sender, DEFAULT_RESPONSE_BUFFER_CAPACITY);
+        // Start worker task that processes commands in order
+        tokio::spawn(async move {
+            // Create reusable buffer for responses
+            let mut output_buffer = ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY);
 
-        (Self { command_queue }, result_receiver)
+            while let Some(command) = command_receiver.recv().await {
+                trace!("Processing command from queue");
+
+                // Clear buffer for reuse
+                output_buffer.clear();
+
+                // Call async processor
+                let result =
+                    match process_rpc_command(&command.data, &mut output_buffer, command.context).await {
+                        Ok(true) => {
+                            // Processor indicated response needs to be sent
+                            output_buffer.mark_has_content();
+                            let buffer_to_send = std::mem::replace(
+                                &mut output_buffer,
+                                ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
+                            );
+                            Ok(Some(buffer_to_send))
+                        }
+                        Ok(false) => {
+                            // No response needed (e.g. retransmission)
+                            Ok(None)
+                        }
+                        Err(e) => Err(e),
+                    };
+
+                // Send result
+                if let Err(e) = result_sender.send(result) {
+                    error!("Failed to send command processing result: {:?}", e);
+                    break;
+                }
+            }
+            debug!("Command queue handler finished");
+        });
+
+
+        (
+            Self {
+                command_queue: command_sender,
+            },
+            result_receiver,
+        )
     }
 }
 
