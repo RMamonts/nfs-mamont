@@ -83,7 +83,7 @@ impl RpcCommand {
         &mut self,
         socket: &mut ReadHalf<TcpStream>,
     ) -> io::Result<()> {
-        let mut is_last = true;
+        let mut is_last = false;
         let mut header_buf = [0_u8; 4];
         while !is_last {
             socket.read_exact(&mut header_buf).await?;
