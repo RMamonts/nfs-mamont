@@ -12,14 +12,12 @@
 
 use std::io::{Read, Write};
 
-use super::{
-    Deserialize, DeserializeEnum, DeserializeStruct, Serialize, SerializeEnum, SerializeStruct,
-};
-use crate::xdr::deserialize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::xdr::{deserialize, Deserialize, DeserializeEnum, Serialize, SerializeEnum};
+use crate::{DeserializeStruct, SerializeStruct};
+
 /// Represents a mapping between an RPC program and a network port.
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct mapping {
@@ -72,7 +70,6 @@ pub const PROGRAM: u32 = 100000;
 pub const VERSION: u32 = 2;
 
 /// Procedure numbers for the Portmap RPC service.
-#[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum PortmapProgram {

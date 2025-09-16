@@ -16,9 +16,7 @@
 
 use std::io::{Read, Write};
 
-use super::{
-    nfstime3, post_op_attr, size3, Deserialize, DeserializeStruct, Serialize, SerializeStruct,
-};
+use super::{nfs_fh3, nfstime3, post_op_attr, size3, DeserializeStruct, SerializeStruct};
 
 // Section 3.3.19. Procedure 19: FSINFO - Get static file system Information
 // The following constants are used in fsinfo to construct the bitmask 'properties',
@@ -47,68 +45,16 @@ pub const FSF_HOMOGENEOUS: u32 = 0x0008;
 /// As defined in RFC 1813 section 3.3.19.
 pub const FSF_CANSETTIME: u32 = 0x0010;
 
-/// File system information structure returned by FSINFO procedure
-/// as defined in RFC 1813 section 3.3.19
-#[allow(non_camel_case_types)]
+/// Arguments for the FSSTAT procedure (procedure 18) as defined in RFC 1813 section 3.3.18
 #[derive(Debug, Default)]
-pub struct fsinfo3 {
-    /// File system attributes
-    pub obj_attributes: post_op_attr,
-    /// Maximum read request supported by server (bytes)
-    pub rtmax: u32,
-    /// Preferred read request size (bytes)
-    pub rtpref: u32,
-    /// Suggested read request multiple (bytes)
-    /// Requests should be a multiple of this value
-    pub rtmult: u32,
-    /// Maximum write request supported by server (bytes)
-    pub wtmax: u32,
-    /// Preferred write request size (bytes)
-    pub wtpref: u32,
-    /// Suggested write request multiple (bytes)
-    /// Requests should be a multiple of this value
-    pub wtmult: u32,
-    /// Preferred directory read request size (bytes)
-    pub dtpref: u32,
-    /// Maximum file size supported (bytes)
-    pub maxfilesize: size3,
-    /// Server time granularity (resolution of time values)
-    pub time_delta: nfstime3,
-    /// Bit mask of file system properties (FSF_* constants)
-    pub properties: u32,
+pub struct FSSTAT3args {
+    /// File handle identifying an object in the file system
+    pub fsroot: nfs_fh3,
 }
-DeserializeStruct!(
-    fsinfo3,
-    obj_attributes,
-    rtmax,
-    rtpref,
-    rtmult,
-    wtmax,
-    wtpref,
-    wtmult,
-    dtpref,
-    maxfilesize,
-    time_delta,
-    properties
-);
-SerializeStruct!(
-    fsinfo3,
-    obj_attributes,
-    rtmax,
-    rtpref,
-    rtmult,
-    wtmax,
-    wtpref,
-    wtmult,
-    dtpref,
-    maxfilesize,
-    time_delta,
-    properties
-);
+DeserializeStruct!(FSSTAT3args, fsroot);
+SerializeStruct!(FSSTAT3args, fsroot);
 
-/// File system statistics returned by FSSTAT procedure
-/// as defined in RFC 1813 section 3.3.18
-#[allow(non_camel_case_types)]
+/// File system statistics returned by FSSTAT procedure as defined in RFC 1813 section 3.3.18
 #[derive(Debug, Default)]
 pub struct FSSTAT3resok {
     /// File system attributes
@@ -152,12 +98,103 @@ SerializeStruct!(
     invarsec
 );
 
-/// Path configuration information returned by PATHCONF procedure
-/// as defined in RFC 1813 section 3.3.20
-#[allow(non_camel_case_types)]
+/// Failed response for the FSSTAT procedure as defined in RFC 1813 section 3.3.18
+#[derive(Debug, Default)]
+pub struct FSSTAT3resfail {
+    /// Attributes of the file system object specified in fsroot
+    pub obj_attributes: post_op_attr,
+}
+DeserializeStruct!(FSSTAT3resfail, obj_attributes);
+SerializeStruct!(FSSTAT3resfail, obj_attributes);
+
+/// Arguments for the FSINFO procedure (procedure 19) as defined in RFC 1813 section 3.3.19
+#[derive(Debug, Default)]
+pub struct FSINFO3args {
+    /// File handle identifying a file object
+    pub fsroot: nfs_fh3,
+}
+DeserializeStruct!(FSINFO3args, fsroot);
+SerializeStruct!(FSINFO3args, fsroot);
+
+/// File system information structure returned by FSINFO procedure as defined in RFC 1813 section 3.3.19
+#[derive(Debug, Default)]
+pub struct FSINFO3resok {
+    /// File system attributes
+    pub obj_attributes: post_op_attr,
+    /// Maximum read request supported by server (bytes)
+    pub rtmax: u32,
+    /// Preferred read request size (bytes)
+    pub rtpref: u32,
+    /// Suggested read request multiple (bytes)
+    /// Requests should be a multiple of this value
+    pub rtmult: u32,
+    /// Maximum write request supported by server (bytes)
+    pub wtmax: u32,
+    /// Preferred write request size (bytes)
+    pub wtpref: u32,
+    /// Suggested write request multiple (bytes)
+    /// Requests should be a multiple of this value
+    pub wtmult: u32,
+    /// Preferred directory read request size (bytes)
+    pub dtpref: u32,
+    /// Maximum file size supported (bytes)
+    pub maxfilesize: size3,
+    /// Server time granularity (resolution of time values)
+    pub time_delta: nfstime3,
+    /// Bit mask of file system properties (FSF_* constants)
+    pub properties: u32,
+}
+DeserializeStruct!(
+    FSINFO3resok,
+    obj_attributes,
+    rtmax,
+    rtpref,
+    rtmult,
+    wtmax,
+    wtpref,
+    wtmult,
+    dtpref,
+    maxfilesize,
+    time_delta,
+    properties
+);
+SerializeStruct!(
+    FSINFO3resok,
+    obj_attributes,
+    rtmax,
+    rtpref,
+    rtmult,
+    wtmax,
+    wtpref,
+    wtmult,
+    dtpref,
+    maxfilesize,
+    time_delta,
+    properties
+);
+
+/// Failed response for the FSINFO procedure as defined in RFC 1813 section 3.3.19
+#[derive(Debug, Default)]
+pub struct FSINFO3resfail {
+    /// Attributes of the file system object specified in fsroot
+    pub obj_attributes: post_op_attr,
+}
+DeserializeStruct!(FSINFO3resfail, obj_attributes);
+SerializeStruct!(FSINFO3resfail, obj_attributes);
+
+/// Arguments for the PATHCONF procedure (procedure 20) as defined in RFC 1813 section 3.3.20
+#[derive(Debug, Default)]
+pub struct PATHCONF3args {
+    /// File handle identifying a file object
+    pub object: nfs_fh3,
+}
+DeserializeStruct!(PATHCONF3args, object);
+SerializeStruct!(PATHCONF3args, object);
+
+/// Path configuration information returned by PATHCONF procedure as defined in RFC 1813 section 3.3.20
 #[derive(Debug, Default)]
 pub struct PATHCONF3resok {
-    /// File system attributes
+    /// The attributes of the object specified by arguments
     pub obj_attributes: post_op_attr,
     /// Maximum number of hard links to a file
     pub linkmax: u32,
@@ -192,3 +229,11 @@ SerializeStruct!(
     case_insensitive,
     case_preserving
 );
+
+#[derive(Debug, Default)]
+pub struct PATHCONF3resfail {
+    /// The attributes of the object specified by arguments
+    pub obj_attributes: post_op_attr,
+}
+DeserializeStruct!(PATHCONF3resfail, obj_attributes);
+SerializeStruct!(PATHCONF3resfail, obj_attributes);
