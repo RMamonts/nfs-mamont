@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -19,7 +19,10 @@ pub struct DemoFS {
     fs: RwLock<HashMap<nfs3::fileid3, FSEntry>>,
     /// File ID of the root directory
     rootdir: nfs3::fileid3,
+    /// Generation number of the file system
     generation: u64,
+    /// Set of free file IDs available for reuse
+    free_ids: RwLock<BTreeSet<nfs3::fileid3>>,
 }
 
 impl Default for DemoFS {
@@ -32,7 +35,33 @@ impl Default for DemoFS {
         map.insert(0, make_file("", 0, 0, &[]));
         map.insert(1, make_dir("/", 1, 1, vec![]));
         let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
-        DemoFS { fs: RwLock::new(map), rootdir: 1, generation: now as u64 }
+        DemoFS {
+            fs: RwLock::new(map),
+            rootdir: 1,
+            generation: now as u64,
+            free_ids: RwLock::new(BTreeSet::new()),
+        }
+    }
+}
+
+impl DemoFS {
+    /// Returns the next available file ID, reusing freed IDs if possible.
+    async fn next_id(&self) -> nfs3::fileid3 {
+        // Try to reuse a freed ID if available
+        let mut free_ids = self.free_ids.write().await;
+        if let Some(&id) = free_ids.iter().next() {
+            // Guaranteed: id exists in the set, so remove will succeed
+            free_ids.remove(&id);
+            id
+        } else {
+            // Otherwise, use the next available ID (current fs size)
+            self.fs.read().await.len() as nfs3::fileid3
+        }
+    }
+
+    /// Marks a file ID as free for reuse.
+    pub async fn free_id(&self, id: nfs3::fileid3) {
+        self.free_ids.write().await.insert(id);
     }
 }
 
@@ -116,7 +145,7 @@ impl vfs::NFSFileSystem for DemoFS {
         let newid: nfs3::fileid3;
         {
             let mut fs = self.fs.write().await;
-            newid = fs.len() as nfs3::fileid3;
+            newid = self.next_id().await;
             fs.insert(
                 newid,
                 make_file(std::str::from_utf8(filename).unwrap(), newid, dirid, "".as_bytes()),
@@ -349,7 +378,8 @@ impl vfs::NFSFileSystem for DemoFS {
             entry.name = Vec::new().into();
             entry.contents = FSContents::File(Arc::new(RwLock::new(Vec::new())));
         }
-
+        // Add id to free_ids for reuse
+        self.free_id(id_to_remove).await;
         Ok(())
     }
 
@@ -461,7 +491,7 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Create a new directory
-        let newid = fs.len() as nfs3::fileid3;
+        let newid = self.next_id().await;
         fs.insert(newid, make_dir(std::str::from_utf8(dirname).unwrap(), newid, dirid, Vec::new()));
 
         // Add the new directory to the parent
@@ -498,7 +528,7 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Create a new file but mark its type as a symbolic link
-        let newid = fs.len() as nfs3::fileid3;
+        let newid = self.next_id().await;
         let mut entry = make_file(std::str::from_utf8(linkname).unwrap(), newid, dirid, symlink);
 
         // Change type to symbolic link
@@ -578,7 +608,7 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Create a new entry for the hard link
-        let newid = fs.len() as nfs3::fileid3;
+        let newid = self.next_id().await;
 
         let new_entry = FSEntry {
             id: newid,
@@ -630,7 +660,7 @@ impl vfs::NFSFileSystem for DemoFS {
         }
 
         // Create a new entry based on the type
-        let newid = fs.len() as nfs3::fileid3;
+        let newid = self.next_id().await;
         let mut entry;
 
         match type_ {
