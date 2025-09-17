@@ -204,6 +204,14 @@ async fn process_socket(socket: TcpStream, context: Context) {
                         return io_other::<(), &str>("Command queue error");
                     }
                 }
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    if command.data.is_empty() {
+                        trace!("Connection closed before receiving any data");
+                    } else {
+                        error!("Connection closed during command transmission");
+                        return io_other("Early socket closing");
+                    }
+                }
                 Err(e) => {
                     error!("Message loop broken due to {:?}", e);
                     return Err(e);
