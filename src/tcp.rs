@@ -18,8 +18,8 @@ use std::time::Duration;
 use std::{io, net::IpAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, RwLock};
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, trace};
 
 use crate::protocol::nfs::portmap::PortmapTable;
@@ -207,11 +207,13 @@ async fn process_socket(socket: TcpStream, context: Context) {
 
     //task, that gets result from processor task and writes it into socket
     spawn_writer_task(writehalf, result_receiver);
-
 }
 
-fn spawn_reader_task(mut readhalf: ReadHalf<TcpStream>, message_handler: SocketMessageHandler, context: Context) {
-
+fn spawn_reader_task(
+    mut readhalf: ReadHalf<TcpStream>,
+    message_handler: SocketMessageHandler,
+    context: Context,
+) {
     tokio::spawn(async move {
         loop {
             let mut command = RpcCommand {
@@ -244,7 +246,10 @@ fn spawn_reader_task(mut readhalf: ReadHalf<TcpStream>, message_handler: SocketM
     });
 }
 
-fn spawn_writer_task(mut writehalf: WriteHalf<TcpStream>, mut result_receiver: UnboundedReceiver<CommandResult>) {
+fn spawn_writer_task(
+    mut writehalf: WriteHalf<TcpStream>,
+    mut result_receiver: UnboundedReceiver<CommandResult>,
+) {
     tokio::spawn(async move {
         while let Some(result) = result_receiver.recv().await {
             match result {
@@ -269,7 +274,6 @@ fn spawn_writer_task(mut writehalf: WriteHalf<TcpStream>, mut result_receiver: U
         Ok(())
     });
 }
-
 
 /// Interface for NFS TCP servers that defines common operations
 /// for managing and interacting with NFS clients over TCP connections.
