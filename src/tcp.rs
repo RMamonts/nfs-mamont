@@ -19,16 +19,20 @@ use std::{io, net::IpAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, RwLock};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error, info, trace};
 
 use crate::protocol::nfs::portmap::PortmapTable;
-use crate::protocol::rpc::Context;
+use crate::protocol::rpc::{Context, SocketMessageHandler};
 use crate::protocol::{rpc, xdr};
 use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
+const MAX_RM_FRAGMENT_SIZE: usize = 2147483647;
+const LAST_FG_MASK: u32 = 2147483648;
+const COMMAND_INIT_SIZE: usize = 8192;
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -78,23 +82,29 @@ pub struct RpcCommand {
     pub context: Context,
 }
 
+fn parse_header(arg: u32) -> (bool, usize) {
+    (arg & (1 << 31) > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
+}
+
 impl RpcCommand {
     pub async fn read_command_from_socket(
         &mut self,
         socket: &mut ReadHalf<TcpStream>,
     ) -> io::Result<()> {
-        let mut is_last = false;
         let mut header_buf = [0_u8; 4];
-        while !is_last {
+        let mut start_offset = 0;
+        loop {
             socket.read_exact(&mut header_buf).await?;
             let fragment_header = u32::from_be_bytes(header_buf);
-            is_last = (fragment_header & (1 << 31)) > 0;
-            let length = (fragment_header & ((1 << 31) - 1)) as usize;
-            trace!("Reading fragment length:{}, last:{}", length, is_last);
-            let start_offset = self.data.len();
+            let (is_last, length) = parse_header(fragment_header);
+            debug!("Reading fragment length:{}, last:{}", length, is_last);
             self.data.resize(self.data.len() + length, 0);
             socket.read_exact(&mut self.data[start_offset..]).await?;
-            trace!("Finishing Reading fragment length:{}, last:{}", length, is_last);
+            debug!("Finishing Reading fragment length:{}, last:{}", length, is_last);
+            if is_last {
+                break;
+            }
+            start_offset += length;
         }
         Ok(())
     }
@@ -144,13 +154,12 @@ impl ResponseBuffer {
         write_half: &mut WriteHalf<TcpStream>,
     ) -> io::Result<()> {
         // Maximum fragment size is 2^31 - 1 bytes
-        const MAX_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
         let mut offset = 0;
         while offset < self.buffer.len() {
             // Calculate the size of this fragment
             let remaining = self.buffer.len() - offset;
-            let fragment_size = std::cmp::min(remaining, MAX_FRAGMENT_SIZE);
+            let fragment_size = std::cmp::min(remaining, MAX_RM_FRAGMENT_SIZE);
 
             // Determine if this is the last fragment
             let is_last = offset + fragment_size >= self.buffer.len();
@@ -158,7 +167,7 @@ impl ResponseBuffer {
             // Create the fragment header
             // The highest bit indicates if this is the last fragment
             let fragment_header =
-                if is_last { fragment_size as u32 + (1 << 31) } else { fragment_size as u32 };
+                if is_last { fragment_size as u32 + LAST_FG_MASK } else { fragment_size as u32 };
 
             let header_buf = u32::to_be_bytes(fragment_header);
             write_half.write_all(&header_buf).await?;
@@ -189,13 +198,26 @@ pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
-    let (message_handler, mut msgrecvchan) = rpc::SocketMessageHandler::new();
+    let (message_handler, result_receiver) = rpc::SocketMessageHandler::new();
 
-    let (mut readhalf, mut writehalf) = tokio::io::split(socket);
+    let (readhalf, writehalf) = tokio::io::split(socket);
+
+    // task which reads commands from socket and send them to task, that process them
+    spawn_reader_task(readhalf, message_handler, context);
+
+    //task, that gets result from processor task and writes it into socket
+    spawn_writer_task(writehalf, result_receiver);
+
+}
+
+fn spawn_reader_task(mut readhalf: ReadHalf<TcpStream>, message_handler: SocketMessageHandler, context: Context) {
 
     tokio::spawn(async move {
         loop {
-            let mut command = RpcCommand { data: Vec::new(), context: context.clone() };
+            let mut command = RpcCommand {
+                data: Vec::with_capacity(COMMAND_INIT_SIZE),
+                context: context.clone(),
+            };
             match command.read_command_from_socket(&mut readhalf).await {
                 Ok(()) => {
                     //here some processing - actually sending to processing rpc task
@@ -220,9 +242,11 @@ async fn process_socket(socket: TcpStream, context: Context) {
             }
         }
     });
+}
 
+fn spawn_writer_task(mut writehalf: WriteHalf<TcpStream>, mut result_receiver: UnboundedReceiver<CommandResult>) {
     tokio::spawn(async move {
-        while let Some(result) = msgrecvchan.recv().await {
+        while let Some(result) = result_receiver.recv().await {
             match result {
                 Ok(Some(mut response_buffer)) if response_buffer.has_content() => {
                     if let Err(e) = response_buffer.write_fragment(&mut writehalf).await {
@@ -245,6 +269,7 @@ async fn process_socket(socket: TcpStream, context: Context) {
         Ok(())
     });
 }
+
 
 /// Interface for NFS TCP servers that defines common operations
 /// for managing and interacting with NFS clients over TCP connections.
