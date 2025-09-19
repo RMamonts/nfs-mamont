@@ -8,8 +8,7 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use async_trait::async_trait;
-use dashmap::DashMap;
+
 use std::collections::HashSet;
 use std::io::{Cursor, Read, Write};
 use std::net::SocketAddr;
@@ -17,9 +16,11 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
+
+use async_trait::async_trait;
+use dashmap::DashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, trace, warn};
 
@@ -27,15 +28,18 @@ use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::rpc::Context;
 use crate::protocol::xdr::{mount, portmap};
 use crate::protocol::{nfs, rpc, xdr};
+use crate::read_task::ReadTask;
 use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
+use crate::vfs_task::VfsTask;
+use crate::write_task::WriteTask;
 use crate::xdr::{deserialize, nfs3, Serialize};
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
-const MAX_RM_FRAGMENT_SIZE: usize = 2147483647;
-const LAST_FG_MASK: u32 = 2147483648;
-const COMMAND_INIT_SIZE: usize = 8192;
+const MAX_RM_FRAGMENT_SIZE: usize = (1 << 31) - 1;
+const LAST_FG_MASK: u32 = 1 << 31;
+pub(crate) const COMMAND_INIT_SIZE: usize = 8192;
 /// RPC program number for NFS Access Control Lists
 const NFS_ACL_PROGRAM: u32 = 100227;
 /// RPC program number for NFS ID Mapping
@@ -46,7 +50,7 @@ const NFS_LOCALIO_PROGRAM: u32 = 400122;
 /// RPC program number for NFS Metadata
 const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
-const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
+pub const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -91,7 +95,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 #[derive(Debug)]
 pub struct RpcCommand {
     /// RPC message data
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 fn parse_header(arg: u32) -> (bool, usize) {
@@ -217,122 +221,13 @@ async fn process_socket(socket: TcpStream, context: Context) {
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
     // task which reads commands from socket and send them to task, that process them
-    spawn_reader_task(readhalf, command_sender);
+    ReadTask::spawn(readhalf, command_sender);
 
     //task, that gets result from processor task and writes it into socket
-    spawn_writer_task(writehalf, result_receiver);
+    WriteTask::spawn(writehalf, result_receiver);
 
     //task, that processes command
-    spawn_processor_task(command_receiver, result_sender, context);
-}
-
-fn spawn_reader_task(
-    mut readhalf: ReadHalf<TcpStream>,
-    command_sender: UnboundedSender<RpcCommand>,
-) {
-    tokio::spawn(async move {
-        loop {
-            let mut command = RpcCommand { data: Vec::with_capacity(COMMAND_INIT_SIZE) };
-            match command.read_command_from_socket(&mut readhalf).await {
-                Ok(()) => {
-                    //here some processing - actually sending to processing rpc task
-                    match command_sender.send(command) {
-                        Ok(_) => continue,
-                        Err(_) => {
-                            error!("Failed to submit command to queue");
-                            return io_other("Command queue error");
-                        }
-                    }
-                }
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    return if command.data.is_empty() {
-                        trace!("Connection closed before receiving any data");
-                        Ok(())
-                    } else {
-                        error!("Connection closed during command transmission");
-                        io_other("Early socket closing")
-                    }
-                }
-                Err(e) => {
-                    error!("Message loop broken due to {:?}", e);
-                    return Err(e);
-                }
-            }
-        }
-    });
-}
-
-fn spawn_writer_task(
-    mut writehalf: WriteHalf<TcpStream>,
-    mut result_receiver: UnboundedReceiver<CommandResult>,
-) {
-    //task to write to socket
-    tokio::spawn(async move {
-        while let Some(result) = result_receiver.recv().await {
-            match result {
-                Ok(Some(mut response_buffer)) if response_buffer.has_content() => {
-                    if let Err(e) = response_buffer.write_fragment(&mut writehalf).await {
-                        error!("Write error {:?}", e);
-                    }
-                }
-                Ok(None) => {
-                    // No response needed, so nothing to send
-                }
-                Ok(Some(_)) => {
-                    // Buffer exists but contains no data to send
-                }
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
-                }
-            }
-        }
-        debug!("Command result handler finished");
-        Ok(())
-    });
-}
-
-fn spawn_processor_task(
-    mut command_receiver: UnboundedReceiver<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>,
-    mut context: Context,
-) {
-    tokio::spawn(async move {
-        // Create reusable buffer for responses
-        let mut output_buffer = ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY);
-
-        while let Some(command) = command_receiver.recv().await {
-            trace!("Processing command from queue");
-
-            // Clear buffer for reuse
-            output_buffer.clear();
-            // Call async processor
-            let result =
-                match process_rpc_command(command.data, &mut output_buffer, &mut context).await {
-                    Ok(true) => {
-                        // Processor indicated response needs to be sent
-                        output_buffer.mark_has_content();
-                        let buffer_to_send = std::mem::replace(
-                            &mut output_buffer,
-                            ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
-                        );
-                        Ok(Some(buffer_to_send))
-                    }
-                    Ok(false) => {
-                        // No response needed (e.g. retransmission)
-                        Ok(None)
-                    }
-                    Err(e) => Err(e),
-                };
-
-            // Send result
-            if let Err(e) = result_sender.send(result) {
-                error!("Failed to send command processing result: {:?}", e);
-                break;
-            }
-        }
-        debug!("Command queue handler finished");
-    });
+    VfsTask::spawn(command_receiver, result_sender, context);
 }
 
 /// Interface for NFS TCP servers that defines common operations
