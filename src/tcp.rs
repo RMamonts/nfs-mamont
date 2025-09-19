@@ -8,25 +8,49 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use async_trait::async_trait;
-use dashmap::DashMap;
+
 use std::collections::HashSet;
+use std::io::{Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+
+use async_trait::async_trait;
+use dashmap::DashMap;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::protocol::nfs::portmap::PortmapTable;
-use crate::protocol::{rpc, xdr};
+use crate::protocol::rpc::Context;
+use crate::protocol::xdr::{mount, portmap};
+use crate::protocol::{nfs, rpc, xdr};
+use crate::read_task::ReadTask;
+use crate::utils::error::io_other;
 use crate::vfs::NFSFileSystem;
+use crate::vfs_task::VfsTask;
+use crate::write_task::WriteTask;
+use crate::xdr::{deserialize, nfs3, Serialize};
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
+const MAX_RM_FRAGMENT_SIZE: usize = (1 << 31) - 1;
+const LAST_FG_MASK: u32 = 1 << 31;
+pub(crate) const COMMAND_INIT_SIZE: usize = 8192;
+/// RPC program number for NFS Access Control Lists
+const NFS_ACL_PROGRAM: u32 = 100227;
+/// RPC program number for NFS ID Mapping
+const NFS_ID_MAP_PROGRAM: u32 = 100270;
+/// RPC program number for LOCALIO auxiliary RPC protocol
+/// More about <https://docs.kernel.org/filesystems/nfs/localio.html#rpc.>
+const NFS_LOCALIO_PROGRAM: u32 = 400122;
+/// RPC program number for NFS Metadata
+const NFS_METADATA_PROGRAM: u32 = 200024;
+/// Initial size of RPC response buffer
+pub const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -40,7 +64,7 @@ pub struct NFSExportTableEntry {
 }
 
 /// Hash map that stores all exported file systems for an NFS server.
-pub type NFSExportTable = DashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
+pub type NFSExportTable = DashMap<nfs3::fs_id, NFSExportTableEntry>;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
@@ -67,6 +91,116 @@ pub fn generate_host_ip(hostnum: u16) -> String {
     format!("127.88.{}.{}", ((hostnum >> 8) & 0xFF) as u8, (hostnum & 0xFF) as u8)
 }
 
+/// RPC command type with context
+#[derive(Debug)]
+pub struct RpcCommand {
+    /// RPC message data
+    pub data: Vec<u8>,
+}
+
+fn parse_header(arg: u32) -> (bool, usize) {
+    (arg & (1 << 31) > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
+}
+
+impl RpcCommand {
+    pub async fn read_command_from_socket(
+        &mut self,
+        socket: &mut ReadHalf<TcpStream>,
+    ) -> io::Result<()> {
+        let mut header_buf = [0_u8; 4];
+        let mut start_offset = 0;
+        loop {
+            socket.read_exact(&mut header_buf).await?;
+            let fragment_header = u32::from_be_bytes(header_buf);
+            let (is_last, length) = parse_header(fragment_header);
+            debug!("Reading fragment length:{}, last:{}", length, is_last);
+            self.data.resize(self.data.len() + length, 0);
+            socket.read_exact(&mut self.data[start_offset..]).await?;
+            debug!("Finishing Reading fragment length:{}, last:{}", length, is_last);
+            if is_last {
+                break;
+            }
+            start_offset += length;
+        }
+        Ok(())
+    }
+}
+
+/// Represents a response buffer that minimizes data copying
+pub struct ResponseBuffer {
+    /// Internal buffer for writing data
+    buffer: Vec<u8>,
+    /// Indicates that the buffer contains data to send
+    has_content: bool,
+}
+
+impl ResponseBuffer {
+    /// Creates a new response buffer with pre-allocated capacity
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { buffer: Vec::with_capacity(capacity), has_content: false }
+    }
+
+    /// Gets the internal buffer for writing
+    pub fn get_mut_buffer(&mut self) -> &mut Vec<u8> {
+        &mut self.buffer
+    }
+
+    /// Marks the buffer as containing data to send
+    pub fn mark_has_content(&mut self) {
+        self.has_content = true;
+    }
+
+    /// Checks if the buffer contains data to send
+    pub fn has_content(&self) -> bool {
+        self.has_content
+    }
+
+    /// Takes the internal buffer, consuming the structure
+    pub fn into_inner(self) -> Vec<u8> {
+        self.buffer
+    }
+
+    /// Clears the buffer for reuse
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+        self.has_content = false;
+    }
+    pub async fn write_fragment(
+        &mut self,
+        write_half: &mut WriteHalf<TcpStream>,
+    ) -> io::Result<()> {
+        // Maximum fragment size is 2^31 - 1 bytes
+
+        let mut offset = 0;
+        while offset < self.buffer.len() {
+            // Calculate the size of this fragment
+            let remaining = self.buffer.len() - offset;
+            let fragment_size = std::cmp::min(remaining, MAX_RM_FRAGMENT_SIZE);
+
+            // Determine if this is the last fragment
+            let is_last = offset + fragment_size >= self.buffer.len();
+
+            // Create the fragment header
+            // The highest bit indicates if this is the last fragment
+            let fragment_header =
+                if is_last { fragment_size as u32 + LAST_FG_MASK } else { fragment_size as u32 };
+
+            let header_buf = u32::to_be_bytes(fragment_header);
+            write_half.write_all(&header_buf).await?;
+
+            trace!("Writing fragment length:{}, last:{}", fragment_size, is_last);
+            write_half.write_all(&self.buffer[offset..offset + fragment_size]).await?;
+
+            offset += fragment_size;
+        }
+
+        Ok(())
+    }
+}
+
+/// Command processing result
+pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
+
 /// Processes an established TCP socket connection from an NFS client
 ///
 /// This function:
@@ -79,54 +213,21 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 ///
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
-async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
-    let (mut message_handler, mut socksend, mut msgrecvchan) =
-        rpc::SocketMessageHandler::new(&context);
+async fn process_socket(socket: TcpStream, context: Context) {
+    let (readhalf, writehalf) = tokio::io::split(socket);
+    //channel for result
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+    //channel for request
+    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = message_handler.read().await {
-                debug!("Message loop broken due to {:?}", e);
-                break;
-            }
-        }
-    });
+    // task which reads commands from socket and send them to task, that process them
+    ReadTask::spawn(readhalf, command_sender);
 
-    let (mut readhalf, mut writehalf) = tokio::io::split(socket);
+    //task, that gets result from processor task and writes it into socket
+    WriteTask::spawn(writehalf, result_receiver);
 
-    tokio::spawn(async move {
-        let mut buf = [0; 128000];
-        loop {
-            match readhalf.read(&mut buf).await {
-                Ok(0) => return Ok(()),
-                Ok(n) => {
-                    let _ = socksend.write_all(&buf[..n]).await;
-                }
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
-                }
-            }
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(reply) = msgrecvchan.recv().await {
-            match reply {
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
-                }
-                Ok(msg) => {
-                    if let Err(e) = rpc::write_fragment(&mut writehalf, &msg).await {
-                        error!("Write error {:?}", e);
-                    }
-                }
-            }
-        }
-        debug!("Channel closed, sending results to socket terminated");
-        Ok(())
-    });
+    //task, that processes command
+    VfsTask::spawn(command_receiver, result_sender, context);
 }
 
 /// Interface for NFS TCP servers that defines common operations
@@ -402,4 +503,130 @@ impl NFSTcp for NFSTcpListener {
             process_socket(socket, context).await;
         }
     }
+}
+
+/// Processes a single RPC message
+///
+/// This function forms the core of the RPC message dispatcher. It:
+/// 1. Deserializes the incoming RPC message using XDR format
+/// 2. Validates the RPC version number (must be version 2)
+/// 3. Extracts authentication information if provided
+/// 4. Checks for retransmissions to ensure idempotent operation
+/// 5. Routes the call to the appropriate protocol handler (NFS, MOUNT, PORTMAP)
+/// 6. Tracks transaction completion state
+///
+/// This implementation follows RFC 5531 (previously RFC 1057) section on Authentication and
+/// Record Marking Standard for proper RPC message handling.
+///
+/// Returns true if a response was sent, false otherwise (for retransmissions).
+pub async fn handle_rpc(
+    input: &mut impl Read,
+    output: &mut impl Write,
+    context: &mut Context,
+) -> io::Result<bool> {
+    let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
+    let xid = recv.xid;
+    if let xdr::rpc::rpc_body::CALL(call) = recv.body {
+        if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
+            let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
+            context.auth = Some(auth);
+        }
+        if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
+            warn!("Invalid RPC version {} != 2", call.rpcvers);
+            xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
+            return Ok(true);
+        }
+
+        if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+            debug!(
+                "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
+                xid, context.client_addr, call
+            );
+            return Ok(false);
+        }
+
+        let result = match call.prog {
+            nfs3::PROGRAM => match call.vers {
+                nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, context).await,
+                nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, context).await,
+                v => {
+                    warn!("Unsupported NFS version: {}", v);
+                    xdr::rpc::prog_version_range_mismatch_reply_message(
+                        xid,
+                        nfs3::VERSION,
+                        nfs::v4::VERSION,
+                    )
+                    .serialize(output)?;
+                    Ok(())
+                }
+            },
+            portmap::PROGRAM => {
+                nfs::portmap::handle_portmap(xid, &call, input, output, context).await
+            }
+            mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, context).await,
+            prog if prog == NFS_ACL_PROGRAM
+                || prog == NFS_ID_MAP_PROGRAM
+                || prog == NFS_METADATA_PROGRAM =>
+            {
+                trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
+            NFS_LOCALIO_PROGRAM => {
+                trace!("Ignoring NFS_LOCALIO packet");
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
+            _ => {
+                warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
+                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                Ok(())
+            }
+        }
+        .map(|_| true);
+
+        context.transaction_tracker.mark_processed(xid, &context.client_addr);
+
+        result
+    } else {
+        error!("Unexpectedly received a Reply instead of a Call");
+        io_other("Bad RPC Call format")
+    }
+}
+
+/// Standard async RPC processing function that can be used with `CommandQueue`
+///
+/// Processes an RPC command by:
+/// 1. Deserializing the RPC message
+/// 2. Processing the RPC call according to standard protocol
+/// 3. Writing response to output buffer
+///
+/// # Arguments
+///
+/// * `data` - Buffer containing RPC message
+/// * `output` - Buffer for writing response
+/// * `context` - RPC processing context
+///
+/// # Returns
+///
+/// `Ok(true)` if response needs to be sent
+/// `Ok(false)` if no response needed (e.g. retransmission)
+/// `Err` if processing error occurred
+pub async fn process_rpc_command(
+    data: Vec<u8>,
+    output: &mut ResponseBuffer,
+    context: &mut Context,
+) -> io::Result<bool> {
+    // Create cursor for reading data
+    let mut input_cursor = Cursor::new(data);
+
+    // Get internal buffer for writing
+    let output_buffer = output.get_mut_buffer();
+    let mut output_cursor = Cursor::new(output_buffer);
+
+    // Call RPC handler
+    let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
+
+    // If response was generated, return true
+    Ok(result)
 }

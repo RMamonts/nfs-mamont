@@ -50,4 +50,7 @@ pub mod vfs;
 
 pub use protocol::xdr;
 
+mod read_task;
 mod utils;
+mod vfs_task;
+mod write_task;
