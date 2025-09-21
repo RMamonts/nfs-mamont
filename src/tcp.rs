@@ -8,14 +8,15 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use async_trait::async_trait;
-use dashmap::DashMap;
+
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
+
+use dashmap::DashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
@@ -127,60 +128,6 @@ async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
         debug!("Channel closed, sending results to socket terminated");
         Ok(())
     });
-}
-
-/// Interface for NFS TCP servers that defines common operations
-/// for managing and interacting with NFS clients over TCP connections.
-///
-/// This trait provides methods for:
-/// - Getting information about the listening socket
-/// - Setting up mount event notifications
-/// - Starting the server to process client connections
-#[async_trait]
-pub trait NFSTcp: Send + Sync {
-    /// Returns the actual port number on which the server is listening
-    ///
-    /// This is especially useful when binding to port 0, which allows the OS
-    /// to assign any available port. After binding, this method can be used
-    /// to determine which port was actually assigned.
-    fn get_listen_port(&self) -> u16;
-
-    /// Returns the IP address on which the server is listening
-    ///
-    /// This is useful when the server binds to a wildcard address (0.0.0.0 or ::)
-    /// or when using the "auto" IP address feature, to determine the actual
-    /// network interface being used.
-    fn get_listen_ip(&self) -> IpAddr;
-
-    /// Registers a channel to receive notifications about mount and unmount events
-    ///
-    /// # Arguments
-    ///
-    /// * `signal` - MPSC sender that will receive boolean values:
-    ///   * `true` when a client mounts the file system
-    ///   * `false` when a client unmounts the file system
-    ///
-    /// # Returns
-    /// `io::Result<()>` indicating:
-    /// - `Ok(())` on successful operation
-    /// - `Err` if the export ID is not found in the export table
-    async fn set_mount_listener(
-        &mut self,
-        fs_id: xdr::nfs3::fs_id,
-        signal: mpsc::Sender<bool>,
-    ) -> io::Result<()>;
-
-    /// Starts the NFS server and processes client connections
-    ///
-    /// This method:
-    /// - Accepts incoming TCP connections from NFS clients
-    /// - Creates a new RPC context for each connection
-    /// - Spawns an asynchronous task to handle each connection
-    /// - Continues accepting connections indefinitely
-    ///
-    /// This method runs in an infinite loop and only returns if there's an error
-    /// with the underlying TCP listener.
-    async fn handle_forever(&self) -> io::Result<()>;
 }
 
 impl NFSTcpListener {
@@ -328,16 +275,13 @@ impl NFSTcpListener {
         }
         Ok(())
     }
-}
 
-#[async_trait]
-impl NFSTcp for NFSTcpListener {
     /// Returns the actual port number on which the server is listening
     ///
     /// This is especially useful when binding to port 0, which allows the OS
     /// to assign any available port. After binding, this method can be used
     /// to determine which port was actually assigned.
-    fn get_listen_port(&self) -> u16 {
+    pub fn get_listen_port(&self) -> u16 {
         let addr = self.listener.local_addr().unwrap();
         addr.port()
     }
@@ -347,7 +291,7 @@ impl NFSTcp for NFSTcpListener {
     /// This is useful when the server binds to a wildcard address (0.0.0.0 or ::)
     /// or when using the "auto" IP address feature, to determine the actual
     /// network interface being used.
-    fn get_listen_ip(&self) -> IpAddr {
+    pub fn get_listen_ip(&self) -> IpAddr {
         let addr = self.listener.local_addr().unwrap();
         addr.ip()
     }
@@ -364,7 +308,7 @@ impl NFSTcp for NFSTcpListener {
     /// `io::Result<()>` indicating:
     /// - `Ok(())` on successful operation
     /// - `Err` if the export ID is not found in the export table
-    async fn set_mount_listener(
+    pub async fn set_mount_listener(
         &mut self,
         fs_id: xdr::nfs3::fs_id,
         signal: mpsc::Sender<bool>,
@@ -384,7 +328,7 @@ impl NFSTcp for NFSTcpListener {
     ///
     /// This method runs in an infinite loop and only returns if there's an error
     /// with the underlying TCP listener.
-    async fn handle_forever(&self) -> io::Result<()> {
+    pub async fn handle_forever(&self) -> io::Result<()> {
         loop {
             let (socket, _) = self.listener.accept().await?;
             let context = rpc::Context {
