@@ -13,7 +13,7 @@ pub const COMMAND_INIT_SIZE: usize = 8192;
 
 /// An asynchronous task responsible for reading RPC commands from a network connection.
 ///
-/// The `ReadTask` handles the reading side of a client connection, continuously reading
+/// The [`ReadTask`] handles the reading side of a client connection, continuously reading
 /// data from the TCP stream, parsing it into [`RpcCommand`] objects, and forwarding them
 /// to a command processing queue. It serves as the entry point for incoming client requests.
 pub struct ReadTask;
@@ -49,7 +49,7 @@ impl ReadTask {
                 let mut command = RpcCommand { data: Vec::with_capacity(COMMAND_INIT_SIZE) };
                 match command.read_command_from_socket(&mut readhalf).await {
                     Ok(()) => {
-                        //here some processing - actually sending to processing rpc task
+                        // here some processing - actually sending to processing rpc task
                         match command_sender.send(command) {
                             Ok(_) => continue,
                             Err(_) => {

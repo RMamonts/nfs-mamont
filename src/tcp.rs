@@ -92,9 +92,9 @@ pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
     let (readhalf, writehalf) = tokio::io::split(socket);
-    //channel for result
+    // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
-    //channel for request
+    // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
     ReadTask::spawn(readhalf, command_sender);

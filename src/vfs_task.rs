@@ -73,9 +73,14 @@ impl VfsTask {
 
                 // Clear buffer for reuse
                 output_buffer.clear();
+
+                let mut input_cursor = Cursor::new(command.data);
+                let mut output_cursor = Cursor::new(output_buffer.get_mut_buffer());
+
                 // Call async processor
                 let result =
-                    match process_rpc_command(command.data, &mut output_buffer, &mut context).await
+                    match Self::handle_rpc(&mut input_cursor, &mut output_cursor, &mut context)
+                        .await
                     {
                         Ok(true) => {
                             // Processor indicated response needs to be sent
@@ -102,130 +107,95 @@ impl VfsTask {
             debug!("Command queue handler finished");
         });
     }
-}
 
-/// Processes a single RPC message
-///
-/// This function forms the core of the RPC message dispatcher. It:
-/// 1. Deserializes the incoming RPC message using XDR format
-/// 2. Validates the RPC version number (must be version 2)
-/// 3. Extracts authentication information if provided
-/// 4. Checks for retransmissions to ensure idempotent operation
-/// 5. Routes the call to the appropriate protocol handler (NFS, MOUNT, PORTMAP)
-/// 6. Tracks transaction completion state
-///
-/// This implementation follows RFC 5531 (previously RFC 1057) section on Authentication and
-/// Record Marking Standard for proper RPC message handling.
-///
-/// Returns true if a response was sent, false otherwise (for retransmissions).
-pub async fn handle_rpc(
-    input: &mut impl Read,
-    output: &mut impl Write,
-    context: &mut Context,
-) -> io::Result<bool> {
-    let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
-    let xid = recv.xid;
-    if let xdr::rpc::rpc_body::CALL(call) = recv.body {
-        if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
-            let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
-            context.auth = Some(auth);
-        }
-        if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
-            warn!("Invalid RPC version {} != 2", call.rpcvers);
-            xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
-            return Ok(true);
-        }
+    /// Processes a single RPC message
+    ///
+    /// This function forms the core of the RPC message dispatcher. It:
+    /// 1. Deserializes the incoming RPC message using XDR format
+    /// 2. Validates the RPC version number (must be version 2)
+    /// 3. Extracts authentication information if provided
+    /// 4. Checks for retransmissions to ensure idempotent operation
+    /// 5. Routes the call to the appropriate protocol handler (NFS, MOUNT, PORTMAP)
+    /// 6. Tracks transaction completion state
+    ///
+    /// This implementation follows RFC 5531 (previously RFC 1057) section on Authentication and
+    /// Record Marking Standard for proper RPC message handling.
+    ///
+    /// Returns true if a response was sent, false otherwise (for retransmissions).
+    pub async fn handle_rpc(
+        input: &mut impl Read,
+        output: &mut impl Write,
+        context: &mut Context,
+    ) -> io::Result<bool> {
+        let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
+        let xid = recv.xid;
+        if let xdr::rpc::rpc_body::CALL(call) = recv.body {
+            if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
+                let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
+                context.auth = Some(auth);
+            }
+            if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
+                warn!("Invalid RPC version {} != 2", call.rpcvers);
+                xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
+                return Ok(true);
+            }
 
-        if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
-            debug!(
-                "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-                xid, context.client_addr, call
-            );
-            return Ok(false);
-        }
+            if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+                debug!(
+                    "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
+                    xid, context.client_addr, call
+                );
+                return Ok(false);
+            }
 
-        let result = match call.prog {
-            nfs3::PROGRAM => match call.vers {
-                nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, context).await,
-                nfs::v4::VERSION => nfs::v4::handle_nfs(xid, call, input, output, context).await,
-                v => {
-                    warn!("Unsupported NFS version: {}", v);
-                    xdr::rpc::prog_version_range_mismatch_reply_message(
-                        xid,
-                        nfs3::VERSION,
-                        nfs::v4::VERSION,
-                    )
-                    .serialize(output)?;
+            let result = match call.prog {
+                nfs3::PROGRAM => match call.vers {
+                    nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, context).await,
+                    nfs::v4::VERSION => {
+                        nfs::v4::handle_nfs(xid, call, input, output, context).await
+                    }
+                    v => {
+                        warn!("Unsupported NFS version: {}", v);
+                        xdr::rpc::prog_version_range_mismatch_reply_message(
+                            xid,
+                            nfs3::VERSION,
+                            nfs::v4::VERSION,
+                        )
+                        .serialize(output)?;
+                        Ok(())
+                    }
+                },
+                portmap::PROGRAM => {
+                    nfs::portmap::handle_portmap(xid, &call, input, output, context).await
+                }
+                mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, context).await,
+                prog if prog == NFS_ACL_PROGRAM
+                    || prog == NFS_ID_MAP_PROGRAM
+                    || prog == NFS_METADATA_PROGRAM =>
+                {
+                    trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
                     Ok(())
                 }
-            },
-            portmap::PROGRAM => {
-                nfs::portmap::handle_portmap(xid, &call, input, output, context).await
+                NFS_LOCALIO_PROGRAM => {
+                    trace!("Ignoring NFS_LOCALIO packet");
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                    Ok(())
+                }
+                _ => {
+                    warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
+                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
+                    Ok(())
+                }
             }
-            mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, context).await,
-            prog if prog == NFS_ACL_PROGRAM
-                || prog == NFS_ID_MAP_PROGRAM
-                || prog == NFS_METADATA_PROGRAM =>
-            {
-                trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
-            }
-            NFS_LOCALIO_PROGRAM => {
-                trace!("Ignoring NFS_LOCALIO packet");
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
-            }
-            _ => {
-                warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
-                xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                Ok(())
-            }
+            .map(|_| true);
+
+            context.transaction_tracker.mark_processed(xid, &context.client_addr);
+
+            result
+        } else {
+            error!("Unexpectedly received a Reply instead of a Call");
+            io_other("Bad RPC Call format")
         }
-        .map(|_| true);
-
-        context.transaction_tracker.mark_processed(xid, &context.client_addr);
-
-        result
-    } else {
-        error!("Unexpectedly received a Reply instead of a Call");
-        io_other("Bad RPC Call format")
     }
-}
-
-/// Standard async RPC processing function that can be used with `CommandQueue`
-///
-/// Processes an RPC command by:
-/// 1. Deserializing the RPC message
-/// 2. Processing the RPC call according to standard protocol
-/// 3. Writing response to output buffer
-///
-/// # Arguments
-///
-/// * `data` - Buffer containing RPC message
-/// * `output` - Buffer for writing response
-/// * `context` - RPC processing context
-///
-/// # Returns
-///
-/// `Ok(true)` if response needs to be sent
-/// `Ok(false)` if no response needed (e.g. retransmission)
-/// `Err` if processing error occurred
-pub async fn process_rpc_command(
-    data: Vec<u8>,
-    output: &mut ResponseBuffer,
-    context: &mut Context,
-) -> io::Result<bool> {
-    // Create cursor for reading data
-    let mut input_cursor = Cursor::new(data);
-
-    // Get internal buffer for writing
-    let output_buffer = output.get_mut_buffer();
-    let mut output_cursor = Cursor::new(output_buffer);
-
-    // Call RPC handler
-    let result = handle_rpc(&mut input_cursor, &mut output_cursor, context).await?;
-
-    // If response was generated, return true
-    Ok(result)
 }
