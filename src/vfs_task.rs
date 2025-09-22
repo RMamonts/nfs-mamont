@@ -31,81 +31,88 @@ const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
 /// file metadata queries, and other VFS-related functionality in a non-blocking manner.
 /// It usually communicates with other components through channels to receive requests
 /// and send responses.
-pub struct VfsTask;
+pub struct VfsTask {
+    /// Channel receiver for incoming RPC commands to process
+    command_receiver: UnboundedReceiver<RpcCommand>,
+    /// Channel sender for sending command processing results back to requester
+    result_sender: UnboundedSender<CommandResult>,
+    /// Shared context containing VFS state and configuration
+    context: Context,
+}
 
 impl VfsTask {
-    /// Spawns an asynchronous task that processes RPC commands from a queue.
-    ///
-    /// This task continuously listens for [`RpcCommand`] messages from an unbounded channel,
-    /// processes them asynchronously, and sends the results back through another channel.
-    /// It efficiently reuses response buffers to minimize memory allocations.
-    ///
-    /// # Parameters
-    /// - `command_receiver`: An [`UnboundedReceiver`] that receives [`RpcCommand`] messages
-    ///   to be processed. The task will process commands in the order they are received.
-    /// - `result_sender`: An [`UnboundedSender`] used to send [`CommandResult`] messages back
-    ///   to the result handler (typically a [`WriteTask`]).
-    /// - `context`: A [`Context`] instance containing shared state, configuration, or resources
-    ///   needed for command processing. This is passed mutably to each command processor.
-    ///
-    /// # Behavior
-    /// - **Command Processing**: Each command is processed asynchronously by [`process_rpc_command`]
-    /// - **Buffer Reuse**: A reusable [`ResponseBuffer`] is maintained to minimize allocations
-    /// - **Result Routing**: Results are sent back through the result channel for writing
-    /// - **Error Handling**: Processing errors are propagated as [`Err`] results
-    /// - **Graceful Shutdown**: Task terminates when the command channel is closed
-    ///
-    /// # Response Handling
-    /// - **`Ok(true)`**: Processor indicates response should be sent (marks buffer as having content)
-    /// - **`Ok(false)`**: No response needed (e.g., retransmissions, acknowledgments)
-    /// - **`Err(e)`**: Processing error occurred, propagated to result handler
-    pub fn spawn(
-        mut command_receiver: UnboundedReceiver<RpcCommand>,
+    /// Creates new instance of [`VfsTask`]
+    pub fn new(
+        command_receiver: UnboundedReceiver<RpcCommand>,
         result_sender: UnboundedSender<CommandResult>,
-        mut context: Context,
-    ) {
-        tokio::spawn(async move {
-            // Create reusable buffer for responses
-            let mut output_buffer = ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY);
+        context: Context,
+    ) -> Self {
+        Self { command_receiver, result_sender, context }
+    }
 
-            while let Some(command) = command_receiver.recv().await {
-                trace!("Processing command from queue");
+    /// Spawns a background task that processes VFS operations from a command queue.
+    ///
+    /// This method moves ownership of the instance to a new Tokio task that will
+    /// call method [`run()`](#method.run) to process VFS operations.
+    ///
+    /// # Panics
+    ///
+    /// This method does not panic. Any errors encountered during task execution
+    /// are properly logged and the task exits cleanly.
+    pub fn spawn(self) {
+        tokio::spawn(async move { self.run().await });
+    }
 
-                // Clear buffer for reuse
-                output_buffer.clear();
+    /// Main function to process VFS RPC commands from the queue.
+    ///
+    /// This method runs a loop that:
+    /// 1. Receives commands from the command channel
+    /// 2. Processes each command using the VFS handler
+    /// 3. Manages response buffering efficiently
+    /// 4. Sends results back through the result channel
+    ///
+    /// The loop continues until the command channel is closed or an unrecoverable error occurs.
+    async fn run(mut self) {
+        // Create reusable buffer for responses
+        let mut output_buffer = ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY);
 
-                let mut input_cursor = Cursor::new(command.data);
-                let mut output_cursor = Cursor::new(output_buffer.get_mut_buffer());
+        while let Some(command) = self.command_receiver.recv().await {
+            trace!("Processing command from queue");
 
-                // Call async processor
-                let result =
-                    match Self::handle_rpc(&mut input_cursor, &mut output_cursor, &mut context)
-                        .await
-                    {
-                        Ok(true) => {
-                            // Processor indicated response needs to be sent
-                            output_buffer.mark_has_content();
-                            let buffer_to_send = std::mem::replace(
-                                &mut output_buffer,
-                                ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
-                            );
-                            Ok(Some(buffer_to_send))
-                        }
-                        Ok(false) => {
-                            // No response needed (e.g. retransmission)
-                            Ok(None)
-                        }
-                        Err(e) => Err(e),
-                    };
+            // Clear buffer for reuse
+            output_buffer.clear();
 
-                // Send result
-                if let Err(e) = result_sender.send(result) {
-                    error!("Failed to send command processing result: {:?}", e);
-                    break;
-                }
+            let mut input_cursor = Cursor::new(command.data);
+            let mut output_cursor = Cursor::new(output_buffer.get_mut_buffer());
+
+            // Call async processor
+            let result =
+                match Self::handle_rpc(&mut input_cursor, &mut output_cursor, &mut self.context)
+                    .await
+                {
+                    Ok(true) => {
+                        // Processor indicated response needs to be sent
+                        output_buffer.mark_has_content();
+                        let buffer_to_send = std::mem::replace(
+                            &mut output_buffer,
+                            ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
+                        );
+                        Ok(Some(buffer_to_send))
+                    }
+                    Ok(false) => {
+                        // No response needed (e.g. retransmission)
+                        Ok(None)
+                    }
+                    Err(e) => Err(e),
+                };
+
+            // Send result
+            if let Err(e) = self.result_sender.send(result) {
+                error!("Failed to send command processing result: {:?}", e);
+                break;
             }
-            debug!("Command queue handler finished");
-        });
+        }
+        debug!("Command queue handler finished");
     }
 
     /// Processes a single RPC message
