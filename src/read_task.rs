@@ -25,7 +25,7 @@ pub struct ReadTask {
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub(crate) fn new(readhalf: ReadHalf<TcpStream>, command_sender: UnboundedSender<RpcCommand>) -> Self {
+    pub fn new(readhalf: ReadHalf<TcpStream>, command_sender: UnboundedSender<RpcCommand>) -> Self {
         Self { readhalf, command_sender }
     }
 

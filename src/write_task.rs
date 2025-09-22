@@ -20,7 +20,6 @@ pub struct WriteTask {
 }
 
 impl WriteTask {
-
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: WriteHalf<TcpStream>,
