@@ -63,7 +63,7 @@ impl VfsTask {
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Main function to process VFS RPC commands from the queue.
+    /// Main function to process VFS RPC commands from the channel.
     ///
     /// This method runs a loop that:
     /// 1. Receives commands from the command channel
