@@ -25,18 +25,11 @@ const NFS_METADATA_PROGRAM: u32 = 200024;
 /// Initial size of RPC response buffer
 const DEFAULT_RESPONSE_BUFFER_CAPACITY: usize = 8192;
 
-/// Task responsible for handling Virtual File System (VFS) operations asynchronously.
-///
-/// The `VfsTask` typically manages file system operations, directory traversals,
-/// file metadata queries, and other VFS-related functionality in a non-blocking manner.
-/// It usually communicates with other components through channels to receive requests
-/// and send responses.
+/// An asynchronous task responsible for processing RPC commands,
+/// and sending operation results - [`ResponseBuffer`] to [`WriteTask`].
 pub struct VfsTask {
-    /// Channel receiver for incoming RPC commands to process
     command_receiver: UnboundedReceiver<RpcCommand>,
-    /// Channel sender for sending command processing results back to requester
     result_sender: UnboundedSender<CommandResult>,
-    /// Shared context containing VFS state and configuration
     context: Context,
 }
 
@@ -50,28 +43,15 @@ impl VfsTask {
         Self { command_receiver, result_sender, context }
     }
 
-    /// Spawns a background task that processes VFS operations from a command queue.
-    ///
-    /// This method moves ownership of the instance to a new Tokio task that will
-    /// call method [`run()`](#method.run) to process VFS operations.
+    /// Spawns a [`VfsTask`] that receives command from [`ReadTask`],
+    /// processes it and sends results to [`WriteTask`]
     ///
     /// # Panics
-    ///
-    /// This method does not panic. Any errors encountered during task execution
-    /// are properly logged and the task exits cleanly.
+    /// If called outside of tokio runtime context.
     pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Main function to process VFS RPC commands from the channel.
-    ///
-    /// This method runs a loop that:
-    /// 1. Receives commands from the command channel
-    /// 2. Processes each command using the VFS handler
-    /// 3. Manages response buffering efficiently
-    /// 4. Sends results back through the result channel
-    ///
-    /// The loop continues until the command channel is closed or an unrecoverable error occurs.
     async fn run(mut self) {
         // Create reusable buffer for responses
         let mut output_buffer = ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY);
@@ -86,25 +66,22 @@ impl VfsTask {
             let mut output_cursor = Cursor::new(output_buffer.get_mut_buffer());
 
             // Call async processor
-            let result =
-                match Self::handle_rpc(&mut input_cursor, &mut output_cursor, &mut self.context)
-                    .await
-                {
-                    Ok(true) => {
-                        // Processor indicated response needs to be sent
-                        output_buffer.mark_has_content();
-                        let buffer_to_send = std::mem::replace(
-                            &mut output_buffer,
-                            ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
-                        );
-                        Ok(Some(buffer_to_send))
-                    }
-                    Ok(false) => {
-                        // No response needed (e.g. retransmission)
-                        Ok(None)
-                    }
-                    Err(e) => Err(e),
-                };
+            let result = match self.handle_rpc(&mut input_cursor, &mut output_cursor).await {
+                Ok(true) => {
+                    // Processor indicated response needs to be sent
+                    output_buffer.mark_has_content();
+                    let buffer_to_send = std::mem::replace(
+                        &mut output_buffer,
+                        ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
+                    );
+                    Ok(Some(buffer_to_send))
+                }
+                Ok(false) => {
+                    // No response needed (e.g. retransmission)
+                    Ok(None)
+                }
+                Err(e) => Err(e),
+            };
 
             // Send result
             if let Err(e) = self.result_sender.send(result) {
@@ -130,16 +107,16 @@ impl VfsTask {
     ///
     /// Returns true if a response was sent, false otherwise (for retransmissions).
     pub async fn handle_rpc(
+        &mut self,
         input: &mut impl Read,
         output: &mut impl Write,
-        context: &mut Context,
     ) -> io::Result<bool> {
         let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
         let xid = recv.xid;
         if let xdr::rpc::rpc_body::CALL(call) = recv.body {
             if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
                 let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
-                context.auth = Some(auth);
+                self.context.auth = Some(auth);
             }
             if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
                 warn!("Invalid RPC version {} != 2", call.rpcvers);
@@ -147,19 +124,21 @@ impl VfsTask {
                 return Ok(true);
             }
 
-            if context.transaction_tracker.is_retransmission(xid, &context.client_addr) {
+            if self.context.transaction_tracker.is_retransmission(xid, &self.context.client_addr) {
                 debug!(
                     "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-                    xid, context.client_addr, call
+                    xid, self.context.client_addr, call
                 );
                 return Ok(false);
             }
 
             let result = match call.prog {
                 nfs3::PROGRAM => match call.vers {
-                    nfs3::VERSION => nfs::v3::handle_nfs(xid, call, input, output, context).await,
+                    nfs3::VERSION => {
+                        nfs::v3::handle_nfs(xid, call, input, output, &self.context).await
+                    }
                     nfs::v4::VERSION => {
-                        nfs::v4::handle_nfs(xid, call, input, output, context).await
+                        nfs::v4::handle_nfs(xid, call, input, output, &self.context).await
                     }
                     v => {
                         warn!("Unsupported NFS version: {}", v);
@@ -173,9 +152,11 @@ impl VfsTask {
                     }
                 },
                 portmap::PROGRAM => {
-                    nfs::portmap::handle_portmap(xid, &call, input, output, context).await
+                    nfs::portmap::handle_portmap(xid, &call, input, output, &mut self.context).await
                 }
-                mount::PROGRAM => nfs::mount::handle_mount(xid, call, input, output, context).await,
+                mount::PROGRAM => {
+                    nfs::mount::handle_mount(xid, call, input, output, &self.context).await
+                }
                 prog if prog == NFS_ACL_PROGRAM
                     || prog == NFS_ID_MAP_PROGRAM
                     || prog == NFS_METADATA_PROGRAM =>
@@ -197,7 +178,7 @@ impl VfsTask {
             }
             .map(|_| true);
 
-            context.transaction_tracker.mark_processed(xid, &context.client_addr);
+            self.context.transaction_tracker.mark_processed(xid, &self.context.client_addr);
 
             result
         } else {

@@ -97,14 +97,11 @@ async fn process_socket(socket: TcpStream, context: Context) {
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    let read_task = ReadTask::new(readhalf, command_sender);
-    read_task.spawn();
+    ReadTask::new(readhalf, command_sender).spawn();
 
-    let write_task = WriteTask::new(writehalf, result_receiver);
-    write_task.spawn();
+    WriteTask::new(writehalf, result_receiver).spawn();
 
-    let vfs_task = VfsTask::new(command_receiver, result_sender, context);
-    vfs_task.spawn();
+    VfsTask::new(command_receiver, result_sender, context).spawn();
 }
 
 /// Interface for NFS TCP servers that defines common operations

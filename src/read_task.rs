@@ -11,15 +11,10 @@ use crate::utils::error::io_other;
 /// Initial capacity of RpcCommand buffer
 pub const COMMAND_INIT_SIZE: usize = 8192;
 
-/// An asynchronous task responsible for reading RPC commands from a network connection.
-///
-/// The [`ReadTask`] handles the reading side of a client connection, continuously reading
-/// data from the TCP stream, parsing it into [`RpcCommand`] objects, and forwarding them
-/// to a command processing queue. It serves as the entry point for incoming client requests.
+/// An asynchronous task responsible for reading RPC commands from a network connection,
+/// parsing it into [`RpcCommand`] objects, and forwarding them to a [`VfsTask`].
 pub struct ReadTask {
-    /// The read half of the TCP connection, used for receiving incoming command data
     readhalf: ReadHalf<TcpStream>,
-    /// Channel sender for forwarding successfully parsed commands to the processing task
     command_sender: UnboundedSender<RpcCommand>,
 }
 
@@ -29,37 +24,14 @@ impl ReadTask {
         Self { readhalf, command_sender }
     }
 
-    /// Spawns a background task that processes RPC commands from a socket.
-    ///
-    /// This method moves ownership of the instance to a new Tokio task that will
-    /// call method [`run()`](#method.run) to process RPC command
+    /// Spawns a [`ReadTask`]  that reads commands from a socket.
     ///
     /// # Panics
-    ///
-    /// This method does not panic. Any errors encountered during task execution
-    /// are properly logged and the task exits cleanly.
-    ///
+    /// If called outside of tokio runtime context.
     pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Main function to process actual RPC-command
-    ///
-    /// This method runs an infinite loop that:
-    /// 1. Creates a new command buffer
-    /// 2. Reads a complete command from the socket
-    /// 3. Sends the command to the processing task
-    /// 4. Handles various error conditions appropriately
-    ///
-    /// # Exit Conditions
-    ///
-    /// Returns `Ok(())` in the following cases:
-    /// - Socket closed gracefully before any data was received
-    ///
-    /// Returns `Err` in the following cases:
-    /// - Socket closed during command transmission (`io_other("Early socket closing")`)
-    /// - Command queue is disconnected (`io_other("Command queue error")`)
-    /// - Any other I/O error during socket reading
     async fn run(mut self) -> io::Result<()> {
         loop {
             let mut command = RpcCommand { data: Vec::with_capacity(COMMAND_INIT_SIZE) };
