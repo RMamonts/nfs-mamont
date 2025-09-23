@@ -8,14 +8,15 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use async_trait::async_trait;
-use dashmap::DashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, net::IpAddr};
+
+use async_trait::async_trait;
+use dashmap::DashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
@@ -92,7 +93,7 @@ async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
         }
     });
 
-    let (mut readhalf, mut writehalf) = tokio::io::split(socket);
+    let (mut readhalf, mut writehalf) = socket.into_split();
 
     tokio::spawn(async move {
         let mut buf = [0; 128000];
