@@ -1,7 +1,7 @@
 use std::io;
 
-use tokio::io::{AsyncReadExt, ReadHalf};
-use tokio::net::TcpStream;
+use tokio::io::AsyncReadExt;
+use tokio::net::tcp::OwnedReadHalf;
 use tracing::debug;
 
 /// Max size of Record Marking Standard fragment
@@ -27,10 +27,7 @@ impl RpcCommand {
     /// This method implements a custom fragmentation protocol where RPC commands can be
     /// split across multiple fragments. Each fragment is preceded by a 4-byte header
     /// that indicates whether it's the last fragment and the length of the fragment data.
-    pub async fn read_command_from_socket(
-        &mut self,
-        socket: &mut ReadHalf<TcpStream>,
-    ) -> io::Result<()> {
+    pub async fn read_command_from_socket(&mut self, socket: &mut OwnedReadHalf) -> io::Result<()> {
         let mut header_buf = [0_u8; 4];
         let mut start_offset = 0;
         loop {

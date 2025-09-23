@@ -1,7 +1,7 @@
 use std::io;
 
-use tokio::io::{AsyncWriteExt, WriteHalf};
-use tokio::net::TcpStream;
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
 use tracing::trace;
 
 /// Constant to set last bit in Record Marking Standard
@@ -48,10 +48,7 @@ impl ResponseBuffer {
         self.buffer.clear();
         self.has_content = false;
     }
-    pub async fn write_fragment(
-        &mut self,
-        write_half: &mut WriteHalf<TcpStream>,
-    ) -> io::Result<()> {
+    pub async fn write_fragment(&mut self, write_half: &mut OwnedWriteHalf) -> io::Result<()> {
         // Maximum fragment size is 2^31 - 1 bytes
 
         let mut offset = 0;

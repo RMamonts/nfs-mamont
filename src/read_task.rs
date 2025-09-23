@@ -1,7 +1,6 @@
 use std::io;
 
-use tokio::io::ReadHalf;
-use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, trace};
 
@@ -14,13 +13,13 @@ pub const COMMAND_INIT_SIZE: usize = 8192;
 /// An asynchronous task responsible for reading RPC commands from a network connection,
 /// parsing it into [`RpcCommand`] objects, and forwarding them to a [`VfsTask`].
 pub struct ReadTask {
-    readhalf: ReadHalf<TcpStream>,
+    readhalf: OwnedReadHalf,
     command_sender: UnboundedSender<RpcCommand>,
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub fn new(readhalf: ReadHalf<TcpStream>, command_sender: UnboundedSender<RpcCommand>) -> Self {
+    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<RpcCommand>) -> Self {
         Self { readhalf, command_sender }
     }
 

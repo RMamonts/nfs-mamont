@@ -1,7 +1,6 @@
 use std::io::Error;
 
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error};
 
@@ -9,14 +8,14 @@ use crate::tcp::CommandResult;
 
 /// An asynchronous task responsible for writing [`VfsTask`] responses to a network connection.
 pub struct WriteTask {
-    writehalf: WriteHalf<TcpStream>,
+    writehalf: OwnedWriteHalf,
     result_receiver: UnboundedReceiver<CommandResult>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
-        writehalf: WriteHalf<TcpStream>,
+        writehalf: OwnedWriteHalf,
         result_receiver: UnboundedReceiver<CommandResult>,
     ) -> Self {
         Self { writehalf, result_receiver }

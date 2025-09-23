@@ -8,7 +8,6 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
@@ -91,7 +90,7 @@ pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
 async fn process_socket(socket: TcpStream, context: Context) {
-    let (readhalf, writehalf) = tokio::io::split(socket);
+    let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
     // channel for request
