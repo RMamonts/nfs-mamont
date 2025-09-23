@@ -18,7 +18,7 @@ pub struct RpcCommand {
 
 /// Parses a fragment header into its components.
 fn parse_header(arg: u32) -> (bool, usize) {
-    (arg & LAST_FG_MASK > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
+    ((arg & LAST_FG_MASK) > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
 }
 
 impl RpcCommand {
