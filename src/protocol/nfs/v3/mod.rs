@@ -68,6 +68,9 @@ mod setattr;
 mod symlink;
 mod write;
 
+use crate::tcp::NFSExportTableEntry;
+use crate::xdr::rpc::make_success_reply;
+use crate::xdr::Deserialize;
 use access::nfsproc3_access;
 use commit::nfsproc3_commit;
 use create::nfsproc3_create;
@@ -158,4 +161,88 @@ pub async fn handle_nfs(
         }
     }
     Ok(())
+}
+
+#[allow(dead_code)]
+trait NfsProc {
+    type Args: Deserialize;
+    type ResOk: Serialize;
+    type ResFail: Serialize + Default;
+
+    async fn handle(
+        xid: u32,
+        input: &mut impl Read,
+        output: &mut impl Write,
+        context: &rpc::Context,
+    ) -> io::Result<()>;
+
+    /// Retrieve the export entry for the given filesystem ID.
+    /// - If the export is found, returns it.
+    /// - If not found, construct and send an error reply with [`nfs3::nfsstat3::NFS3ERR_BADHANDLE`] status code and default [`Self::ResFail`]
+    ///
+    /// ### Returns
+    /// - `Ok(Some(&NFSExportTableEntry))` if the export is found,
+    /// - `Ok(None)` if the export is not found and an error reply has been sent,
+    /// - `Err(anyhow::Error)` if there was an error during serialization.
+    async fn get_export_or_reply<'a>(
+        xid: u32,
+        output: &mut impl Write,
+        context: &'a rpc::Context,
+        fs_id: nfs3::fs_id,
+    ) -> io::Result<Option<dashmap::mapref::one::Ref<'a, nfs3::fs_id, NFSExportTableEntry>>> {
+        let Some(export) = context.export_table.get(&fs_id) else {
+            warn!("No export found for fs_id: {}", fs_id);
+            Self::error_reply_default(xid, output, nfs3::nfsstat3::NFS3ERR_BADHANDLE)?;
+            return Ok(None);
+        };
+        Ok(Some(export))
+    }
+
+    /// Send a successful reply with the given transaction ID and data.
+    fn success_reply(xid: u32, output: &mut impl Write, data: Self::ResOk) -> io::Result<()> {
+        make_success_reply(xid).serialize(output)?;
+        nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+        data.serialize(output)?;
+        Ok(())
+    }
+
+    /// Send an error reply with the given transaction ID, status code and error reply data.
+    fn error_reply(
+        xid: u32,
+        output: &mut impl Write,
+        status_code: nfs3::nfsstat3,
+        data: Self::ResFail,
+    ) -> io::Result<()> {
+        make_success_reply(xid).serialize(output)?;
+        status_code.serialize(output)?;
+        data.serialize(output)?;
+        Ok(())
+    }
+
+    /// Send an error reply with the given transaction ID, status code and default error reply data.
+    fn error_reply_default(
+        xid: u32,
+        output: &mut impl Write,
+        status_code: nfs3::nfsstat3,
+    ) -> io::Result<()> {
+        Self::error_reply(xid, output, status_code, Self::ResFail::default())
+    }
+}
+
+/// Macro to check if the export has write capabilities.
+///
+/// If the export does not have write capabilities, it sends an error reply with [`nfs3::nfsstat3::NFS3ERR_ROFS`] status code and returns early.
+#[macro_export]
+macro_rules! check_write_capabilities_or_return {
+    ($export:expr, $xid:expr, $output:expr) => {
+        if !matches!($export.vfs.capabilities(), $crate::vfs::Capabilities::ReadWrite) {
+            tracing::warn!("No write capabilities.");
+            Self::error_reply_default(
+                $xid,
+                $output,
+                $crate::protocol::xdr::nfs3::nfsstat3::NFS3ERR_ROFS,
+            )?;
+            return Ok(());
+        }
+    };
 }

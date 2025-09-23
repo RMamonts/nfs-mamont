@@ -7,7 +7,9 @@
 //! decoding NFS version 3 protocol messages using XDR (External Data Representation).
 //!
 //! This module defines the constants, basic data types, and complex structures
-//! that form the foundation of the `NFSv3` protocol as specified in RFC 1813.
+//! that form the foundation of the `NFSv3` protocol as specified in RFC 1813, and
+//! data structures for the following operations:
+//! - MKNOD: Create a special device (procedure 11)
 
 // Allow unused code since we're implementing the full NFS3 protocol specification
 #![allow(dead_code)]
@@ -57,7 +59,6 @@ pub const NFS3_WRITEVERFSIZE: u32 = 8;
 ///
 /// This is essentially a vector of bytes, but with specific
 /// formatting for NFS protocol requirements.
-#[allow(non_camel_case_types)]
 #[derive(Default, Clone)]
 pub struct nfsstring(pub Vec<u8>);
 
@@ -124,7 +125,6 @@ impl Deserialize for nfsstring {
 }
 
 /// Procedure numbers for NFS version 3 protocol.
-#[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum NFSProgram {
@@ -222,7 +222,6 @@ pub type count3 = u32;
 pub type fs_id = u64;
 
 /// Status codes returned by NFS version 3 operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum nfsstat3 {
@@ -325,7 +324,6 @@ impl DeserializeEnum for nfsstat3 {}
 
 /// File type enumeration as defined in RFC 1813 section 2.3.5
 /// Determines the type of a file system object
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
 pub enum ftype3 {
@@ -350,7 +348,6 @@ impl DeserializeEnum for ftype3 {}
 
 /// Special device information for character and block special devices
 /// Contains the major and minor device numbers
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct specdata3 {
     /// Major device number
@@ -364,7 +361,6 @@ SerializeStruct!(specdata3, specdata1, specdata2);
 /// The NFS version 3 file handle
 /// The file handle uniquely identifies a file or directory on the server
 /// The server is responsible for the internal format and interpretation of the file handle
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct nfs_fh3 {
     /// Used for stale handle detection
@@ -374,6 +370,7 @@ pub struct nfs_fh3 {
     /// Unique file identifier within the file system
     pub id: fileid3,
 }
+
 const _: () = {
     assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
 };
@@ -406,7 +403,6 @@ impl Serialize for nfs_fh3 {
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct nfstime3 {
     /// Seconds since Unix epoch (January 1, 1970)
@@ -426,7 +422,6 @@ impl From<nfstime3> for filetime::FileTime {
 /// File attributes in NFS version 3 as defined in RFC 1813 section 2.3.5
 /// Contains all the standard attributes associated with a file or directory
 /// in the NFS version 3 protocol
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct fattr3 {
     /// Type of file (regular, directory, symbolic link, etc.)
@@ -473,7 +468,6 @@ SerializeStruct!(
 /// Attributes used in weak cache consistency checking as defined in RFC 1813 section 2.3.8
 /// These attributes are used to detect changes to a file by comparing
 /// values before and after operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct wcc_attr {
     /// File size in bytes
@@ -507,7 +501,6 @@ pub type post_op_attr = Option<fattr3>;
 /// Contains file attributes before and after an operation
 /// This data structure is returned by operations that modify file attributes
 /// to allow clients to update their cached attributes appropriately
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct wcc_data {
     /// File attributes before operation
@@ -529,7 +522,6 @@ pub type set_size3 = Option<size3>;
 /// - Leave the atime unchanged (`DONT_CHANGE`)
 /// - Set it to the server's current time (`SET_TO_SERVER_TIME`)
 /// - Set it to a specific client-provided time (`SET_TO_CLIENT_TIME`)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum set_atime {
@@ -580,7 +572,6 @@ impl Deserialize for set_atime {
 /// - Set it to a specific client-provided time
 ///
 /// The discriminant value follows the `time_how` enumeration from RFC 1813
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum set_mtime {
@@ -625,7 +616,6 @@ impl Deserialize for set_mtime {
 }
 
 /// Set of file attributes to change in `SETATTR` operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 pub struct sattr3 {
     /// File mode (permissions)
@@ -658,7 +648,6 @@ impl Default for sattr3 {
 }
 
 /// Arguments for directory operations (specifying directory handle and name)
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct diropargs3 {
     /// Directory file handle
@@ -670,7 +659,6 @@ DeserializeStruct!(diropargs3, dir, name);
 SerializeStruct!(diropargs3, dir, name);
 
 /// Data for creating a symbolic link
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct symlinkdata3 {
     /// Attributes for the symbolic link
@@ -680,6 +668,82 @@ pub struct symlinkdata3 {
 }
 DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
 SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+
+/// Enumeration of device types for special files in NFS version 3 as defined in RFC 1813 section 3.3.11
+/// Used to identify the type of device when creating special files
+#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
+#[repr(u32)]
+pub enum devicetype3 {
+    /// Character special device
+    #[default]
+    NF3CHR = 0,
+    /// Block special device
+    NF3BLK = 1,
+    /// Socket
+    NF3SOCK = 2,
+    /// FIFO pipe
+    NF3FIFO = 3,
+}
+impl SerializeEnum for devicetype3 {}
+impl DeserializeEnum for devicetype3 {}
+
+/// Device data for special files as defined in RFC 1813 section 3.3.11
+/// Contains the device type and device numbers
+#[derive(Debug, Default)]
+pub struct devicedata3 {
+    /// Type of device (character, block, socket, or FIFO)
+    pub dev_attributes: devicetype3,
+    /// Major and minor device numbers for character and block devices
+    pub spec: specdata3,
+}
+DeserializeStruct!(devicedata3, dev_attributes, spec);
+SerializeStruct!(devicedata3, dev_attributes, spec);
+
+/// Data structure for creating special files as defined in RFC 1813 section 3.3.11
+/// Contains the file type and device information
+#[derive(Debug, Default)]
+pub struct mknoddata3 {
+    /// Type of file to create (regular, directory, special file etc)
+    pub mknod_type: ftype3,
+    /// Device information if creating a special file
+    pub device: devicedata3,
+}
+DeserializeStruct!(mknoddata3, mknod_type, device);
+SerializeStruct!(mknoddata3, mknod_type, device);
+
+/// Arguments for the MKNOD procedure (procedure 11) as defined in RFC 1813 section 3.3.11
+/// Used to create a special device file, FIFO, or socket
+#[derive(Debug, Default)]
+pub struct MKNOD3args {
+    /// Directory where the special file should be created and its name
+    pub where_: diropargs3,
+    /// Type and device information for the special file
+    pub what: mknoddata3,
+}
+DeserializeStruct!(MKNOD3args, where_, what);
+SerializeStruct!(MKNOD3args, where_, what);
+
+/// Successful response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
+#[derive(Debug, Default)]
+pub struct MKNOD3resok {
+    /// File handle for the newly created special file
+    pub obj: post_op_fh3,
+    /// Attributes for the newly created special file
+    pub obj_attributes: post_op_attr,
+    /// Weak cache consistency data for the directory
+    pub dir_wcc: wcc_data,
+}
+DeserializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
+SerializeStruct!(MKNOD3resok, obj, obj_attributes, dir_wcc);
+
+/// Failed response for the MKNOD procedure as defined in RFC 1813 section 3.3.11
+#[derive(Debug, Default)]
+pub struct MKNOD3resfail {
+    /// Weak cache consistency data for the directory
+    pub dir_wcc: wcc_data,
+}
+DeserializeStruct!(MKNOD3resfail, dir_wcc);
+SerializeStruct!(MKNOD3resfail, dir_wcc);
 
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
@@ -700,34 +764,4 @@ pub const ACCESS3_DELETE: u32 = 0x0010;
 /// Access permission to execute a file or traverse a directory as defined in RFC 1813 section 3.3.4
 pub const ACCESS3_EXECUTE: u32 = 0x0020;
 
-/// File creation modes for `CREATE` operations
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum createmode3 {
-    /// Normal file creation - doesn't error if file exists
-    #[default]
-    UNCHECKED = 0,
-    /// Return error if file exists
-    GUARDED = 1,
-    /// Use exclusive create mechanism (with verifier)
-    EXCLUSIVE = 2,
-}
-impl SerializeEnum for createmode3 {}
-impl DeserializeEnum for createmode3 {}
-
 pub type sattrguard3 = Option<nfstime3>;
-
-/// Arguments for `SETATTR` operations
-#[allow(non_camel_case_types)]
-#[derive(Clone, Debug, Default)]
-pub struct SETATTR3args {
-    /// File handle for target file
-    pub object: nfs_fh3,
-    /// New attributes to set
-    pub new_attribute: sattr3,
-    /// Guard condition for atomic change
-    pub guard: Option<nfstime3>,
-}
-DeserializeStruct!(SETATTR3args, object, new_attribute, guard);
-SerializeStruct!(SETATTR3args, object, new_attribute, guard);
