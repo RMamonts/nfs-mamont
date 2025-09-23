@@ -22,6 +22,7 @@ impl WriteTask {
     }
 
     /// Spawns a [`WriteTask`]  that writes command results to a socket.
+    ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.

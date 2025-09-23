@@ -26,6 +26,7 @@ impl ReadTask {
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
     ///
     /// # Panics
+    ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });

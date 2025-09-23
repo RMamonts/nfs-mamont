@@ -48,6 +48,12 @@ impl ResponseBuffer {
         self.buffer.clear();
         self.has_content = false;
     }
+
+    /// Writes a complete RPC result from a TCP socket using a Record Marking Protocol.
+    ///
+    /// This method implements a Record Marking Standard by splitting result in
+    /// fragments and inserting header (size of fragment with flag, whether current fragment
+    /// is the last) before it.
     pub async fn write_fragment(&mut self, write_half: &mut OwnedWriteHalf) -> io::Result<()> {
         // Maximum fragment size is 2^31 - 1 bytes
 

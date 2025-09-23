@@ -47,6 +47,7 @@ impl VfsTask {
     /// processes it and sends results to [`WriteTask`]
     ///
     /// # Panics
+    ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
