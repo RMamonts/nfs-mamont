@@ -50,4 +50,9 @@ pub mod vfs;
 
 pub use protocol::xdr;
 
+mod read_task;
+mod response_buffer;
+mod rpc_command;
 mod utils;
+mod vfs_task;
+mod write_task;
