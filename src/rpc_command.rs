@@ -6,6 +6,8 @@ use tracing::debug;
 
 /// Max size of Record Marking Standard fragment
 const MAX_RM_FRAGMENT_SIZE: usize = (1 << 31) - 1;
+/// Constant to set last bit in Record Marking Standard
+const LAST_FG_MASK: u32 = 1 << 31;
 
 /// RPC command type with context
 #[derive(Debug)]
@@ -16,7 +18,7 @@ pub struct RpcCommand {
 
 /// Parses a fragment header into its components.
 fn parse_header(arg: u32) -> (bool, usize) {
-    (arg & (1 << 31) > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
+    (arg & LAST_FG_MASK > 0, arg as usize & MAX_RM_FRAGMENT_SIZE)
 }
 
 impl RpcCommand {

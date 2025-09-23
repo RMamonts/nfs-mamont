@@ -99,9 +99,9 @@ async fn process_socket(socket: TcpStream, context: Context) {
 
     ReadTask::new(readhalf, command_sender).spawn();
 
-    WriteTask::new(writehalf, result_receiver).spawn();
-
     VfsTask::new(command_receiver, result_sender, context).spawn();
+
+    WriteTask::new(writehalf, result_receiver).spawn();
 }
 
 /// Interface for NFS TCP servers that defines common operations
