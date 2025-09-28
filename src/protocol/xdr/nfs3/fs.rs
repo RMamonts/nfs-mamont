@@ -47,7 +47,7 @@ pub const FSF_CANSETTIME: u32 = 0x0010;
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSINFOargs {
-    fsroot: nfs_fh3,
+    pub fsroot: nfs_fh3,
 }
 DeserializeStruct!(FSINFOargs, fsroot);
 SerializeStruct!(FSINFOargs, fsroot);
@@ -114,7 +114,7 @@ SerializeStruct!(
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3args {
-    fsroot: nfs_fh3,
+    pub fsroot: nfs_fh3,
 }
 DeserializeStruct!(FSSTAT3args, fsroot);
 SerializeStruct!(FSSTAT3args, fsroot);
@@ -168,7 +168,7 @@ SerializeStruct!(
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3args {
-    fsroot: nfs_fh3,
+    pub fsroot: nfs_fh3,
 }
 DeserializeStruct!(PATHCONF3args, fsroot);
 SerializeStruct!(PATHCONF3args, fsroot);

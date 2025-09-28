@@ -28,6 +28,7 @@ use tracing::{debug, error, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::fs_object::sattrguard3;
 
 /// Handles `NFSv3` `SETATTR` procedure (procedure 2)
 ///
@@ -51,7 +52,7 @@ pub async fn nfsproc3_setattr(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::SETATTR3args>(input)?;
+    let args = deserialize::<crate::protocol::nfs::v3::nfs3::fs_object::SETATTR3args>(input)?;
     debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
 
     let fs_id = args.object.fs_id;
@@ -96,7 +97,7 @@ pub async fn nfsproc3_setattr(
         }
     };
     // handle the guard
-    if let nfs3::sattrguard3::Some(c) = args.guard {
+    if let sattrguard3::Some(c) = args.guard {
         if c.seconds != ctime.seconds || c.nseconds != ctime.nseconds {
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             nfs3::nfsstat3::NFS3ERR_NOT_SYNC.serialize(output)?;

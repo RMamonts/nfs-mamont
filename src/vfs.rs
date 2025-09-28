@@ -431,8 +431,7 @@ pub trait NFSFileSystem: Sync {
         &self,
         dir_id: nfs3::fileid3,
         name: &nfs3::filename3,
-        ftype: nfs3::ftype3,
-        specdata: nfs3::specdata3,
+        ftype: nfs3::dir::mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
 

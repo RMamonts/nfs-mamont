@@ -20,9 +20,7 @@ use std::io::{Read, Write};
 use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::xdr::nfs3::dir::{
-    MKDIR3args, MKNOD3args, READDIR3args, READDIRPLUS3args, RMDIR3args, SYMLINK3args,
-};
+use crate::xdr::nfs3::dir::{MKDIR3args, MKNOD3args, READDIR3args, READDIRPLUS3args, SYMLINK3args};
 use crate::xdr::nfs3::file::{
     COMMIT3args, CREATE3args, LINK3args, LOOKUP3args, READ3args, REMOVE3args, WRITE3args,
 };
@@ -741,7 +739,7 @@ pub enum NFSv3_args {
     SYMLINK(SYMLINK3args),
     MKNOD(MKNOD3args),
     REMOVE(REMOVE3args),
-    RMDIR(RMDIR3args),
+    RMDIR(REMOVE3args),
     RENAME(RENAME3args),
     LINK(LINK3args),
     READDIR(READDIR3args),

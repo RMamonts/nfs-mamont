@@ -10,13 +10,6 @@
 //! The structures implement the XDR serialization/deserialization interfaces for
 //! the request arguments and response data of these operations.
 
-// Allow unused code warnings since we implement the complete RFC 1813 specification,
-// including procedures that may not be used by all clients
-#![allow(dead_code)]
-// Preserve original RFC naming conventions (e.g. READ3args, COMMIT3resok)
-// for consistency with the NFS version 3 protocol specification
-#![allow(non_camel_case_types)]
-
 use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -24,7 +17,6 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use crate::xdr::deserialize;
 use crate::xdr::nfs3::{createverf3, sattr3};
 use crate::{DeserializeTypeEnum, SerializeTypeEnum};
-
 
 use super::{
     count3, diropargs3, nfs_fh3, offset3, post_op_attr, wcc_data, writeverf3, Deserialize,
@@ -160,7 +152,7 @@ SerializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct LOOKUP3args {
-    object: diropargs3,
+    pub object: diropargs3,
 }
 SerializeStruct!(LOOKUP3args, object);
 DeserializeStruct!(LOOKUP3args, object);
@@ -189,8 +181,8 @@ SerializeTypeEnum!(createhow3; UNCHECKED=0, GUARDED=1, EXCLUSIVE=2);
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct CREATE3args {
-    dirops: diropargs3,
-    how: createhow3,
+    pub dirops: diropargs3,
+    pub how: createhow3,
 }
 DeserializeStruct!(CREATE3args, dirops, how);
 SerializeStruct!(CREATE3args, dirops, how);
@@ -198,7 +190,7 @@ SerializeStruct!(CREATE3args, dirops, how);
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct REMOVE3args {
-    object: diropargs3,
+    pub object: diropargs3,
 }
 SerializeStruct!(REMOVE3args, object);
 DeserializeStruct!(REMOVE3args, object);
