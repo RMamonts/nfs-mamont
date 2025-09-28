@@ -436,6 +436,46 @@ impl<T: Deserialize> Deserialize for Option<T> {
     }
 }
 
+#[allow(non_camel_case_types)]
+#[macro_export]
+macro_rules! DeserializeTypeEnum {
+    ($enum:ident; $($variant:ident = $disc:expr),* $(,)?) => {
+        impl Deserialize for $enum {
+            fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
+                let disc: u32 = deserialize(src)?;
+                match disc {
+                    $(
+                        $disc => Ok(Self::$variant(deserialize(src)?)),
+                    )*
+                    d => Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                           format!("Invalid discriminant {} for {}", d, stringify!($enum)))),
+                }
+            }
+        }
+    };
+}
+
+#[allow(non_camel_case_types)]
+#[macro_export]
+macro_rules! SerializeTypeEnum {
+    ($enum:ident; $($variant:ident = $disc:expr),* $(,)?) => {
+        impl Serialize for $enum {
+            fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+                match self {
+                    $(
+                        Self::$variant(arg) => {
+                            $disc.serialize(dest)?;
+                            arg.serialize(dest)
+                        }
+                    )*
+                }
+            }
+        }
+    };
+}
+
 // Re-export public types for use in other modules
 pub use crate::DeserializeStruct;
+pub use crate::DeserializeTypeEnum;
 pub use crate::SerializeStruct;
+pub use crate::SerializeTypeEnum;

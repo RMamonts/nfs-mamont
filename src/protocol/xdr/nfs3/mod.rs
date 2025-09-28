@@ -20,14 +20,26 @@ use std::io::{Read, Write};
 use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use super::{deserialize, Deserialize, Serialize};
+use crate::xdr::nfs3::dir::{
+    MKDIR3args, MKNOD3args, READDIR3args, READDIRPLUS3args, RMDIR3args, SYMLINK3args,
+};
+use crate::xdr::nfs3::file::{
+    COMMIT3args, CREATE3args, LINK3args, LOOKUP3args, READ3args, REMOVE3args, WRITE3args,
+};
+use crate::xdr::nfs3::fs::{FSINFOargs, FSSTAT3args, PATHCONF3args};
+use crate::xdr::nfs3::fs_object::{
+    ACCESS3args, GETATTR3args, READLINK3args, RENAME3args, SETATTR3args,
+};
 use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
 use crate::{xdr, DeserializeStruct, SerializeStruct};
+
+use super::{deserialize, Deserialize, Serialize};
 
 // Modules for different operation types
 pub mod dir;
 pub mod file;
 pub mod fs;
+pub mod fs_object;
 
 // Section 2.2 Constants
 /// The RPC program number for NFS version 3 service.
@@ -715,19 +727,28 @@ pub enum createmode3 {
 }
 impl SerializeEnum for createmode3 {}
 impl DeserializeEnum for createmode3 {}
-
-pub type sattrguard3 = Option<nfstime3>;
-
-/// Arguments for `SETATTR` operations
-#[allow(non_camel_case_types)]
-#[derive(Clone, Debug, Default)]
-pub struct SETATTR3args {
-    /// File handle for target file
-    pub object: nfs_fh3,
-    /// New attributes to set
-    pub new_attribute: sattr3,
-    /// Guard condition for atomic change
-    pub guard: Option<nfstime3>,
+pub enum NFSv3_args {
+    NULL,
+    GETATTR(GETATTR3args),
+    SETATTR(SETATTR3args),
+    LOOKUP(LOOKUP3args),
+    ACCESS(ACCESS3args),
+    READLINK(READLINK3args),
+    READ(READ3args),
+    WRITE(WRITE3args),
+    CREATE(CREATE3args),
+    MKDIR(MKDIR3args),
+    SYMLINK(SYMLINK3args),
+    MKNOD(MKNOD3args),
+    REMOVE(REMOVE3args),
+    RMDIR(RMDIR3args),
+    RENAME(RENAME3args),
+    LINK(LINK3args),
+    READDIR(READDIR3args),
+    READDIRPLUS(READDIRPLUS3args),
+    FSSTAT(FSSTAT3args),
+    FSINFO(FSINFOargs),
+    PATHCONF(PATHCONF3args),
+    COMMIT(COMMIT3args),
+    INVALID,
 }
-DeserializeStruct!(SETATTR3args, object, new_attribute, guard);
-SerializeStruct!(SETATTR3args, object, new_attribute, guard);

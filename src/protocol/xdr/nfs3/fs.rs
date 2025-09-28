@@ -9,12 +9,9 @@
 //! These structures implement the XDR serialization/deserialization interfaces for
 //! file system information requests and responses.
 
-// Allow unused code since we implement the complete RFC specification
-#![allow(dead_code)]
-// Preserve original RFC naming conventions for consistency with the specification
-#![allow(non_camel_case_types)]
-
 use std::io::{Read, Write};
+
+use crate::xdr::nfs3::nfs_fh3;
 
 use super::{
     nfstime3, post_op_attr, size3, Deserialize, DeserializeStruct, Serialize, SerializeStruct,
@@ -46,6 +43,14 @@ pub const FSF_HOMOGENEOUS: u32 = 0x0008;
 /// (FALSE), the server cannot set times as requested.
 /// As defined in RFC 1813 section 3.3.19.
 pub const FSF_CANSETTIME: u32 = 0x0010;
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct FSINFOargs {
+    fsroot: nfs_fh3,
+}
+DeserializeStruct!(FSINFOargs, fsroot);
+SerializeStruct!(FSINFOargs, fsroot);
 
 /// File system information structure returned by FSINFO procedure
 /// as defined in RFC 1813 section 3.3.19
@@ -106,6 +111,14 @@ SerializeStruct!(
     properties
 );
 
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct FSSTAT3args {
+    fsroot: nfs_fh3,
+}
+DeserializeStruct!(FSSTAT3args, fsroot);
+SerializeStruct!(FSSTAT3args, fsroot);
+
 /// File system statistics returned by FSSTAT procedure
 /// as defined in RFC 1813 section 3.3.18
 #[allow(non_camel_case_types)]
@@ -151,6 +164,14 @@ SerializeStruct!(
     afiles,
     invarsec
 );
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct PATHCONF3args {
+    fsroot: nfs_fh3,
+}
+DeserializeStruct!(PATHCONF3args, fsroot);
+SerializeStruct!(PATHCONF3args, fsroot);
 
 /// Path configuration information returned by PATHCONF procedure
 /// as defined in RFC 1813 section 3.3.20

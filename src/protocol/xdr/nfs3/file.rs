@@ -21,6 +21,11 @@ use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::xdr::deserialize;
+use crate::xdr::nfs3::{createverf3, sattr3};
+use crate::{DeserializeTypeEnum, SerializeTypeEnum};
+
+
 use super::{
     count3, diropargs3, nfs_fh3, offset3, post_op_attr, wcc_data, writeverf3, Deserialize,
     DeserializeEnum, DeserializeStruct, Serialize, SerializeEnum, SerializeStruct,
@@ -129,7 +134,7 @@ pub struct WRITE3args {
     /// Number of bytes of data to write
     pub count: count3,
     /// How to commit the data to storage
-    pub stable: u32,
+    pub stable: stable_how,
     /// The data to be written
     pub data: Vec<u8>,
 }
@@ -151,3 +156,49 @@ pub struct WRITE3resok {
 }
 DeserializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
 SerializeStruct!(WRITE3resok, file_wcc, count, committed, verf);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct LOOKUP3args {
+    object: diropargs3,
+}
+SerializeStruct!(LOOKUP3args, object);
+DeserializeStruct!(LOOKUP3args, object);
+
+/// File creation modes for `CREATE` operations
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+pub enum createhow3 {
+    /// Normal file creation - doesn't error if file exists
+    UNCHECKED(sattr3),
+    /// Return error if file exists
+    GUARDED(sattr3),
+    /// Use exclusive create mechanism (with verifier)
+    EXCLUSIVE(createverf3),
+}
+
+impl Default for createhow3 {
+    fn default() -> Self {
+        Self::UNCHECKED(sattr3::default())
+    }
+}
+
+DeserializeTypeEnum!(createhow3; UNCHECKED=0, GUARDED=1, EXCLUSIVE=2);
+SerializeTypeEnum!(createhow3; UNCHECKED=0, GUARDED=1, EXCLUSIVE=2);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct CREATE3args {
+    dirops: diropargs3,
+    how: createhow3,
+}
+DeserializeStruct!(CREATE3args, dirops, how);
+SerializeStruct!(CREATE3args, dirops, how);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct REMOVE3args {
+    object: diropargs3,
+}
+SerializeStruct!(REMOVE3args, object);
+DeserializeStruct!(REMOVE3args, object);

@@ -22,8 +22,11 @@ use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::xdr::deserialize;
+use crate::{DeserializeTypeEnum, SerializeTypeEnum};
+
 use super::{
-    cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, ftype3, nfs_fh3, post_op_attr,
+    cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, nfs_fh3, post_op_attr,
     post_op_fh3, sattr3, specdata3, symlinkdata3, Deserialize, DeserializeEnum, DeserializeStruct,
     Serialize, SerializeEnum, SerializeStruct,
 };
@@ -183,12 +186,27 @@ SerializeStruct!(devicedata3, dev_type, device);
 /// as defined in RFC 1813 section 3.3.11
 /// Contains the file type and device information
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default)]
-pub struct mknoddata3 {
-    /// Type of file to create (regular, directory, special file etc)
-    pub mknod_type: ftype3,
-    /// Device information if creating a special file
-    pub device: devicedata3,
+#[derive(Debug)]
+pub enum mknoddata3 {
+    NF3CHR(devicedata3),
+    NF3BLK(devicedata3),
+    NF3SOCK(sattr3),
+    NF3FIFO(sattr3),
 }
-DeserializeStruct!(mknoddata3, mknod_type, device);
-SerializeStruct!(mknoddata3, mknod_type, device);
+
+impl Default for mknoddata3 {
+    fn default() -> Self {
+        Self::NF3CHR(devicedata3::default())
+    }
+}
+
+SerializeTypeEnum!(mknoddata3; NF3CHR=0, NF3BLK=1, NF3SOCK=2, NF3FIFO=3);
+DeserializeTypeEnum!(mknoddata3; NF3CHR=0, NF3BLK=1, NF3SOCK=2, NF3FIFO=3);
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Default)]
+pub struct RMDIR3args {
+    object: diropargs3,
+}
+SerializeStruct!(RMDIR3args, object);
+DeserializeStruct!(RMDIR3args, object);
