@@ -18,9 +18,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use tokio::sync::RwLock;
 
-use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::xdr;
 use crate::tcp::NFSExportTable;
 
@@ -55,10 +53,6 @@ pub struct Context {
     /// Transaction state tracker for handling retransmissions
     /// Maintains idempotency by detecting duplicate RPC calls
     pub transaction_tracker: Arc<super::TransactionTracker>,
-
-    /// Portmap table storing port-to-program mappings
-    /// (like a portmap service)
-    pub portmap_table: Arc<RwLock<PortmapTable>>,
 
     /// List of connected clients and file systems they have mounted
     pub client_list: Arc<DashMap<String, HashSet<String>>>,
