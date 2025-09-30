@@ -6,21 +6,28 @@ use tracing::{error, trace};
 
 use crate::rpc_command::RpcCommand;
 use crate::utils::error::io_other;
+use crate::xdr::rpc::accept_body;
 
 /// Initial capacity of RpcCommand buffer
 pub const COMMAND_INIT_SIZE: usize = 8192;
 
 /// An asynchronous task responsible for reading RPC commands from a network connection,
 /// parsing it into [`RpcCommand`] objects, and forwarding them to a [`VfsTask`].
+#[allow(dead_code)]
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     command_sender: UnboundedSender<RpcCommand>,
+    rw_send: UnboundedSender<Option<accept_body>>,
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<RpcCommand>) -> Self {
-        Self { readhalf, command_sender }
+    pub fn new(
+        readhalf: OwnedReadHalf,
+        command_sender: UnboundedSender<RpcCommand>,
+        rw_send: UnboundedSender<Option<accept_body>>,
+    ) -> Self {
+        Self { readhalf, command_sender, rw_send }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.

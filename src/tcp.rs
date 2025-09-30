@@ -31,6 +31,7 @@ use crate::vfs::NFSFileSystem;
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
 use crate::xdr::nfs3;
+use crate::xdr::rpc::accept_body;
 
 /// Default transaction retention period
 const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
@@ -95,12 +96,14 @@ async fn process_socket(socket: TcpStream, context: Context) {
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
+    // channel between ReadTask/WriteTask
+    let (rw_send, rw_recv) = mpsc::unbounded_channel::<Option<accept_body>>();
 
-    ReadTask::new(readhalf, command_sender).spawn();
+    ReadTask::new(readhalf, command_sender, rw_send).spawn();
 
     VfsTask::new(command_receiver, result_sender, context).spawn();
 
-    WriteTask::new(writehalf, result_receiver).spawn();
+    WriteTask::new(writehalf, result_receiver, rw_recv).spawn();
 }
 
 /// Interface for NFS TCP servers that defines common operations

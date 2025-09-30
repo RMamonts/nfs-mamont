@@ -5,11 +5,14 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error};
 
 use crate::tcp::CommandResult;
+use crate::xdr::rpc::accept_body;
 
 /// An asynchronous task responsible for writing [`VfsTask`] responses to a network connection.
+#[allow(dead_code)]
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
     result_receiver: UnboundedReceiver<CommandResult>,
+    rw_recv: UnboundedReceiver<Option<accept_body>>,
 }
 
 impl WriteTask {
@@ -17,8 +20,9 @@ impl WriteTask {
     pub fn new(
         writehalf: OwnedWriteHalf,
         result_receiver: UnboundedReceiver<CommandResult>,
+        rw_recv: UnboundedReceiver<Option<accept_body>>,
     ) -> Self {
-        Self { writehalf, result_receiver }
+        Self { writehalf, result_receiver, rw_recv }
     }
 
     /// Spawns a [`WriteTask`]  that writes command results to a socket.
