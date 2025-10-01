@@ -468,10 +468,10 @@ pub trait NFSFileSystem: Sync {
     async fn fsinfo(
         &self,
         root_fileid: nfs3::fileid3,
-    ) -> Result<nfs3::fs::fsinfo3, nfs3::nfsstat3> {
+    ) -> Result<nfs3::fs::FSINFO3resok, nfs3::nfsstat3> {
         let dir_attr: nfs3::post_op_attr = self.getattr(root_fileid).await.ok();
 
-        let res = nfs3::fs::fsinfo3 {
+        let res = nfs3::fs::FSINFO3resok {
             obj_attributes: dir_attr,
             rtmax: 1024 * 1024,
             rtpref: 1024 * 124,

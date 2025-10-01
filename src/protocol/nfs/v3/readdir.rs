@@ -85,10 +85,10 @@ pub async fn nfsproc3_readdir(
     debug!(" -- Dir version {:?}", dir_version);
     let has_version = args.cookieverf != nfs3::cookieverf3::default();
     // subtract off the final entryplus* field (which must be false) and the eof
-    let max_bytes_allowed = args.dircount as usize - 128;
+    let max_bytes_allowed = args.count as usize - 128;
     // args.dircount is bytes of just fileid, name, cookie.
     // This is hard to ballpark, so we just divide it by 16
-    let estimated_max_results = args.dircount / 16;
+    let estimated_max_results = args.count / 16;
     let mut ctr = 0;
 
     match export.vfs.readdir_simple(dir_id, args.cookie, estimated_max_results as usize).await {
