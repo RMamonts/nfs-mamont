@@ -3,7 +3,6 @@ use std::io;
 use std::io::Cursor;
 use std::string::ToString;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -11,7 +10,6 @@ use num_traits::ToPrimitive;
 use tokio::sync::RwLock;
 
 use nfs_mamont::protocol::nfs::portmap::PortmapTable;
-use nfs_mamont::protocol::rpc;
 use nfs_mamont::protocol::rpc::Context;
 use nfs_mamont::tcp::NFSExportTableEntry;
 use nfs_mamont::vfs::{Capabilities, ReadDirResult};
@@ -195,7 +193,6 @@ fn create_default_context() -> Context {
         client_addr: DEFAULT_ADDRESS.to_string(),
         auth: Some(xdr::rpc::auth_unix::default()),
         export_table: create_export_table(),
-        transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
         portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
         client_list: Arc::new(DashMap::new()),
     }
@@ -210,7 +207,6 @@ fn multiple_contexts(amount: u32) -> Vec<Context> {
             client_addr: format!("0.0.0.0:{i}"),
             auth: Some(xdr::rpc::auth_unix::default()),
             export_table: create_export_table(),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(Duration::from_secs(60))),
             portmap_table: table.clone(),
             client_list: Arc::new(DashMap::new()),
         });
