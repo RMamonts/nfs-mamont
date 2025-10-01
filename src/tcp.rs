@@ -17,10 +17,9 @@ use std::{io, net::IpAddr};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 
-use crate::protocol::nfs::portmap::PortmapTable;
 use crate::protocol::rpc::Context;
 use crate::protocol::{rpc, xdr};
 use crate::read_task::ReadTask;
@@ -55,9 +54,6 @@ pub struct NFSTcpListener {
     port: u16,
     /// Table of NFS exports managed by this server
     export_table: Arc<NFSExportTable>,
-    /// Portmap table storing port-to-program mappings
-    /// (like a portmap service)
-    portmap_table: Arc<RwLock<PortmapTable>>,
     /// List of connected clients and file systems they have mounted
     client_list: Arc<DashMap<String, HashSet<String>>>,
 }
@@ -208,7 +204,6 @@ impl NFSTcpListener {
             listener,
             port,
             export_table: Arc::new(DashMap::new()),
-            portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
             client_list: Arc::new(DashMap::new()),
         })
     }
@@ -357,7 +352,6 @@ impl NFSTcp for NFSTcpListener {
                 client_addr: socket.peer_addr()?.to_string(),
                 auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
-                portmap_table: self.portmap_table.clone(),
                 client_list: self.client_list.clone(),
             };
             info!("Accepting connection from {}", context.client_addr);
