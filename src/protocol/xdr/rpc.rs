@@ -90,7 +90,7 @@ impl DeserializeEnum for reply_stat {}
 /// Status of an attempt to call a remote procedure.
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, FromPrimitive, ToPrimitive)]
-enum accept_stat {
+pub(crate) enum accept_stat {
     /// RPC executed successfully.
     SUCCESS = 0,
     /// Remote hasn't exported program.

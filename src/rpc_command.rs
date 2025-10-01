@@ -1,5 +1,5 @@
 use std::io;
-
+use std::io::Cursor;
 use tokio::io::AsyncReadExt;
 use tokio::net::tcp::OwnedReadHalf;
 use tracing::debug;
@@ -13,7 +13,7 @@ const LAST_FG_MASK: u32 = 1 << 31;
 #[derive(Debug)]
 pub struct RpcCommand {
     /// RPC message data
-    pub data: Vec<u8>,
+    pub data: Cursor<Vec<u8>>,
 }
 
 /// Parses a fragment header into its components.
@@ -35,7 +35,8 @@ impl RpcCommand {
             let fragment_header = u32::from_be_bytes(header_buf);
             let (is_last, length) = parse_header(fragment_header);
             debug!("Reading fragment length:{}, last:{}", length, is_last);
-            self.data.resize(self.data.len() + length, 0);
+            let cur_len = self.data.get_ref().len();
+            self.data.get_mut().resize( cur_len+ length, 0);
             socket.read_exact(&mut self.data[start_offset..]).await?;
             debug!("Finishing Reading fragment length:{}, last:{}", length, is_last);
             if is_last {
