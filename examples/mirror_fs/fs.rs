@@ -16,7 +16,7 @@ use crate::fs_map::FSMap;
 use nfs_mamont::fs_util::{exists_no_traverse, file_setattr, metadata_to_fattr3, path_setattr};
 use nfs_mamont::vfs;
 use nfs_mamont::xdr::nfs3;
-use nfs_mamont::xdr::nfs3::dir::mknoddata3;
+use nfs_mamont::xdr::nfs3::fs_object::mknoddata3;
 
 /// A file system implementation that mirrors a local directory
 #[derive(Debug)]
@@ -485,7 +485,7 @@ impl vfs::NFSFileSystem for MirrorFS {
         &self,
         dir_id: nfs3::fileid3,
         mut diropr: nfs3::diropargs3,
-        ftype: nfs3::dir::mknoddata3,
+        ftype: mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
         let mut fsmap = self.fsmap.lock().await;

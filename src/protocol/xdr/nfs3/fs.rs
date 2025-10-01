@@ -44,13 +44,15 @@ pub const FSF_HOMOGENEOUS: u32 = 0x0008;
 /// As defined in RFC 1813 section 3.3.19.
 pub const FSF_CANSETTIME: u32 = 0x0010;
 
+/// Arguments for the FSINFO procedure (procedure 19) as defined in RFC 1813 section 3.3.19
+/// Used to get static file system information
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
-pub struct FSINFOargs {
+pub struct FSINFO3args {
     pub fsroot: nfs_fh3,
 }
-DeserializeStruct!(FSINFOargs, fsroot);
-SerializeStruct!(FSINFOargs, fsroot);
+DeserializeStruct!(FSINFO3args, fsroot);
+SerializeStruct!(FSINFO3args, fsroot);
 
 /// File system information structure returned by FSINFO procedure
 /// as defined in RFC 1813 section 3.3.19
@@ -59,27 +61,15 @@ SerializeStruct!(FSINFOargs, fsroot);
 pub struct fsinfo3 {
     /// File system attributes
     pub obj_attributes: post_op_attr,
-    /// Maximum read request supported by server (bytes)
     pub rtmax: u32,
-    /// Preferred read request size (bytes)
     pub rtpref: u32,
-    /// Suggested read request multiple (bytes)
-    /// Requests should be a multiple of this value
     pub rtmult: u32,
-    /// Maximum write request supported by server (bytes)
     pub wtmax: u32,
-    /// Preferred write request size (bytes)
     pub wtpref: u32,
-    /// Suggested write request multiple (bytes)
-    /// Requests should be a multiple of this value
     pub wtmult: u32,
-    /// Preferred directory read request size (bytes)
     pub dtpref: u32,
-    /// Maximum file size supported (bytes)
     pub maxfilesize: size3,
-    /// Server time granularity (resolution of time values)
     pub time_delta: nfstime3,
-    /// Bit mask of file system properties (FSF_* constants)
     pub properties: u32,
 }
 DeserializeStruct!(
@@ -111,6 +101,8 @@ SerializeStruct!(
     properties
 );
 
+/// Arguments for the FSSTAT procedure (procedure 18) as defined in RFC 1813 section 3.3.18
+/// Used to get file system statistics
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3args {
@@ -124,22 +116,13 @@ SerializeStruct!(FSSTAT3args, fsroot);
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3resok {
-    /// File system attributes
     pub obj_attributes: post_op_attr,
-    /// Total size of file system in bytes
     pub tbytes: size3,
-    /// Free space in bytes
     pub fbytes: size3,
-    /// Free space available to user in bytes (considering quotas)
     pub abytes: size3,
-    /// Total number of file slots
     pub tfiles: size3,
-    /// Number of free file slots
     pub ffiles: size3,
-    /// Number of free file slots available to user (considering quotas)
     pub afiles: size3,
-    /// Time for which this information is valid (seconds)
-    /// Zero means the information is always valid
     pub invarsec: u32,
 }
 DeserializeStruct!(
@@ -165,32 +148,27 @@ SerializeStruct!(
     invarsec
 );
 
+/// Arguments for the PATHCONF procedure (procedure 20) as defined in RFC 1813 section 3.3.20
+/// Used to get path configuration information
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3args {
-    pub fsroot: nfs_fh3,
+    pub object: nfs_fh3,
 }
-DeserializeStruct!(PATHCONF3args, fsroot);
-SerializeStruct!(PATHCONF3args, fsroot);
+DeserializeStruct!(PATHCONF3args, object);
+SerializeStruct!(PATHCONF3args, object);
 
 /// Path configuration information returned by PATHCONF procedure
 /// as defined in RFC 1813 section 3.3.20
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct PATHCONF3resok {
-    /// File system attributes
     pub obj_attributes: post_op_attr,
-    /// Maximum number of hard links to a file
     pub linkmax: u32,
-    /// Maximum length of a file name
     pub name_max: u32,
-    /// If true, long names are not truncated but return error
     pub no_trunc: bool,
-    /// If true, changing file ownership is restricted to privileged users
     pub chown_restricted: bool,
-    /// If true, file names are case insensitive (FOO equals foo)
     pub case_insensitive: bool,
-    /// If true, file name case is preserved
     pub case_preserving: bool,
 }
 DeserializeStruct!(

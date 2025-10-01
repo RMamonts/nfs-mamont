@@ -50,7 +50,7 @@ pub async fn nfsproc3_mknod(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::dir::MKNOD3args>(input)?;
+    let args = deserialize::<nfs3::fs_object::MKNOD3args>(input)?;
     debug!("nfsproc3_mknod({:?}, {:?}) ", xid, args);
 
     let fs_id = args.where_dir.dir.fs_id;

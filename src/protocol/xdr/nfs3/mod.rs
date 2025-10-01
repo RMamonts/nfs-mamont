@@ -20,13 +20,14 @@ use std::io::{Read, Write};
 use filetime;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::xdr::nfs3::dir::{MKDIR3args, MKNOD3args, READDIR3args, READDIRPLUS3args, SYMLINK3args};
+use crate::xdr::nfs3::dir::{MKDIR3args, READDIR3args, READDIRPLUS3args};
 use crate::xdr::nfs3::file::{
-    COMMIT3args, CREATE3args, LINK3args, LOOKUP3args, READ3args, REMOVE3args, WRITE3args,
+    COMMIT3args, CREATE3args, LINK3args, LOOKUP3args, READ3args, WRITE3args,
 };
-use crate::xdr::nfs3::fs::{FSINFOargs, FSSTAT3args, PATHCONF3args};
+use crate::xdr::nfs3::fs::{FSINFO3args, FSSTAT3args, PATHCONF3args};
 use crate::xdr::nfs3::fs_object::{
-    ACCESS3args, GETATTR3args, READLINK3args, RENAME3args, SETATTR3args,
+    ACCESS3args, GETATTR3args, MKNOD3args, READLINK3args, REMOVE3args, RENAME3args, SETATTR3args,
+    SYMLINK3args,
 };
 use crate::xdr::{DeserializeEnum, SerializeEnum, UsizeAsU32};
 use crate::{xdr, DeserializeStruct, SerializeStruct};
@@ -745,7 +746,7 @@ pub enum NFSv3_args {
     READDIR(READDIR3args),
     READDIRPLUS(READDIRPLUS3args),
     FSSTAT(FSSTAT3args),
-    FSINFO(FSINFOargs),
+    FSINFO(FSINFO3args),
     PATHCONF(PATHCONF3args),
     COMMIT(COMMIT3args),
     INVALID,

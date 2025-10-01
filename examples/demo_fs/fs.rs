@@ -9,7 +9,7 @@ use crate::fs_contents::FSContents;
 use crate::fs_entry::{make_dir, make_file, FSEntry};
 use nfs_mamont::vfs;
 use nfs_mamont::xdr::nfs3;
-use nfs_mamont::xdr::nfs3::dir::mknoddata3;
+use nfs_mamont::xdr::nfs3::fs_object::mknoddata3;
 use nfs_mamont::xdr::nfs3::ftype3;
 
 /// Demo implementation of an NFS file system.
@@ -611,7 +611,7 @@ impl vfs::NFSFileSystem for DemoFS {
         &self,
         dir_id: nfs3::fileid3,
         diropr: nfs3::diropargs3,
-        ftype: nfs3::dir::mknoddata3,
+        ftype: mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
         let mut fs = self.fs.write().await;

@@ -34,6 +34,7 @@ use tracing::{debug, error, warn};
 use crate::protocol::rpc;
 use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::fs_object::SYMLINK3args;
 
 /// Handles `NFSv3` `SYMLINK` procedure (procedure 10)
 ///
@@ -67,7 +68,7 @@ pub async fn nfsproc3_symlink(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::dir::SYMLINK3args>(input)?;
+    let args = deserialize::<SYMLINK3args>(input)?;
     debug!("nfsproc3_symlink({:?}, {:?}) ", xid, args);
 
     let fs_id = args.dirops.dir.fs_id;

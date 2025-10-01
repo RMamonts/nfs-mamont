@@ -23,6 +23,7 @@ use std::cmp::Ordering;
 use async_trait::async_trait;
 
 use crate::protocol::xdr::nfs3;
+use crate::xdr::nfs3::fs_object::mknoddata3;
 
 /// Simplified directory entry containing only file ID and name
 ///
@@ -431,7 +432,7 @@ pub trait NFSFileSystem: Sync {
         &self,
         dir_id: nfs3::fileid3,
         name: nfs3::diropargs3,
-        ftype: nfs3::dir::mknoddata3,
+        ftype: mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
 
