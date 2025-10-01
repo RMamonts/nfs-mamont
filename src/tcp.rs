@@ -12,7 +12,6 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{io, net::IpAddr};
 
 use async_trait::async_trait;
@@ -31,9 +30,6 @@ use crate::vfs::NFSFileSystem;
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
 use crate::xdr::nfs3;
-
-/// Default transaction retention period
-const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -59,8 +55,6 @@ pub struct NFSTcpListener {
     port: u16,
     /// Table of NFS exports managed by this server
     export_table: Arc<NFSExportTable>,
-    /// Tracker for RPC transactions to handle retransmissions
-    transaction_tracker: Arc<rpc::TransactionTracker>,
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     portmap_table: Arc<RwLock<PortmapTable>>,
@@ -214,9 +208,6 @@ impl NFSTcpListener {
             listener,
             port,
             export_table: Arc::new(DashMap::new()),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(
-                TRANSACTION_RETENTION_PERIOD,
-            )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
             client_list: Arc::new(DashMap::new()),
         })
@@ -366,7 +357,6 @@ impl NFSTcp for NFSTcpListener {
                 client_addr: socket.peer_addr()?.to_string(),
                 auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
-                transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
                 client_list: self.client_list.clone(),
             };
