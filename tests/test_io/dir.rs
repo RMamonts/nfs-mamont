@@ -45,5 +45,8 @@ fn create_read_delete() {
         std::fs::remove_file(&file_path).unwrap();
     }
 
+    let mut dir_iter = std::fs::read_dir(&dir_path).unwrap();
+    assert!(dir_iter.next().is_none());
+
     std::fs::remove_dir(&dir_path).unwrap();
 }
