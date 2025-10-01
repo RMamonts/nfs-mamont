@@ -8,25 +8,28 @@
 //!
 //! The implementation supports configurable export paths and notification
 //! on mount/unmount operations.
-use async_trait::async_trait;
-use dashmap::DashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{io, net::IpAddr};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+
+use async_trait::async_trait;
+use dashmap::DashMap;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::protocol::nfs::portmap::PortmapTable;
+use crate::protocol::rpc::Context;
 use crate::protocol::{rpc, xdr};
+use crate::read_task::ReadTask;
+use crate::response_buffer::ResponseBuffer;
+use crate::rpc_command::RpcCommand;
 use crate::vfs::NFSFileSystem;
-
-/// Default transaction retention period
-const TRANSACTION_RETENTION_PERIOD: Duration = Duration::from_secs(60);
+use crate::vfs_task::VfsTask;
+use crate::write_task::WriteTask;
+use crate::xdr::nfs3;
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -40,7 +43,7 @@ pub struct NFSExportTableEntry {
 }
 
 /// Hash map that stores all exported file systems for an NFS server.
-pub type NFSExportTable = DashMap<crate::xdr::nfs3::fs_id, NFSExportTableEntry>;
+pub type NFSExportTable = DashMap<nfs3::fs_id, NFSExportTableEntry>;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
@@ -52,8 +55,6 @@ pub struct NFSTcpListener {
     port: u16,
     /// Table of NFS exports managed by this server
     export_table: Arc<NFSExportTable>,
-    /// Tracker for RPC transactions to handle retransmissions
-    transaction_tracker: Arc<rpc::TransactionTracker>,
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     portmap_table: Arc<RwLock<PortmapTable>>,
@@ -67,6 +68,9 @@ pub fn generate_host_ip(hostnum: u16) -> String {
     format!("127.88.{}.{}", ((hostnum >> 8) & 0xFF) as u8, (hostnum & 0xFF) as u8)
 }
 
+/// Command processing result
+pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
+
 /// Processes an established TCP socket connection from an NFS client
 ///
 /// This function:
@@ -79,54 +83,18 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 ///
 /// * `socket` - The established TCP connection to the client
 /// * `context` - RPC context containing server state and client information
-async fn process_socket(socket: tokio::net::TcpStream, context: rpc::Context) {
-    let (mut message_handler, mut socksend, mut msgrecvchan) =
-        rpc::SocketMessageHandler::new(&context);
+async fn process_socket(socket: TcpStream, context: Context) {
+    let (readhalf, writehalf) = socket.into_split();
+    // channel for result
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
+    // channel for request
+    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    tokio::spawn(async move {
-        loop {
-            if let Err(e) = message_handler.read().await {
-                debug!("Message loop broken due to {:?}", e);
-                break;
-            }
-        }
-    });
+    ReadTask::new(readhalf, command_sender).spawn();
 
-    let (mut readhalf, mut writehalf) = tokio::io::split(socket);
+    VfsTask::new(command_receiver, result_sender, context).spawn();
 
-    tokio::spawn(async move {
-        let mut buf = [0; 128000];
-        loop {
-            match readhalf.read(&mut buf).await {
-                Ok(0) => return Ok(()),
-                Ok(n) => {
-                    let _ = socksend.write_all(&buf[..n]).await;
-                }
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
-                }
-            }
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(reply) = msgrecvchan.recv().await {
-            match reply {
-                Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
-                }
-                Ok(msg) => {
-                    if let Err(e) = rpc::write_fragment(&mut writehalf, &msg).await {
-                        error!("Write error {:?}", e);
-                    }
-                }
-            }
-        }
-        debug!("Channel closed, sending results to socket terminated");
-        Ok(())
-    });
+    WriteTask::new(writehalf, result_receiver).spawn();
 }
 
 /// Interface for NFS TCP servers that defines common operations
@@ -240,9 +208,6 @@ impl NFSTcpListener {
             listener,
             port,
             export_table: Arc::new(DashMap::new()),
-            transaction_tracker: Arc::new(rpc::TransactionTracker::new(
-                TRANSACTION_RETENTION_PERIOD,
-            )),
             portmap_table: Arc::from(RwLock::from(PortmapTable::default())),
             client_list: Arc::new(DashMap::new()),
         })
@@ -392,7 +357,6 @@ impl NFSTcp for NFSTcpListener {
                 client_addr: socket.peer_addr()?.to_string(),
                 auth: Some(xdr::rpc::auth_unix::default()),
                 export_table: self.export_table.clone(),
-                transaction_tracker: self.transaction_tracker.clone(),
                 portmap_table: self.portmap_table.clone(),
                 client_list: self.client_list.clone(),
             };
