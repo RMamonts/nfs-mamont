@@ -91,11 +91,7 @@ pub async fn nfsproc3_mknod(
     let attr = nfs3::sattr3::default();
 
     // Call VFS mknod method
-    match export
-        .vfs
-        .mknod(dir_id, &args.where_dir.name, args.what.mknod_type, args.what.device.device, &attr)
-        .await
-    {
+    match export.vfs.mknod(dir_id, args.where_dir, args.what, &attr).await {
         Ok((fid, fattr)) => {
             debug!("nfsproc3_mknod success --> {:?}, {:?}", fid, fattr);
 

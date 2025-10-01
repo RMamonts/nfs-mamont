@@ -11,42 +11,15 @@
 //! These structures implement the XDR serialization/deserialization interfaces for
 //! the request arguments and response data of directory-related operations.
 
-// Allow unused code warnings since we implement the complete RFC 1813 specification,
-// including procedures that may not be used by all clients
-#![allow(dead_code)]
-// Preserve original RFC naming conventions (e.g. READDIR3args, MKDIR3resok)
-// for consistency with the NFS version 3 protocol specification
-#![allow(non_camel_case_types)]
-
 use std::io::{Read, Write};
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use super::{
-    cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, ftype3, nfs_fh3, post_op_attr,
-    post_op_fh3, sattr3, specdata3, symlinkdata3, Deserialize, DeserializeEnum, DeserializeStruct,
-    Serialize, SerializeEnum, SerializeStruct,
+    cookie3, cookieverf3, count3, diropargs3, fileid3, filename3, nfs_fh3, post_op_attr,
+    post_op_fh3, sattr3, specdata3, symlinkdata3, Deserialize, DeserializeStruct, Serialize,
+    SerializeStruct,
 };
-
-/// Enumeration of device types for special files in NFS version 3
-/// as defined in RFC 1813 section 3.3.11
-/// Used to identify the type of device when creating special files
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
-#[repr(u32)]
-pub enum devicetype3 {
-    /// Character special device
-    #[default]
-    NF3CHR = 0,
-    /// Block special device
-    NF3BLK = 1,
-    /// Socket
-    NF3SOCK = 2,
-    /// FIFO pipe
-    NF3FIFO = 3,
-}
-impl SerializeEnum for devicetype3 {}
-impl DeserializeEnum for devicetype3 {}
+use crate::xdr::deserialize;
+use crate::xdr::nfs3::ftype3;
 
 /// Arguments for the MKDIR procedure (procedure 9)
 /// as defined in RFC 1813 section 3.3.9
@@ -172,23 +145,83 @@ SerializeStruct!(MKNOD3args, where_dir, what);
 #[derive(Debug, Default)]
 pub struct devicedata3 {
     /// Type of device (character, block, socket, or FIFO)
-    pub dev_type: devicetype3,
+    pub attr: sattr3,
     /// Major and minor device numbers for character and block devices
     pub device: specdata3,
 }
-DeserializeStruct!(devicedata3, dev_type, device);
-SerializeStruct!(devicedata3, dev_type, device);
+DeserializeStruct!(devicedata3, attr, device);
+SerializeStruct!(devicedata3, attr, device);
 
 /// Data structure for creating special files
 /// as defined in RFC 1813 section 3.3.11
 /// Contains the file type and device information
 #[allow(non_camel_case_types)]
-#[derive(Debug, Default)]
-pub struct mknoddata3 {
-    /// Type of file to create (regular, directory, special file etc)
-    pub mknod_type: ftype3,
-    /// Device information if creating a special file
-    pub device: devicedata3,
+#[derive(Debug)]
+pub enum mknoddata3 {
+    NF3REG,
+    NF3DIR,
+    NF3LNK,
+    NF3CHR(devicedata3),
+    NF3BLK(devicedata3),
+    NF3SOCK(sattr3),
+    NF3FIFO(sattr3),
 }
-DeserializeStruct!(mknoddata3, mknod_type, device);
-SerializeStruct!(mknoddata3, mknod_type, device);
+
+impl Default for mknoddata3 {
+    fn default() -> Self {
+        Self::NF3REG
+    }
+}
+
+impl Serialize for mknoddata3 {
+    fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
+        match self {
+            mknoddata3::NF3REG => ftype3::NF3REG.serialize(dest),
+            mknoddata3::NF3DIR => ftype3::NF3DIR.serialize(dest),
+            mknoddata3::NF3LNK => ftype3::NF3LNK.serialize(dest),
+            mknoddata3::NF3CHR(arg) => {
+                ftype3::NF3CHR.serialize(dest)?;
+                arg.serialize(dest)
+            }
+            mknoddata3::NF3BLK(arg) => {
+                ftype3::NF3BLK.serialize(dest)?;
+                arg.serialize(dest)
+            }
+            mknoddata3::NF3SOCK(arg) => {
+                ftype3::NF3SOCK.serialize(dest)?;
+                arg.serialize(dest)
+            }
+            mknoddata3::NF3FIFO(arg) => {
+                ftype3::NF3FIFO.serialize(dest)?;
+                arg.serialize(dest)
+            }
+        }
+    }
+}
+
+impl Deserialize for mknoddata3 {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
+        let ftype = deserialize::<ftype3>(src)?;
+        match ftype {
+            ftype3::NF3REG => Ok(mknoddata3::NF3REG),
+            ftype3::NF3DIR => Ok(mknoddata3::NF3DIR),
+            ftype3::NF3BLK => {
+                let arg = deserialize::<devicedata3>(src)?;
+                Ok(mknoddata3::NF3BLK(arg))
+            }
+            ftype3::NF3CHR => {
+                let arg = deserialize::<devicedata3>(src)?;
+                Ok(mknoddata3::NF3CHR(arg))
+            }
+            ftype3::NF3LNK => Ok(mknoddata3::NF3LNK),
+            ftype3::NF3SOCK => {
+                let arg = deserialize::<sattr3>(src)?;
+                Ok(mknoddata3::NF3SOCK(arg))
+            }
+            ftype3::NF3FIFO => {
+                let arg = deserialize::<sattr3>(src)?;
+                Ok(mknoddata3::NF3FIFO(arg))
+            }
+        }
+    }
+}

@@ -10,13 +10,6 @@
 //! The structures implement the XDR serialization/deserialization interfaces for
 //! the request arguments and response data of these operations.
 
-// Allow unused code warnings since we implement the complete RFC 1813 specification,
-// including procedures that may not be used by all clients
-#![allow(dead_code)]
-// Preserve original RFC naming conventions (e.g. READ3args, COMMIT3resok)
-// for consistency with the NFS version 3 protocol specification
-#![allow(non_camel_case_types)]
-
 use std::io::{Read, Write};
 
 use num_derive::{FromPrimitive, ToPrimitive};

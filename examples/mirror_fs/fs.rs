@@ -10,13 +10,13 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::debug;
 
-use nfs_mamont::fs_util::{exists_no_traverse, file_setattr, metadata_to_fattr3, path_setattr};
-use nfs_mamont::vfs;
-use nfs_mamont::xdr::nfs3;
-
 use crate::create_fs_object::CreateFSObject;
 use crate::error_handling::{NFSResult, RefreshResult};
 use crate::fs_map::FSMap;
+use nfs_mamont::fs_util::{exists_no_traverse, file_setattr, metadata_to_fattr3, path_setattr};
+use nfs_mamont::vfs;
+use nfs_mamont::xdr::nfs3;
+use nfs_mamont::xdr::nfs3::dir::mknoddata3;
 
 /// A file system implementation that mirrors a local directory
 #[derive(Debug)]
@@ -484,15 +484,14 @@ impl vfs::NFSFileSystem for MirrorFS {
     async fn mknod(
         &self,
         dir_id: nfs3::fileid3,
-        name: &nfs3::filename3,
-        ftype: nfs3::ftype3,
-        _specdata: nfs3::specdata3,
+        mut diropr: nfs3::diropargs3,
+        ftype: nfs3::dir::mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
         let mut fsmap = self.fsmap.lock().await;
         let dir_entry = fsmap.find_entry(dir_id)?;
         let mut path = fsmap.sym_to_path(&dir_entry.name).await;
-        let name_osstr = OsStr::from_bytes(name).to_os_string();
+        let name_osstr = OsStr::from_bytes(diropr.name.0.as_mut_slice()).to_os_string();
         path.push(&name_osstr);
 
         // Check if the target already exists
@@ -502,7 +501,7 @@ impl vfs::NFSFileSystem for MirrorFS {
 
         // Create the special file based on its type
         match ftype {
-            nfs3::ftype3::NF3CHR => {
+            mknoddata3::NF3CHR(_) => {
                 // Character device
                 let mode = match attrs.mode {
                     nfs3::set_mode3::Some(m) => m,
@@ -533,7 +532,7 @@ impl vfs::NFSFileSystem for MirrorFS {
                     }
                 }
             }
-            nfs3::ftype3::NF3BLK => {
+            mknoddata3::NF3BLK(_) => {
                 // Block device
                 let mode = match attrs.mode {
                     nfs3::set_mode3::Some(m) => m,
@@ -564,7 +563,7 @@ impl vfs::NFSFileSystem for MirrorFS {
                     }
                 }
             }
-            nfs3::ftype3::NF3FIFO => {
+            mknoddata3::NF3FIFO(_) => {
                 // Named pipe (FIFO)
                 let mode = match attrs.mode {
                     nfs3::set_mode3::Some(m) => m,
@@ -599,7 +598,7 @@ impl vfs::NFSFileSystem for MirrorFS {
                     return Err(nfsstat3::NFS3ERR_NOTSUPP);
                 }
             }
-            nfs3::ftype3::NF3SOCK => {
+            mknoddata3::NF3SOCK(_) => {
                 // Socket
                 let mode = match attrs.mode {
                     nfs3::set_mode3::Some(m) => m,

@@ -5,11 +5,12 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use nfs_mamont::vfs;
-use nfs_mamont::xdr::nfs3;
-
 use crate::fs_contents::FSContents;
 use crate::fs_entry::{make_dir, make_file, FSEntry};
+use nfs_mamont::vfs;
+use nfs_mamont::xdr::nfs3;
+use nfs_mamont::xdr::nfs3::dir::mknoddata3;
+use nfs_mamont::xdr::nfs3::ftype3;
 
 /// Demo implementation of an NFS file system.
 /// Provides a simple in-memory file system that supports basic NFS operations.
@@ -609,9 +610,8 @@ impl vfs::NFSFileSystem for DemoFS {
     async fn mknod(
         &self,
         dir_id: nfs3::fileid3,
-        name: &nfs3::filename3,
-        type_: nfs3::ftype3,
-        device_spec: nfs3::specdata3,
+        diropr: nfs3::diropargs3,
+        ftype: nfs3::dir::mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
         let mut fs = self.fs.write().await;
@@ -624,7 +624,10 @@ impl vfs::NFSFileSystem for DemoFS {
 
         // Check if a file with the same name already exists
         if let FSContents::Directory(dir) = &fs.get(&dir_id).unwrap().contents {
-            if dir.iter().any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == name[..])) {
+            if dir
+                .iter()
+                .any(|&id| fs.get(&id).is_some_and(|file| file.name[..] == diropr.name[..]))
+            {
                 return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
             }
         }
@@ -632,34 +635,46 @@ impl vfs::NFSFileSystem for DemoFS {
         // Create a new entry based on the type
         let newid = fs.len() as nfs3::fileid3;
         let mut entry;
-
-        match type_ {
-            nfs3::ftype3::NF3REG => {
-                // Regular file
-                entry = make_file(std::str::from_utf8(name).unwrap(), newid, dir_id, &[]);
+        match ftype {
+            mknoddata3::NF3CHR(dev) => {
+                entry = make_file(
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
+                    newid,
+                    dir_id,
+                    &[],
+                );
+                entry.attr.ftype = ftype3::NF3CHR;
+                entry.attr.rdev = dev.device;
             }
-            nfs3::ftype3::NF3DIR => {
-                // Directory
-                entry = make_dir(std::str::from_utf8(name).unwrap(), newid, dir_id, Vec::new());
+            mknoddata3::NF3BLK(dev) => {
+                entry = make_file(
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
+                    newid,
+                    dir_id,
+                    &[],
+                );
+                entry.attr.ftype = ftype3::NF3CHR;
+                entry.attr.rdev = dev.device;
             }
-            nfs3::ftype3::NF3BLK | nfs3::ftype3::NF3CHR => {
-                // Block or character device
-                entry = make_file(std::str::from_utf8(name).unwrap(), newid, dir_id, &[]);
-                entry.attr.ftype = type_;
-                entry.attr.rdev = device_spec;
+            mknoddata3::NF3SOCK(_) => {
+                entry = make_file(
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
+                    newid,
+                    dir_id,
+                    &[],
+                );
+                entry.attr.ftype = ftype3::NF3SOCK;
             }
-            nfs3::ftype3::NF3FIFO => {
-                // Named pipe
-                entry = make_file(std::str::from_utf8(name).unwrap(), newid, dir_id, &[]);
-                entry.attr.ftype = type_;
-            }
-            nfs3::ftype3::NF3SOCK => {
-                // Socket
-                entry = make_file(std::str::from_utf8(name).unwrap(), newid, dir_id, &[]);
-                entry.attr.ftype = type_;
+            mknoddata3::NF3FIFO(_) => {
+                entry = make_file(
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
+                    newid,
+                    dir_id,
+                    &[],
+                );
+                entry.attr.ftype = ftype3::NF3FIFO;
             }
             _ => {
-                // Unsupported file type
                 return Err(nfs3::nfsstat3::NFS3ERR_NOTSUPP);
             }
         }
