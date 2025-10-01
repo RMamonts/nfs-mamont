@@ -25,7 +25,5 @@
 //! encoding, transmission, and routing.
 
 mod context;
-mod transaction_tracker;
 
 pub use context::Context;
-pub use transaction_tracker::TransactionTracker;

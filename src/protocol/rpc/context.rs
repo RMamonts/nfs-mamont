@@ -52,10 +52,6 @@ pub struct Context {
     /// List containing all exported file systems
     pub export_table: Arc<NFSExportTable>,
 
-    /// Transaction state tracker for handling retransmissions
-    /// Maintains idempotency by detecting duplicate RPC calls
-    pub transaction_tracker: Arc<super::TransactionTracker>,
-
     /// Portmap table storing port-to-program mappings
     /// (like a portmap service)
     pub portmap_table: Arc<RwLock<PortmapTable>>,
