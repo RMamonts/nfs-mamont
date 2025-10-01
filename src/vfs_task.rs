@@ -125,14 +125,6 @@ impl VfsTask {
                 return Ok(true);
             }
 
-            if self.context.transaction_tracker.is_retransmission(xid, &self.context.client_addr) {
-                debug!(
-                    "Retransmission detected, xid: {}, client_addr: {}, call: {:?}",
-                    xid, self.context.client_addr, call
-                );
-                return Ok(false);
-            }
-
             let result = match call.prog {
                 nfs3::PROGRAM => match call.vers {
                     nfs3::VERSION => {
@@ -175,8 +167,6 @@ impl VfsTask {
                 }
             }
             .map(|_| true);
-
-            self.context.transaction_tracker.mark_processed(xid, &self.context.client_addr);
 
             result
         } else {

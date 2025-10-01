@@ -50,10 +50,6 @@ pub struct Context {
     /// List containing all exported file systems
     pub export_table: Arc<NFSExportTable>,
 
-    /// Transaction state tracker for handling retransmissions
-    /// Maintains idempotency by detecting duplicate RPC calls
-    pub transaction_tracker: Arc<super::TransactionTracker>,
-
     /// List of connected clients and file systems they have mounted
     pub client_list: Arc<DashMap<String, HashSet<String>>>,
 }
