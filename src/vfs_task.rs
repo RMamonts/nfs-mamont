@@ -11,7 +11,7 @@ use crate::rpc_command::RpcCommand;
 use crate::tcp::CommandResult;
 use crate::utils::error::io_other;
 use crate::xdr;
-use crate::xdr::{deserialize, mount, nfs3, portmap, Serialize};
+use crate::xdr::{deserialize, mount, nfs3, Serialize};
 
 /// RPC program number for NFS Access Control Lists
 const NFS_ACL_PROGRAM: u32 = 100227;
@@ -144,9 +144,6 @@ impl VfsTask {
                         Ok(())
                     }
                 },
-                portmap::PROGRAM => {
-                    nfs::portmap::handle_portmap(xid, &call, input, output, &mut self.context).await
-                }
                 mount::PROGRAM => {
                     nfs::mount::handle_mount(xid, call, input, output, &self.context).await
                 }

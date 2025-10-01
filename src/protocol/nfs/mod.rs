@@ -19,6 +19,5 @@
 //! though in this implementation it is primarily used over TCP.
 
 pub mod mount;
-pub mod portmap;
 pub mod v3;
 pub mod v4;
