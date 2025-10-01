@@ -67,6 +67,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 /// Command processing result
 pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 
+
 /// Processes an established TCP socket connection from an NFS client
 ///
 /// This function:
@@ -86,7 +87,7 @@ async fn process_socket(socket: TcpStream, context: Context) {
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    ReadTask::new(readhalf, command_sender).spawn();
+    ReadTask::new(readhalf, command_sender, result_sender.clone()).spawn();
 
     VfsTask::new(command_receiver, result_sender, context).spawn();
 

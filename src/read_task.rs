@@ -5,6 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, trace};
 
 use crate::rpc_command::RpcCommand;
+use crate::tcp::CommandResult;
 use crate::utils::error::io_other;
 
 /// Initial capacity of RpcCommand buffer
@@ -15,12 +16,13 @@ pub const COMMAND_INIT_SIZE: usize = 8192;
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     command_sender: UnboundedSender<RpcCommand>,
+    result_sender: UnboundedSender<CommandResult>
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<RpcCommand>) -> Self {
-        Self { readhalf, command_sender }
+    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<RpcCommand>, result_sender: UnboundedSender<CommandResult>) -> Self {
+        Self { readhalf, command_sender, result_sender }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
