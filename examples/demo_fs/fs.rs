@@ -610,7 +610,7 @@ impl vfs::NFSFileSystem for DemoFS {
     async fn mknod(
         &self,
         dir_id: nfs3::fileid3,
-        diropr: &nfs3::diropargs3,
+        diropr: nfs3::diropargs3,
         ftype: nfs3::dir::mknoddata3,
         attrs: &nfs3::sattr3,
     ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3> {
@@ -639,7 +639,7 @@ impl vfs::NFSFileSystem for DemoFS {
         match ftype {
             mknoddata3::NF3CHR(dev) => {
                 entry = make_file(
-                    String::from_utf8(diropr.name.0.clone()).unwrap().as_str(),
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
                     newid,
                     dir_id,
                     &[],
@@ -649,7 +649,7 @@ impl vfs::NFSFileSystem for DemoFS {
             }
             mknoddata3::NF3BLK(dev) => {
                 entry = make_file(
-                    String::from_utf8(diropr.name.0.clone()).unwrap().as_str(),
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
                     newid,
                     dir_id,
                     &[],
@@ -659,7 +659,7 @@ impl vfs::NFSFileSystem for DemoFS {
             }
             mknoddata3::NF3SOCK(_) => {
                 entry = make_file(
-                    String::from_utf8(diropr.name.0.clone()).unwrap().as_str(),
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
                     newid,
                     dir_id,
                     &[],
@@ -668,7 +668,7 @@ impl vfs::NFSFileSystem for DemoFS {
             }
             mknoddata3::NF3FIFO(_) => {
                 entry = make_file(
-                    String::from_utf8(diropr.name.0.clone()).unwrap().as_str(),
+                    str::from_utf8(diropr.name.0.as_slice()).unwrap(),
                     newid,
                     dir_id,
                     &[],
