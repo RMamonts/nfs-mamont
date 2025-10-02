@@ -67,7 +67,8 @@ mod setattr;
 mod symlink;
 mod write;
 
-use crate::xdr::nfs3::NFSv3_args;
+use crate::xdr::nfs3;
+
 use access::nfsproc3_access;
 use commit::nfsproc3_commit;
 use create::nfsproc3_create;
@@ -109,37 +110,36 @@ use write::nfsproc3_write;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_nfs(
     xid: u32,
-    arg: io::Result<Box<NFSv3_args>>,
+    arg: Box<nfs3::Args>,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let arg = arg?;
     match *arg {
-        NFSv3_args::NULL => nfsproc3_null(xid, output),
-        NFSv3_args::GETATTR(proc_args) => nfsproc3_getattr(xid, proc_args, output, context).await,
-        NFSv3_args::SETATTR(proc_args) => nfsproc3_setattr(xid, proc_args, output, context).await,
-        NFSv3_args::LOOKUP(proc_args) => nfsproc3_lookup(xid, proc_args, output, context).await,
-        NFSv3_args::ACCESS(proc_args) => nfsproc3_access(xid, proc_args, output, context).await,
-        NFSv3_args::READLINK(proc_args) => nfsproc3_readlink(xid, proc_args, output, context).await,
-        NFSv3_args::READ(proc_args) => nfsproc3_read(xid, proc_args, output, context).await,
-        NFSv3_args::WRITE(proc_args) => nfsproc3_write(xid, proc_args, output, context).await,
-        NFSv3_args::CREATE(proc_args) => nfsproc3_create(xid, proc_args, output, context).await,
-        NFSv3_args::MKDIR(proc_args) => nfsproc3_mkdir(xid, proc_args, output, context).await,
-        NFSv3_args::SYMLINK(proc_args) => nfsproc3_symlink(xid, proc_args, output, context).await,
-        NFSv3_args::MKNOD(proc_args) => nfsproc3_mknod(xid, proc_args, output, context).await,
-        NFSv3_args::REMOVE(proc_args) => nfsproc3_remove(xid, proc_args, output, context).await,
-        NFSv3_args::RMDIR(proc_args) => nfsproc3_remove(xid, proc_args, output, context).await,
-        NFSv3_args::RENAME(proc_args) => nfsproc3_rename(xid, proc_args, output, context).await,
-        NFSv3_args::LINK(proc_args) => nfsproc3_link(xid, proc_args, output, context).await,
-        NFSv3_args::READDIR(proc_args) => nfsproc3_readdir(xid, proc_args, output, context).await,
-        NFSv3_args::READDIRPLUS(proc_args) => {
+        nfs3::Args::Null => nfsproc3_null(xid, output),
+        nfs3::Args::Getattr(proc_args) => nfsproc3_getattr(xid, proc_args, output, context).await,
+        nfs3::Args::Setattr(proc_args) => nfsproc3_setattr(xid, proc_args, output, context).await,
+        nfs3::Args::Lookup(proc_args) => nfsproc3_lookup(xid, proc_args, output, context).await,
+        nfs3::Args::Access(proc_args) => nfsproc3_access(xid, proc_args, output, context).await,
+        nfs3::Args::Readlink(proc_args) => nfsproc3_readlink(xid, proc_args, output, context).await,
+        nfs3::Args::Read(proc_args) => nfsproc3_read(xid, proc_args, output, context).await,
+        nfs3::Args::Write(proc_args) => nfsproc3_write(xid, proc_args, output, context).await,
+        nfs3::Args::Create(proc_args) => nfsproc3_create(xid, proc_args, output, context).await,
+        nfs3::Args::Mkdir(proc_args) => nfsproc3_mkdir(xid, proc_args, output, context).await,
+        nfs3::Args::Symlink(proc_args) => nfsproc3_symlink(xid, proc_args, output, context).await,
+        nfs3::Args::Mknod(proc_args) => nfsproc3_mknod(xid, proc_args, output, context).await,
+        nfs3::Args::Remove(proc_args) => nfsproc3_remove(xid, proc_args, output, context).await,
+        nfs3::Args::Rmdir(proc_args) => nfsproc3_remove(xid, proc_args, output, context).await,
+        nfs3::Args::Rename(proc_args) => nfsproc3_rename(xid, proc_args, output, context).await,
+        nfs3::Args::Link(proc_args) => nfsproc3_link(xid, proc_args, output, context).await,
+        nfs3::Args::Readdir(proc_args) => nfsproc3_readdir(xid, proc_args, output, context).await,
+        nfs3::Args::Readdirplus(proc_args) => {
             nfsproc3_readdirplus(xid, proc_args, output, context).await
         }
-        NFSv3_args::FSSTAT(proc_args) => nfsproc3_fsstat(xid, proc_args, output, context).await,
-        NFSv3_args::FSINFO(proc_args) => nfsproc3_fsinfo(xid, proc_args, output, context).await,
-        NFSv3_args::PATHCONF(proc_args) => nfsproc3_pathconf(xid, proc_args, output, context).await,
-        NFSv3_args::COMMIT(proc_args) => nfsproc3_commit(xid, proc_args, output, context).await,
-        NFSv3_args::INVALID => {
+        nfs3::Args::Fsstat(proc_args) => nfsproc3_fsstat(xid, proc_args, output, context).await,
+        nfs3::Args::Fsinfo(proc_args) => nfsproc3_fsinfo(xid, proc_args, output, context).await,
+        nfs3::Args::Pathconf(proc_args) => nfsproc3_pathconf(xid, proc_args, output, context).await,
+        nfs3::Args::Commit(proc_args) => nfsproc3_commit(xid, proc_args, output, context).await,
+        nfs3::Args::Invalid => {
             warn!("Invalid NFS operation");
             xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
             Ok(())

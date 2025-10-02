@@ -79,12 +79,11 @@ pub enum MountProgram {
 impl SerializeEnum for MountProgram {}
 impl DeserializeEnum for MountProgram {}
 
-#[allow(non_camel_case_types)]
-pub enum Mount_args {
-    NULL,
-    MNT(dirpath),
-    DUMP,
-    UMNT(dirpath),
-    UMNTALL,
-    EXPORT,
+pub enum Args {
+    Null,
+    Mnt(dirpath),
+    Dump,
+    Umnt(dirpath),
+    Umntall,
+    Export,
 }

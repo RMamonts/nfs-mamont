@@ -5,7 +5,7 @@
 use std::io;
 use std::io::Write;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::{machine_name_from_context, matches_export_path};
 use crate::protocol::rpc;
@@ -42,7 +42,6 @@ pub async fn mountproc3_umnt(
     context: &rpc::Context,
 ) -> io::Result<()> {
     let Ok(utf8path) = std::str::from_utf8(&args) else {
-        warn!("Invalid UTF-8 path in umnt: {:?}", args);
         return Ok(());
     };
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);

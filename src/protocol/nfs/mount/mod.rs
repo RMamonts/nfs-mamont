@@ -14,7 +14,8 @@ mod null;
 mod umnt;
 mod umnt_all;
 
-use crate::xdr::mount::Mount_args;
+use crate::xdr::mount::Args;
+
 use dump::mountproc3_dump;
 use export::mountproc3_export;
 use mnt::mountproc3_mnt;
@@ -82,17 +83,16 @@ fn machine_name_from_context(context: &rpc::Context) -> Option<String> {
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_mount(
     xid: u32,
-    arg: io::Result<Box<Mount_args>>,
+    arg: Box<Args>,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let arg = arg?;
     match *arg {
-        Mount_args::NULL => mountproc3_null(xid, output),
-        Mount_args::MNT(proc_args) => mountproc3_mnt(xid, proc_args, output, context).await,
-        Mount_args::DUMP => mountproc3_dump(xid, output, context).await,
-        Mount_args::UMNT(proc_args) => mountproc3_umnt(xid, proc_args, output, context).await,
-        Mount_args::UMNTALL => mountproc3_umnt_all(xid, output, context).await,
-        Mount_args::EXPORT => mountproc3_export(xid, output, context).await,
+        Args::Null => mountproc3_null(xid, output),
+        Args::Mnt(proc_args) => mountproc3_mnt(xid, proc_args, output, context).await,
+        Args::Dump => mountproc3_dump(xid, output, context).await,
+        Args::Umnt(proc_args) => mountproc3_umnt(xid, proc_args, output, context).await,
+        Args::Umntall => mountproc3_umnt_all(xid, output, context).await,
+        Args::Export => mountproc3_export(xid, output, context).await,
     }
 }
