@@ -56,8 +56,8 @@ pub async fn nfsproc3_readdir(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -66,7 +66,7 @@ pub async fn nfsproc3_readdir(
     if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
     let dir_id = dir_id.unwrap();
@@ -79,11 +79,11 @@ pub async fn nfsproc3_readdir(
             ((dir_attr.mtime.seconds as u64) << 32) | (dir_attr.mtime.nseconds as u64);
         cvf_version.to_be_bytes()
     } else {
-        nfs3::cookieverf3::default()
+        nfs3::CookieVerf3::default()
     };
     debug!(" -- Dir attr {:?}", dir_attr);
     debug!(" -- Dir version {:?}", dir_version);
-    let has_version = args.cookieverf != nfs3::cookieverf3::default();
+    let has_version = args.cookieverf != nfs3::CookieVerf3::default();
     // subtract off the final entryplus* field (which must be false) and the eof
     let max_bytes_allowed = args.dircount as usize - 128;
     // args.dircount is bytes of just fileid, name, cookie.
@@ -102,11 +102,11 @@ pub async fn nfsproc3_readdir(
             let mut counting_output = crate::write_counter::WriteCounter::new(output);
 
             xdr::rpc::make_success_reply(xid).serialize(&mut counting_output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(&mut counting_output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(&mut counting_output)?;
             dir_attr.serialize(&mut counting_output)?;
             dir_version.serialize(&mut counting_output)?;
             for entry in result.entries {
-                let entry = nfs3::dir::entry3 {
+                let entry = nfs3::dir::Entry3 {
                     fileid: entry.fileid,
                     name: entry.name,
                     cookie: entry.fileid,
@@ -118,9 +118,9 @@ pub async fn nfsproc3_readdir(
                 true.serialize(&mut write_cursor)?;
                 entry.serialize(&mut write_cursor)?;
                 write_cursor.flush()?;
-                let added_dircount = std::mem::size_of::<nfs3::fileid3>()                   // fileid
+                let added_dircount = std::mem::size_of::<nfs3::FileId3>()                   // fileid
                                     + std::mem::size_of::<u32>() + entry.name.len()  // name
-                                    + std::mem::size_of::<nfs3::cookie3>(); // cookie
+                                    + std::mem::size_of::<nfs3::Cookie3>(); // cookie
                 let added_output_bytes = write_buf.len();
                 // check if we can write without hitting the limits
                 if added_output_bytes + counting_output.bytes_written() < max_bytes_allowed {

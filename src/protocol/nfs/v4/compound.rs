@@ -52,7 +52,7 @@ pub async fn nfsproc4_compound(
     );
 
     let response = nfs4::COMPOUND4res {
-        status: nfs4::nfsstat4::NFS4_OK,
+        status: nfs4::NFSStat4::NFS4Ok,
         tag: args.tag.clone(),
         resarray: Vec::new(),
     };

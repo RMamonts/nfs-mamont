@@ -12,12 +12,11 @@
 // Allow unused code since we implement the complete RFC specification
 #![allow(dead_code)]
 // Preserve original RFC naming conventions for consistency with the specification
-#![allow(non_camel_case_types)]
 
 use std::io::{Read, Write};
 
 use super::{
-    nfstime3, post_op_attr, size3, Deserialize, DeserializeStruct, Serialize, SerializeStruct,
+    Deserialize, DeserializeStruct, NFSTime3, PostOpAttr, Serialize, SerializeStruct, Size3,
 };
 
 // Section 3.3.19. Procedure 19: FSINFO - Get static file system Information
@@ -49,11 +48,10 @@ pub const FSF_CANSETTIME: u32 = 0x0010;
 
 /// File system information structure returned by FSINFO procedure
 /// as defined in RFC 1813 section 3.3.19
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
-pub struct fsinfo3 {
+pub struct FSInfo3 {
     /// File system attributes
-    pub obj_attributes: post_op_attr,
+    pub obj_attributes: PostOpAttr,
     /// Maximum read request supported by server (bytes)
     pub rtmax: u32,
     /// Preferred read request size (bytes)
@@ -71,14 +69,14 @@ pub struct fsinfo3 {
     /// Preferred directory read request size (bytes)
     pub dtpref: u32,
     /// Maximum file size supported (bytes)
-    pub maxfilesize: size3,
+    pub maxfilesize: Size3,
     /// Server time granularity (resolution of time values)
-    pub time_delta: nfstime3,
+    pub time_delta: NFSTime3,
     /// Bit mask of file system properties (FSF_* constants)
     pub properties: u32,
 }
 DeserializeStruct!(
-    fsinfo3,
+    FSInfo3,
     obj_attributes,
     rtmax,
     rtpref,
@@ -92,7 +90,7 @@ DeserializeStruct!(
     properties
 );
 SerializeStruct!(
-    fsinfo3,
+    FSInfo3,
     obj_attributes,
     rtmax,
     rtpref,
@@ -108,23 +106,22 @@ SerializeStruct!(
 
 /// File system statistics returned by FSSTAT procedure
 /// as defined in RFC 1813 section 3.3.18
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct FSSTAT3resok {
     /// File system attributes
-    pub obj_attributes: post_op_attr,
+    pub obj_attributes: PostOpAttr,
     /// Total size of file system in bytes
-    pub tbytes: size3,
+    pub tbytes: Size3,
     /// Free space in bytes
-    pub fbytes: size3,
+    pub fbytes: Size3,
     /// Free space available to user in bytes (considering quotas)
-    pub abytes: size3,
+    pub abytes: Size3,
     /// Total number of file slots
-    pub tfiles: size3,
+    pub tfiles: Size3,
     /// Number of free file slots
-    pub ffiles: size3,
+    pub ffiles: Size3,
     /// Number of free file slots available to user (considering quotas)
-    pub afiles: size3,
+    pub afiles: Size3,
     /// Time for which this information is valid (seconds)
     /// Zero means the information is always valid
     pub invarsec: u32,
@@ -154,11 +151,10 @@ SerializeStruct!(
 
 /// Path configuration information returned by PATHCONF procedure
 /// as defined in RFC 1813 section 3.3.20
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
-pub struct PATHCONF3resok {
+pub struct PathConf3ResOk {
     /// File system attributes
-    pub obj_attributes: post_op_attr,
+    pub obj_attributes: PostOpAttr,
     /// Maximum number of hard links to a file
     pub linkmax: u32,
     /// Maximum length of a file name
@@ -173,7 +169,7 @@ pub struct PATHCONF3resok {
     pub case_preserving: bool,
 }
 DeserializeStruct!(
-    PATHCONF3resok,
+    PathConf3ResOk,
     obj_attributes,
     linkmax,
     name_max,
@@ -183,7 +179,7 @@ DeserializeStruct!(
     case_preserving
 );
 SerializeStruct!(
-    PATHCONF3resok,
+    PathConf3ResOk,
     obj_attributes,
     linkmax,
     name_max,

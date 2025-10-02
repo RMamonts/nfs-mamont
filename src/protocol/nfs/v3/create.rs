@@ -50,8 +50,8 @@ pub async fn nfsproc3_create(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
-    let create_mode = deserialize::<nfs3::createmode3>(input)?;
+    let dir_ops = deserialize::<nfs3::DiropArgs3>(input)?;
+    let create_mode = deserialize::<nfs3::CreateMode3>(input)?;
 
     debug!("nfsproc3_create({:?}, {:?}, {:?}) ", xid, dir_ops, create_mode);
 
@@ -59,8 +59,8 @@ pub async fn nfsproc3_create(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -68,8 +68,8 @@ pub async fn nfsproc3_create(
     if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrROFS.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
@@ -80,7 +80,7 @@ pub async fn nfsproc3_create(
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         error!("Directory does not exist");
         return Ok(());
     }
@@ -89,23 +89,23 @@ pub async fn nfsproc3_create(
 
     // get the object attributes before the write
     let pre_dir_attr = match export.vfs.getattr(dirid).await {
-        Ok(v) => nfs3::pre_op_attr::Some(v.into()),
+        Ok(v) => nfs3::PreOpAttr::Some(v.into()),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
-            nfs3::wcc_data::default().serialize(output)?;
+            nfs3::WCCData::default().serialize(output)?;
             return Ok(());
         }
     };
-    let mut target_attributes = nfs3::sattr3::default();
+    let mut target_attributes = nfs3::SAttr3::default();
 
     match create_mode {
-        nfs3::createmode3::UNCHECKED => {
+        nfs3::CreateMode3::Unchecked => {
             target_attributes = deserialize(input)?;
             debug!("create unchecked {:?}", target_attributes);
         }
-        nfs3::createmode3::GUARDED => {
+        nfs3::CreateMode3::Guarded => {
             target_attributes = deserialize(input)?;
             debug!("create guarded {:?}", target_attributes);
             if export.vfs.lookup(dirid, &dir_ops.name).await.is_ok() {
@@ -115,24 +115,24 @@ pub async fn nfsproc3_create(
                 let post_dir_attr = export.vfs.getattr(dirid).await.ok();
 
                 xdr::rpc::make_success_reply(xid).serialize(output)?;
-                nfs3::nfsstat3::NFS3ERR_EXIST.serialize(output)?;
-                nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr }.serialize(output)?;
+                nfs3::NFSStat3::NFS3ErrExist.serialize(output)?;
+                nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr }.serialize(output)?;
                 return Ok(());
             }
         }
-        nfs3::createmode3::EXCLUSIVE => {
+        nfs3::CreateMode3::Exclusive => {
             debug!("create exclusive");
         }
     }
 
-    let fid: Result<nfs3::fileid3, nfs3::nfsstat3>;
-    let postopattr: nfs3::post_op_attr;
+    let fid: Result<nfs3::FileId3, nfs3::NFSStat3>;
+    let postopattr: nfs3::PostOpAttr;
     // fill in the fid and post op attr here
-    if matches!(create_mode, nfs3::createmode3::EXCLUSIVE) {
+    if matches!(create_mode, nfs3::CreateMode3::Exclusive) {
         // the API for exclusive is very slightly different
         // We are not returning a post op attribute
         fid = export.vfs.create_exclusive(dirid, &dir_ops.name).await;
-        postopattr = nfs3::post_op_attr::None;
+        postopattr = nfs3::PostOpAttr::None;
     } else {
         // create!
         let res = export.vfs.create(dirid, &dir_ops.name, target_attributes).await;
@@ -142,16 +142,16 @@ pub async fn nfsproc3_create(
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = export.vfs.getattr(dirid).await.ok();
-    let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+    let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
     match fid {
         Ok(fid) => {
             debug!("create success --> {:?}, {:?}", fid, postopattr);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             // serialize CREATE3resok
             let fh = export.vfs.id_to_fh(fid, fs_id);
-            nfs3::post_op_fh3::Some(fh).serialize(output)?;
+            nfs3::PostOpFh3::Some(fh).serialize(output)?;
             postopattr.serialize(output)?;
             wcc_res.serialize(output)?;
         }

@@ -50,8 +50,8 @@ pub async fn nfsproc3_read(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -59,7 +59,7 @@ pub async fn nfsproc3_read(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
@@ -74,7 +74,7 @@ pub async fn nfsproc3_read(
                 data: bytes,
             };
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             res.serialize(output)?;
         }
         Err(stat) => {

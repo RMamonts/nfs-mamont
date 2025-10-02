@@ -49,15 +49,15 @@ pub async fn nfsproc3_fsstat(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
+    let handle = deserialize::<nfs3::NFSFh3>(input)?;
     debug!("nfsproc3_fsstat({:?},{:?}) ", xid, handle);
 
     let fs_id = handle.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -66,7 +66,7 @@ pub async fn nfsproc3_fsstat(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
@@ -83,7 +83,7 @@ pub async fn nfsproc3_fsstat(
         invarsec: u32::MAX,
     };
     xdr::rpc::make_success_reply(xid).serialize(output)?;
-    nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+    nfs3::NFSStat3::NFS3Ok.serialize(output)?;
     debug!(" {:?} ---> {:?}", xid, res);
     res.serialize(output)?;
     Ok(())

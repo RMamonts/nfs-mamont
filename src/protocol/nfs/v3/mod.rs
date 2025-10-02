@@ -109,7 +109,7 @@ use write::nfsproc3_write;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_nfs(
     xid: u32,
-    call: xdr::rpc::call_body,
+    call: xdr::rpc::CallBody,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
@@ -121,37 +121,37 @@ pub async fn handle_nfs(
         xdr::rpc::prog_mismatch_reply_message(xid, nfs3::VERSION).serialize(output)?;
         return Ok(());
     }
-    let prog = nfs3::NFSProgram::from_u32(call.proc).unwrap_or(nfs3::NFSProgram::INVALID);
+    let prog = nfs3::NFSProgram::from_u32(call.proc).unwrap_or(nfs3::NFSProgram::Invalid);
 
     match prog {
-        nfs3::NFSProgram::NFSPROC3_NULL => nfsproc3_null(xid, output)?,
-        nfs3::NFSProgram::NFSPROC3_GETATTR => nfsproc3_getattr(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_LOOKUP => nfsproc3_lookup(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READ => nfsproc3_read(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_FSINFO => nfsproc3_fsinfo(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_ACCESS => nfsproc3_access(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_PATHCONF => {
+        nfs3::NFSProgram::NFSProc3Null => nfsproc3_null(xid, output)?,
+        nfs3::NFSProgram::NFSProc3GetAttr => nfsproc3_getattr(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Lookup => nfsproc3_lookup(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Read => nfsproc3_read(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3FsInfo => nfsproc3_fsinfo(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Access => nfsproc3_access(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3PathConf => {
             nfsproc3_pathconf(xid, input, output, context).await?;
         }
-        nfs3::NFSProgram::NFSPROC3_FSSTAT => nfsproc3_fsstat(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READDIR => nfsproc3_readdir(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READDIRPLUS => {
+        nfs3::NFSProgram::NFSProc3FsStat => nfsproc3_fsstat(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3ReadDir => nfsproc3_readdir(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3ReadDirPlus => {
             nfsproc3_readdirplus(xid, input, output, context).await?;
         }
-        nfs3::NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_SETATTR => nfsproc3_setattr(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_REMOVE => nfsproc3_remove(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_RMDIR => nfsproc3_remove(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_RENAME => nfsproc3_rename(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READLINK => {
+        nfs3::NFSProgram::NFSProc3Write => nfsproc3_write(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Create => nfsproc3_create(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3SetAttr => nfsproc3_setattr(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Remove => nfsproc3_remove(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3RmDir => nfsproc3_remove(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Rename => nfsproc3_rename(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3MkDir => nfsproc3_mkdir(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Symlink => nfsproc3_symlink(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3ReadLink => {
             nfsproc3_readlink(xid, input, output, context).await?;
         }
-        nfs3::NFSProgram::NFSPROC3_MKNOD => nfsproc3_mknod(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_LINK => nfsproc3_link(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_COMMIT => nfsproc3_commit(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3MkNod => nfsproc3_mknod(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Link => nfsproc3_link(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSProc3Commit => nfsproc3_commit(xid, input, output, context).await?,
         _ => {
             warn!("Unimplemented message {:?}", prog);
             xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;

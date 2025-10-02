@@ -12,7 +12,6 @@
 // Allow unused code since we're implementing the full NFS3 protocol specification
 #![allow(dead_code)]
 // Preserve original RFC naming conventions for consistency with the specification
-#![allow(non_camel_case_types)]
 
 use std::fmt;
 use std::io::{Read, Write};
@@ -38,30 +37,29 @@ pub const VERSION: u32 = 3;
 // Section 2.4 Sizes
 //
 /// The maximum size in bytes of the opaque file handle.
-pub const NFS3_FHSIZE: u32 = 64;
+pub const NFS3_FH_SIZE: u32 = 64;
 
 /// The size in bytes of the opaque cookie verifier passed by
 /// `READDIR` and `READDIRPLUS`.
-pub const NFS3_COOKIEVERFSIZE: u32 = 8;
+pub const NFS3_COOKIE_VERF_SIZE: u32 = 8;
 
 /// The size in bytes of the opaque verifier used for
 /// exclusive `CREATE`.
-pub const NFS3_CREATEVERFSIZE: u32 = 8;
+pub const NFS3_CREATE_VERF_SIZE: u32 = 8;
 
 /// The size in bytes of the opaque verifier used for
 /// asynchronous `WRITE`.
-pub const NFS3_WRITEVERFSIZE: u32 = 8;
+pub const NFS3_WRITE_VERF_SIZE: u32 = 8;
 
 // Section 2.5 Basic Data Types
 /// A string type used in NFS for filenames and paths.
 ///
 /// This is essentially a vector of bytes, but with specific
 /// formatting for NFS protocol requirements.
-#[allow(non_camel_case_types)]
 #[derive(Default, Clone)]
-pub struct nfsstring(pub Vec<u8>);
+pub struct NFSString(pub Vec<u8>);
 
-impl nfsstring {
+impl NFSString {
     /// Returns the length of the string in bytes.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -73,25 +71,25 @@ impl nfsstring {
     }
 }
 
-impl From<Vec<u8>> for nfsstring {
+impl From<Vec<u8>> for NFSString {
     fn from(value: Vec<u8>) -> Self {
         Self(value)
     }
 }
 
-impl From<&[u8]> for nfsstring {
+impl From<&[u8]> for NFSString {
     fn from(value: &[u8]) -> Self {
         Self(value.into())
     }
 }
 
-impl AsRef<[u8]> for nfsstring {
+impl AsRef<[u8]> for NFSString {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl std::ops::Deref for nfsstring {
+impl std::ops::Deref for NFSString {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
@@ -99,217 +97,214 @@ impl std::ops::Deref for nfsstring {
     }
 }
 
-impl fmt::Debug for nfsstring {
+impl fmt::Debug for NFSString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", String::from_utf8_lossy(&self.0))
     }
 }
 
-impl fmt::Display for nfsstring {
+impl fmt::Display for NFSString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", String::from_utf8_lossy(&self.0))
     }
 }
 
-impl Serialize for nfsstring {
+impl Serialize for NFSString {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         self.0.serialize(dest)
     }
 }
 
-impl Deserialize for nfsstring {
+impl Deserialize for NFSString {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
-        Ok(nfsstring(Deserialize::deserialize(src)?))
+        Ok(NFSString(Deserialize::deserialize(src)?))
     }
 }
 
 /// Procedure numbers for NFS version 3 protocol.
-#[allow(non_camel_case_types)]
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum NFSProgram {
     /// Do nothing - used primarily for performance measurement
-    NFSPROC3_NULL = 0,
+    NFSProc3Null = 0,
     /// Get file attributes
-    NFSPROC3_GETATTR = 1,
+    NFSProc3GetAttr = 1,
     /// Set file attributes
-    NFSPROC3_SETATTR = 2,
+    NFSProc3SetAttr = 2,
     /// Look up filename
-    NFSPROC3_LOOKUP = 3,
+    NFSProc3Lookup = 3,
     /// Check file access permission
-    NFSPROC3_ACCESS = 4,
+    NFSProc3Access = 4,
     /// Read from symbolic link
-    NFSPROC3_READLINK = 5,
+    NFSProc3ReadLink = 5,
     /// Read from file
-    NFSPROC3_READ = 6,
+    NFSProc3Read = 6,
     /// Write to file
-    NFSPROC3_WRITE = 7,
+    NFSProc3Write = 7,
     /// Create file
-    NFSPROC3_CREATE = 8,
+    NFSProc3Create = 8,
     /// Create directory
-    NFSPROC3_MKDIR = 9,
+    NFSProc3MkDir = 9,
     /// Create symbolic link
-    NFSPROC3_SYMLINK = 10,
+    NFSProc3Symlink = 10,
     /// Create special device
-    NFSPROC3_MKNOD = 11,
+    NFSProc3MkNod = 11,
     /// Remove file
-    NFSPROC3_REMOVE = 12,
+    NFSProc3Remove = 12,
     /// Remove directory
-    NFSPROC3_RMDIR = 13,
+    NFSProc3RmDir = 13,
     /// Rename file or directory
-    NFSPROC3_RENAME = 14,
+    NFSProc3Rename = 14,
     /// Create hard link
-    NFSPROC3_LINK = 15,
+    NFSProc3Link = 15,
     /// Read directory
-    NFSPROC3_READDIR = 16,
+    NFSProc3ReadDir = 16,
     /// Extended read directory
-    NFSPROC3_READDIRPLUS = 17,
+    NFSProc3ReadDirPlus = 17,
     /// Get file system statistics
-    NFSPROC3_FSSTAT = 18,
+    NFSProc3FsStat = 18,
     /// Get file system information
-    NFSPROC3_FSINFO = 19,
+    NFSProc3FsInfo = 19,
     /// Get path configuration
-    NFSPROC3_PATHCONF = 20,
+    NFSProc3PathConf = 20,
     /// Commit cached data
-    NFSPROC3_COMMIT = 21,
+    NFSProc3Commit = 21,
     /// Invalid procedure
-    INVALID = 22,
+    Invalid = 22,
 }
 
 /// Opaque byte type as defined in RFC 1813 section 2.5
 /// Used for binary data like file handles and verifiers
-pub type opaque = u8;
+pub type Opaque = u8;
 /// Filename type as defined in RFC 1813 section 2.5
 /// String used for a component of a pathname
-pub type filename3 = nfsstring;
+pub type Filename3 = NFSString;
 /// Path type as defined in RFC 1813 section 2.5
 /// String used for a pathname or a symbolic link contents
-pub type nfspath3 = nfsstring;
+pub type NFSPath3 = NFSString;
 /// File identifier as defined in RFC 1813 section 2.5
 /// A unique number that identifies a file within a filesystem
-pub type fileid3 = u64;
+pub type FileId3 = u64;
 /// Directory entry position cookie as defined in RFC 1813 section 2.5
 /// Used in `READDIR` and `READDIRPLUS` operations for iteration
-pub type cookie3 = u64;
+pub type Cookie3 = u64;
 /// Cookie verifier for directory operations as defined in RFC 1813 section 2.5
 /// Used to detect when a directory being read has changed
-pub type cookieverf3 = [opaque; NFS3_COOKIEVERFSIZE as usize];
+pub type CookieVerf3 = [Opaque; NFS3_COOKIE_VERF_SIZE as usize];
 /// Create verifier for exclusive file creation as defined in RFC 1813 section 2.5
 /// Used in CREATE operations with `EXCLUSIVE` mode to ensure uniqueness
-pub type createverf3 = [opaque; NFS3_CREATEVERFSIZE as usize];
+pub type CreateVerf3 = [Opaque; NFS3_CREATE_VERF_SIZE as usize];
 /// Write verifier for asynchronous writes as defined in RFC 1813 section 2.5
 /// Used to detect server reboots between asynchronous `WRITE` and `COMMIT` operations
-pub type writeverf3 = [opaque; NFS3_WRITEVERFSIZE as usize];
+pub type WriteVerf3 = [Opaque; NFS3_WRITE_VERF_SIZE as usize];
 /// User ID as defined in RFC 1813 section 2.5
 /// Identifies the owner of a file
-pub type uid3 = u32;
+pub type Uid3 = u32;
 /// Group ID as defined in RFC 1813 section 2.5
 /// Identifies the group ownership of a file
-pub type gid3 = u32;
+pub type Gid3 = u32;
 /// File size in bytes as defined in RFC 1813 section 2.5
-pub type size3 = u64;
+pub type Size3 = u64;
 /// File offset in bytes as defined in RFC 1813 section 2.5
 /// Used to specify a position within a file
-pub type offset3 = u64;
+pub type Offset3 = u64;
 /// File mode bits as defined in RFC 1813 section 2.5
 /// Contains file type and permission bits
-pub type mode3 = u32;
+pub type Mode3 = u32;
 /// Count of bytes or entries as defined in RFC 1813 section 2.5
 /// Used for various counting purposes in NFS operations
-pub type count3 = u32;
+pub type Count3 = u32;
 
-/// Used in [nfs_fh3] to identify the file system
-pub type fs_id = u64;
+/// Used in [`NFSFh3`] to identify the file system
+pub type FsId = u64;
 
 /// Status codes returned by NFS version 3 operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
-pub enum nfsstat3 {
+pub enum NFSStat3 {
     /// Indicates the call completed successfully.
-    NFS3_OK = 0,
+    NFS3Ok = 0,
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
     /// owner of the target of the operation.
-    NFS3ERR_PERM = 1,
+    NFS3ErrPerm = 1,
     /// No such file or directory. The file or directory name
     /// specified does not exist.
-    NFS3ERR_NOENT = 2,
+    NFS3ErrNoEnt = 2,
     /// I/O error. A hard error (for example, a disk error)
     /// occurred while processing the requested operation.
-    NFS3ERR_IO = 5,
+    NFS3ErrIO = 5,
     /// I/O error. No such device or address.
-    NFS3ERR_NXIO = 6,
+    NFS3ErrNXIO = 6,
     /// Permission denied. The caller does not have the correct
     /// permission to perform the requested operation. Contrast
     /// this with `NFS3ERR_PERM`, which restricts itself to owner
     /// or privileged user permission failures.
-    NFS3ERR_ACCES = 13,
+    NFS3ErrAccess = 13,
     /// File exists. The file specified already exists.
-    NFS3ERR_EXIST = 17,
+    NFS3ErrExist = 17,
     /// Attempt to do a cross-device hard link.
-    NFS3ERR_XDEV = 18,
+    NFS3ErrXdev = 18,
     /// No such device.
-    NFS3ERR_NODEV = 19,
+    NFS3ErrNoDev = 19,
     /// Not a directory. The caller specified a non-directory in
     /// a directory operation.
-    NFS3ERR_NOTDIR = 20,
+    NFS3ErrNotDir = 20,
     /// Is a directory. The caller specified a directory in a
     /// non-directory operation.
-    NFS3ERR_ISDIR = 21,
+    NFS3ErrIsDir = 21,
     /// Invalid argument or unsupported argument for an
     /// operation. Two examples are attempting a READLINK on an
     /// object other than a symbolic link or attempting to
     /// SETATTR a time field on a server that does not support
     /// this operation.
-    NFS3ERR_INVAL = 22,
+    NFS3ErrInval = 22,
     /// File too large. The operation would have caused a file to
     /// grow beyond the server's limit.
-    NFS3ERR_FBIG = 27,
+    NFS3ErrFBig = 27,
     /// No space left on device. The operation would have caused
     /// the server's file system to exceed its limit.
-    NFS3ERR_NOSPC = 28,
+    NFS3ErrNoSpc = 28,
     /// Read-only file system. A modifying operation was
     /// attempted on a read-only file system.
-    NFS3ERR_ROFS = 30,
+    NFS3ErrROFS = 30,
     /// Too many hard links.
-    NFS3ERR_MLINK = 31,
+    NFS3ErrMLink = 31,
     /// The filename in an operation was too long.
-    NFS3ERR_NAMETOOLONG = 63,
+    NFS3ErNameTooLong = 63,
     /// An attempt was made to remove a directory that was not empty.
-    NFS3ERR_NOTEMPTY = 66,
+    NFS3ErrNotEempty = 66,
     /// Resource (quota) hard limit exceeded. The user's resource
     /// limit on the server has been exceeded.
-    NFS3ERR_DQUOT = 69,
+    NFS3ErrDQout = 69,
     /// Invalid file handle. The file handle given in the
     /// arguments was invalid. The file referred to by that file
     /// handle no longer exists or access to it has been
     /// revoked.
-    NFS3ERR_STALE = 70,
+    NFS3ErrStale = 70,
     /// Too many levels of remote in path. The file handle given
     /// in the arguments referred to a file on a non-local file
     /// system on the server.
-    NFS3ERR_REMOTE = 71,
+    NFS3ErrRemote = 71,
     /// Illegal NFS file handle. The file handle failed internal
     /// consistency checks.
-    NFS3ERR_BADHANDLE = 10001,
+    NFS3ErrBadHandle = 10001,
     /// Update synchronization mismatch was detected during a
     /// SETATTR operation.
-    NFS3ERR_NOT_SYNC = 10002,
+    NFS3ErrNotSync = 10002,
     /// READDIR or READDIRPLUS cookie is stale
-    NFS3ERR_BAD_COOKIE = 10003,
+    NFS3ErrBadCookie = 10003,
     /// Operation is not supported.
-    NFS3ERR_NOTSUPP = 10004,
+    NFS3ErrNotSupp = 10004,
     /// Buffer or request is too small.
-    NFS3ERR_TOOSMALL = 10005,
+    NFS3ErrTooSmall = 10005,
     /// An error occurred on the server which does not map to any
     /// of the legal NFS version 3 protocol error values.  The
     /// client should translate this into an appropriate error.
     /// UNIX clients may choose to translate this to EIO.
-    NFS3ERR_SERVERFAULT = 10006,
+    NFS3ErrServerFault = 10006,
     /// An attempt was made to create an object of a type not
     /// supported by the server.
-    NFS3ERR_BADTYPE = 10007,
+    NFS3ErrBadType = 10007,
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait
     /// and then try the request with a new RPC transaction ID.
@@ -318,17 +313,16 @@ pub enum nfsstat3 {
     /// to process a file that has been migrated. In this case,
     /// the server should start the immigration process and
     /// respond to client with this error.
-    NFS3ERR_JUKEBOX = 10008,
+    NFS3ErrJukeBox = 10008,
 }
-impl SerializeEnum for nfsstat3 {}
-impl DeserializeEnum for nfsstat3 {}
+impl SerializeEnum for NFSStat3 {}
+impl DeserializeEnum for NFSStat3 {}
 
 /// File type enumeration as defined in RFC 1813 section 2.3.5
 /// Determines the type of a file system object
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
-pub enum ftype3 {
+pub enum FType3 {
     /// Regular File
     #[default]
     NF3REG = 1,
@@ -345,56 +339,54 @@ pub enum ftype3 {
     /// Named Pipe
     NF3FIFO = 7,
 }
-impl SerializeEnum for ftype3 {}
-impl DeserializeEnum for ftype3 {}
+impl SerializeEnum for FType3 {}
+impl DeserializeEnum for FType3 {}
 
 /// Special device information for character and block special devices
 /// Contains the major and minor device numbers
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct specdata3 {
+pub struct SpecData3 {
     /// Major device number
     pub specdata1: u32,
     /// Minor device number
     pub specdata2: u32,
 }
-DeserializeStruct!(specdata3, specdata1, specdata2);
-SerializeStruct!(specdata3, specdata1, specdata2);
+DeserializeStruct!(SpecData3, specdata1, specdata2);
+SerializeStruct!(SpecData3, specdata1, specdata2);
 
 /// The NFS version 3 file handle
 /// The file handle uniquely identifies a file or directory on the server
 /// The server is responsible for the internal format and interpretation of the file handle
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
-pub struct nfs_fh3 {
+pub struct NFSFh3 {
     /// Used for stale handle detection
     pub gen: u64,
     /// File system identifier
-    pub fs_id: fs_id,
+    pub fs_id: FsId,
     /// Unique file identifier within the file system
-    pub id: fileid3,
+    pub id: FileId3,
 }
 const _: () = {
-    assert!(size_of::<nfs_fh3>() <= NFS3_FHSIZE as usize);
+    assert!(size_of::<NFSFh3>() <= NFS3_FH_SIZE as usize);
 };
 
-// Custom (de)serializer is required because in RFC nfs_fh3 defined as variable-length opaque object,
+// Custom (de)serializer is required because in RFC NFSFh3 defined as variable-length opaque object,
 // and thus needs to be encoded with its length as the first 4 bytes.
-impl Deserialize for nfs_fh3 {
+impl Deserialize for NFSFh3 {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         let len = deserialize::<UsizeAsU32>(src)?;
-        if len.0 != size_of::<nfs_fh3>() {
-            return Err(xdr::utils::invalid_data("Invalid nfs_fh3 length"));
+        if len.0 != size_of::<NFSFh3>() {
+            return Err(xdr::utils::invalid_data("Invalid NFSFh3 length"));
         }
-        Ok(nfs_fh3 {
+        Ok(NFSFh3 {
             gen: deserialize::<u64>(src)?,
-            fs_id: deserialize::<fs_id>(src)?,
-            id: deserialize::<fileid3>(src)?,
+            fs_id: deserialize::<FsId>(src)?,
+            id: deserialize::<FileId3>(src)?,
         })
     }
 }
 
-impl Serialize for nfs_fh3 {
+impl Serialize for NFSFh3 {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         UsizeAsU32(size_of::<Self>()).serialize(dest)?;
         self.gen.serialize(dest)?;
@@ -406,19 +398,18 @@ impl Serialize for nfs_fh3 {
 
 /// NFS version 3 time structure
 /// Used for file timestamps (access, modify, change)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct nfstime3 {
+pub struct NFSTime3 {
     /// Seconds since Unix epoch (January 1, 1970)
     pub seconds: u32,
     /// Nanoseconds (0-999999999)
     pub nseconds: u32,
 }
-DeserializeStruct!(nfstime3, seconds, nseconds);
-SerializeStruct!(nfstime3, seconds, nseconds);
+DeserializeStruct!(NFSTime3, seconds, nseconds);
+SerializeStruct!(NFSTime3, seconds, nseconds);
 
-impl From<nfstime3> for filetime::FileTime {
-    fn from(time: nfstime3) -> Self {
+impl From<NFSTime3> for filetime::FileTime {
+    fn from(time: NFSTime3) -> Self {
         Self::from_unix_time(time.seconds as i64, time.nseconds)
     }
 }
@@ -426,131 +417,127 @@ impl From<nfstime3> for filetime::FileTime {
 /// File attributes in NFS version 3 as defined in RFC 1813 section 2.3.5
 /// Contains all the standard attributes associated with a file or directory
 /// in the NFS version 3 protocol
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct fattr3 {
+pub struct FAttr3 {
     /// Type of file (regular, directory, symbolic link, etc.)
-    pub ftype: ftype3,
+    pub ftype: FType3,
     /// File access mode bits. Contains the standard Unix file
     /// permissions and file type information
-    pub mode: mode3,
+    pub mode: Mode3,
     /// Number of hard links to the file. Indicates how many
     /// directory entries reference this file
     pub nlink: u32,
     /// User ID of the file owner
-    pub uid: uid3,
+    pub uid: Uid3,
     /// Group ID of the file's group
-    pub gid: gid3,
+    pub gid: Gid3,
     /// File size in bytes. For regular files, this is the size
     /// of the file data. For directories, this value is implementation-dependent
-    pub size: size3,
+    pub size: Size3,
     /// Size in bytes actually allocated to the file on the server's file system
     /// This may be different from size due to block allocation policies
-    pub used: size3,
+    pub used: Size3,
     /// Device ID information for character or block special files
     /// Contains major and minor numbers for the device
-    pub rdev: specdata3,
+    pub rdev: SpecData3,
     /// File system identifier. Uniquely identifies the file system
     /// containing the file
     pub fsid: u64,
     /// File identifier (inode number). Uniquely identifies the file
     /// within its file system
-    pub fileid: fileid3,
+    pub fileid: FileId3,
     /// Time of last access to the file data
-    pub atime: nfstime3,
+    pub atime: NFSTime3,
     /// Time of last modification to the file data
-    pub mtime: nfstime3,
+    pub mtime: NFSTime3,
     /// Time of last status change (modification to the file's attributes)
-    pub ctime: nfstime3,
+    pub ctime: NFSTime3,
 }
 DeserializeStruct!(
-    fattr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
+    FAttr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
 );
 SerializeStruct!(
-    fattr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
+    FAttr3, ftype, mode, nlink, uid, gid, size, used, rdev, fsid, fileid, atime, mtime, ctime
 );
 
 /// Attributes used in weak cache consistency checking as defined in RFC 1813 section 2.3.8
 /// These attributes are used to detect changes to a file by comparing
 /// values before and after operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct wcc_attr {
+pub struct WCCAttr {
     /// File size in bytes
-    pub size: size3,
+    pub size: Size3,
     /// Last modification time of the file
-    pub mtime: nfstime3,
+    pub mtime: NFSTime3,
     /// Last status change time of the file
-    pub ctime: nfstime3,
+    pub ctime: NFSTime3,
 }
-DeserializeStruct!(wcc_attr, size, mtime, ctime);
-SerializeStruct!(wcc_attr, size, mtime, ctime);
+DeserializeStruct!(WCCAttr, size, mtime, ctime);
+SerializeStruct!(WCCAttr, size, mtime, ctime);
 
-impl From<fattr3> for wcc_attr {
-    fn from(attr: fattr3) -> Self {
-        wcc_attr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
+impl From<FAttr3> for WCCAttr {
+    fn from(attr: FAttr3) -> Self {
+        WCCAttr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
     }
 }
 
 /// Pre-operation attributes for weak cache consistency as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state before an operation was performed
 /// Used together with post-operation attributes to determine if file state changed
-pub type pre_op_attr = Option<wcc_attr>;
+pub type PreOpAttr = Option<WCCAttr>;
 
 /// Post-operation attributes for file information as defined in RFC 1813 section 2.3.8
 /// These attributes represent the file state after an operation was performed
 /// Returned in almost all NFS procedure responses to allow clients to maintain
 /// a consistent cache of file attributes
-pub type post_op_attr = Option<fattr3>;
+pub type PostOpAttr = Option<FAttr3>;
 
 /// Weak cache consistency data as defined in RFC 1813 section 2.3.8
 /// Contains file attributes before and after an operation
 /// This data structure is returned by operations that modify file attributes
 /// to allow clients to update their cached attributes appropriately
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct wcc_data {
+pub struct WCCData {
     /// File attributes before operation
-    pub before: pre_op_attr,
+    pub before: PreOpAttr,
     /// File attributes after operation
-    pub after: post_op_attr,
+    pub after: PostOpAttr,
 }
-DeserializeStruct!(wcc_data, before, after);
-SerializeStruct!(wcc_data, before, after);
+DeserializeStruct!(WCCData, before, after);
+SerializeStruct!(WCCData, before, after);
 
-pub type post_op_fh3 = Option<nfs_fh3>;
-pub type set_mode3 = Option<mode3>;
-pub type set_uid3 = Option<uid3>;
-pub type set_gid3 = Option<gid3>;
-pub type set_size3 = Option<size3>;
+pub type PostOpFh3 = Option<NFSFh3>;
+pub type SetMode3 = Option<Mode3>;
+pub type SetUid3 = Option<Uid3>;
+pub type SetGid3 = Option<Gid3>;
+pub type SetSize3 = Option<Size3>;
 
 /// Specifies how to modify the last access time (atime) during a `SETATTR` operation.
 /// This enum allows the client to either:
 /// - Leave the atime unchanged (`DONT_CHANGE`)
 /// - Set it to the server's current time (`SET_TO_SERVER_TIME`)
 /// - Set it to a specific client-provided time (`SET_TO_CLIENT_TIME`)
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
-pub enum set_atime {
+pub enum SetAtime {
     /// Don't modify the file's last access time
-    DONT_CHANGE,
+    DontChange,
     /// Set the file's last access time to the server's current time
-    SET_TO_SERVER_TIME,
+    SetToServerTime,
     /// Set the file's last access time to the specified time value
-    SET_TO_CLIENT_TIME(nfstime3),
+    SetToClientTime(NFSTime3),
 }
 
-impl Serialize for set_atime {
+impl Serialize for SetAtime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            set_atime::DONT_CHANGE => {
+            SetAtime::DontChange => {
                 0_u32.serialize(dest)?;
             }
-            set_atime::SET_TO_SERVER_TIME => {
+            SetAtime::SetToServerTime => {
                 1_u32.serialize(dest)?;
             }
-            set_atime::SET_TO_CLIENT_TIME(v) => {
+            SetAtime::SetToClientTime(v) => {
                 2_u32.serialize(dest)?;
                 v.serialize(dest)?;
             }
@@ -559,12 +546,12 @@ impl Serialize for set_atime {
         Ok(())
     }
 }
-impl Deserialize for set_atime {
+impl Deserialize for SetAtime {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => Ok(set_atime::DONT_CHANGE),
-            1 => Ok(set_atime::SET_TO_SERVER_TIME),
-            2 => Ok(set_atime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            0 => Ok(SetAtime::DontChange),
+            1 => Ok(SetAtime::SetToServerTime),
+            2 => Ok(SetAtime::SetToClientTime(deserialize(src)?)),
             c => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid set_atime value: {c}"),
@@ -580,28 +567,27 @@ impl Deserialize for set_atime {
 /// - Set it to a specific client-provided time
 ///
 /// The discriminant value follows the `time_how` enumeration from RFC 1813
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
-pub enum set_mtime {
+pub enum SetMtime {
     /// Keep the current modification time unchanged
-    DONT_CHANGE,
+    DontChange,
     /// Update the modification time to the server's current time
-    SET_TO_SERVER_TIME,
+    SetToServerTime,
     /// Set the modification time to a specific timestamp provided by the client
-    SET_TO_CLIENT_TIME(nfstime3),
+    SetToClientTime(NFSTime3),
 }
 
-impl Serialize for set_mtime {
+impl Serialize for SetMtime {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            set_mtime::DONT_CHANGE => {
+            SetMtime::DontChange => {
                 0_u32.serialize(dest)?;
             }
-            set_mtime::SET_TO_SERVER_TIME => {
+            SetMtime::SetToServerTime => {
                 1_u32.serialize(dest)?;
             }
-            set_mtime::SET_TO_CLIENT_TIME(v) => {
+            SetMtime::SetToClientTime(v) => {
                 2_u32.serialize(dest)?;
                 v.serialize(dest)?;
             }
@@ -610,12 +596,12 @@ impl Serialize for set_mtime {
         Ok(())
     }
 }
-impl Deserialize for set_mtime {
+impl Deserialize for SetMtime {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         match deserialize::<u32>(src)? {
-            0 => Ok(set_mtime::DONT_CHANGE),
-            1 => Ok(set_mtime::SET_TO_SERVER_TIME),
-            2 => Ok(set_mtime::SET_TO_CLIENT_TIME(deserialize(src)?)),
+            0 => Ok(SetMtime::DontChange),
+            1 => Ok(SetMtime::SetToServerTime),
+            2 => Ok(SetMtime::SetToClientTime(deserialize(src)?)),
             c => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid set_mtime value: {c}"),
@@ -625,61 +611,58 @@ impl Deserialize for set_mtime {
 }
 
 /// Set of file attributes to change in `SETATTR` operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug)]
-pub struct sattr3 {
+pub struct SAttr3 {
     /// File mode (permissions)
-    pub mode: set_mode3,
+    pub mode: SetMode3,
     /// User ID of owner
-    pub uid: set_uid3,
+    pub uid: SetUid3,
     /// Group ID of owner
-    pub gid: set_gid3,
+    pub gid: SetGid3,
     /// File size
-    pub size: set_size3,
+    pub size: SetSize3,
     /// Last access time
-    pub atime: set_atime,
+    pub atime: SetAtime,
     /// Last modification time
-    pub mtime: set_mtime,
+    pub mtime: SetMtime,
 }
-DeserializeStruct!(sattr3, mode, uid, gid, size, atime, mtime);
-SerializeStruct!(sattr3, mode, uid, gid, size, atime, mtime);
+DeserializeStruct!(SAttr3, mode, uid, gid, size, atime, mtime);
+SerializeStruct!(SAttr3, mode, uid, gid, size, atime, mtime);
 
-impl Default for sattr3 {
-    fn default() -> sattr3 {
-        sattr3 {
-            mode: set_mode3::None,
-            uid: set_uid3::None,
-            gid: set_gid3::None,
-            size: set_size3::None,
-            atime: set_atime::DONT_CHANGE,
-            mtime: set_mtime::DONT_CHANGE,
+impl Default for SAttr3 {
+    fn default() -> SAttr3 {
+        SAttr3 {
+            mode: SetMode3::None,
+            uid: SetUid3::None,
+            gid: SetGid3::None,
+            size: SetSize3::None,
+            atime: SetAtime::DontChange,
+            mtime: SetMtime::DontChange,
         }
     }
 }
 
 /// Arguments for directory operations (specifying directory handle and name)
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
-pub struct diropargs3 {
+pub struct DiropArgs3 {
     /// Directory file handle
-    pub dir: nfs_fh3,
+    pub dir: NFSFh3,
     /// Name within the directory
-    pub name: filename3,
+    pub name: Filename3,
 }
-DeserializeStruct!(diropargs3, dir, name);
-SerializeStruct!(diropargs3, dir, name);
+DeserializeStruct!(DiropArgs3, dir, name);
+SerializeStruct!(DiropArgs3, dir, name);
 
 /// Data for creating a symbolic link
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
-pub struct symlinkdata3 {
+pub struct SymlinkData3 {
     /// Attributes for the symbolic link
-    pub symlink_attributes: sattr3,
+    pub symlink_attributes: SAttr3,
     /// Target path for the symbolic link
-    pub symlink_data: nfspath3,
+    pub symlink_data: NFSPath3,
 }
-DeserializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
-SerializeStruct!(symlinkdata3, symlink_attributes, symlink_data);
+DeserializeStruct!(SymlinkData3, symlink_attributes, symlink_data);
+SerializeStruct!(SymlinkData3, symlink_attributes, symlink_data);
 
 /// Gets the root file handle for mounting
 pub fn get_root_mount_handle() -> Vec<u8> {
@@ -701,33 +684,31 @@ pub const ACCESS3_DELETE: u32 = 0x0010;
 pub const ACCESS3_EXECUTE: u32 = 0x0020;
 
 /// File creation modes for `CREATE` operations
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Default, FromPrimitive, ToPrimitive)]
 #[repr(u32)]
-pub enum createmode3 {
+pub enum CreateMode3 {
     /// Normal file creation - doesn't error if file exists
     #[default]
-    UNCHECKED = 0,
+    Unchecked = 0,
     /// Return error if file exists
-    GUARDED = 1,
+    Guarded = 1,
     /// Use exclusive create mechanism (with verifier)
-    EXCLUSIVE = 2,
+    Exclusive = 2,
 }
-impl SerializeEnum for createmode3 {}
-impl DeserializeEnum for createmode3 {}
+impl SerializeEnum for CreateMode3 {}
+impl DeserializeEnum for CreateMode3 {}
 
-pub type sattrguard3 = Option<nfstime3>;
+pub type SAttrGuard3 = Option<NFSTime3>;
 
 /// Arguments for `SETATTR` operations
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 pub struct SETATTR3args {
     /// File handle for target file
-    pub object: nfs_fh3,
+    pub object: NFSFh3,
     /// New attributes to set
-    pub new_attribute: sattr3,
+    pub new_attribute: SAttr3,
     /// Guard condition for atomic change
-    pub guard: Option<nfstime3>,
+    pub guard: Option<NFSTime3>,
 }
 DeserializeStruct!(SETATTR3args, object, new_attribute, guard);
 SerializeStruct!(SETATTR3args, object, new_attribute, guard);

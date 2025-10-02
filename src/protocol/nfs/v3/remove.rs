@@ -64,15 +64,15 @@ pub async fn nfsproc3_remove(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    let dir_ops = deserialize::<nfs3::DiropArgs3>(input)?;
     debug!("nfsproc3_remove({:?}, {:?}) ", xid, dir_ops);
 
     let fs_id = dir_ops.dir.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -80,8 +80,8 @@ pub async fn nfsproc3_remove(
     if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrROFS.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
@@ -91,7 +91,7 @@ pub async fn nfsproc3_remove(
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         error!("Directory does not exist");
         return Ok(());
     }
@@ -99,12 +99,12 @@ pub async fn nfsproc3_remove(
 
     // get the object attributes before the write
     let pre_dir_attr = match export.vfs.getattr(dir_id).await {
-        Ok(v) => nfs3::pre_op_attr::Some(nfs3::wcc_attr::from(v)),
+        Ok(v) => nfs3::PreOpAttr::Some(nfs3::WCCAttr::from(v)),
         Err(stat) => {
             error!("Cannot stat directory");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
-            nfs3::wcc_data::default().serialize(output)?;
+            nfs3::WCCData::default().serialize(output)?;
             return Ok(());
         }
     };
@@ -114,13 +114,13 @@ pub async fn nfsproc3_remove(
 
     // Re-read dir attributes for post op attr
     let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
-    let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+    let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
     match res {
         Ok(()) => {
             debug!("remove success");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             wcc_res.serialize(output)?;
         }
         Err(e) => {

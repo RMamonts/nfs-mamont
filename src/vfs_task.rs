@@ -112,10 +112,10 @@ impl VfsTask {
         input: &mut impl Read,
         output: &mut impl Write,
     ) -> io::Result<bool> {
-        let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
+        let recv = deserialize::<xdr::rpc::RPCMsg>(input)?;
         let xid = recv.xid;
-        if let xdr::rpc::rpc_body::CALL(call) = recv.body {
-            if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
+        if let xdr::rpc::RPCBody::Call(call) = recv.body {
+            if let xdr::rpc::AuthFlavor::AuthSys = call.cred.flavor {
                 let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
                 self.context.auth = Some(auth);
             }

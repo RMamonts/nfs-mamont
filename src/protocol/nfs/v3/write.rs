@@ -54,8 +54,8 @@ pub async fn nfsproc3_write(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -63,8 +63,8 @@ pub async fn nfsproc3_write(
     if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrROFS.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
@@ -78,35 +78,35 @@ pub async fn nfsproc3_write(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
 
     // get the object attributes before the write
-    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::wcc_attr::from).ok();
+    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::WCCAttr::from).ok();
 
     match export.vfs.write(id, args.offset, &args.data).await {
         Ok(fattr) => {
             debug!("write success {:?} --> {:?}", xid, fattr);
             let res = nfs3::file::WRITE3resok {
-                file_wcc: nfs3::wcc_data {
+                file_wcc: nfs3::WCCData {
                     before: pre_obj_attr,
-                    after: nfs3::post_op_attr::Some(fattr),
+                    after: nfs3::PostOpAttr::Some(fattr),
                 },
                 count: args.count,
-                committed: nfs3::file::stable_how::FILE_SYNC,
+                committed: nfs3::file::StableHow::FileSync,
                 verf: export.vfs.server_id(),
             };
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             res.serialize(output)?;
         }
         Err(stat) => {
             error!("write error {:?} --> {:?}", xid, stat);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
-            nfs3::wcc_data::default().serialize(output)?;
+            nfs3::WCCData::default().serialize(output)?;
         }
     }
     Ok(())

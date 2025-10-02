@@ -18,41 +18,38 @@ use super::{
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Authentication flavor (mechanism) identifiers for RPC.
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
-pub enum auth_flavor {
-    AUTH_NONE = 0,
-    AUTH_SYS = 1,
-    AUTH_SHORT = 2,
-    AUTH_DH = 3,
-    RPCSEC_GSS = 6,
+pub enum AuthFlavor {
+    AuthNone = 0,
+    AuthSys = 1,
+    AuthShort = 2,
+    AuthDH = 3,
+    RPCSesGSS = 6,
 }
-impl SerializeEnum for auth_flavor {}
-impl DeserializeEnum for auth_flavor {}
+impl SerializeEnum for AuthFlavor {}
+impl DeserializeEnum for AuthFlavor {}
 
 /// Authentication data structure used in RPC protocol for both
 /// client and server authentication.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub struct opaque_auth {
+pub struct OpaqueAuth {
     /// The authentication mechanism tag being used.
-    pub flavor: auth_flavor,
+    pub flavor: AuthFlavor,
     /// The opaque authentication data associated with that mechanism.
     pub body: Vec<u8>,
 }
-DeserializeStruct!(opaque_auth, flavor, body);
-SerializeStruct!(opaque_auth, flavor, body);
+DeserializeStruct!(OpaqueAuth, flavor, body);
+SerializeStruct!(OpaqueAuth, flavor, body);
 
-impl Default for opaque_auth {
-    fn default() -> opaque_auth {
-        opaque_auth { flavor: auth_flavor::AUTH_NONE, body: Vec::new() }
+impl Default for OpaqueAuth {
+    fn default() -> OpaqueAuth {
+        OpaqueAuth { flavor: AuthFlavor::AuthNone, body: Vec::new() }
     }
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default)]
 /// UNIX-style credentials used for authentication
-pub struct auth_unix {
+pub struct AuthUnix {
     /// Timestamp to prevent replay attacks
     pub stamp: u32,
     /// The name of the client machine
@@ -64,151 +61,144 @@ pub struct auth_unix {
     /// A list of additional group IDs for the caller
     pub gids: Vec<u32>,
 }
-DeserializeStruct!(auth_unix, stamp, machinename, uid, gid, gids);
-SerializeStruct!(auth_unix, stamp, machinename, uid, gid, gids);
+DeserializeStruct!(AuthUnix, stamp, machinename, uid, gid, gids);
+SerializeStruct!(AuthUnix, stamp, machinename, uid, gid, gids);
 
 /// Type of RPC message.
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, ToPrimitive, FromPrimitive)]
-enum msg_type {
-    CALL = 0,
-    REPLY = 1,
+enum MsgType {
+    Call = 0,
+    Reply = 1,
 }
-impl SerializeEnum for msg_type {}
-impl DeserializeEnum for msg_type {}
+impl SerializeEnum for MsgType {}
+impl DeserializeEnum for MsgType {}
 
 /// Forms of RPC replay.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, ToPrimitive, FromPrimitive)]
-enum reply_stat {
-    MSG_ACCEPTED = 0,
-    MSG_DENIED = 1,
+enum ReplyStat {
+    MsgAccepted = 0,
+    MsgDenied = 1,
 }
-impl SerializeEnum for reply_stat {}
-impl DeserializeEnum for reply_stat {}
+impl SerializeEnum for ReplyStat {}
+impl DeserializeEnum for ReplyStat {}
 
 /// Status of an attempt to call a remote procedure.
 #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Clone, Copy, Debug, FromPrimitive, ToPrimitive)]
-enum accept_stat {
+enum AcceptStat {
     /// RPC executed successfully.
-    SUCCESS = 0,
+    Success = 0,
     /// Remote hasn't exported program.
-    PROG_UNAVAIL = 1,
+    ProgUnavail = 1,
     /// Remote can't support version.
-    PROG_MISMATTCH = 2,
+    ProgMismatch = 2,
     /// Program can't support procedure.
-    PROC_UNAVAIL = 3,
+    ProcUnavail = 3,
     /// Procedure can't decode params.
-    GARBAGE_ARGS = 4,
+    GarbageAargs = 4,
     /// System error, e. g. memory allocation failure.
     SYSTEM_ERR = 5,
 }
-impl SerializeEnum for accept_stat {}
-impl DeserializeEnum for accept_stat {}
+impl SerializeEnum for AcceptStat {}
+impl DeserializeEnum for AcceptStat {}
 
 /// Reasons why a call message was rejected.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, ToPrimitive, FromPrimitive)]
-enum reject_stat {
+enum RejectStat {
     /// RPC version mismatch.
-    RPC_MISMATCH = 0,
+    RPCMismatch = 0,
     /// Remote can't authenticate caller.
-    AUTH_ERROR = 1,
+    AuthError = 1,
 }
-impl SerializeEnum for reject_stat {}
-impl DeserializeEnum for reject_stat {}
+impl SerializeEnum for RejectStat {}
+impl DeserializeEnum for RejectStat {}
 
 /// Status codes indicating why authentication failed.
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive, Default)]
-pub enum auth_stat {
+pub enum AuthStat {
     /// Success.
     #[default]
-    AUTH_OK = 0,
+    AuthOk = 0,
     /// Remote side failure. Bad credential (seal broken).
-    AUTH_BADCRED = 1,
+    AuthBabcred = 1,
     /// Remote side failure. Client must begin new session.
-    AUTH_REJECTEDCRED = 2,
+    AuthRjectedCred = 2,
     /// Remote side failure. Vad verifier (seal broken).
-    AUTH_BADVERF = 3,
+    AuthBadVerf = 3,
     /// Remote side failure. Verifier expired or replayed.
-    AUTH_REJECTEDVERF = 4,
+    AuthRectedVerf = 4,
     /// Remote side failure. Rejected for security reasons.
-    AUTH_TOOWEAK = 5,
+    AuthTooWeak = 5,
     /// Failed locally. Bogus response verifier.
-    AUTH_INVALIDRESP = 6,
+    AuthInvalidResp = 6,
     /// Failed locally. Reson unkown.
-    AUTH_FAILED = 7,
+    AuthFailed = 7,
     /// Kerberos generic error. AUTH_KERB errors; deprecated. See [RFC2695].
-    AUTH_KERB_GENERIC = 8,
+    AuthKerbGeneric = 8,
     /// Time of credential expired. AUTH_KERB errors; deprecated. See [RFC2695].
-    AUTH_TIMEEXPIRE = 9,
+    AuthTimeExpire = 9,
     /// Problem with ticket file. AUTH_KERB errors; deprecated. See [RFC2695].
-    AUTH_TKT_FILE = 10,
+    AuthTktFile = 10,
     /// Can't decode authenticator. AUTH_KERB errors; deprecated. See [RFC2695].
-    AUTH_DECODE = 11,
+    AuthDecode = 11,
     /// Wrong net address in ticket. AUTH_KERB errors; deprecated. See [RFC2695].
-    AUTH_NET_ADDR = 12,
+    AuthNetAddr = 12,
     /// RPCSEC_GSS GSS related errors. No credentials for user.
-    RPCSEC_GSS_CREDPROBLEM = 13,
+    RPCSecGSSCredProblem = 13,
     /// RPCSEC_GSS GSS related errors. Problem with context.
-    RPCSEC_GSS_CTXPROBLEM = 14,
+    RPCSesGSSCtxProblem = 14,
 }
-impl SerializeEnum for auth_stat {}
-impl DeserializeEnum for auth_stat {}
+impl SerializeEnum for AuthStat {}
+impl DeserializeEnum for AuthStat {}
 
 /// RPC message.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub struct rpc_msg {
+pub struct RPCMsg {
     /// Transaction identifier used to match calls and replies.
     pub xid: u32,
     /// The body of the RPC message (call or reply).
-    pub body: rpc_body,
+    pub body: RPCBody,
 }
-DeserializeStruct!(rpc_msg, xid, body);
-SerializeStruct!(rpc_msg, xid, body);
+DeserializeStruct!(RPCMsg, xid, body);
+SerializeStruct!(RPCMsg, xid, body);
 
 /// The body of an RPC message, which can be either a call or a reply
-#[allow(non_camel_case_types)]
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug)]
-pub enum rpc_body {
+pub enum RPCBody {
     /// A call to a remote procedure
-    CALL(call_body),
+    Call(CallBody),
     /// A reply from a remote procedure
-    REPLY(reply_body),
+    Reply(ReplyBody),
 }
 
-impl Serialize for rpc_body {
+impl Serialize for RPCBody {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            rpc_body::CALL(v) => {
-                msg_type::CALL.serialize(dest)?;
+            RPCBody::Call(v) => {
+                MsgType::Call.serialize(dest)?;
                 v.serialize(dest)?;
             }
-            rpc_body::REPLY(v) => {
-                msg_type::REPLY.serialize(dest)?;
+            RPCBody::Reply(v) => {
+                MsgType::Reply.serialize(dest)?;
                 v.serialize(dest)?;
             }
         }
         Ok(())
     }
 }
-impl Deserialize for rpc_body {
+impl Deserialize for RPCBody {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
-        match deserialize::<msg_type>(src)? {
-            msg_type::CALL => Ok(rpc_body::CALL(deserialize(src)?)),
-            msg_type::REPLY => Ok(rpc_body::REPLY(deserialize(src)?)),
+        match deserialize::<MsgType>(src)? {
+            MsgType::Call => Ok(RPCBody::Call(deserialize(src)?)),
+            MsgType::Reply => Ok(RPCBody::Reply(deserialize(src)?)),
         }
     }
 }
 
 /// The body of an RPC call.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub struct call_body {
+pub struct CallBody {
     /// RPC version, must be equal to two (2).
     pub rpcvers: u32,
     /// The program to call.
@@ -218,33 +208,32 @@ pub struct call_body {
     /// The procedure within the program to call.
     pub proc: u32,
     /// Authentication credentials for the caller.
-    pub cred: opaque_auth,
+    pub cred: OpaqueAuth,
     /// Authentication verifier for the caller.
-    pub verf: opaque_auth,
+    pub verf: OpaqueAuth,
     // procedure-specific parameters start here.
 }
-DeserializeStruct!(call_body, rpcvers, prog, vers, proc, cred, verf);
-SerializeStruct!(call_body, rpcvers, prog, vers, proc, cred, verf);
+DeserializeStruct!(CallBody, rpcvers, prog, vers, proc, cred, verf);
+SerializeStruct!(CallBody, rpcvers, prog, vers, proc, cred, verf);
 
 /// The body of an RPC reply.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub enum reply_body {
+pub enum ReplyBody {
     /// The call was accepted.
-    MSG_ACCEPTED(accepted_reply),
+    MsgAccepted(AcceptedReply),
     /// The call was denied.
-    MSG_DENIED(rejected_reply),
+    MsgDenied(RejectedReply),
 }
 
-impl Serialize for reply_body {
+impl Serialize for ReplyBody {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            reply_body::MSG_ACCEPTED(v) => {
-                reply_stat::MSG_ACCEPTED.serialize(dest)?;
+            ReplyBody::MsgAccepted(v) => {
+                ReplyStat::MsgAccepted.serialize(dest)?;
                 v.serialize(dest)?;
             }
-            reply_body::MSG_DENIED(v) => {
-                reply_stat::MSG_DENIED.serialize(dest)?;
+            ReplyBody::MsgDenied(v) => {
+                ReplyStat::MsgDenied.serialize(dest)?;
                 v.serialize(dest)?;
             }
         }
@@ -252,26 +241,26 @@ impl Serialize for reply_body {
     }
 }
 
-impl Deserialize for reply_body {
+impl Deserialize for ReplyBody {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
-        match deserialize::<reply_stat>(src)? {
-            reply_stat::MSG_ACCEPTED => Ok(reply_body::MSG_ACCEPTED(deserialize(src)?)),
-            reply_stat::MSG_DENIED => Ok(reply_body::MSG_DENIED(deserialize(src)?)),
+        match deserialize::<ReplyStat>(src)? {
+            ReplyStat::MsgAccepted => Ok(ReplyBody::MsgAccepted(deserialize(src)?)),
+            ReplyStat::MsgDenied => Ok(ReplyBody::MsgDenied(deserialize(src)?)),
         }
     }
 }
 
 /// Information about program version mismatch
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub struct mismatch_info {
+pub struct MismatchInfo {
     /// Lowest version supported
     pub low: u32,
     /// Highest version supported
     pub high: u32,
 }
-DeserializeStruct!(mismatch_info, low, high);
-SerializeStruct!(mismatch_info, low, high);
+DeserializeStruct!(MismatchInfo, low, high);
+SerializeStruct!(MismatchInfo, low, high);
+
 /// Reply to an RPC call that was accepted by the server.
 ///
 /// Even though the call was accepted, there could still be an error in processing it.
@@ -280,80 +269,77 @@ SerializeStruct!(mismatch_info, low, high);
 /// - A union containing the actual reply data, discriminated by `accept_stat` enum
 ///
 /// The `reply_data` union has the following arms:
-/// - `SUCCESS`: Contains protocol-specific success response
-/// - `PROG_UNAVAIL`: Program not available (void)
-/// - `PROG_MISMATCH`: Program version mismatch, includes supported version range
-/// - `PROC_UNAVAIL`: Procedure not available (void)
-/// - `GARBAGE_ARGS`: Arguments could not be decoded (void)
-#[allow(non_camel_case_types)]
+/// - `Success`: Contains protocol-specific success response
+/// - `ProgUnavail`: Program not available (void)
+/// - `ProgMismatch`: Program version mismatch, includes supported version range
+/// - `ProcUnavail`: Procedure not available (void)
+/// - `GarbageArgs`: Arguments could not be decoded (void)
 #[derive(Clone, Debug, Default)]
-pub struct accepted_reply {
+pub struct AcceptedReply {
     /// Authentication verifier from server
-    pub verf: opaque_auth,
+    pub verf: OpaqueAuth,
     /// Reply data union discriminated by `accept_stat`
-    pub reply_data: accept_body,
+    pub reply_data: AcceptBody,
 }
-DeserializeStruct!(accepted_reply, verf, reply_data);
-SerializeStruct!(accepted_reply, verf, reply_data);
+DeserializeStruct!(AcceptedReply, verf, reply_data);
+SerializeStruct!(AcceptedReply, verf, reply_data);
 
 /// Response data for an accepted RPC call, discriminated by `accept_stat`.
 ///
 /// This enum represents the possible outcomes of an accepted RPC call:
-/// - `SUCCESS`: Call completed successfully, response data is protocol-specific
-/// - `PROG_UNAVAIL`: The requested program is not available on this server
-/// - `PROG_MISMATCH`: Program version mismatch, includes supported version range
-/// - `PROC_UNAVAIL`: The requested procedure is not available in this program
-/// - `GARBAGE_ARGS`: The server could not decode the call arguments
-#[allow(non_camel_case_types)]
-#[allow(clippy::upper_case_acronyms)]
+/// - `Success`: Call completed successfully, response data is protocol-specific
+/// - `ProgUnavail`: The requested program is not available on this server
+/// - `ProgMismatch`: Program version mismatch, includes supported version range
+/// - `ProcUnavail`: The requested procedure is not available in this program
+/// - `GarbageArgs`: The server could not decode the call arguments
 #[derive(Clone, Debug, Default)]
 #[repr(u32)]
-pub enum accept_body {
+pub enum AcceptBody {
     /// Call completed successfully
     #[default]
-    SUCCESS,
+    Success,
     /// Program is not available on this server
-    PROG_UNAVAIL,
+    ProgUnavail,
     /// Program version mismatch, includes supported version range
-    PROG_MISMATCH(mismatch_info),
+    ProgMismatch(MismatchInfo),
     /// Requested procedure is not available
-    PROC_UNAVAIL,
+    ProcUnavail,
     /// Server could not decode the call arguments
-    GARBAGE_ARGS,
+    GarbageArgs,
 }
 
-impl Serialize for accept_body {
+impl Serialize for AcceptBody {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            accept_body::SUCCESS => {
-                accept_stat::SUCCESS.serialize(dest)?;
+            AcceptBody::Success => {
+                AcceptStat::Success.serialize(dest)?;
             }
-            accept_body::PROG_UNAVAIL => {
-                accept_stat::PROG_UNAVAIL.serialize(dest)?;
+            AcceptBody::ProgUnavail => {
+                AcceptStat::ProgUnavail.serialize(dest)?;
             }
-            accept_body::PROG_MISMATCH(v) => {
-                accept_stat::PROG_MISMATTCH.serialize(dest)?;
+            AcceptBody::ProgMismatch(v) => {
+                AcceptStat::ProgMismatch.serialize(dest)?;
                 v.serialize(dest)?;
             }
-            accept_body::PROC_UNAVAIL => {
-                accept_stat::PROC_UNAVAIL.serialize(dest)?;
+            AcceptBody::ProcUnavail => {
+                AcceptStat::ProcUnavail.serialize(dest)?;
             }
-            accept_body::GARBAGE_ARGS => {
-                accept_stat::GARBAGE_ARGS.serialize(dest)?;
+            AcceptBody::GarbageArgs => {
+                AcceptStat::GarbageAargs.serialize(dest)?;
             }
         }
 
         Ok(())
     }
 }
-impl Deserialize for accept_body {
+impl Deserialize for AcceptBody {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         Ok(match deserialize::<u32>(src)? {
-            0 => accept_body::SUCCESS,
-            1 => accept_body::PROG_UNAVAIL,
-            2 => accept_body::PROG_MISMATCH(deserialize(src)?),
-            3 => accept_body::PROC_UNAVAIL,
-            4 => accept_body::GARBAGE_ARGS,
+            0 => AcceptBody::Success,
+            1 => AcceptBody::ProgUnavail,
+            2 => AcceptBody::ProgMismatch(deserialize(src)?),
+            3 => AcceptBody::ProcUnavail,
+            4 => AcceptBody::GarbageArgs,
             accept_stat => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -367,40 +353,39 @@ impl Deserialize for accept_body {
 /// Reply sent when an RPC call is rejected by the server.
 ///
 /// The call can be rejected for two reasons:
-/// 1. RPC Version Mismatch (`RPC_MISMATCH`):
+/// 1. RPC Version Mismatch (`RPCMismatch`):
 ///    - Server is not running a compatible version of the RPC protocol
 ///    - Server returns the lowest and highest supported RPC versions
 ///
-/// 2. Authentication Error (`AUTH_ERROR`):
+/// 2. Authentication Error (`AuthError`):
 ///    - Server refuses to authenticate the caller
 ///    - Returns specific auth failure status code
 ///
-/// The discriminant for this enum is `reject_stat` which indicates the
+/// The discriminant for this enum is [`RejectStat`] which indicates the
 /// rejection reason.
-#[allow(non_camel_case_types)]
 #[derive(Clone, Debug)]
-pub enum rejected_reply {
+pub enum RejectedReply {
     /// RPC version mismatch - includes supported version range
-    RPC_MISMATCH(mismatch_info),
+    RPCMismatch(MismatchInfo),
     /// Authentication failed - includes specific error code
-    AUTH_ERROR(auth_stat),
+    AuthError(AuthStat),
 }
 
-impl Default for rejected_reply {
-    fn default() -> rejected_reply {
-        rejected_reply::AUTH_ERROR(auth_stat::default())
+impl Default for RejectedReply {
+    fn default() -> RejectedReply {
+        RejectedReply::AuthError(AuthStat::default())
     }
 }
 
-impl Serialize for rejected_reply {
+impl Serialize for RejectedReply {
     fn serialize<R: Write>(&self, dest: &mut R) -> std::io::Result<()> {
         match self {
-            rejected_reply::RPC_MISMATCH(v) => {
-                reject_stat::RPC_MISMATCH.serialize(dest)?;
+            RejectedReply::RPCMismatch(v) => {
+                RejectStat::RPCMismatch.serialize(dest)?;
                 v.serialize(dest)?;
             }
-            rejected_reply::AUTH_ERROR(v) => {
-                reject_stat::AUTH_ERROR.serialize(dest)?;
+            RejectedReply::AuthError(v) => {
+                RejectStat::AuthError.serialize(dest)?;
                 (*v as u32).serialize(dest)?;
             }
         }
@@ -408,11 +393,11 @@ impl Serialize for rejected_reply {
         Ok(())
     }
 }
-impl Deserialize for rejected_reply {
+impl Deserialize for RejectedReply {
     fn deserialize<R: Read>(src: &mut R) -> std::io::Result<Self> {
         Ok(match deserialize::<u32>(src)? {
-            0 => rejected_reply::RPC_MISMATCH(deserialize(src)?),
-            1 => rejected_reply::AUTH_ERROR(deserialize(src)?),
+            0 => RejectedReply::RPCMismatch(deserialize(src)?),
+            1 => RejectedReply::AuthError(deserialize(src)?),
             stat => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -424,33 +409,33 @@ impl Deserialize for rejected_reply {
 }
 
 /// Creates a reply message indicating that the requested procedure is not available
-pub fn proc_unavail_reply_message(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROC_UNAVAIL,
+pub fn proc_unavail_reply_message(xid: u32) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::ProcUnavail,
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a reply message indicating that the requested program is not available
-pub fn prog_unavail_reply_message(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_UNAVAIL,
+pub fn prog_unavail_reply_message(xid: u32) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::ProgUnavail,
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a reply message indicating a program version mismatch
-pub fn prog_mismatch_reply_message(xid: u32, accepted_ver: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_MISMATCH(mismatch_info {
+pub fn prog_mismatch_reply_message(xid: u32, accepted_ver: u32) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::ProgMismatch(MismatchInfo {
             low: accepted_ver,
             high: accepted_ver,
         }),
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a reply message indicating a program version mismatch with supported version range
@@ -458,38 +443,35 @@ pub fn prog_version_range_mismatch_reply_message(
     xid: u32,
     low_version: u32,
     high_version: u32,
-) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_MISMATCH(mismatch_info {
-            low: low_version,
-            high: high_version,
-        }),
+) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::ProgMismatch(MismatchInfo { low: low_version, high: high_version }),
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a reply message indicating that the arguments could not be decoded
-pub fn garbage_args_reply_message(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::GARBAGE_ARGS,
+pub fn garbage_args_reply_message(xid: u32) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::GarbageArgs,
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a reply message indicating an RPC version mismatch
-pub fn rpc_vers_mismatch(xid: u32) -> rpc_msg {
-    let mismatch_info = mismatch_info { low: PROTOCOL_VERSION, high: PROTOCOL_VERSION };
-    let reply = reply_body::MSG_DENIED(rejected_reply::RPC_MISMATCH(mismatch_info));
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+pub fn rpc_vers_mismatch(xid: u32) -> RPCMsg {
+    let mismatch_info = MismatchInfo { low: PROTOCOL_VERSION, high: PROTOCOL_VERSION };
+    let reply = ReplyBody::MsgDenied(RejectedReply::RPCMismatch(mismatch_info));
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }
 
 /// Creates a successful reply message with no additional data
-pub fn make_success_reply(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::SUCCESS,
+pub fn make_success_reply(xid: u32) -> RPCMsg {
+    let reply = ReplyBody::MsgAccepted(AcceptedReply {
+        verf: OpaqueAuth::default(),
+        reply_data: AcceptBody::Success,
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
+    RPCMsg { xid, body: RPCBody::Reply(reply) }
 }

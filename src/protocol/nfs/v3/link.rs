@@ -56,17 +56,17 @@ pub async fn nfsproc3_link(
     if file_fs_id != link_fs_id {
         warn!("Trying to hard link across different file systems");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_XDEV.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrXdev.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
     let Some(export) = context.export_table.get(&file_fs_id) else {
         warn!("No export found for fs_id: {}", file_fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -74,9 +74,9 @@ pub async fn nfsproc3_link(
     if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrROFS.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
@@ -85,8 +85,8 @@ pub async fn nfsproc3_link(
     if let Err(stat) = file_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
     let file_id = file_id.unwrap();
@@ -96,29 +96,29 @@ pub async fn nfsproc3_link(
     if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
     let dir_id = dir_id.unwrap();
 
     // Get the directory attributes before the operation
-    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::WCCAttr::from).ok();
 
     // Call VFS link method
     match export.vfs.link(file_id, dir_id, &args.link.name).await {
         Ok(fattr) => {
             // Get file attributes
-            let file_attr = nfs3::post_op_attr::Some(fattr);
+            let file_attr = nfs3::PostOpAttr::Some(fattr);
 
             // Get the directory attributes after the operation
             let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
-            let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+            let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
             debug!("nfsproc3_link success");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             file_attr.serialize(output)?;
             wcc_res.serialize(output)?;
         }
@@ -129,7 +129,7 @@ pub async fn nfsproc3_link(
             // Get the directory attributes after the operation (unchanged)
             let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
-            let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+            let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
             debug!("nfsproc3_link failed: {:?}", stat);
             xdr::rpc::make_success_reply(xid).serialize(output)?;

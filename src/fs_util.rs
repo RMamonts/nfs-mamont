@@ -53,7 +53,7 @@ pub fn metadata_differ(lhs: &Metadata, rhs: &Metadata) -> bool {
 /// # Returns
 ///
 /// `true` if the file attributes differ significantly, `false` otherwise
-pub fn fattr3_differ(lhs: &nfs3::fattr3, rhs: &nfs3::fattr3) -> bool {
+pub fn fattr3_differ(lhs: &nfs3::FAttr3, rhs: &nfs3::FAttr3) -> bool {
     lhs.fileid != rhs.fileid
         || lhs.mtime.seconds != rhs.mtime.seconds
         || lhs.mtime.nseconds != rhs.mtime.nseconds
@@ -110,80 +110,80 @@ fn mode_unmask(mode: u32) -> u32 {
 /// # Returns
 ///
 /// NFS file attributes structure
-pub fn metadata_to_fattr3(fid: nfs3::fileid3, meta: &Metadata) -> nfs3::fattr3 {
+pub fn metadata_to_fattr3(fid: nfs3::FileId3, meta: &Metadata) -> nfs3::FAttr3 {
     let size = meta.size();
     let file_mode = mode_unmask(meta.mode());
     if meta.is_file() {
-        nfs3::fattr3 {
-            ftype: nfs3::ftype3::NF3REG,
+        nfs3::FAttr3 {
+            ftype: nfs3::FType3::NF3REG,
             mode: file_mode,
             nlink: 1,
             uid: meta.uid(),
             gid: meta.gid(),
             size,
             used: size,
-            rdev: nfs3::specdata3::default(),
+            rdev: nfs3::SpecData3::default(),
             fsid: 0,
             fileid: fid,
-            atime: nfs3::nfstime3 {
+            atime: nfs3::NFSTime3 {
                 seconds: meta.atime() as u32,
                 nseconds: meta.atime_nsec() as u32,
             },
-            mtime: nfs3::nfstime3 {
+            mtime: nfs3::NFSTime3 {
                 seconds: meta.mtime() as u32,
                 nseconds: meta.mtime_nsec() as u32,
             },
-            ctime: nfs3::nfstime3 {
+            ctime: nfs3::NFSTime3 {
                 seconds: meta.ctime() as u32,
                 nseconds: meta.ctime_nsec() as u32,
             },
         }
     } else if meta.is_symlink() {
-        nfs3::fattr3 {
-            ftype: nfs3::ftype3::NF3LNK,
+        nfs3::FAttr3 {
+            ftype: nfs3::FType3::NF3LNK,
             mode: file_mode,
             nlink: 1,
             uid: meta.uid(),
             gid: meta.gid(),
             size,
             used: size,
-            rdev: nfs3::specdata3::default(),
+            rdev: nfs3::SpecData3::default(),
             fsid: 0,
             fileid: fid,
-            atime: nfs3::nfstime3 {
+            atime: nfs3::NFSTime3 {
                 seconds: meta.atime() as u32,
                 nseconds: meta.atime_nsec() as u32,
             },
-            mtime: nfs3::nfstime3 {
+            mtime: nfs3::NFSTime3 {
                 seconds: meta.mtime() as u32,
                 nseconds: meta.mtime_nsec() as u32,
             },
-            ctime: nfs3::nfstime3 {
+            ctime: nfs3::NFSTime3 {
                 seconds: meta.ctime() as u32,
                 nseconds: meta.ctime_nsec() as u32,
             },
         }
     } else {
-        nfs3::fattr3 {
-            ftype: nfs3::ftype3::NF3DIR,
+        nfs3::FAttr3 {
+            ftype: nfs3::FType3::NF3DIR,
             mode: file_mode,
             nlink: 2,
             uid: meta.uid(),
             gid: meta.gid(),
             size,
             used: size,
-            rdev: nfs3::specdata3::default(),
+            rdev: nfs3::SpecData3::default(),
             fsid: 0,
             fileid: fid,
-            atime: nfs3::nfstime3 {
+            atime: nfs3::NFSTime3 {
                 seconds: meta.atime() as u32,
                 nseconds: meta.atime_nsec() as u32,
             },
-            mtime: nfs3::nfstime3 {
+            mtime: nfs3::NFSTime3 {
                 seconds: meta.mtime() as u32,
                 nseconds: meta.mtime_nsec() as u32,
             },
-            ctime: nfs3::nfstime3 {
+            ctime: nfs3::NFSTime3 {
                 seconds: meta.ctime() as u32,
                 nseconds: meta.ctime_nsec() as u32,
             },
@@ -204,28 +204,28 @@ pub fn metadata_to_fattr3(fid: nfs3::fileid3, meta: &Metadata) -> nfs3::fattr3 {
 /// # Returns
 ///
 /// Result indicating success or NFS error code
-pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs3::nfsstat3> {
+pub async fn path_setattr(path: &Path, setattr: &nfs3::SAttr3) -> Result<(), nfs3::NFSStat3> {
     match setattr.atime {
-        nfs3::set_atime::SET_TO_SERVER_TIME => {
+        nfs3::SetAtime::SetToServerTime => {
             let _ = filetime::set_file_atime(path, filetime::FileTime::now());
         }
-        nfs3::set_atime::SET_TO_CLIENT_TIME(time) => {
+        nfs3::SetAtime::SetToClientTime(time) => {
             let _ = filetime::set_file_atime(path, time.into());
         }
         _ => {}
     }
 
     match setattr.mtime {
-        nfs3::set_mtime::SET_TO_SERVER_TIME => {
+        nfs3::SetMtime::SetToServerTime => {
             let _ = filetime::set_file_mtime(path, filetime::FileTime::now());
         }
-        nfs3::set_mtime::SET_TO_CLIENT_TIME(time) => {
+        nfs3::SetMtime::SetToClientTime(time) => {
             let _ = filetime::set_file_mtime(path, time.into());
         }
         _ => {}
     }
 
-    if let nfs3::set_mode3::Some(mode) = setattr.mode {
+    if let nfs3::SetMode3::Some(mode) = setattr.mode {
         debug!(" -- set permissions {:?} {:?}", path, mode);
         let mode = mode_unmask(mode);
         let _ = std::fs::set_permissions(path, Permissions::from_mode(mode));
@@ -239,16 +239,16 @@ pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs
         debug!("Set gid not implemented");
     }
 
-    if let nfs3::set_size3::Some(size3) = setattr.size {
+    if let nfs3::SetSize3::Some(size3) = setattr.size {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .truncate(false)
             .open(path)
             .await
-            .or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+            .or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
         debug!(" -- set size {:?} {:?}", path, size3);
-        file.set_len(size3).await.or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        file.set_len(size3).await.or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
     }
 
     Ok(())
@@ -269,17 +269,17 @@ pub async fn path_setattr(path: &Path, setattr: &nfs3::sattr3) -> Result<(), nfs
 /// Result indicating success or NFS error code
 pub async fn file_setattr(
     file: &std::fs::File,
-    setattr: &nfs3::sattr3,
-) -> Result<(), nfs3::nfsstat3> {
-    if let nfs3::set_mode3::Some(mode) = setattr.mode {
+    setattr: &nfs3::SAttr3,
+) -> Result<(), nfs3::NFSStat3> {
+    if let nfs3::SetMode3::Some(mode) = setattr.mode {
         debug!(" -- set permissions {:?}", mode);
         let mode = mode_unmask(mode);
         let _ = file.set_permissions(Permissions::from_mode(mode));
     }
 
-    if let nfs3::set_size3::Some(size3) = setattr.size {
+    if let nfs3::SetSize3::Some(size3) = setattr.size {
         debug!(" -- set size {:?}", size3);
-        file.set_len(size3).or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        file.set_len(size3).or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
     }
 
     Ok(())

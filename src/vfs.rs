@@ -30,9 +30,9 @@ use crate::protocol::xdr::nfs3;
 #[derive(Default, Debug)]
 pub struct DirEntrySimple {
     /// Unique file identifier within the file system (similar to inode number)
-    pub fileid: nfs3::fileid3,
+    pub fileid: nfs3::FileId3,
     /// File name (without path components)
-    pub name: nfs3::filename3,
+    pub name: nfs3::Filename3,
 }
 
 /// Result returned by `readdir_simple` operations
@@ -52,11 +52,11 @@ pub struct ReadDirSimpleResult {
 #[derive(Default, Debug)]
 pub struct DirEntry {
     /// Unique file identifier within the file system (similar to inode number)
-    pub fileid: nfs3::fileid3,
+    pub fileid: nfs3::FileId3,
     /// File name (without path components)
-    pub name: nfs3::filename3,
+    pub name: nfs3::Filename3,
     /// Complete file attributes
-    pub attr: nfs3::fattr3,
+    pub attr: nfs3::FAttr3,
 }
 
 /// Result returned by readdir operations
@@ -95,7 +95,7 @@ pub enum Capabilities {
 
 /// The basic API to implement to provide an NFS file system
 ///
-/// Opaque FH
+/// Opaque Fh
 /// ---------
 /// Files are only uniquely identified by a 64-bit file id. (basically an inode number)
 /// We automatically produce internally the opaque filehandle which is comprised of
@@ -138,7 +138,7 @@ pub trait NFSFileSystem: Sync {
     ///
     /// This ID is used as the starting point for all path lookups and is typically
     /// the first file handle requested by NFS clients during mount operations.
-    fn root_dir(&self) -> nfs3::fileid3;
+    fn root_dir(&self) -> nfs3::FileId3;
 
     /// Look up the ID of a file or directory within a parent directory
     ///
@@ -151,12 +151,12 @@ pub trait NFSFileSystem: Sync {
     /// * `filename` - The name of the file or directory to look up
     ///
     /// # Returns
-    /// * `Result<fileid3, nfsstat3>` - The file ID on success, or an NFS error code
+    /// * `Result<fileid3, NFSStat3>` - The file ID on success, or an NFS error code
     async fn lookup(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-    ) -> Result<nfs3::fileid3, nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+    ) -> Result<nfs3::FileId3, nfs3::NFSStat3>;
 
     /// Returns the attributes of a file or directory
     ///
@@ -167,8 +167,8 @@ pub trait NFSFileSystem: Sync {
     /// * `id` - The file ID to get attributes for
     ///
     /// # Returns
-    /// * `Result<fattr3, nfsstat3>` - The file attributes on success, or an NFS error code
-    async fn getattr(&self, id: nfs3::fileid3) -> Result<nfs3::fattr3, nfs3::nfsstat3>;
+    /// * `Result<fattr3, NFSStat3>` - The file attributes on success, or an NFS error code
+    async fn getattr(&self, id: nfs3::FileId3) -> Result<nfs3::FAttr3, nfs3::NFSStat3>;
 
     /// Sets the attributes of a file or directory
     ///
@@ -180,12 +180,12 @@ pub trait NFSFileSystem: Sync {
     /// * `setattr` - The attributes to set
     ///
     /// # Returns
-    /// * `Result<fattr3, nfsstat3>` - The updated file attributes on success, or an NFS error code
+    /// * `Result<fattr3, NFSStat3>` - The updated file attributes on success, or an NFS error code
     async fn setattr(
         &self,
-        id: nfs3::fileid3,
-        setattr: nfs3::sattr3,
-    ) -> Result<nfs3::fattr3, nfs3::nfsstat3>;
+        id: nfs3::FileId3,
+        setattr: nfs3::SAttr3,
+    ) -> Result<nfs3::FAttr3, nfs3::NFSStat3>;
 
     /// Reads data from a file
     ///
@@ -199,13 +199,13 @@ pub trait NFSFileSystem: Sync {
     /// * `count` - Maximum number of bytes to read
     ///
     /// # Returns
-    /// * `Result<(Vec<u8>, bool), nfsstat3>` - The read data and EOF flag on success, or an NFS error code
+    /// * `Result<(Vec<u8>, bool), NFSStat3>` - The read data and EOF flag on success, or an NFS error code
     async fn read(
         &self,
-        id: nfs3::fileid3,
+        id: nfs3::FileId3,
         offset: u64,
         count: u32,
-    ) -> Result<(Vec<u8>, bool), nfs3::nfsstat3>;
+    ) -> Result<(Vec<u8>, bool), nfs3::NFSStat3>;
 
     /// Writes data to a file
     ///
@@ -219,13 +219,13 @@ pub trait NFSFileSystem: Sync {
     /// * `data` - The data to write
     ///
     /// # Returns
-    /// * `Result<fattr3, nfsstat3>` - The updated file attributes on success, or an NFS error code
+    /// * `Result<fattr3, NFSStat3>` - The updated file attributes on success, or an NFS error code
     async fn write(
         &self,
-        id: nfs3::fileid3,
+        id: nfs3::FileId3,
         offset: u64,
         data: &[u8],
-    ) -> Result<nfs3::fattr3, nfs3::nfsstat3>;
+    ) -> Result<nfs3::FAttr3, nfs3::NFSStat3>;
 
     /// Creates a new file with the specified attributes
     ///
@@ -238,13 +238,13 @@ pub trait NFSFileSystem: Sync {
     /// * `attr` - Initial attributes for the new file
     ///
     /// # Returns
-    /// * `Result<(fileid3, fattr3), nfsstat3>` - The new file's ID and attributes on success, or an NFS error code
+    /// * `Result<(fileid3, fattr3), NFSStat3>` - The new file's ID and attributes on success, or an NFS error code
     async fn create(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-        attr: nfs3::sattr3,
-    ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+        attr: nfs3::SAttr3,
+    ) -> Result<(nfs3::FileId3, nfs3::FAttr3), nfs3::NFSStat3>;
 
     /// Creates a file if it doesn't exist (exclusive creation)
     ///
@@ -256,12 +256,12 @@ pub trait NFSFileSystem: Sync {
     /// * `filename` - The name for the new file
     ///
     /// # Returns
-    /// * `Result<fileid3, nfsstat3>` - The new file's ID on success, or an NFS error code
+    /// * `Result<fileid3, NFSStat3>` - The new file's ID on success, or an NFS error code
     async fn create_exclusive(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-    ) -> Result<nfs3::fileid3, nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+    ) -> Result<nfs3::FileId3, nfs3::NFSStat3>;
 
     /// Creates a new directory
     ///
@@ -273,12 +273,12 @@ pub trait NFSFileSystem: Sync {
     /// * `dirname` - The name for the new directory
     ///
     /// # Returns
-    /// * `Result<(fileid3, fattr3), nfsstat3>` - The new directory's ID and attributes on success, or an NFS error code
+    /// * `Result<(fileid3, fattr3), NFSStat3>` - The new directory's ID and attributes on success, or an NFS error code
     async fn mkdir(
         &self,
-        dirid: nfs3::fileid3,
-        dirname: &nfs3::filename3,
-    ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        dirname: &nfs3::Filename3,
+    ) -> Result<(nfs3::FileId3, nfs3::FAttr3), nfs3::NFSStat3>;
 
     /// Removes a file or empty directory
     ///
@@ -290,12 +290,12 @@ pub trait NFSFileSystem: Sync {
     /// * `filename` - The name of the file or directory to remove
     ///
     /// # Returns
-    /// * `Result<(), nfsstat3>` - Success or an NFS error code
+    /// * `Result<(), NFSStat3>` - Success or an NFS error code
     async fn remove(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-    ) -> Result<(), nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+    ) -> Result<(), nfs3::NFSStat3>;
 
     /// Renames a file or directory
     ///
@@ -309,14 +309,14 @@ pub trait NFSFileSystem: Sync {
     /// * `to_filename` - The destination file or directory name
     ///
     /// # Returns
-    /// * `Result<(), nfsstat3>` - Success or an NFS error code
+    /// * `Result<(), NFSStat3>` - Success or an NFS error code
     async fn rename(
         &self,
-        from_dirid: nfs3::fileid3,
-        from_filename: &nfs3::filename3,
-        to_dirid: nfs3::fileid3,
-        to_filename: &nfs3::filename3,
-    ) -> Result<(), nfs3::nfsstat3>;
+        from_dirid: nfs3::FileId3,
+        from_filename: &nfs3::Filename3,
+        to_dirid: nfs3::FileId3,
+        to_filename: &nfs3::Filename3,
+    ) -> Result<(), nfs3::NFSStat3>;
 
     /// Reads directory entries with pagination support
     ///
@@ -329,13 +329,13 @@ pub trait NFSFileSystem: Sync {
     /// * `max_entries` - Maximum number of entries to return
     ///
     /// # Returns
-    /// * `Result<ReadDirResult, nfsstat3>` - Directory entries and EOF flag on success, or an NFS error code
+    /// * `Result<ReadDirResult, NFSStat3>` - Directory entries and EOF flag on success, or an NFS error code
     async fn readdir(
         &self,
-        dirid: nfs3::fileid3,
-        start_after: nfs3::fileid3,
+        dirid: nfs3::FileId3,
+        start_after: nfs3::FileId3,
         max_entries: usize,
-    ) -> Result<ReadDirResult, nfs3::nfsstat3>;
+    ) -> Result<ReadDirResult, nfs3::NFSStat3>;
 
     /// Simplified version of readdir that returns only file names and IDs
     ///
@@ -349,13 +349,13 @@ pub trait NFSFileSystem: Sync {
     /// * `count` - Maximum number of entries to return
     ///
     /// # Returns
-    /// * `Result<ReadDirSimpleResult, nfsstat3>` - Simplified directory entries on success, or an NFS error code
+    /// * `Result<ReadDirSimpleResult, NFSStat3>` - Simplified directory entries on success, or an NFS error code
     async fn readdir_simple(
         &self,
-        dirid: nfs3::fileid3,
-        start_after: nfs3::fileid3,
+        dirid: nfs3::FileId3,
+        start_after: nfs3::FileId3,
         count: usize,
-    ) -> Result<ReadDirSimpleResult, nfs3::nfsstat3> {
+    ) -> Result<ReadDirSimpleResult, nfs3::NFSStat3> {
         Ok(ReadDirSimpleResult::from_readdir_result(
             &self.readdir(dirid, start_after, count).await?,
         ))
@@ -373,14 +373,14 @@ pub trait NFSFileSystem: Sync {
     /// * `attr` - Initial attributes for the symbolic link
     ///
     /// # Returns
-    /// * `Result<(fileid3, fattr3), nfsstat3>` - The new symlink's ID and attributes on success, or an NFS error code
+    /// * `Result<(fileid3, fattr3), NFSStat3>` - The new symlink's ID and attributes on success, or an NFS error code
     async fn symlink(
         &self,
-        dirid: nfs3::fileid3,
-        linkname: &nfs3::filename3,
-        symlink: &nfs3::nfspath3,
-        attr: &nfs3::sattr3,
-    ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
+        dirid: nfs3::FileId3,
+        linkname: &nfs3::Filename3,
+        symlink: &nfs3::NFSPath3,
+        attr: &nfs3::SAttr3,
+    ) -> Result<(nfs3::FileId3, nfs3::FAttr3), nfs3::NFSStat3>;
 
     /// Reads the target of a symbolic link
     ///
@@ -390,8 +390,8 @@ pub trait NFSFileSystem: Sync {
     /// * `id` - The file ID of the symbolic link
     ///
     /// # Returns
-    /// * `Result<nfspath3, nfsstat3>` - The target path on success, or an NFS error code
-    async fn readlink(&self, id: nfs3::fileid3) -> Result<nfs3::nfspath3, nfs3::nfsstat3>;
+    /// * `Result<nfspath3, NFSStat3>` - The target path on success, or an NFS error code
+    async fn readlink(&self, id: nfs3::FileId3) -> Result<nfs3::NFSPath3, nfs3::NFSStat3>;
 
     /// Creates a hard link
     ///
@@ -404,13 +404,13 @@ pub trait NFSFileSystem: Sync {
     /// * `link_name` - The name for the new link
     ///
     /// # Returns
-    /// * `Result<fattr3, nfsstat3>` - The updated file attributes on success, or an NFS error code
+    /// * `Result<fattr3, NFSStat3>` - The updated file attributes on success, or an NFS error code
     async fn link(
         &self,
-        file_id: nfs3::fileid3,
-        link_dir_id: nfs3::fileid3,
-        link_name: &nfs3::filename3,
-    ) -> Result<nfs3::fattr3, nfs3::nfsstat3>;
+        file_id: nfs3::FileId3,
+        link_dir_id: nfs3::FileId3,
+        link_name: &nfs3::Filename3,
+    ) -> Result<nfs3::FAttr3, nfs3::NFSStat3>;
 
     /// Creates a special node (character device, block device, socket, or FIFO)
     ///
@@ -426,15 +426,15 @@ pub trait NFSFileSystem: Sync {
     /// * `attrs` - Initial attributes for the new file
     ///
     /// # Returns
-    /// * `Result<(fileid3, fattr3), nfsstat3>` - The new file's ID and attributes on success, or an NFS error code
+    /// * `Result<(fileid3, fattr3), NFSStat3>` - The new file's ID and attributes on success, or an NFS error code
     async fn mknod(
         &self,
-        dir_id: nfs3::fileid3,
-        name: &nfs3::filename3,
-        ftype: nfs3::ftype3,
-        specdata: nfs3::specdata3,
-        attrs: &nfs3::sattr3,
-    ) -> Result<(nfs3::fileid3, nfs3::fattr3), nfs3::nfsstat3>;
+        dir_id: nfs3::FileId3,
+        name: &nfs3::Filename3,
+        ftype: nfs3::FType3,
+        specdata: nfs3::SpecData3,
+        attrs: &nfs3::SAttr3,
+    ) -> Result<(nfs3::FileId3, nfs3::FAttr3), nfs3::NFSStat3>;
 
     /// Commits data written to a file to stable storage
     ///
@@ -447,13 +447,13 @@ pub trait NFSFileSystem: Sync {
     /// * `count` - Number of bytes to commit
     ///
     /// # Returns
-    /// * `Result<fattr3, nfsstat3>` - The file attributes after commit on success, or an NFS error code
+    /// * `Result<fattr3, NFSStat3>` - The file attributes after commit on success, or an NFS error code
     async fn commit(
         &self,
-        file_id: nfs3::fileid3,
+        file_id: nfs3::FileId3,
         offset: u64,
         count: u32,
-    ) -> Result<nfs3::fattr3, nfs3::nfsstat3>;
+    ) -> Result<nfs3::FAttr3, nfs3::NFSStat3>;
 
     /// Retrieves static file system information
     ///
@@ -464,14 +464,14 @@ pub trait NFSFileSystem: Sync {
     /// * `root_fileid` - The file ID of the root directory
     ///
     /// # Returns
-    /// * `Result<fsinfo3, nfsstat3>` - File system information on success, or an NFS error code
+    /// * `Result<fsinfo3, NFSStat3>` - File system information on success, or an NFS error code
     async fn fsinfo(
         &self,
-        root_fileid: nfs3::fileid3,
-    ) -> Result<nfs3::fs::fsinfo3, nfs3::nfsstat3> {
-        let dir_attr: nfs3::post_op_attr = self.getattr(root_fileid).await.ok();
+        root_fileid: nfs3::FileId3,
+    ) -> Result<nfs3::fs::FSInfo3, nfs3::NFSStat3> {
+        let dir_attr: nfs3::PostOpAttr = self.getattr(root_fileid).await.ok();
 
-        let res = nfs3::fs::fsinfo3 {
+        let res = nfs3::fs::FSInfo3 {
             obj_attributes: dir_attr,
             rtmax: 1024 * 1024,
             rtpref: 1024 * 124,
@@ -481,7 +481,7 @@ pub trait NFSFileSystem: Sync {
             wtmult: 1024 * 1024,
             dtpref: 1024 * 1024,
             maxfilesize: 128 * 1024 * 1024 * 1024,
-            time_delta: nfs3::nfstime3 { seconds: 0, nseconds: 1_000_000 },
+            time_delta: nfs3::NFSTime3 { seconds: 0, nseconds: 1_000_000 },
             properties: nfs3::fs::FSF_SYMLINK
                 | nfs3::fs::FSF_HOMOGENEOUS
                 | nfs3::fs::FSF_CANSETTIME,
@@ -500,9 +500,9 @@ pub trait NFSFileSystem: Sync {
     /// * `fs_id` - The file system's ID in the server export table
     ///
     /// # Returns
-    /// * `nfs_fh3` - The opaque NFS file handle
-    fn id_to_fh(&self, id: nfs3::fileid3, fs_id: nfs3::fs_id) -> nfs3::nfs_fh3 {
-        nfs3::nfs_fh3 { gen: self.generation(), id, fs_id }
+    /// * `NFSFh3` - The opaque NFS file handle
+    fn id_to_fh(&self, id: nfs3::FileId3, fs_id: nfs3::FsId) -> nfs3::NFSFh3 {
+        nfs3::NFSFh3 { gen: self.generation(), id, fs_id }
     }
 
     /// Converts an opaque NFS file handle to a file ID
@@ -514,13 +514,13 @@ pub trait NFSFileSystem: Sync {
     /// * `id` - The opaque NFS file handle
     ///
     /// # Returns
-    /// * `Result<fileid3, nfsstat3>` - The file ID on success, or an NFS error code
+    /// * `Result<fileid3, NFSStat3>` - The file ID on success, or an NFS error code
     ///   Returns NFS3ERR_STALE if the file handle is from a previous server instance
-    ///   Returns NFS3ERR_BADHANDLE if the file handle is malformed
-    fn fh_to_id(&self, nfs_fh: &nfs3::nfs_fh3) -> Result<nfs3::fileid3, nfs3::nfsstat3> {
+    ///   Returns NFS3ErrBadHandle if the file handle is malformed
+    fn fh_to_id(&self, nfs_fh: &nfs3::NFSFh3) -> Result<nfs3::FileId3, nfs3::NFSStat3> {
         match self.generation().cmp(&nfs_fh.gen) {
-            Ordering::Less => Err(nfs3::nfsstat3::NFS3ERR_STALE),
-            Ordering::Greater => Err(nfs3::nfsstat3::NFS3ERR_BADHANDLE),
+            Ordering::Less => Err(nfs3::NFSStat3::NFS3ErrStale),
+            Ordering::Greater => Err(nfs3::NFSStat3::NFS3ErrBadHandle),
             Ordering::Equal => Ok(nfs_fh.id),
         }
     }
@@ -535,8 +535,8 @@ pub trait NFSFileSystem: Sync {
     /// * `path` - The path to convert
     ///
     /// # Returns
-    /// * `Result<fileid3, nfsstat3>` - The file ID on success, or an NFS error code
-    async fn path_to_id(&self, path: &[u8]) -> Result<nfs3::fileid3, nfs3::nfsstat3> {
+    /// * `Result<fileid3, NFSStat3>` - The file ID on success, or an NFS error code
+    async fn path_to_id(&self, path: &[u8]) -> Result<nfs3::FileId3, nfs3::NFSStat3> {
         let splits = path.split(|&r| r == b'/');
         let mut fid = self.root_dir();
         for component in splits {
@@ -556,7 +556,7 @@ pub trait NFSFileSystem: Sync {
     ///
     /// # Returns
     /// * `cookieverf3` - A unique identifier for this server instance
-    fn server_id(&self) -> nfs3::cookieverf3 {
+    fn server_id(&self) -> nfs3::CookieVerf3 {
         self.generation().to_le_bytes()
     }
 }

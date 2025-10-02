@@ -40,14 +40,14 @@ pub async fn mountproc3_mnt(
     if path.len() > mount::MNTPATHLEN as usize {
         debug!("{:?} --> MNT3ERR_NAMETOOLONG", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        mount::mountstat3::MNT3ERR_NAMETOOLONG.serialize(output)?;
+        mount::MountStat3::Mnt3ErrNameTooLong.serialize(output)?;
         return Ok(());
     }
 
     let Ok(utf8path) = std::str::from_utf8(&path) else {
         warn!("Invalid UTF-8 path in umnt: {:?}", path);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
+        mount::MountStat3::Mnt3ErrNoEnt.serialize(output)?;
         return Ok(());
     };
     debug!("mountproc3_mnt({:?},{:?}) ", xid, utf8path);
@@ -63,7 +63,7 @@ pub async fn mountproc3_mnt(
         // invalid export
         debug!("{:?} --> no matching export", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
+        mount::MountStat3::Mnt3ErrNoEnt.serialize(output)?;
         return Ok(());
     };
 
@@ -83,11 +83,11 @@ pub async fn mountproc3_mnt(
     };
 
     if let Ok(fileid) = vfs.path_to_id(&path).await {
-        let response = mount::mountres3_ok {
+        let response = mount::MountRes3Ok {
             fhandle: vfs.id_to_fh(fileid, *mount_entry.key()),
             auth_flavors: vec![
-                xdr::rpc::auth_flavor::AUTH_NONE.to_u32().unwrap(),
-                xdr::rpc::auth_flavor::AUTH_SYS.to_u32().unwrap(),
+                xdr::rpc::AuthFlavor::AuthNone.to_u32().unwrap(),
+                xdr::rpc::AuthFlavor::AuthSys.to_u32().unwrap(),
             ],
         };
         debug!("{:?} --> {:?}", xid, response);
@@ -95,7 +95,7 @@ pub async fn mountproc3_mnt(
             let _ = chan.send(true).await;
         }
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        mount::mountstat3::MNT3_OK.serialize(output)?;
+        mount::MountStat3::Mnt3Ok.serialize(output)?;
         response.serialize(output)?;
 
         if let Some(machine_name) = machine_name_from_context(context) {
@@ -105,7 +105,7 @@ pub async fn mountproc3_mnt(
     } else {
         debug!("{:?} --> MNT3ERR_NOENT", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
+        mount::MountStat3::Mnt3ErrNoEnt.serialize(output)?;
     }
     Ok(())
 }

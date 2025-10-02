@@ -55,8 +55,8 @@ pub async fn nfsproc3_commit(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -65,33 +65,33 @@ pub async fn nfsproc3_commit(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
 
     // get the object attributes before the commit
-    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::wcc_attr::from).ok();
+    let pre_obj_attr = export.vfs.getattr(id).await.map(nfs3::WCCAttr::from).ok();
 
     // Call VFS commit method
     match export.vfs.commit(id, args.offset, args.count).await {
         Ok(fattr) => {
-            let post_obj_attr = nfs3::post_op_attr::Some(fattr);
+            let post_obj_attr = nfs3::PostOpAttr::Some(fattr);
 
             let res = nfs3::file::COMMIT3resok {
-                file_wcc: nfs3::wcc_data { before: pre_obj_attr, after: post_obj_attr },
+                file_wcc: nfs3::WCCData { before: pre_obj_attr, after: post_obj_attr },
                 verf: export.vfs.server_id(),
             };
 
             debug!("nfsproc3_commit success");
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             res.serialize(output)?;
         }
         Err(stat) => {
             let post_obj_attr = export.vfs.getattr(id).await.ok();
 
-            let wcc_data = nfs3::wcc_data { before: pre_obj_attr, after: post_obj_attr };
+            let wcc_data = nfs3::WCCData { before: pre_obj_attr, after: post_obj_attr };
 
             debug!("nfsproc3_commit error: {:?}", stat);
             xdr::rpc::make_success_reply(xid).serialize(output)?;

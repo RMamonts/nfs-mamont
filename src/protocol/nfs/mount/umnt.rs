@@ -56,7 +56,7 @@ pub async fn mountproc3_umnt(
         }
     }
     xdr::rpc::make_success_reply(xid).serialize(output)?;
-    mount::mountstat3::MNT3_OK.serialize(output)?;
+    mount::MountStat3::Mnt3Ok.serialize(output)?;
 
     if let Some(machine_name) = machine_name_from_context(context) {
         debug!("client_list: {machine_name} -= {utf8path}");

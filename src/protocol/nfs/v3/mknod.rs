@@ -57,8 +57,8 @@ pub async fn nfsproc3_mknod(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     };
 
@@ -66,8 +66,8 @@ pub async fn nfsproc3_mknod(
     if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
         warn!("No write capabilities.");
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_ROFS.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrROFS.serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         return Ok(());
     }
 
@@ -77,7 +77,7 @@ pub async fn nfsproc3_mknod(
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::wcc_data::default().serialize(output)?;
+        nfs3::WCCData::default().serialize(output)?;
         error!("Directory does not exist");
         return Ok(());
     }
@@ -85,10 +85,10 @@ pub async fn nfsproc3_mknod(
     let dir_id = dir_id.unwrap();
 
     // get the object attributes before the operation
-    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::wcc_attr::from).ok();
+    let pre_dir_attr = export.vfs.getattr(dir_id).await.map(nfs3::WCCAttr::from).ok();
 
     // Create default attributes if necessary
-    let attr = nfs3::sattr3::default();
+    let attr = nfs3::SAttr3::default();
 
     // Call VFS mknod method
     match export
@@ -102,14 +102,14 @@ pub async fn nfsproc3_mknod(
             // Get the directory attributes after the operation
             let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
-            let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+            let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             // serialize MKNOD3resok
             let fh = export.vfs.id_to_fh(fid, fs_id);
-            nfs3::post_op_fh3::Some(fh).serialize(output)?;
-            nfs3::post_op_attr::Some(fattr).serialize(output)?;
+            nfs3::PostOpFh3::Some(fh).serialize(output)?;
+            nfs3::PostOpAttr::Some(fattr).serialize(output)?;
             wcc_res.serialize(output)?;
         }
         Err(stat) => {
@@ -118,7 +118,7 @@ pub async fn nfsproc3_mknod(
             // Get the directory attributes after the operation (unchanged)
             let post_dir_attr = export.vfs.getattr(dir_id).await.ok();
 
-            let wcc_res = nfs3::wcc_data { before: pre_dir_attr, after: post_dir_attr };
+            let wcc_res = nfs3::WCCData { before: pre_dir_attr, after: post_dir_attr };
 
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;

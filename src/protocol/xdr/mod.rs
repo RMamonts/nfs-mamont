@@ -25,7 +25,6 @@ use num_traits::{FromPrimitive, ToPrimitive};
 pub mod mount;
 pub mod nfs3;
 pub mod nfs4;
-pub mod portmap;
 pub mod rpc;
 mod utils;
 
@@ -378,7 +377,6 @@ impl<T: Deserialize> Deserialize for Vec<T> {
 ///
 /// This macro simplifies implementation of the XDR trait for struct types
 /// by serializing or deserializing each field in sequence.
-#[allow(non_camel_case_types)]
 #[macro_export]
 macro_rules! SerializeStruct {
     (
@@ -394,7 +392,6 @@ macro_rules! SerializeStruct {
     };
 }
 
-#[allow(non_camel_case_types)]
 #[macro_export]
 macro_rules! DeserializeStruct {
     (

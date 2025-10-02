@@ -42,15 +42,15 @@ pub async fn nfsproc3_lookup(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
+    let dir_ops = deserialize::<nfs3::DiropArgs3>(input)?;
     debug!("nfsproc3_lookup({:?},{:?}) ", xid, dir_ops);
 
     let fs_id = dir_ops.dir.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -60,7 +60,7 @@ pub async fn nfsproc3_lookup(
     if let Err(stat) = dir_id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
 
@@ -73,7 +73,7 @@ pub async fn nfsproc3_lookup(
             let obj_attr = export.vfs.getattr(fid).await.ok();
             debug!("nfsproc3_lookup success {:?} --> {:?}", xid, obj_attr);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             export.vfs.id_to_fh(fid, fs_id).serialize(output)?;
             obj_attr.serialize(output)?;
             dir_attr.serialize(output)?;

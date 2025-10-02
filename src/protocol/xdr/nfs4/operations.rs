@@ -10,10 +10,9 @@ use crate::{
     xdr::{Deserialize, DeserializeStruct, Serialize, SerializeStruct},
 };
 
-use super::{nfs_opnum4, nfsstat4};
+use super::{NFSOpNum4, NFSStat4};
 
 /// NULL4args - NULL operation arguments (void) as defined in RFC 7530
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NULL4args {}
 
@@ -24,7 +23,6 @@ impl Deserialize for NULL4args {
 }
 
 /// NULL4res - NULL operation response (void) as defined in RFC 7530
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct NULL4res {}
 
@@ -35,90 +33,84 @@ impl Serialize for NULL4res {
 }
 
 /// COMPOUND4args - COMPOUND operation arguments as defined in RFC 7530
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
 pub struct COMPOUND4args {
     pub tag: String,
     pub minorversion: u32,
-    pub argarray: Vec<nfs_argop4>,
+    pub argarray: Vec<NFSArgOp4>,
 }
 DeserializeStruct!(COMPOUND4args, tag, minorversion, argarray);
 
 /// COMPOUND4res - COMPOUND operation response as defined in RFC 7530
-#[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 pub struct COMPOUND4res {
-    pub status: nfsstat4,
+    pub status: NFSStat4,
     pub tag: String,
-    pub resarray: Vec<nfs_resop4>,
+    pub resarray: Vec<NFSResOp4>,
 }
 SerializeStruct!(COMPOUND4res, status, tag, resarray);
 
 /// NFS argop4 - operation argument structure
-#[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
-pub struct nfs_argop4 {
-    pub argop: nfs_opnum4,
-    pub op_data: nfs_argop4_u,
+pub struct NFSArgOp4 {
+    pub argop: NFSOpNum4,
+    pub op_data: NFSArgOp4U,
 }
 
-impl Default for nfs_argop4 {
+impl Default for NFSArgOp4 {
     fn default() -> Self {
-        Self { argop: nfs_opnum4::OP_ILLEGAL, op_data: nfs_argop4_u::OpIllegal }
+        Self { argop: NFSOpNum4::OpIllegal, op_data: NFSArgOp4U::OpIllegal }
     }
 }
 
-impl Deserialize for nfs_argop4 {
-    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<nfs_argop4> {
-        let argop = nfs_opnum4::deserialize(src)?;
+impl Deserialize for NFSArgOp4 {
+    fn deserialize<R: Read>(src: &mut R) -> std::io::Result<NFSArgOp4> {
+        let argop = NFSOpNum4::deserialize(src)?;
 
         match argop {
-            nfs_opnum4::OP_NULL => {
+            NFSOpNum4::OpNull => {
                 let args = NULL4args::deserialize(src)?;
-                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpNull(args) })
+                Ok(NFSArgOp4 { argop, op_data: NFSArgOp4U::OpNull(args) })
             }
-            nfs_opnum4::OP_COMPOUND => {
+            NFSOpNum4::OpCompound => {
                 let args = COMPOUND4args::deserialize(src)?;
-                Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpCompound(args) })
+                Ok(NFSArgOp4 { argop, op_data: NFSArgOp4U::OpCompound(args) })
             }
-            nfs_opnum4::OP_ILLEGAL => Ok(nfs_argop4 { argop, op_data: nfs_argop4_u::OpIllegal }),
+            NFSOpNum4::OpIllegal => Ok(NFSArgOp4 { argop, op_data: NFSArgOp4U::OpIllegal }),
             _ => io_other("Not implemented operation: {argop:?}"),
         }
     }
 }
 
 /// NFS resop4 - operation result structure
-#[allow(non_camel_case_types)]
 #[derive(Debug)]
-pub struct nfs_resop4 {
-    pub resop: nfs_opnum4,
-    pub op_result: nfs_resop4_u,
+pub struct NFSResOp4 {
+    pub resop: NFSOpNum4,
+    pub op_result: NFSResOp4U,
 }
 
-impl Serialize for nfs_resop4 {
+impl Serialize for NFSResOp4 {
     fn serialize<W: Write>(&self, dest: &mut W) -> std::io::Result<()> {
         self.resop.serialize(dest)?;
         match &self.op_result {
-            nfs_resop4_u::OpNull(resp) => resp.serialize(dest),
-            nfs_resop4_u::OpCompound(resp) => resp.serialize(dest),
-            nfs_resop4_u::OpIllegal(resp) => resp.serialize(dest),
+            NFSResOp4U::OpNull(resp) => resp.serialize(dest),
+            NFSResOp4U::OpCompound(resp) => resp.serialize(dest),
+            NFSResOp4U::OpIllegal(resp) => resp.serialize(dest),
         }
     }
 }
 
 /// Request arguments union - nfs_argop4_u
-#[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
-pub enum nfs_argop4_u {
+pub enum NFSArgOp4U {
     OpNull(NULL4args),
     OpCompound(COMPOUND4args),
     OpIllegal,
 }
 
-/// Response data union - nfs_resop4_u  
-#[allow(non_camel_case_types)]
+/// Response data union - nfs_resop4_u
 #[derive(Debug)]
-pub enum nfs_resop4_u {
+pub enum NFSResOp4U {
     OpNull(NULL4res),
     OpCompound(COMPOUND4res),
     OpIllegal(IllegalResp),
@@ -127,7 +119,7 @@ pub enum nfs_resop4_u {
 /// ILLEGAL operation response
 #[derive(Debug, Default)]
 pub struct IllegalResp {
-    pub status: nfsstat4,
+    pub status: NFSStat4,
 }
 
 impl Serialize for IllegalResp {

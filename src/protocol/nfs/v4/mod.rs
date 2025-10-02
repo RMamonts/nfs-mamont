@@ -37,7 +37,7 @@ use crate::protocol::rpc;
 use crate::protocol::xdr::{self, nfs4, Serialize};
 use crate::vfs::NFSv4FileSystem;
 use crate::xdr::nfs4::{
-    clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
+    ClientId4, FileHandle, NFSClientId, NFSFh4, StateId4, StateOwnerType, StateType,
 };
 
 mod compound;
@@ -55,7 +55,7 @@ pub const VERSION: u32 = 4;
 /// # Arguments
 ///
 /// * `xid` - Transaction ID from the RPC call
-/// * `call` - The RPC call body containing program, version, and procedure numbers  
+/// * `call` - The RPC call body containing program, version, and procedure numbers
 /// * `input` - Input stream for reading procedure arguments
 /// * `output` - Output stream for writing procedure results
 /// * `context` - Server context containing the VFS and other state
@@ -65,7 +65,7 @@ pub const VERSION: u32 = 4;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_nfs(
     xid: u32,
-    call: xdr::rpc::call_body,
+    call: xdr::rpc::CallBody,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
@@ -76,11 +76,11 @@ pub async fn handle_nfs(
         return Ok(());
     }
 
-    let prog = nfs4::nfs_opnum4::from_u32(call.proc).unwrap_or(nfs4::nfs_opnum4::OP_ILLEGAL);
+    let prog = nfs4::NFSOpNum4::from_u32(call.proc).unwrap_or(nfs4::NFSOpNum4::OpIllegal);
 
     match prog {
-        nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)?,
-        nfs4::nfs_opnum4::OP_COMPOUND => {
+        nfs4::NFSOpNum4::OpNull => null::nfsproc4_null(xid, output)?,
+        nfs4::NFSOpNum4::OpCompound => {
             compound::nfsproc4_compound(xid, input, output, context).await?
         }
         _ => {
@@ -96,13 +96,13 @@ pub async fn handle_nfs(
 /// Manages the volatile state that changes during the processing of a request
 pub struct NFSv4Context {
     /// CURRENT filehandle - primary target of the current operation
-    current_file_handler: filehandle,
+    current_file_handler: FileHandle,
     /// SAVED filehandle - preserved for complex compound operations
-    saved_file_handler: filehandle,
+    saved_file_handler: FileHandle,
     /// CURRENT stateid - identifies state for stateful operations (OPEN, LOCK, etc.)
-    current_stateid: stateid4,
+    current_stateid: StateId4,
     /// SAVED stateid - preserved state identifier for compound operations
-    saved_stateid: stateid4,
+    saved_stateid: StateId4,
     /// NFS minor version negotiated for this session (0 for v4.0, 1 for v4.1)
     minor_version: u32,
     /// Reference to the global, shared server state management structure
@@ -114,17 +114,17 @@ pub struct NFSv4Context {
 /// in RFC 7530 Section 9. This structure is shared across all client connections.
 pub struct NFSv4State {
     /// Mapping of client IDs to their full management structures
-    clients: RwLock<HashMap<clientid4, Arc<RwLock<nfs_client_id>>>>,
+    clients: RwLock<HashMap<ClientId4, Arc<RwLock<NFSClientId>>>>,
     /// Global registry of all active state identifiers and their associated state objects
-    state_table: RwLock<HashMap<stateid4, state_type>>,
+    state_table: RwLock<HashMap<StateId4, StateType>>,
     /// Reverse index: filehandle -> list of OPEN stateids for that file
-    opens_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
+    opens_by_file: RwLock<HashMap<NFSFh4, Vec<StateId4>>>,
     /// Reverse index: filehandle -> list of LOCK stateids for that file
-    locks_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
+    locks_by_file: RwLock<HashMap<NFSFh4, Vec<StateId4>>>,
     /// Reverse index: filehandle -> list of DELEGATION stateids for that file
-    delegations_by_file: RwLock<HashMap<nfs_fh4, Vec<stateid4>>>,
+    delegations_by_file: RwLock<HashMap<NFSFh4, Vec<StateId4>>>,
     /// Reverse index: client ID -> list of all state-owners owned by that client
-    state_owners_by_client: RwLock<HashMap<clientid4, Vec<Arc<state_owner_type>>>>,
+    state_owners_by_client: RwLock<HashMap<ClientId4, Vec<Arc<StateOwnerType>>>>,
     /// Managed filesystem instances, keyed by export name or identifier
     fs: RwLock<HashMap<String, Arc<NFSv4FS>>>,
 }
@@ -135,7 +135,7 @@ pub struct NFSv4FS {
     /// Human-readable name identifier for this filesystem export
     fs_name: String,
     /// Mapping of NFS filehandles to internal filehandle representations for this export
-    exports: RwLock<HashMap<nfs_fh4, filehandle>>,
+    exports: RwLock<HashMap<NFSFh4, FileHandle>>,
     /// Reference to the underlying filesystem abstraction implementation (VFS layer)
     vfs: Arc<dyn NFSv4FileSystem + Send + Sync>,
 }

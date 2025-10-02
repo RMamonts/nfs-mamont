@@ -53,15 +53,15 @@ pub async fn nfsproc3_readlink(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
+    let handle = deserialize::<nfs3::NFSFh3>(input)?;
     debug!("nfsproc3_readlink({:?},{:?}) ", xid, handle);
 
     let fs_id = handle.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -70,18 +70,18 @@ pub async fn nfsproc3_readlink(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
 
     let id = id.unwrap();
     // if the id does not exist, we fail
     let symlink_attr = match export.vfs.getattr(id).await {
-        Ok(v) => nfs3::post_op_attr::Some(v),
+        Ok(v) => nfs3::PostOpAttr::Some(v),
         Err(stat) => {
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
-            nfs3::post_op_attr::None.serialize(output)?;
+            nfs3::PostOpAttr::None.serialize(output)?;
             return Ok(());
         }
     };
@@ -90,13 +90,13 @@ pub async fn nfsproc3_readlink(
         Ok(path) => {
             debug!(" {:?} --> {:?}", xid, path);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             symlink_attr.serialize(output)?;
             path.serialize(output)?;
         }
         Err(stat) => {
             // failed to read link
-            // retry with failure and the post_op_attr
+            // retry with failure and the PostOpAttr
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
             symlink_attr.serialize(output)?;

@@ -39,14 +39,14 @@ pub async fn nfsproc3_getattr(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
+    let handle = deserialize::<nfs3::NFSFh3>(input)?;
     debug!("nfsproc3_getattr({:?},{:?}) ", xid, handle);
 
     let fs_id = handle.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
         return Ok(());
     };
 
@@ -63,7 +63,7 @@ pub async fn nfsproc3_getattr(
         Ok(fh) => {
             debug!(" {:?} --> {:?}", xid, fh);
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+            nfs3::NFSStat3::NFS3Ok.serialize(output)?;
             fh.serialize(output)?;
         }
         Err(stat) => {

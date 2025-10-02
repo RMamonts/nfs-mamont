@@ -42,7 +42,7 @@ pub struct NFSExportTableEntry {
 }
 
 /// Hash map that stores all exported file systems for an NFS server.
-pub type NFSExportTable = DashMap<nfs3::fs_id, NFSExportTableEntry>;
+pub type NFSExportTable = DashMap<nfs3::FsId, NFSExportTableEntry>;
 
 /// NFS TCP Connection Handler that listens for incoming NFS client connections
 /// and processes RPC messages over TCP transport.
@@ -130,7 +130,7 @@ pub trait NFSTcp: Send + Sync {
     /// - `Err` if the export ID is not found in the export table
     async fn set_mount_listener(
         &mut self,
-        fs_id: xdr::nfs3::fs_id,
+        fs_id: xdr::nfs3::FsId,
         signal: mpsc::Sender<bool>,
     ) -> io::Result<()>;
 
@@ -217,7 +217,7 @@ impl NFSTcpListener {
     /// # Returns
     ///
     /// A Result containing either the generated filesystem ID or an error if registration fails
-    pub async fn register_root_export<T>(&mut self, fs: T) -> io::Result<xdr::nfs3::fs_id>
+    pub async fn register_root_export<T>(&mut self, fs: T) -> io::Result<xdr::nfs3::FsId>
     where
         T: NFSFileSystem + Send + Sync + 'static,
     {
@@ -244,7 +244,7 @@ impl NFSTcpListener {
         &mut self,
         fs: T,
         export_name: S,
-    ) -> io::Result<xdr::nfs3::fs_id>
+    ) -> io::Result<xdr::nfs3::FsId>
     where
         T: NFSFileSystem + Send + Sync + 'static,
         S: AsRef<str>,
@@ -279,7 +279,7 @@ impl NFSTcpListener {
     ///
     /// * `Ok(())` - Export was successfully removed
     /// * `Err(io::Error)` - Export with the given ID was not found
-    pub fn unregister_export(&mut self, fs_id: xdr::nfs3::fs_id) -> io::Result<()> {
+    pub fn unregister_export(&mut self, fs_id: xdr::nfs3::FsId) -> io::Result<()> {
         if self.export_table.remove(&fs_id).is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -326,7 +326,7 @@ impl NFSTcp for NFSTcpListener {
     /// - `Err` if the export ID is not found in the export table
     async fn set_mount_listener(
         &mut self,
-        fs_id: xdr::nfs3::fs_id,
+        fs_id: xdr::nfs3::FsId,
         signal: mpsc::Sender<bool>,
     ) -> io::Result<()> {
         self.export_table.get_mut(&fs_id).ok_or(io::ErrorKind::NotFound)?.mount_signal =
@@ -350,7 +350,7 @@ impl NFSTcp for NFSTcpListener {
             let context = rpc::Context {
                 local_port: self.port,
                 client_addr: socket.peer_addr()?.to_string(),
-                auth: Some(xdr::rpc::auth_unix::default()),
+                auth: Some(xdr::rpc::AuthUnix::default()),
                 export_table: self.export_table.clone(),
                 client_list: self.client_list.clone(),
             };

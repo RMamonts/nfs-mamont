@@ -52,7 +52,7 @@ pub async fn nfsproc3_access(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
+    let handle = deserialize::<nfs3::NFSFh3>(input)?;
     let access = deserialize::<u32>(input)?;
     debug!("nfsproc3_access({:?},{:?},{:?})", xid, handle, access);
 
@@ -60,8 +60,8 @@ pub async fn nfsproc3_access(
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_BADHANDLE.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrBadHandle.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     };
 
@@ -70,19 +70,19 @@ pub async fn nfsproc3_access(
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         stat.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
     let id = id.unwrap();
 
     // Get object attributes
     let obj_attr = match export.vfs.getattr(id).await {
-        Ok(v) => nfs3::post_op_attr::Some(v),
+        Ok(v) => nfs3::PostOpAttr::Some(v),
         Err(stat) => {
             // If we can't get attributes, return an error
             xdr::rpc::make_success_reply(xid).serialize(output)?;
             stat.serialize(output)?;
-            nfs3::post_op_attr::None.serialize(output)?;
+            nfs3::PostOpAttr::None.serialize(output)?;
             return Ok(());
         }
     };
@@ -90,19 +90,19 @@ pub async fn nfsproc3_access(
     // Check if the object exists
     if obj_attr.is_none() {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
-        nfs3::nfsstat3::NFS3ERR_NOENT.serialize(output)?;
-        nfs3::post_op_attr::None.serialize(output)?;
+        nfs3::NFSStat3::NFS3ErrNoEnt.serialize(output)?;
+        nfs3::PostOpAttr::None.serialize(output)?;
         return Ok(());
     }
 
     // Extract object attributes
     let attr = match obj_attr {
-        nfs3::post_op_attr::Some(attr) => attr,
+        nfs3::PostOpAttr::Some(attr) => attr,
         None => {
             // This should not happen, since we already checked that obj_attr is not Void
             xdr::rpc::make_success_reply(xid).serialize(output)?;
-            nfs3::nfsstat3::NFS3ERR_SERVERFAULT.serialize(output)?;
-            nfs3::post_op_attr::None.serialize(output)?;
+            nfs3::NFSStat3::NFS3ErrServerFault.serialize(output)?;
+            nfs3::PostOpAttr::None.serialize(output)?;
             return Ok(());
         }
     };
@@ -115,7 +115,7 @@ pub async fn nfsproc3_access(
 
     // Check permissions based on file type
     match attr.ftype {
-        nfs3::ftype3::NF3REG => {
+        nfs3::FType3::NF3REG => {
             // For regular files
             if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
@@ -131,7 +131,7 @@ pub async fn nfsproc3_access(
                 granted_access |= access;
             }
         }
-        nfs3::ftype3::NF3DIR => {
+        nfs3::FType3::NF3DIR => {
             // For directories
             if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
@@ -155,7 +155,7 @@ pub async fn nfsproc3_access(
                 }
             }
         }
-        nfs3::ftype3::NF3LNK => {
+        nfs3::FType3::NF3LNK => {
             // For symbolic links, allow only reading
             if access & nfs3::ACCESS3_READ != 0 {
                 granted_access |= nfs3::ACCESS3_READ;
@@ -172,7 +172,7 @@ pub async fn nfsproc3_access(
 
     debug!(" {:?} ---> {:?}", xid, granted_access);
     xdr::rpc::make_success_reply(xid).serialize(output)?;
-    nfs3::nfsstat3::NFS3_OK.serialize(output)?;
+    nfs3::NFSStat3::NFS3Ok.serialize(output)?;
     obj_attr.serialize(output)?;
     granted_access.serialize(output)?;
     Ok(())

@@ -83,24 +83,24 @@ fn machine_name_from_context(context: &rpc::Context) -> Option<String> {
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_mount(
     xid: u32,
-    call: xdr::rpc::call_body,
+    call: xdr::rpc::CallBody,
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::INVALID);
+    let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::Invalid);
 
     match prog {
-        mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
-        mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_UMNT => {
+        mount::MountProgram::MountProc3Null => mountproc3_null(xid, output)?,
+        mount::MountProgram::MountProc3Mnt => mountproc3_mnt(xid, input, output, context).await?,
+        mount::MountProgram::MountProc3Dump => mountproc3_dump(xid, output, context).await?,
+        mount::MountProgram::MountProc3Umnt => {
             mountproc3_umnt(xid, input, output, context).await?;
         }
-        mount::MountProgram::MOUNTPROC3_UMNTALL => {
+        mount::MountProgram::MountProc3UmntAll => {
             mountproc3_umnt_all(xid, output, context).await?;
         }
-        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await?,
+        mount::MountProgram::MountProc3Export => mountproc3_export(xid, output, context).await?,
         _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,
     }
     Ok(())
