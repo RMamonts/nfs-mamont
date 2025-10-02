@@ -11,5 +11,5 @@ pub enum FSContents {
     /// Contains link to file data as a byte vector
     File(Arc<RwLock<Vec<u8>>>),
     /// Contains a list of file IDs for directory entries
-    Directory(Vec<nfs3::fileid3>),
+    Directory(Vec<nfs3::FileId3>),
 }

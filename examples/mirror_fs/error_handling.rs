@@ -1,9 +1,9 @@
 use std::io;
 
-use nfs_mamont::xdr::nfs3::nfsstat3;
+use nfs_mamont::xdr::nfs3::NFSStat3;
 
 /// Result type for NFS operations
-pub type NFSResult<T> = Result<T, nfsstat3>;
+pub type NFSResult<T> = Result<T, NFSStat3>;
 
 /// Extension trait for Result to convert IO errors to NFS errors
 pub trait ResultExt<T> {
@@ -13,18 +13,18 @@ pub trait ResultExt<T> {
 
 impl<T> ResultExt<T> for Result<T, io::Error> {
     fn or_nfs_error(self) -> NFSResult<T> {
-        self.map_err(|_| nfsstat3::NFS3ERR_IO)
+        self.map_err(|_| NFSStat3::NFS3ErrIO)
     }
 }
 
 /// Extension trait for Option to convert to NFS errors
 pub trait OptionExt<T> {
     /// Convert an Option to an NFS Result
-    fn ok_or_nfs_error(self, error: nfsstat3) -> NFSResult<T>;
+    fn ok_or_nfs_error(self, error: NFSStat3) -> NFSResult<T>;
 }
 
 impl<T> OptionExt<T> for Option<T> {
-    fn ok_or_nfs_error(self, error: nfsstat3) -> NFSResult<T> {
+    fn ok_or_nfs_error(self, error: NFSStat3) -> NFSResult<T> {
         self.ok_or(error)
     }
 }

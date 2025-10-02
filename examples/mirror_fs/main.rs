@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use nfs_mamont::tcp::{NFSTcp, NFSTcpListener};
+use nfs_mamont::tcp::NFSTcpListener;
 
 const HOSTPORT: u32 = 11111;
 

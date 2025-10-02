@@ -37,10 +37,10 @@ impl MirrorFS {
     /// Updates as much metadata as we can in-place
     async fn create_fs_object(
         &self,
-        dirid: nfs3::fileid3,
-        objectname: &nfs3::filename3,
+        dirid: nfs3::FileId3,
+        objectname: &nfs3::Filename3,
         object: &CreateFSObject,
-    ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
+    ) -> NFSResult<(nfs3::FileId3, nfs3::FAttr3)> {
         let mut fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(dirid)?;
         let mut path = fsmap.sym_to_path(&ent.name).await;
@@ -51,13 +51,13 @@ impl MirrorFS {
             CreateFSObject::Directory => {
                 debug!("mkdir {:?}", path);
                 if exists_no_traverse(&path) {
-                    return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
+                    return Err(nfs3::NFSStat3::NFS3ErrExist);
                 }
-                fs::create_dir(&path).await.map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                fs::create_dir(&path).await.map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
             }
             CreateFSObject::File(setattr) => {
                 debug!("create {:?}", path);
-                let file = std::fs::File::create(&path).map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                let file = std::fs::File::create(&path).map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                 let _ = file_setattr(&file, setattr).await;
             }
             CreateFSObject::Exclusive => {
@@ -66,16 +66,16 @@ impl MirrorFS {
                     .write(true)
                     .create_new(true)
                     .open(&path)
-                    .map_err(|_| nfs3::nfsstat3::NFS3ERR_EXIST)?;
+                    .map_err(|_| nfs3::NFSStat3::NFS3ErrExist)?;
             }
             CreateFSObject::Symlink((_, target)) => {
                 debug!("symlink {:?} {:?}", path, target);
                 if exists_no_traverse(&path) {
-                    return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
+                    return Err(nfs3::NFSStat3::NFS3ErrExist);
                 }
                 fs::symlink(OsStr::from_bytes(target), &path)
                     .await
-                    .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                    .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                 // we do not set attributes on symlinks
             }
         }
@@ -85,12 +85,12 @@ impl MirrorFS {
         let sym = fsmap.intern.intern(objectname_osstr).unwrap();
         let mut name = ent.name.clone();
         name.push(sym);
-        let meta = path.symlink_metadata().map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+        let meta = path.symlink_metadata().map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
         let fileid = fsmap.create_entry(&name, meta.clone()).await;
 
         // update the children list
         if let Some(ref mut children) =
-            fsmap.id_to_path.get_mut(&dirid).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?.children
+            fsmap.id_to_path.get_mut(&dirid).ok_or(nfs3::NFSStat3::NFS3ErrNoEnt)?.children
         {
             children.insert(fileid);
         }
@@ -105,7 +105,7 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Returns the root directory file ID
-    fn root_dir(&self) -> nfs3::fileid3 {
+    fn root_dir(&self) -> nfs3::FileId3 {
         0
     }
 
@@ -117,9 +117,9 @@ impl vfs::NFSFileSystem for MirrorFS {
     /// Looks up a file in a directory
     async fn lookup(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-    ) -> NFSResult<nfs3::fileid3> {
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+    ) -> NFSResult<nfs3::FileId3> {
         let mut fsmap = self.fsmap.lock().await;
         if let Ok(id) = fsmap.find_child(dirid, filename).await {
             if fsmap.id_to_path.contains_key(&id) {
@@ -133,12 +133,12 @@ impl vfs::NFSFileSystem for MirrorFS {
         let objectname_osstr = OsStr::from_bytes(filename).to_os_string();
         path.push(&objectname_osstr);
         if !exists_no_traverse(&path) {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
 
         // The file exists on disk but not in our cache, so refresh the directory
         if let RefreshResult::Delete = fsmap.refresh_entry(dirid).await? {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
         let _ = fsmap.refresh_dir_list(dirid).await?;
 
@@ -146,10 +146,10 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Gets the attributes of a file
-    async fn getattr(&self, id: nfs3::fileid3) -> NFSResult<nfs3::fattr3> {
+    async fn getattr(&self, id: nfs3::FileId3) -> NFSResult<nfs3::FAttr3> {
         let mut fsmap = self.fsmap.lock().await;
         if let RefreshResult::Delete = fsmap.refresh_entry(id).await? {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
@@ -158,14 +158,14 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Reads data from a file
-    async fn read(&self, id: nfs3::fileid3, offset: u64, count: u32) -> NFSResult<(Vec<u8>, bool)> {
+    async fn read(&self, id: nfs3::FileId3, offset: u64, count: u32) -> NFSResult<(Vec<u8>, bool)> {
         let fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
         drop(fsmap);
 
-        let mut f = File::open(&path).await.or(Err(nfs3::nfsstat3::NFS3ERR_NOENT))?;
-        let len = f.metadata().await.or(Err(nfs3::nfsstat3::NFS3ERR_NOENT))?.len();
+        let mut f = File::open(&path).await.or(Err(nfs3::NFSStat3::NFS3ErrNoEnt))?;
+        let len = f.metadata().await.or(Err(nfs3::NFSStat3::NFS3ErrNoEnt))?.len();
         let mut start = offset;
         let mut end = offset + count as u64;
         let eof = end >= len;
@@ -175,17 +175,17 @@ impl vfs::NFSFileSystem for MirrorFS {
         if end > len {
             end = len;
         }
-        f.seek(SeekFrom::Start(start)).await.or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        f.seek(SeekFrom::Start(start)).await.or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
         let mut buf = vec![0; (end - start) as usize];
-        f.read_exact(&mut buf).await.or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        f.read_exact(&mut buf).await.or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
         Ok((buf, eof))
     }
 
     /// Reads directory entries
     async fn readdir(
         &self,
-        dirid: nfs3::fileid3,
-        start_after: nfs3::fileid3,
+        dirid: nfs3::FileId3,
+        start_after: nfs3::FileId3,
         max_entries: usize,
     ) -> NFSResult<vfs::ReadDirResult> {
         let mut fsmap = self.fsmap.lock().await;
@@ -194,11 +194,11 @@ impl vfs::NFSFileSystem for MirrorFS {
 
         let entry = fsmap.find_entry(dirid)?;
         if !entry.is_directory() {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOTDIR);
+            return Err(nfs3::NFSStat3::NFS3ErrNotDir);
         }
         debug!("readdir({:?}, {:?})", entry, start_after);
         // we must have children here
-        let children = entry.children.ok_or(nfs3::nfsstat3::NFS3ERR_IO)?;
+        let children = entry.children.ok_or(nfs3::NFSStat3::NFS3ErrIO)?;
 
         let mut ret = vfs::ReadDirResult { entries: Vec::new(), end: false };
 
@@ -233,14 +233,14 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Sets attributes of a file
-    async fn setattr(&self, id: nfs3::fileid3, setattr: nfs3::sattr3) -> NFSResult<nfs3::fattr3> {
+    async fn setattr(&self, id: nfs3::FileId3, setattr: nfs3::SAttr3) -> NFSResult<nfs3::FAttr3> {
         let mut fsmap = self.fsmap.lock().await;
         let entry = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&entry.name).await;
         path_setattr(&path, &setattr).await?;
 
         // I have to lookup a second time to update
-        let metadata = path.symlink_metadata().or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        let metadata = path.symlink_metadata().or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
         if let Ok(entry) = fsmap.find_entry_mut(id) {
             entry.fsmeta = metadata_to_fattr3(id, &metadata);
         }
@@ -248,7 +248,7 @@ impl vfs::NFSFileSystem for MirrorFS {
     }
 
     /// Writes data to a file
-    async fn write(&self, id: nfs3::fileid3, offset: u64, data: &[u8]) -> NFSResult<nfs3::fattr3> {
+    async fn write(&self, id: nfs3::FileId3, offset: u64, data: &[u8]) -> NFSResult<nfs3::FAttr3> {
         let fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
@@ -258,54 +258,54 @@ impl vfs::NFSFileSystem for MirrorFS {
             OpenOptions::new().write(true).create(true).truncate(false).open(&path).await.map_err(
                 |e| {
                     debug!("Unable to open {:?}", e);
-                    nfs3::nfsstat3::NFS3ERR_IO
+                    nfs3::NFSStat3::NFS3ErrIO
                 },
             )?;
         f.seek(SeekFrom::Start(offset)).await.map_err(|e| {
             debug!("Unable to seek {:?}", e);
-            nfs3::nfsstat3::NFS3ERR_IO
+            nfs3::NFSStat3::NFS3ErrIO
         })?;
         f.write_all(data).await.map_err(|e| {
             debug!("Unable to write {:?}", e);
-            nfs3::nfsstat3::NFS3ERR_IO
+            nfs3::NFSStat3::NFS3ErrIO
         })?;
         debug!("write to {:?} {:?} {:?}", path, offset, data.len());
         let _ = f.flush().await;
         let _ = f.sync_all().await;
-        let meta = f.metadata().await.or(Err(nfs3::nfsstat3::NFS3ERR_IO))?;
+        let meta = f.metadata().await.or(Err(nfs3::NFSStat3::NFS3ErrIO))?;
         Ok(metadata_to_fattr3(id, &meta))
     }
 
     /// Creates a file in a directory
     async fn create(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-        setattr: nfs3::sattr3,
-    ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+        setattr: nfs3::SAttr3,
+    ) -> NFSResult<(nfs3::FileId3, nfs3::FAttr3)> {
         self.create_fs_object(dirid, filename, &CreateFSObject::File(setattr)).await
     }
 
     /// Creates an exclusive file in a directory
     async fn create_exclusive(
         &self,
-        dirid: nfs3::fileid3,
-        filename: &nfs3::filename3,
-    ) -> NFSResult<nfs3::fileid3> {
+        dirid: nfs3::FileId3,
+        filename: &nfs3::Filename3,
+    ) -> NFSResult<nfs3::FileId3> {
         Ok(self.create_fs_object(dirid, filename, &CreateFSObject::Exclusive).await?.0)
     }
 
     /// Removes a file from a directory
-    async fn remove(&self, dirid: nfs3::fileid3, filename: &nfs3::filename3) -> NFSResult<()> {
+    async fn remove(&self, dirid: nfs3::FileId3, filename: &nfs3::Filename3) -> NFSResult<()> {
         let mut fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(dirid)?;
         let mut path = fsmap.sym_to_path(&ent.name).await;
         path.push(OsStr::from_bytes(filename));
         if let Ok(meta) = path.symlink_metadata() {
             if meta.is_dir() {
-                fs::remove_dir(&path).await.map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                fs::remove_dir(&path).await.map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
             } else {
-                fs::remove_file(&path).await.map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                fs::remove_file(&path).await.map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
             }
 
             let filesym = fsmap.intern.intern(OsStr::from_bytes(filename).to_os_string()).unwrap();
@@ -326,7 +326,7 @@ impl vfs::NFSFileSystem for MirrorFS {
 
             let _ = fsmap.refresh_entry(dirid).await;
         } else {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
 
         Ok(())
@@ -335,10 +335,10 @@ impl vfs::NFSFileSystem for MirrorFS {
     /// Renames a file
     async fn rename(
         &self,
-        from_dirid: nfs3::fileid3,
-        from_filename: &nfs3::filename3,
-        to_dirid: nfs3::fileid3,
-        to_filename: &nfs3::filename3,
+        from_dirid: nfs3::FileId3,
+        from_filename: &nfs3::Filename3,
+        to_dirid: nfs3::FileId3,
+        to_filename: &nfs3::Filename3,
     ) -> NFSResult<()> {
         let mut fsmap = self.fsmap.lock().await;
 
@@ -350,16 +350,16 @@ impl vfs::NFSFileSystem for MirrorFS {
         let mut to_path = fsmap.sym_to_path(&to_dirent.name).await;
         // to folder must exist
         if !exists_no_traverse(&to_path) {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
         to_path.push(OsStr::from_bytes(to_filename));
 
         // src path must exist
         if !exists_no_traverse(&from_path) {
-            return Err(nfs3::nfsstat3::NFS3ERR_NOENT);
+            return Err(nfs3::NFSStat3::NFS3ErrNoEnt);
         }
         debug!("Rename {:?} to {:?}", from_path, to_path);
-        fs::rename(&from_path, &to_path).await.map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+        fs::rename(&from_path, &to_path).await.map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
         let oldsym = fsmap.intern.intern(OsStr::from_bytes(from_filename).to_os_string()).unwrap();
         let newsym = fsmap.intern.intern(OsStr::from_bytes(to_filename).to_os_string()).unwrap();
@@ -400,26 +400,26 @@ impl vfs::NFSFileSystem for MirrorFS {
     /// Creates a directory
     async fn mkdir(
         &self,
-        dirid: nfs3::fileid3,
-        dirname: &nfs3::filename3,
-    ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
+        dirid: nfs3::FileId3,
+        dirname: &nfs3::Filename3,
+    ) -> NFSResult<(nfs3::FileId3, nfs3::FAttr3)> {
         self.create_fs_object(dirid, dirname, &CreateFSObject::Directory).await
     }
 
     /// Creates a symlink
     async fn symlink(
         &self,
-        dirid: nfs3::fileid3,
-        linkname: &nfs3::filename3,
-        symlink: &nfs3::nfspath3,
-        attr: &nfs3::sattr3,
-    ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
+        dirid: nfs3::FileId3,
+        linkname: &nfs3::Filename3,
+        symlink: &nfs3::NFSPath3,
+        attr: &nfs3::SAttr3,
+    ) -> NFSResult<(nfs3::FileId3, nfs3::FAttr3)> {
         self.create_fs_object(dirid, linkname, &CreateFSObject::Symlink((*attr, symlink.clone())))
             .await
     }
 
     /// Reads a symlink
-    async fn readlink(&self, id: nfs3::fileid3) -> NFSResult<nfs3::nfspath3> {
+    async fn readlink(&self, id: nfs3::FileId3) -> NFSResult<nfs3::NFSPath3> {
         let fsmap = self.fsmap.lock().await;
         let ent = fsmap.find_entry(id)?;
         let path = fsmap.sym_to_path(&ent.name).await;
@@ -428,20 +428,20 @@ impl vfs::NFSFileSystem for MirrorFS {
             if let Ok(target) = path.read_link() {
                 Ok(target.as_os_str().as_bytes().into())
             } else {
-                Err(nfs3::nfsstat3::NFS3ERR_IO)
+                Err(nfs3::NFSStat3::NFS3ErrIO)
             }
         } else {
-            Err(nfs3::nfsstat3::NFS3ERR_BADTYPE)
+            Err(nfs3::NFSStat3::NFS3ErrBadType)
         }
     }
 
     /// Creates a hard link
     async fn link(
         &self,
-        file_id: nfs3::fileid3,
-        link_dir_id: nfs3::fileid3,
-        link_name: &nfs3::filename3,
-    ) -> NFSResult<nfs3::fattr3> {
+        file_id: nfs3::FileId3,
+        link_dir_id: nfs3::FileId3,
+        link_name: &nfs3::Filename3,
+    ) -> NFSResult<nfs3::FAttr3> {
         let mut fsmap = self.fsmap.lock().await;
 
         // Get the source file entry
@@ -456,22 +456,22 @@ impl vfs::NFSFileSystem for MirrorFS {
 
         // Check if the target already exists
         if exists_no_traverse(&target_path) {
-            return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
+            return Err(nfs3::NFSStat3::NFS3ErrExist);
         }
 
         // Create the hard link
-        fs::hard_link(&source_path, &target_path).await.map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+        fs::hard_link(&source_path, &target_path).await.map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
         // Update the directory listing
         let sym = fsmap.intern.intern(link_name_osstr).unwrap();
         let mut name = dir_entry.name.clone();
         name.push(sym);
-        let meta = target_path.symlink_metadata().map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+        let meta = target_path.symlink_metadata().map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
         let new_fileid = fsmap.create_entry(&name, meta.clone()).await;
 
         // Update the children list
         if let Some(ref mut children) =
-            fsmap.id_to_path.get_mut(&link_dir_id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?.children
+            fsmap.id_to_path.get_mut(&link_dir_id).ok_or(nfs3::NFSStat3::NFS3ErrNoEnt)?.children
         {
             children.insert(new_fileid);
         }
@@ -483,12 +483,12 @@ impl vfs::NFSFileSystem for MirrorFS {
     /// Creates a special file (device, socket, etc.)
     async fn mknod(
         &self,
-        dir_id: nfs3::fileid3,
-        name: &nfs3::filename3,
-        ftype: nfs3::ftype3,
-        _specdata: nfs3::specdata3,
-        attrs: &nfs3::sattr3,
-    ) -> NFSResult<(nfs3::fileid3, nfs3::fattr3)> {
+        dir_id: nfs3::FileId3,
+        name: &nfs3::Filename3,
+        ftype: nfs3::FType3,
+        _specdata: nfs3::SpecData3,
+        attrs: &nfs3::SAttr3,
+    ) -> NFSResult<(nfs3::FileId3, nfs3::FAttr3)> {
         let mut fsmap = self.fsmap.lock().await;
         let dir_entry = fsmap.find_entry(dir_id)?;
         let mut path = fsmap.sym_to_path(&dir_entry.name).await;
@@ -497,15 +497,15 @@ impl vfs::NFSFileSystem for MirrorFS {
 
         // Check if the target already exists
         if exists_no_traverse(&path) {
-            return Err(nfs3::nfsstat3::NFS3ERR_EXIST);
+            return Err(nfs3::NFSStat3::NFS3ErrExist);
         }
 
         // Create the special file based on its type
         match ftype {
-            nfs3::ftype3::NF3CHR => {
+            nfs3::FType3::NF3CHR => {
                 // Character device
                 let mode = match attrs.mode {
-                    nfs3::set_mode3::Some(m) => m,
+                    nfs3::SetMode3::Some(m) => m,
                     _ => 0o666,
                 };
 
@@ -516,27 +516,27 @@ impl vfs::NFSFileSystem for MirrorFS {
                     .create(true)
                     .open(&path)
                     .await
-                    .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                    .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     // Set ownership if provided
-                    if let nfs3::set_uid3::Some(uid) = attrs.uid {
-                        if let nfs3::set_gid3::Some(gid) = attrs.gid {
+                    if let nfs3::SetUid3::Some(uid) = attrs.uid {
+                        if let nfs3::SetGid3::Some(gid) = attrs.gid {
                             std::os::unix::fs::chown(&path, Some(uid), Some(gid))
-                                .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                                .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                         }
                     }
                 }
             }
-            nfs3::ftype3::NF3BLK => {
+            nfs3::FType3::NF3BLK => {
                 // Block device
                 let mode = match attrs.mode {
-                    nfs3::set_mode3::Some(m) => m,
+                    nfs3::SetMode3::Some(m) => m,
                     _ => 0o666,
                 };
 
@@ -547,27 +547,27 @@ impl vfs::NFSFileSystem for MirrorFS {
                     .create(true)
                     .open(&path)
                     .await
-                    .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                    .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     // Set ownership if provided
-                    if let nfs3::set_uid3::Some(uid) = attrs.uid {
-                        if let nfs3::set_gid3::Some(gid) = attrs.gid {
+                    if let nfs3::SetUid3::Some(uid) = attrs.uid {
+                        if let nfs3::SetGid3::Some(gid) = attrs.gid {
                             std::os::unix::fs::chown(&path, Some(uid), Some(gid))
-                                .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                                .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                         }
                     }
                 }
             }
-            nfs3::ftype3::NF3FIFO => {
+            nfs3::FType3::NF3FIFO => {
                 // Named pipe (FIFO)
                 let mode = match attrs.mode {
-                    nfs3::set_mode3::Some(m) => m,
+                    nfs3::SetMode3::Some(m) => m,
                     _ => 0o666,
                 };
 
@@ -581,16 +581,16 @@ impl vfs::NFSFileSystem for MirrorFS {
                         .truncate(true)
                         .open(&path)
                         .await
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     // Set ownership if provided
-                    if let nfs3::set_uid3::Some(uid) = attrs.uid {
-                        if let nfs3::set_gid3::Some(gid) = attrs.gid {
+                    if let nfs3::SetUid3::Some(uid) = attrs.uid {
+                        if let nfs3::SetGid3::Some(gid) = attrs.gid {
                             std::os::unix::fs::chown(&path, Some(uid), Some(gid))
-                                .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                                .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                         }
                     }
                 }
@@ -599,10 +599,10 @@ impl vfs::NFSFileSystem for MirrorFS {
                     return Err(nfsstat3::NFS3ERR_NOTSUPP);
                 }
             }
-            nfs3::ftype3::NF3SOCK => {
+            nfs3::FType3::NF3SOCK => {
                 // Socket
                 let mode = match attrs.mode {
-                    nfs3::set_mode3::Some(m) => m,
+                    nfs3::SetMode3::Some(m) => m,
                     _ => 0o666,
                 };
 
@@ -616,16 +616,16 @@ impl vfs::NFSFileSystem for MirrorFS {
                         .truncate(true)
                         .open(&path)
                         .await
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
-                        .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                        .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
 
                     // Set ownership if provided
-                    if let nfs3::set_uid3::Some(uid) = attrs.uid {
-                        if let nfs3::set_gid3::Some(gid) = attrs.gid {
+                    if let nfs3::SetUid3::Some(uid) = attrs.uid {
+                        if let nfs3::SetGid3::Some(gid) = attrs.gid {
                             std::os::unix::fs::chown(&path, Some(uid), Some(gid))
-                                .map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+                                .map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
                         }
                     }
                 }
@@ -635,7 +635,7 @@ impl vfs::NFSFileSystem for MirrorFS {
                 }
             }
             _ => {
-                return Err(nfs3::nfsstat3::NFS3ERR_BADTYPE);
+                return Err(nfs3::NFSStat3::NFS3ErrBadType);
             }
         }
 
@@ -643,12 +643,12 @@ impl vfs::NFSFileSystem for MirrorFS {
         let sym = fsmap.intern.intern(name_osstr).unwrap();
         let mut full_name = dir_entry.name.clone();
         full_name.push(sym);
-        let meta = path.symlink_metadata().map_err(|_| nfs3::nfsstat3::NFS3ERR_IO)?;
+        let meta = path.symlink_metadata().map_err(|_| nfs3::NFSStat3::NFS3ErrIO)?;
         let fileid = fsmap.create_entry(&full_name, meta.clone()).await;
 
         // Update the children list
         if let Some(ref mut children) =
-            fsmap.id_to_path.get_mut(&dir_id).ok_or(nfs3::nfsstat3::NFS3ERR_NOENT)?.children
+            fsmap.id_to_path.get_mut(&dir_id).ok_or(nfs3::NFSStat3::NFS3ErrNoEnt)?.children
         {
             children.insert(fileid);
         }
@@ -660,10 +660,10 @@ impl vfs::NFSFileSystem for MirrorFS {
     /// Commits changes to a file
     async fn commit(
         &self,
-        file_id: nfs3::fileid3,
+        file_id: nfs3::FileId3,
         _offset: u64,
         _count: u32,
-    ) -> NFSResult<nfs3::fattr3> {
+    ) -> NFSResult<nfs3::FAttr3> {
         // For MirrorFS, we don't need to do anything special for commit
         // since we're already syncing the file after each write
         // Just return the current attributes
