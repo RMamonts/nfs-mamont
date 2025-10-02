@@ -38,7 +38,7 @@ use crate::xdr::nfs3::fs_object::MKNOD3args;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the `MKNOD` arguments
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

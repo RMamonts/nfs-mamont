@@ -45,7 +45,7 @@ use crate::xdr::nfs3::fs_object::SYMLINK3args;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the `SYMLINK` arguments
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

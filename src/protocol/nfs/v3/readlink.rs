@@ -34,7 +34,7 @@ use crate::xdr::nfs3::fs_object::READLINK3args;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the `READLINK` arguments
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

@@ -37,7 +37,7 @@ use crate::xdr::nfs3::fs::FSSTAT3args;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the `FSSTAT` arguments
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

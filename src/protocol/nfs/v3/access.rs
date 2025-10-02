@@ -40,7 +40,7 @@ use crate::xdr::nfs3::fs_object::ACCESS3args;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the file handle and access mask
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing VFS
 ///

@@ -22,7 +22,7 @@ use crate::xdr::mount::dirpath;
 /// # Arguments
 ///
 /// * `xid` - RPC transaction ID
-/// * `input` - Input stream containing the directory path to mount
+/// * `args` - Procedure arguments
 /// * `output` - Output stream for writing the response
 /// * `context` - Server context containing exports and VFS information
 ///
