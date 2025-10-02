@@ -25,7 +25,6 @@ use num_traits::{FromPrimitive, ToPrimitive};
 pub mod mount;
 pub mod nfs3;
 pub mod nfs4;
-pub mod portmap;
 pub mod rpc;
 mod utils;
 
