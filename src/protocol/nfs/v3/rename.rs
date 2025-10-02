@@ -25,13 +25,14 @@
 //! - `NFS3ERR_NOTDIR`: A component of path prefix is not a directory
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::fs_object::RENAME3args;
 
 /// Handles `NFSv3` `RENAME` procedure (procedure 14)
 ///
@@ -55,16 +56,14 @@ use crate::vfs;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_rename(
     xid: u32,
-    input: &mut impl Read,
+    args: RENAME3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let from_dir_ops = deserialize::<nfs3::diropargs3>(input)?;
-    let to_dir_ops = deserialize::<nfs3::diropargs3>(input)?;
-    debug!("nfsproc3_rename({:?}, {:?}, {:?}) ", xid, from_dir_ops, to_dir_ops);
+    debug!("nfsproc3_rename({:?}, {:?}, {:?}) ", xid, args.from, args.to);
 
-    let from_fs_id = from_dir_ops.dir.fs_id;
-    let to_fs_id = to_dir_ops.dir.fs_id;
+    let from_fs_id = args.from.dir.fs_id;
+    let to_fs_id = args.to.dir.fs_id;
 
     if to_fs_id != from_fs_id {
         // RFC states:
@@ -99,7 +98,7 @@ pub async fn nfsproc3_rename(
     }
 
     // find the from directory
-    let from_dir_id = export.vfs.fh_to_id(&from_dir_ops.dir);
+    let from_dir_id = export.vfs.fh_to_id(&args.from.dir);
     if let Err(stat) = from_dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -111,7 +110,7 @@ pub async fn nfsproc3_rename(
     }
 
     // find the to directory
-    let to_dir_id = export.vfs.fh_to_id(&to_dir_ops.dir);
+    let to_dir_id = export.vfs.fh_to_id(&args.to.dir);
     if let Err(stat) = to_dir_id {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -153,7 +152,7 @@ pub async fn nfsproc3_rename(
     };
 
     // rename!
-    let res = export.vfs.rename(from_dir_id, &from_dir_ops.name, to_dir_id, &to_dir_ops.name).await;
+    let res = export.vfs.rename(from_dir_id, &args.from.name, to_dir_id, &args.to.name).await;
 
     // Re-read dir attributes for post op attr
     let post_from_dir_attr = export.vfs.getattr(from_dir_id).await.ok();

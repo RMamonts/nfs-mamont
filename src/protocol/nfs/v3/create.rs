@@ -20,13 +20,14 @@
 //! - The attributes of the parent directory before and after the operation (weak cache consistency)
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::file::{createhow3, CREATE3args};
 
 /// Handles `NFSv3` `CREATE` procedure (procedure 8)
 ///
@@ -46,16 +47,13 @@ use crate::vfs;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_create(
     xid: u32,
-    input: &mut impl Read,
+    args: CREATE3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let dir_ops = deserialize::<nfs3::diropargs3>(input)?;
-    let create_mode = deserialize::<nfs3::createmode3>(input)?;
+    debug!("nfsproc3_create({:?}, {:?}, {:?}) ", xid, args.dirops, args.how);
 
-    debug!("nfsproc3_create({:?}, {:?}, {:?}) ", xid, dir_ops, create_mode);
-
-    let fs_id = dir_ops.dir.fs_id;
+    let fs_id = args.dirops.dir.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -75,7 +73,7 @@ pub async fn nfsproc3_create(
 
     // find the directory we are supposed to create the
     // new file in
-    let dirid = export.vfs.fh_to_id(&dir_ops.dir);
+    let dirid = export.vfs.fh_to_id(&args.dirops.dir);
     if let Err(stat) = dirid {
         // directory does not exist
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -100,15 +98,15 @@ pub async fn nfsproc3_create(
     };
     let mut target_attributes = nfs3::sattr3::default();
 
-    match create_mode {
-        nfs3::createmode3::UNCHECKED => {
-            target_attributes = deserialize(input)?;
+    match args.how {
+        createhow3::UNCHECKED(sattr) => {
+            target_attributes = sattr;
             debug!("create unchecked {:?}", target_attributes);
         }
-        nfs3::createmode3::GUARDED => {
-            target_attributes = deserialize(input)?;
+        createhow3::GUARDED(sattr) => {
+            target_attributes = sattr;
             debug!("create guarded {:?}", target_attributes);
-            if export.vfs.lookup(dirid, &dir_ops.name).await.is_ok() {
+            if export.vfs.lookup(dirid, &args.dirops.name).await.is_ok() {
                 // file exists. Fail with NFS3ERR_EXIST.
                 // Re-read dir attributes
                 // for post op attr
@@ -120,7 +118,7 @@ pub async fn nfsproc3_create(
                 return Ok(());
             }
         }
-        nfs3::createmode3::EXCLUSIVE => {
+        createhow3::EXCLUSIVE(_) => {
             debug!("create exclusive");
         }
     }
@@ -128,14 +126,14 @@ pub async fn nfsproc3_create(
     let fid: Result<nfs3::fileid3, nfs3::nfsstat3>;
     let postopattr: nfs3::post_op_attr;
     // fill in the fid and post op attr here
-    if matches!(create_mode, nfs3::createmode3::EXCLUSIVE) {
+    if matches!(args.how, createhow3::EXCLUSIVE(_)) {
         // the API for exclusive is very slightly different
         // We are not returning a post op attribute
-        fid = export.vfs.create_exclusive(dirid, &dir_ops.name).await;
+        fid = export.vfs.create_exclusive(dirid, &args.dirops.name).await;
         postopattr = nfs3::post_op_attr::None;
     } else {
         // create!
-        let res = export.vfs.create(dirid, &dir_ops.name, target_attributes).await;
+        let res = export.vfs.create(dirid, &args.dirops.name, target_attributes).await;
         fid = res.map(|x| x.0);
         postopattr = res.map(|(_, fattr)| fattr).ok();
     }

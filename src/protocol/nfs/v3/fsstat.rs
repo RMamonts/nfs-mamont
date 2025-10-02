@@ -20,12 +20,13 @@
 //! - How long this information remains valid (invarsec)
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
+use crate::xdr::nfs3::fs::FSSTAT3args;
 
 /// Handles `NFSv3` `FSSTAT` procedure (procedure 18)
 ///
@@ -45,14 +46,13 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_fsstat(
     xid: u32,
-    input: &mut impl Read,
+    args: FSSTAT3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
-    debug!("nfsproc3_fsstat({:?},{:?}) ", xid, handle);
+    debug!("nfsproc3_fsstat({:?},{:?}) ", xid, args.fsroot);
 
-    let fs_id = handle.fs_id;
+    let fs_id = args.fsroot.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -61,7 +61,7 @@ pub async fn nfsproc3_fsstat(
         return Ok(());
     };
 
-    let id = export.vfs.fh_to_id(&handle);
+    let id = export.vfs.fh_to_id(&args.fsroot);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;

@@ -13,13 +13,14 @@
 //! rather than requiring clients to attempt operations to discover allowed actions.
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::fs_object::ACCESS3args;
 
 /// Handles `NFSv3` `ACCESS` procedure (procedure 4)
 ///
@@ -48,15 +49,13 @@ use crate::vfs;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_access(
     xid: u32,
-    input: &mut impl Read,
+    args: ACCESS3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
-    let access = deserialize::<u32>(input)?;
-    debug!("nfsproc3_access({:?},{:?},{:?})", xid, handle, access);
+    debug!("nfsproc3_access({:?},{:?},{:?})", xid, args.object, args.access);
 
-    let fs_id = handle.fs_id;
+    let fs_id = args.object.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -65,7 +64,7 @@ pub async fn nfsproc3_access(
         return Ok(());
     };
 
-    let id = export.vfs.fh_to_id(&handle);
+    let id = export.vfs.fh_to_id(&args.object);
     // Fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -119,8 +118,8 @@ pub async fn nfsproc3_access(
             // For regular files
             if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
-                if access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
-                    granted_access |= access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
+                if args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
+                    granted_access |= args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
                 }
             } else {
                 // If the file system supports read and write, check access permissions
@@ -128,44 +127,45 @@ pub async fn nfsproc3_access(
                 // For example, check owner, group, and access permissions
 
                 // For simplicity, allow all requested permissions
-                granted_access |= access;
+                granted_access |= args.access;
             }
         }
         nfs3::ftype3::NF3DIR => {
             // For directories
             if !matches!(export.vfs.capabilities(), vfs::Capabilities::ReadWrite) {
                 // If the file system is read-only, allow only reading
-                if access & nfs3::ACCESS3_READ != 0 {
+                if args.access & nfs3::ACCESS3_READ != 0 {
                     granted_access |= nfs3::ACCESS3_READ;
                 }
             } else {
                 // If the file system supports read and write, check access permissions
                 // For directories, allow reading and execution
-                if access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
-                    granted_access |= access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
+                if args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
+                    granted_access |= args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
                 }
 
                 // For operations that modify the directory, check write permissions
-                if access & (nfs3::ACCESS3_MODIFY | nfs3::ACCESS3_EXTEND | nfs3::ACCESS3_DELETE)
+                if args.access
+                    & (nfs3::ACCESS3_MODIFY | nfs3::ACCESS3_EXTEND | nfs3::ACCESS3_DELETE)
                     != 0
                 {
                     // Here you can add a check for real access permissions
-                    granted_access |= access
+                    granted_access |= args.access
                         & (nfs3::ACCESS3_MODIFY | nfs3::ACCESS3_EXTEND | nfs3::ACCESS3_DELETE);
                 }
             }
         }
         nfs3::ftype3::NF3LNK => {
             // For symbolic links, allow only reading
-            if access & nfs3::ACCESS3_READ != 0 {
+            if args.access & nfs3::ACCESS3_READ != 0 {
                 granted_access |= nfs3::ACCESS3_READ;
             }
         }
         _ => {
             // For other file types (devices, sockets, etc.)
             // Allow only reading and execution
-            if access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
-                granted_access |= access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
+            if args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE) != 0 {
+                granted_access |= args.access & (nfs3::ACCESS3_READ | nfs3::ACCESS3_EXECUTE);
             }
         }
     }

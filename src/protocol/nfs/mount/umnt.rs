@@ -3,14 +3,14 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, warn};
 
-use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, mount, Serialize};
-
 use super::{machine_name_from_context, matches_export_path};
+use crate::protocol::rpc;
+use crate::protocol::xdr::{self, mount, Serialize};
+use crate::xdr::mount::dirpath;
 
 /// Handles `MOUNTPROC3_UMNT` procedure.
 ///
@@ -37,13 +37,12 @@ use super::{machine_name_from_context, matches_export_path};
 /// - Unmounting with 'umount.nfs' from 'nfs-utils' package does call 'umnt'.
 pub async fn mountproc3_umnt(
     xid: u32,
-    input: &mut impl Read,
+    args: dirpath,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let path = deserialize::<Vec<_>>(input)?;
-    let Ok(utf8path) = std::str::from_utf8(&path) else {
-        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+    let Ok(utf8path) = std::str::from_utf8(&args) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", args);
         return Ok(());
     };
     debug!("mountproc3_umnt({:?},{:?}) ", xid, utf8path);

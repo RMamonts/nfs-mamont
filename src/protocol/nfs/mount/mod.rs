@@ -2,11 +2,9 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, Serialize};
-use num_traits::cast::FromPrimitive;
 use tracing::warn;
 
 mod dump;
@@ -16,6 +14,7 @@ mod null;
 mod umnt;
 mod umnt_all;
 
+use crate::xdr::mount::Mount_args;
 use dump::mountproc3_dump;
 use export::mountproc3_export;
 use mnt::mountproc3_mnt;
@@ -83,25 +82,17 @@ fn machine_name_from_context(context: &rpc::Context) -> Option<String> {
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn handle_mount(
     xid: u32,
-    call: xdr::rpc::call_body,
-    input: &mut impl Read,
+    arg: io::Result<Box<Mount_args>>,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::INVALID);
-
-    match prog {
-        mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
-        mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_UMNT => {
-            mountproc3_umnt(xid, input, output, context).await?;
-        }
-        mount::MountProgram::MOUNTPROC3_UMNTALL => {
-            mountproc3_umnt_all(xid, output, context).await?;
-        }
-        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await?,
-        _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,
+    let arg = arg?;
+    match *arg {
+        Mount_args::NULL => mountproc3_null(xid, output),
+        Mount_args::MNT(proc_args) => mountproc3_mnt(xid, proc_args, output, context).await,
+        Mount_args::DUMP => mountproc3_dump(xid, output, context).await,
+        Mount_args::UMNT(proc_args) => mountproc3_umnt(xid, proc_args, output, context).await,
+        Mount_args::UMNTALL => mountproc3_umnt_all(xid, output, context).await,
+        Mount_args::EXPORT => mountproc3_export(xid, output, context).await,
     }
-    Ok(())
 }

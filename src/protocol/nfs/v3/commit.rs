@@ -19,12 +19,13 @@
 //!   to detect server reboots that might have lost uncommitted data
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
+use crate::xdr::nfs3::file::COMMIT3args;
 
 /// Handles `NFSv3` `COMMIT` procedure (procedure 21)
 ///
@@ -44,11 +45,10 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_commit(
     xid: u32,
-    input: &mut impl Read,
+    args: COMMIT3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::file::COMMIT3args>(input)?;
     debug!("nfsproc3_commit({:?}, {:?}) ", xid, args);
 
     let fs_id = args.file.fs_id;

@@ -1,5 +1,5 @@
 use std::io;
-
+use std::io::Cursor;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, trace};
@@ -16,12 +16,16 @@ pub const COMMAND_INIT_SIZE: usize = 8192;
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     command_sender: UnboundedSender<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>
+    result_sender: UnboundedSender<CommandResult>,
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<RpcCommand>, result_sender: UnboundedSender<CommandResult>) -> Self {
+    pub fn new(
+        readhalf: OwnedReadHalf,
+        command_sender: UnboundedSender<RpcCommand>,
+        result_sender: UnboundedSender<CommandResult>,
+    ) -> Self {
         Self { readhalf, command_sender, result_sender }
     }
 
@@ -36,7 +40,7 @@ impl ReadTask {
 
     async fn run(mut self) -> io::Result<()> {
         loop {
-            let mut command = RpcCommand { data: Vec::with_capacity(COMMAND_INIT_SIZE) };
+            let mut command = RpcCommand { data: Cursor::new(Vec::with_capacity(COMMAND_INIT_SIZE)) };
             match command.read_command_from_socket(&mut self.readhalf).await {
                 Ok(()) => {
                     // here some processing - actually sending to processing rpc task
@@ -49,7 +53,7 @@ impl ReadTask {
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    return if command.data.is_empty() {
+                    return if command.data.get_ref().is_empty() {
                         trace!("Connection closed before receiving any data");
                         Ok(())
                     } else {

@@ -36,8 +36,8 @@ impl RpcCommand {
             let (is_last, length) = parse_header(fragment_header);
             debug!("Reading fragment length:{}, last:{}", length, is_last);
             let cur_len = self.data.get_ref().len();
-            self.data.get_mut().resize( cur_len+ length, 0);
-            socket.read_exact(&mut self.data[start_offset..]).await?;
+            self.data.get_mut().resize(cur_len + length, 0);
+            socket.read_exact(&mut self.data.get_mut()[start_offset..]).await?;
             debug!("Finishing Reading fragment length:{}, last:{}", length, is_last);
             if is_last {
                 break;

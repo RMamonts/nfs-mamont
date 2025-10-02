@@ -27,12 +27,12 @@
 //! - `NFS3ERR_NOSPC` - If there is insufficient storage space
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
 use crate::xdr::nfs3::fs_object::SYMLINK3args;
 
@@ -64,11 +64,10 @@ use crate::xdr::nfs3::fs_object::SYMLINK3args;
 /// - `NFS3ERR_STALE` - If the file handle is invalid
 pub async fn nfsproc3_symlink(
     xid: u32,
-    input: &mut impl Read,
+    args: SYMLINK3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<SYMLINK3args>(input)?;
     debug!("nfsproc3_symlink({:?}, {:?}) ", xid, args);
 
     let fs_id = args.dirops.dir.fs_id;

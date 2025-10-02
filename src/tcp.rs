@@ -67,7 +67,6 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 /// Command processing result
 pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
 
-
 /// Processes an established TCP socket connection from an NFS client
 ///
 /// This function:

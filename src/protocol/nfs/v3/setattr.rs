@@ -21,14 +21,14 @@
 //! clients that share access to the same files.
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
-use crate::xdr::nfs3::fs_object::sattrguard3;
+use crate::xdr::nfs3::fs_object::{sattrguard3, SETATTR3args};
 
 /// Handles `NFSv3` `SETATTR` procedure (procedure 2)
 ///
@@ -48,11 +48,10 @@ use crate::xdr::nfs3::fs_object::sattrguard3;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_setattr(
     xid: u32,
-    input: &mut impl Read,
+    args: SETATTR3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<crate::protocol::nfs::v3::nfs3::fs_object::SETATTR3args>(input)?;
     debug!("nfsproc3_setattr({:?},{:?}) ", xid, args);
 
     let fs_id = args.object.fs_id;

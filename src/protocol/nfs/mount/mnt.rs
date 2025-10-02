@@ -3,16 +3,16 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use num_traits::cast::ToPrimitive;
 use tracing::{debug, warn};
 
-use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, mount, Serialize};
-
 use super::machine_name_from_context;
 use super::matches_export_path;
+use crate::protocol::rpc;
+use crate::protocol::xdr::{self, mount, Serialize};
+use crate::xdr::mount::dirpath;
 
 /// Handles `MOUNTPROC3_MNT` procedure.
 ///
@@ -31,21 +31,19 @@ use super::matches_export_path;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn mountproc3_mnt(
     xid: u32,
-    input: &mut impl Read,
+    args: dirpath,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let path = deserialize::<Vec<u8>>(input)?;
-
-    if path.len() > mount::MNTPATHLEN as usize {
+    if args.len() > mount::MNTPATHLEN as usize {
         debug!("{:?} --> MNT3ERR_NAMETOOLONG", xid);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3ERR_NAMETOOLONG.serialize(output)?;
         return Ok(());
     }
 
-    let Ok(utf8path) = std::str::from_utf8(&path) else {
-        warn!("Invalid UTF-8 path in umnt: {:?}", path);
+    let Ok(utf8path) = std::str::from_utf8(&args) else {
+        warn!("Invalid UTF-8 path in umnt: {:?}", args);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
         mount::mountstat3::MNT3ERR_NOENT.serialize(output)?;
         return Ok(());

@@ -14,12 +14,13 @@
 //! - The data read from the file
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
+use crate::xdr::nfs3::file::READ3args;
 
 /// Handles `NFSv3` `READ` procedure (procedure 6)
 ///
@@ -39,11 +40,10 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_read(
     xid: u32,
-    input: &mut impl Read,
+    args: READ3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::file::READ3args>(input)?;
     debug!("nfsproc3_read({:?},{:?}) ", xid, args);
 
     let fs_id = args.file.fs_id;

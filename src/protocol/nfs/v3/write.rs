@@ -17,13 +17,14 @@
 //! - A write verifier to detect server restarts
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
 use crate::vfs;
+use crate::xdr::nfs3::file::WRITE3args;
 
 /// Handles `NFSv3` `WRITE` procedure (procedure 7)
 ///
@@ -43,11 +44,10 @@ use crate::vfs;
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_write(
     xid: u32,
-    input: &mut impl Read,
+    args: WRITE3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let args = deserialize::<nfs3::file::WRITE3args>(input)?;
     debug!("nfsproc3_write({:?},...) ", xid);
 
     let fs_id = args.file.fs_id;

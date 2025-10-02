@@ -19,12 +19,13 @@
 //! - Whether file names are case-preserving
 
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use tracing::{debug, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3, Serialize};
+use crate::xdr::nfs3::fs::PATHCONF3args;
 
 /// Handles `NFSv3` `PATHCONF` procedure (procedure 20)
 ///
@@ -44,14 +45,13 @@ use crate::protocol::xdr::{self, deserialize, nfs3, Serialize};
 /// * `io::Result<()>` - Ok(()) on success or an error
 pub async fn nfsproc3_pathconf(
     xid: u32,
-    input: &mut impl Read,
+    args: PATHCONF3args,
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> io::Result<()> {
-    let handle = deserialize::<nfs3::nfs_fh3>(input)?;
-    debug!("nfsproc3_pathconf({:?},{:?})", xid, handle);
+    debug!("nfsproc3_pathconf({:?},{:?})", xid, args.object);
 
-    let fs_id = handle.fs_id;
+    let fs_id = args.object.fs_id;
     let Some(export) = context.export_table.get(&fs_id) else {
         warn!("No export found for fs_id: {}", fs_id);
         xdr::rpc::make_success_reply(xid).serialize(output)?;
@@ -60,7 +60,7 @@ pub async fn nfsproc3_pathconf(
         return Ok(());
     };
 
-    let id = export.vfs.fh_to_id(&handle);
+    let id = export.vfs.fh_to_id(&args.object);
     // fail if unable to convert file handle
     if let Err(stat) = id {
         xdr::rpc::make_success_reply(xid).serialize(output)?;
