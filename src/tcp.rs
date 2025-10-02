@@ -86,7 +86,7 @@ async fn process_socket(socket: TcpStream, context: Context) {
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    ReadTask::new(readhalf, command_sender, result_sender.clone()).spawn();
+    ReadTask::new(readhalf, command_sender).spawn();
 
     VfsTask::new(command_receiver, result_sender, context).spawn();
 
