@@ -16,7 +16,6 @@ byteorder = "1.5"
 dashmap = "6.1.0"
 filetime = "0.2"
 futures = "0.3.31"
-moka = { version = "0.12.10", features = ["sync"] }
 num-derive = "0.4"
 num-traits = "0.2"
 tokio = { version = "1.47", features = ["full", "time"] }
