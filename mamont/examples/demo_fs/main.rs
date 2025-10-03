@@ -1,7 +1,7 @@
 use clap::Parser;
 use clap_derive::Parser;
 
-use nfs_mamont::tcp::{NFSTcp, NFSTcpListener};
+use nfs_mamont::tcp::NFSTcpListener;
 
 /// Implements the core file system functionality
 mod fs;
