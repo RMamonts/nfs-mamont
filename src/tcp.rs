@@ -65,7 +65,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 }
 
 /// Command processing result
-pub type CommandResult = Result<ResponseBuffer, ProtocolErrors>;
+pub type CommandResult = (u32, Result<ResponseBuffer, ProtocolErrors>);
 
 /// Processes an established TCP socket connection from an NFS client
 ///

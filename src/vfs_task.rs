@@ -9,7 +9,7 @@ use crate::response_buffer::ResponseBuffer;
 use crate::rpc_command::RpcCommand;
 use crate::tcp::CommandResult;
 use crate::xdr;
-use crate::xdr::rpc::{accept_body, mismatch_info, rejected_reply, PROTOCOL_VERSION};
+use crate::xdr::rpc::{accept_body, mismatch_info, rejected_reply, rpc_msg, PROTOCOL_VERSION};
 use crate::xdr::{deserialize, mount, nfs3, ProtocolErrors};
 
 /// RPC program number for NFS Access Control Lists
@@ -65,23 +65,29 @@ impl VfsTask {
             let mut input_cursor = Cursor::new(command.data);
             let mut output_cursor = Cursor::new(output_buffer.get_mut_buffer());
 
-            // Call async processor
-            let result = match self.handle_rpc(&mut input_cursor, &mut output_cursor).await {
-                Ok(_) => {
-                    // Processor indicated response needs to be sent
-                    output_buffer.mark_has_content();
-                    let buffer_to_send = std::mem::replace(
-                        &mut output_buffer,
-                        ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
-                    );
-                    Ok(buffer_to_send)
+            if let Ok(recv) = deserialize::<xdr::rpc::rpc_msg>(&mut input_cursor) {
+                let xid = recv.xid;
+                // Call async processor
+                let result =
+                    match self.handle_rpc(xid, recv, &mut input_cursor, &mut output_cursor).await {
+                        Ok(_) => {
+                            // Processor indicated response needs to be sent
+                            output_buffer.mark_has_content();
+                            let buffer_to_send = std::mem::replace(
+                                &mut output_buffer,
+                                ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
+                            );
+                            Ok(buffer_to_send)
+                        }
+                        Err(e) => Err(e),
+                    };
+                // Send result
+                if let Err(e) = self.result_sender.send(CommandResult::from((xid, result))) {
+                    error!("Failed to send command processing result: {:?}", e);
+                    break;
                 }
-                Err(e) => Err(e),
-            };
-
-            // Send result
-            if let Err(e) = self.result_sender.send(result) {
-                error!("Failed to send command processing result: {:?}", e);
+            } else {
+                error!("Cannot process REPLY");
                 break;
             }
         }
@@ -104,12 +110,11 @@ impl VfsTask {
     /// Returns true if a response was sent, false otherwise (for retransmissions).
     pub async fn handle_rpc(
         &mut self,
+        xid: u32,
+        recv: rpc_msg,
         input: &mut impl Read,
         output: &mut impl Write,
     ) -> Result<(), ProtocolErrors> {
-        let recv = deserialize::<xdr::rpc::rpc_msg>(input)
-            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))?;
-        let xid = recv.xid;
         if let xdr::rpc::rpc_body::CALL(call) = recv.body {
             if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
                 let auth = deserialize(&mut Cursor::new(&call.cred.body))

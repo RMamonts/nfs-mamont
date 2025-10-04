@@ -1,11 +1,13 @@
-use std::io::Error;
-
+use std::io;
+use std::io::{Cursor, Error};
+use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error};
 
 use crate::tcp::CommandResult;
-use crate::xdr::ProtocolErrors;
+use crate::xdr::rpc::{accepted_reply, opaque_auth, reply_body, rpc_body, rpc_msg};
+use crate::xdr::{ProtocolErrors, Serialize};
 
 /// An asynchronous task responsible for writing [`VfsTask`] responses to a network connection.
 pub struct WriteTask {
@@ -32,7 +34,7 @@ impl WriteTask {
     }
 
     async fn run(mut self) -> Result<(), Error> {
-        while let Some(result) = self.result_receiver.recv().await {
+        while let Some((xid, result)) = self.result_receiver.recv().await {
             match result {
                 Ok(mut response_buffer) => {
                     if let Err(e) = response_buffer.write_fragment(&mut self.writehalf).await {
@@ -41,12 +43,43 @@ impl WriteTask {
                     }
                 }
                 Err(e) => {
-                    debug!("Message handling closed : {:?}", e);
-                    return Err(e);
+                    return match self.error_replying(xid, e).await {
+                        Ok(_) => {
+                            debug!("Replying successfully to client with error");
+                            Ok(())
+                        }
+                        Err(e) => {
+                            error!("Failed to send error reply to client: {:?}", e);
+                            Err(e)
+                        }
+                    }
                 }
             }
         }
         debug!("Command result handler finished");
         Ok(())
+    }
+
+    async fn error_replying(&mut self, xid: u32, error: ProtocolErrors) -> io::Result<()> {
+        debug!("Replying with protocol error : {:?}", error);
+        let mut buf = Cursor::new(vec![0_u8; 450]);
+        match error {
+            ProtocolErrors::RpcRejected(e) => {
+                rpc_msg { xid, body: rpc_body::REPLY(reply_body::MSG_DENIED(e)) }
+                    .serialize(&mut buf)?;
+                self.writehalf.write_all(&buf.into_inner()).await
+            }
+            ProtocolErrors::RpcAccepted(e) => {
+                reply_body::MSG_ACCEPTED(accepted_reply {
+                    verf: opaque_auth::default(),
+                    reply_data: e,
+                })
+                .serialize(&mut buf)?;
+                self.writehalf.write_all(&buf.into_inner()).await
+            }
+            _ => {
+                todo!()
+            }
+        }
     }
 }
