@@ -4,7 +4,6 @@ use std::fs::OpenOptions;
 use std::path::Path;
 
 use crate::utils;
-use crate::EXPORT_DIR;
 
 fn create_file(path: impl AsRef<Path>) {
     OpenOptions::new().create_new(true).read(true).write(true).truncate(true).open(&path).unwrap();
@@ -20,8 +19,8 @@ fn read_dir(path: impl AsRef<Path>) -> impl Iterator<Item = DirEntry> {
 /// - create files inside directory
 /// - assert them with readdir
 /// - delete directory
-pub fn create_read_delete() {
-    let dir_path = utils::join(&[&EXPORT_DIR, &"test_dir"]);
+pub fn create_read_delete(mount_point: impl AsRef<Path>) {
+    let dir_path = utils::join(&[&mount_point, &"test_dir"]);
 
     std::fs::create_dir(&dir_path).unwrap();
 
