@@ -5,6 +5,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, error};
 
 use crate::tcp::CommandResult;
+use crate::xdr::ProtocolErrors;
 
 /// An asynchronous task responsible for writing [`VfsTask`] responses to a network connection.
 pub struct WriteTask {
@@ -33,17 +34,11 @@ impl WriteTask {
     async fn run(mut self) -> Result<(), Error> {
         while let Some(result) = self.result_receiver.recv().await {
             match result {
-                Ok(Some(mut response_buffer)) if response_buffer.has_content() => {
+                Ok(mut response_buffer) => {
                     if let Err(e) = response_buffer.write_fragment(&mut self.writehalf).await {
                         error!("Write error {:?}", e);
                         return Err(e);
                     }
-                }
-                Ok(None) => {
-                    // No response needed, so nothing to send
-                }
-                Ok(Some(_)) => {
-                    // Buffer exists but contains no data to send
                 }
                 Err(e) => {
                     debug!("Message handling closed : {:?}", e);

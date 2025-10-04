@@ -1,13 +1,15 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 
-use std::io;
 use std::io::{Read, Write};
 
-use crate::protocol::rpc;
-use crate::protocol::xdr::{self, mount, Serialize};
 use num_traits::cast::FromPrimitive;
-use tracing::warn;
+use tracing::{error, warn};
+
+use crate::protocol::rpc;
+use crate::protocol::xdr::{self, mount};
+use crate::xdr::rpc::accept_body;
+use crate::xdr::ProtocolErrors;
 
 mod dump;
 mod export;
@@ -87,21 +89,27 @@ pub async fn handle_mount(
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> io::Result<()> {
-    let prog = mount::MountProgram::from_u32(call.proc).unwrap_or(mount::MountProgram::INVALID);
+) -> Result<(), ProtocolErrors> {
+    if let Some(prog) = mount::MountProgram::from_u32(call.proc) {
+        Ok(match prog {
+            mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output),
+            mount::MountProgram::MOUNTPROC3_MNT => {
+                mountproc3_mnt(xid, input, output, context).await
+            }
+            mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await,
+            mount::MountProgram::MOUNTPROC3_UMNT => {
+                mountproc3_umnt(xid, input, output, context).await
+            }
 
-    match prog {
-        mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output)?,
-        mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await?,
-        mount::MountProgram::MOUNTPROC3_UMNT => {
-            mountproc3_umnt(xid, input, output, context).await?;
+            mount::MountProgram::MOUNTPROC3_UMNTALL => {
+                mountproc3_umnt_all(xid, output, context).await
+            }
+
+            mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await,
         }
-        mount::MountProgram::MOUNTPROC3_UMNTALL => {
-            mountproc3_umnt_all(xid, output, context).await?;
-        }
-        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await?,
-        _ => xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?,
+        .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))?)
+    } else {
+        error!("Invalid procedure number for Mount");
+        Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
     }
-    Ok(())
 }

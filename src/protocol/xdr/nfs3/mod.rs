@@ -172,8 +172,6 @@ pub enum NFSProgram {
     NFSPROC3_PATHCONF = 20,
     /// Commit cached data
     NFSPROC3_COMMIT = 21,
-    /// Invalid procedure
-    INVALID = 22,
 }
 
 /// Opaque byte type as defined in RFC 1813 section 2.5

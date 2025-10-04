@@ -444,9 +444,9 @@ impl<T: Deserialize> Deserialize for Option<T> {
 pub use crate::DeserializeStruct;
 pub use crate::SerializeStruct;
 
-enum ProtocolErrors {
+pub enum ProtocolErrors {
     RpcRejected(rejected_reply),
     RpcAccepted(accept_body),
     NFSv3(nfsstat3),
-    Mount(mountstat3)
+    Mount(mountstat3),
 }

@@ -1,4 +1,3 @@
-use std::io;
 use std::io::{Cursor, Read, Write};
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -9,9 +8,9 @@ use crate::protocol::rpc::Context;
 use crate::response_buffer::ResponseBuffer;
 use crate::rpc_command::RpcCommand;
 use crate::tcp::CommandResult;
-use crate::utils::error::io_other;
 use crate::xdr;
-use crate::xdr::{deserialize, mount, nfs3, Serialize};
+use crate::xdr::rpc::{accept_body, mismatch_info, rejected_reply, PROTOCOL_VERSION};
+use crate::xdr::{deserialize, mount, nfs3, ProtocolErrors};
 
 /// RPC program number for NFS Access Control Lists
 const NFS_ACL_PROGRAM: u32 = 100227;
@@ -68,18 +67,14 @@ impl VfsTask {
 
             // Call async processor
             let result = match self.handle_rpc(&mut input_cursor, &mut output_cursor).await {
-                Ok(true) => {
+                Ok(_) => {
                     // Processor indicated response needs to be sent
                     output_buffer.mark_has_content();
                     let buffer_to_send = std::mem::replace(
                         &mut output_buffer,
                         ResponseBuffer::with_capacity(DEFAULT_RESPONSE_BUFFER_CAPACITY),
                     );
-                    Ok(Some(buffer_to_send))
-                }
-                Ok(false) => {
-                    // No response needed (e.g. retransmission)
-                    Ok(None)
+                    Ok(buffer_to_send)
                 }
                 Err(e) => Err(e),
             };
@@ -111,67 +106,60 @@ impl VfsTask {
         &mut self,
         input: &mut impl Read,
         output: &mut impl Write,
-    ) -> io::Result<bool> {
-        let recv = deserialize::<xdr::rpc::rpc_msg>(input)?;
+    ) -> Result<(), ProtocolErrors> {
+        let recv = deserialize::<xdr::rpc::rpc_msg>(input)
+            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))?;
         let xid = recv.xid;
         if let xdr::rpc::rpc_body::CALL(call) = recv.body {
             if let xdr::rpc::auth_flavor::AUTH_SYS = call.cred.flavor {
-                let auth = deserialize(&mut Cursor::new(&call.cred.body))?;
+                let auth = deserialize(&mut Cursor::new(&call.cred.body))
+                    .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))?;
                 self.context.auth = Some(auth);
             }
-            if call.rpcvers != xdr::rpc::PROTOCOL_VERSION {
+            if call.rpcvers != PROTOCOL_VERSION {
                 warn!("Invalid RPC version {} != 2", call.rpcvers);
-                xdr::rpc::rpc_vers_mismatch(xid).serialize(output)?;
-                return Ok(true);
+                return Err(ProtocolErrors::RpcRejected(rejected_reply::RPC_MISMATCH(
+                    mismatch_info { low: PROTOCOL_VERSION, high: PROTOCOL_VERSION },
+                )));
             }
 
-            let result = match call.prog {
+            match call.prog {
                 nfs3::PROGRAM => match call.vers {
                     nfs3::VERSION => {
-                        nfs::v3::handle_nfs(xid, call, input, output, &self.context).await
+                        Ok(nfs::v3::handle_nfs(xid, call, input, output, &self.context).await?)
                     }
                     nfs::v4::VERSION => {
-                        nfs::v4::handle_nfs(xid, call, input, output, &self.context).await
+                        Ok(nfs::v4::handle_nfs(xid, call, input, output, &self.context).await?)
                     }
                     v => {
                         warn!("Unsupported NFS version: {}", v);
-                        xdr::rpc::prog_version_range_mismatch_reply_message(
-                            xid,
-                            nfs3::VERSION,
-                            nfs::v4::VERSION,
-                        )
-                        .serialize(output)?;
-                        Ok(())
+                        Err(ProtocolErrors::RpcAccepted(accept_body::PROG_MISMATCH(
+                            mismatch_info { low: nfs3::VERSION, high: nfs::v4::VERSION },
+                        )))
                     }
                 },
                 mount::PROGRAM => {
-                    nfs::mount::handle_mount(xid, call, input, output, &self.context).await
+                    Ok(nfs::mount::handle_mount(xid, call, input, output, &self.context).await?)
                 }
                 prog if prog == NFS_ACL_PROGRAM
                     || prog == NFS_ID_MAP_PROGRAM
                     || prog == NFS_METADATA_PROGRAM =>
                 {
                     trace!("ignoring NFS_ACL/ID_MAP/METADATA packet");
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
+                    Err(ProtocolErrors::RpcAccepted(accept_body::PROG_UNAVAIL))
                 }
                 NFS_LOCALIO_PROGRAM => {
                     trace!("Ignoring NFS_LOCALIO packet");
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
+                    Err(ProtocolErrors::RpcAccepted(accept_body::PROG_UNAVAIL))
                 }
                 _ => {
                     warn!("Unknown RPC Program number {} != {}", call.prog, nfs3::PROGRAM);
-                    xdr::rpc::prog_unavail_reply_message(xid).serialize(output)?;
-                    Ok(())
+                    Err(ProtocolErrors::RpcAccepted(accept_body::PROG_UNAVAIL))
                 }
             }
-            .map(|_| true);
-
-            result
         } else {
             error!("Unexpectedly received a Reply instead of a Call");
-            io_other("Bad RPC Call format")
+            Err(ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))
         }
     }
 }
