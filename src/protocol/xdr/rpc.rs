@@ -423,65 +423,12 @@ impl Deserialize for rejected_reply {
     }
 }
 
-/// Creates a reply message indicating that the requested procedure is not available
-pub fn proc_unavail_reply_message(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROC_UNAVAIL,
-    });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
-}
-
-/// Creates a reply message indicating that the requested program is not available
-pub fn prog_unavail_reply_message(xid: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_UNAVAIL,
-    });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
-}
-
-/// Creates a reply message indicating a program version mismatch
-pub fn prog_mismatch_reply_message(xid: u32, accepted_ver: u32) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_MISMATCH(mismatch_info {
-            low: accepted_ver,
-            high: accepted_ver,
-        }),
-    });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
-}
-
-/// Creates a reply message indicating a program version mismatch with supported version range
-pub fn prog_version_range_mismatch_reply_message(
-    xid: u32,
-    low_version: u32,
-    high_version: u32,
-) -> rpc_msg {
-    let reply = reply_body::MSG_ACCEPTED(accepted_reply {
-        verf: opaque_auth::default(),
-        reply_data: accept_body::PROG_MISMATCH(mismatch_info {
-            low: low_version,
-            high: high_version,
-        }),
-    });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
-}
-
 /// Creates a reply message indicating that the arguments could not be decoded
 pub fn garbage_args_reply_message(xid: u32) -> rpc_msg {
     let reply = reply_body::MSG_ACCEPTED(accepted_reply {
         verf: opaque_auth::default(),
         reply_data: accept_body::GARBAGE_ARGS,
     });
-    rpc_msg { xid, body: rpc_body::REPLY(reply) }
-}
-
-/// Creates a reply message indicating an RPC version mismatch
-pub fn rpc_vers_mismatch(xid: u32) -> rpc_msg {
-    let mismatch_info = mismatch_info { low: PROTOCOL_VERSION, high: PROTOCOL_VERSION };
-    let reply = reply_body::MSG_DENIED(rejected_reply::RPC_MISMATCH(mismatch_info));
     rpc_msg { xid, body: rpc_body::REPLY(reply) }
 }
 

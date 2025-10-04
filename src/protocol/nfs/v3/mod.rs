@@ -37,14 +37,15 @@
 //! - Better attribute caching with the `ACCESS` procedure
 //! - Enhanced directory reading with `READDIRPLUS`
 
-use std::io;
 use std::io::{Read, Write};
 
 use num_traits::cast::FromPrimitive;
-use tracing::warn;
+use tracing::error;
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs3, Serialize};
+use crate::protocol::xdr::{self, nfs3};
+use crate::xdr::rpc::accept_body;
+use crate::xdr::ProtocolErrors;
 
 mod access;
 mod commit;
@@ -113,49 +114,36 @@ pub async fn handle_nfs(
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> io::Result<()> {
-    if call.vers != nfs3::VERSION {
-        warn!("Invalid NFS Version number {} != {}", call.vers, nfs3::VERSION);
-        // TODO: Use prog_version_range_mismatch_reply_message with proper version range
-        // Currently this only reports NFS v3 support, but server actually supports v3-v4
-        xdr::rpc::prog_mismatch_reply_message(xid, nfs3::VERSION).serialize(output)?;
-        return Ok(());
-    }
-    let prog = nfs3::NFSProgram::from_u32(call.proc).unwrap_or(nfs3::NFSProgram::INVALID);
-
+) -> Result<(), ProtocolErrors> {
+    let Some(prog) = nfs3::NFSProgram::from_u32(call.proc) else {
+        error!("Invalid procedure number for NFS version 3");
+        return Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL));
+    };
     match prog {
-        nfs3::NFSProgram::NFSPROC3_NULL => nfsproc3_null(xid, output)?,
-        nfs3::NFSProgram::NFSPROC3_GETATTR => nfsproc3_getattr(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_LOOKUP => nfsproc3_lookup(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READ => nfsproc3_read(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_FSINFO => nfsproc3_fsinfo(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_ACCESS => nfsproc3_access(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_PATHCONF => {
-            nfsproc3_pathconf(xid, input, output, context).await?;
-        }
-        nfs3::NFSProgram::NFSPROC3_FSSTAT => nfsproc3_fsstat(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READDIR => nfsproc3_readdir(xid, input, output, context).await?,
+        nfs3::NFSProgram::NFSPROC3_NULL => nfsproc3_null(xid, output),
+        nfs3::NFSProgram::NFSPROC3_GETATTR => nfsproc3_getattr(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_LOOKUP => nfsproc3_lookup(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_READ => nfsproc3_read(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_FSINFO => nfsproc3_fsinfo(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_ACCESS => nfsproc3_access(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_PATHCONF => nfsproc3_pathconf(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_FSSTAT => nfsproc3_fsstat(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_READDIR => nfsproc3_readdir(xid, input, output, context).await,
         nfs3::NFSProgram::NFSPROC3_READDIRPLUS => {
-            nfsproc3_readdirplus(xid, input, output, context).await?;
+            nfsproc3_readdirplus(xid, input, output, context).await
         }
-        nfs3::NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_SETATTR => nfsproc3_setattr(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_REMOVE => nfsproc3_remove(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_RMDIR => nfsproc3_remove(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_RENAME => nfsproc3_rename(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_READLINK => {
-            nfsproc3_readlink(xid, input, output, context).await?;
-        }
-        nfs3::NFSProgram::NFSPROC3_MKNOD => nfsproc3_mknod(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_LINK => nfsproc3_link(xid, input, output, context).await?,
-        nfs3::NFSProgram::NFSPROC3_COMMIT => nfsproc3_commit(xid, input, output, context).await?,
-        _ => {
-            warn!("Unimplemented message {:?}", prog);
-            xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
-        }
+        nfs3::NFSProgram::NFSPROC3_WRITE => nfsproc3_write(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_CREATE => nfsproc3_create(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_SETATTR => nfsproc3_setattr(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_REMOVE => nfsproc3_remove(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_RMDIR => nfsproc3_remove(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_RENAME => nfsproc3_rename(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_READLINK => nfsproc3_readlink(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_MKNOD => nfsproc3_mknod(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_LINK => nfsproc3_link(xid, input, output, context).await,
+        nfs3::NFSProgram::NFSPROC3_COMMIT => nfsproc3_commit(xid, input, output, context).await,
     }
-    Ok(())
+    .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))
 }

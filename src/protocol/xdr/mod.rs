@@ -22,6 +22,10 @@ use byteorder::BigEndian;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
+use crate::xdr::mount::mountstat3;
+use crate::xdr::nfs3::nfsstat3;
+use crate::xdr::rpc::{accept_body, rejected_reply};
+
 pub mod mount;
 pub mod nfs3;
 pub mod nfs4;
@@ -439,3 +443,12 @@ impl<T: Deserialize> Deserialize for Option<T> {
 // Re-export public types for use in other modules
 pub use crate::DeserializeStruct;
 pub use crate::SerializeStruct;
+
+/// Type for error propagation
+#[derive(Debug)]
+pub enum ProtocolErrors {
+    RpcRejected(rejected_reply),
+    RpcAccepted(accept_body),
+    NFSv3(nfsstat3),
+    Mount(mountstat3),
+}

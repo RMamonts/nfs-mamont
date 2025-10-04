@@ -10,6 +10,7 @@ const LAST_FG_MASK: u32 = 1 << 31;
 const MAX_RM_FRAGMENT_SIZE: usize = (1 << 31) - 1;
 
 /// Represents a response buffer that minimizes data copying
+#[derive(Debug)]
 pub struct ResponseBuffer {
     /// Internal buffer for writing data
     buffer: Vec<u8>,
@@ -48,38 +49,38 @@ impl ResponseBuffer {
         self.buffer.clear();
         self.has_content = false;
     }
+}
 
-    /// Writes a complete RPC result from a TCP socket using a Record Marking Protocol.
-    ///
-    /// This method implements a Record Marking Standard by splitting result in
-    /// fragments and inserting header (size of fragment with flag, whether current fragment
-    /// is the last) before it.
-    pub async fn write_fragment(&mut self, write_half: &mut OwnedWriteHalf) -> io::Result<()> {
-        // Maximum fragment size is 2^31 - 1 bytes
+/// Writes a complete RPC result from a TCP socket using a Record Marking Protocol.
+///
+/// This method implements a Record Marking Standard by splitting result in
+/// fragments and inserting header (size of fragment with flag, whether current fragment
+/// is the last) before it.
+pub async fn write_fragment(buffer: &mut [u8], write_half: &mut OwnedWriteHalf) -> io::Result<()> {
+    // Maximum fragment size is 2^31 - 1 bytes
 
-        let mut offset = 0;
-        while offset < self.buffer.len() {
-            // Calculate the size of this fragment
-            let remaining = self.buffer.len() - offset;
-            let fragment_size = std::cmp::min(remaining, MAX_RM_FRAGMENT_SIZE);
+    let mut offset = 0;
+    while offset < buffer.len() {
+        // Calculate the size of this fragment
+        let remaining = buffer.len() - offset;
+        let fragment_size = std::cmp::min(remaining, MAX_RM_FRAGMENT_SIZE);
 
-            // Determine if this is the last fragment
-            let is_last = offset + fragment_size >= self.buffer.len();
+        // Determine if this is the last fragment
+        let is_last = offset + fragment_size >= buffer.len();
 
-            // Create the fragment header
-            // The highest bit indicates if this is the last fragment
-            let fragment_header =
-                if is_last { fragment_size as u32 + LAST_FG_MASK } else { fragment_size as u32 };
+        // Create the fragment header
+        // The highest bit indicates if this is the last fragment
+        let fragment_header =
+            if is_last { fragment_size as u32 + LAST_FG_MASK } else { fragment_size as u32 };
 
-            let header_buf = u32::to_be_bytes(fragment_header);
-            write_half.write_all(&header_buf).await?;
+        let header_buf = u32::to_be_bytes(fragment_header);
+        write_half.write_all(&header_buf).await?;
 
-            trace!("Writing fragment length:{}, last:{}", fragment_size, is_last);
-            write_half.write_all(&self.buffer[offset..offset + fragment_size]).await?;
+        trace!("Writing fragment length:{}, last:{}", fragment_size, is_last);
+        write_half.write_all(&buffer[offset..offset + fragment_size]).await?;
 
-            offset += fragment_size;
-        }
-
-        Ok(())
+        offset += fragment_size;
     }
+
+    Ok(())
 }

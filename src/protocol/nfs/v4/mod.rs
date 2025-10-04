@@ -25,20 +25,21 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 use std::collections::HashMap;
-use std::io;
 use std::io::{Read, Write};
 use std::sync::Arc;
 
 use num_traits::cast::FromPrimitive;
 use tokio::sync::RwLock;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::protocol::rpc;
-use crate::protocol::xdr::{self, nfs4, Serialize};
+use crate::protocol::xdr::{self, nfs4};
 use crate::vfs::NFSv4FileSystem;
 use crate::xdr::nfs4::{
     clientid4, filehandle, nfs_client_id, nfs_fh4, state_owner_type, state_type, stateid4,
 };
+use crate::xdr::rpc::accept_body;
+use crate::xdr::ProtocolErrors;
 
 mod compound;
 mod null;
@@ -69,27 +70,22 @@ pub async fn handle_nfs(
     input: &mut impl Read,
     output: &mut impl Write,
     context: &rpc::Context,
-) -> io::Result<()> {
-    if call.vers != VERSION {
-        warn!("Invalid NFS Version number {} != {}", call.vers, VERSION);
-        xdr::rpc::prog_mismatch_reply_message(xid, VERSION).serialize(output)?;
-        return Ok(());
-    }
-
-    let prog = nfs4::nfs_opnum4::from_u32(call.proc).unwrap_or(nfs4::nfs_opnum4::OP_ILLEGAL);
-
+) -> Result<(), ProtocolErrors> {
+    let Some(prog) = nfs4::nfs_opnum4::from_u32(call.proc) else {
+        error!("Invalid procedure number for NFS version 4");
+        return Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL));
+    };
     match prog {
-        nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)?,
-        nfs4::nfs_opnum4::OP_COMPOUND => {
-            compound::nfsproc4_compound(xid, input, output, context).await?
-        }
+        nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)
+            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS)),
+        nfs4::nfs_opnum4::OP_COMPOUND => compound::nfsproc4_compound(xid, input, output, context)
+            .await
+            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS)),
         _ => {
             warn!("Unimplemented NFS v4 operation: {:?}", prog);
-            xdr::rpc::proc_unavail_reply_message(xid).serialize(output)?;
+            Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
         }
     }
-
-    Ok(())
 }
 
 /// Represents the execution context for a single NFSv4.0 compound operation.

@@ -94,8 +94,6 @@ pub enum MountProgram {
     MOUNTPROC3_UMNTALL = 4,
     /// Get list of exported file systems
     MOUNTPROC3_EXPORT = 5,
-    /// Invalid procedure number
-    INVALID,
 }
 impl SerializeEnum for MountProgram {}
 impl DeserializeEnum for MountProgram {}

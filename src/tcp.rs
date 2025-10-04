@@ -28,7 +28,7 @@ use crate::rpc_command::RpcCommand;
 use crate::vfs::NFSFileSystem;
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
-use crate::xdr::nfs3;
+use crate::xdr::{nfs3, ProtocolErrors};
 
 /// Entry in the NFS export table that represents a single exported file system.
 pub struct NFSExportTableEntry {
@@ -65,7 +65,7 @@ pub fn generate_host_ip(hostnum: u16) -> String {
 }
 
 /// Command processing result
-pub type CommandResult = Result<Option<ResponseBuffer>, io::Error>;
+pub type CommandResult = (u32, Result<ResponseBuffer, ProtocolErrors>);
 
 /// Processes an established TCP socket connection from an NFS client
 ///
