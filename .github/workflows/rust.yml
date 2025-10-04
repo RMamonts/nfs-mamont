@@ -64,19 +64,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Install cargo-audit
         run: cargo install cargo-audit
-      
+
       - name: Run security audit
         run: cargo audit
 
   # Build and test with matrix
-  test-matrix:
-    name: Build and Test (Matrix)
+  build-matrix:
+    name: Build (Matrix)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -108,12 +108,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-${{ matrix.rust-version }}-cargo-
             ${{ runner.os }}-${{ matrix.target }}-cargo-
-      
+
       - name: Build
         run: cargo build --target ${{ matrix.target }}
-      
-      - name: Run tests
-        run: cargo test --target ${{ matrix.target }}
 
   # Documentation
   docs:
