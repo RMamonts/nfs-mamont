@@ -444,6 +444,7 @@ impl<T: Deserialize> Deserialize for Option<T> {
 pub use crate::DeserializeStruct;
 pub use crate::SerializeStruct;
 
+/// Type for error propagation
 #[derive(Debug)]
 pub enum ProtocolErrors {
     RpcRejected(rejected_reply),

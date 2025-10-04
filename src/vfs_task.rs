@@ -100,14 +100,11 @@ impl VfsTask {
     /// 1. Deserializes the incoming RPC message using XDR format
     /// 2. Validates the RPC version number (must be version 2)
     /// 3. Extracts authentication information if provided
-    /// 4. Checks for retransmissions to ensure idempotent operation
-    /// 5. Routes the call to the appropriate protocol handler (NFS, MOUNT, PORTMAP)
-    /// 6. Tracks transaction completion state
+    /// 4. Routes the call to the appropriate protocol handler (NFS, MOUNT, PORTMAP)
+    /// 5. Tracks transaction completion state
     ///
     /// This implementation follows RFC 5531 (previously RFC 1057) section on Authentication and
     /// Record Marking Standard for proper RPC message handling.
-    ///
-    /// Returns true if a response was sent, false otherwise (for retransmissions).
     pub async fn handle_rpc(
         &mut self,
         xid: u32,
