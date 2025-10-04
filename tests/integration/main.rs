@@ -60,7 +60,7 @@ fn integration_test() {
     let _mount = mount();
 
     // wait for demofs to up
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(10));
 
     let mut random = random::Random::default();
 
