@@ -71,23 +71,20 @@ pub async fn handle_nfs(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), ProtocolErrors> {
-    if let Some(prog) = nfs4::nfs_opnum4::from_u32(call.proc) {
-        match prog {
-            nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)
-                .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS)),
-            nfs4::nfs_opnum4::OP_COMPOUND => {
-                compound::nfsproc4_compound(xid, input, output, context)
-                    .await
-                    .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))
-            }
-            _ => {
-                warn!("Unimplemented NFS v4 operation: {:?}", prog);
-                Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
-            }
-        }
-    } else {
+    let Some(prog) = nfs4::nfs_opnum4::from_u32(call.proc) else {
         error!("Invalid procedure number for NFS version 4");
-        Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
+        return Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL));
+    };
+    match prog {
+        nfs4::nfs_opnum4::OP_NULL => null::nfsproc4_null(xid, output)
+            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS)),
+        nfs4::nfs_opnum4::OP_COMPOUND => compound::nfsproc4_compound(xid, input, output, context)
+            .await
+            .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS)),
+        _ => {
+            warn!("Unimplemented NFS v4 operation: {:?}", prog);
+            Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
+        }
     }
 }
 

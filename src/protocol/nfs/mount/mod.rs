@@ -90,26 +90,19 @@ pub async fn handle_mount(
     output: &mut impl Write,
     context: &rpc::Context,
 ) -> Result<(), ProtocolErrors> {
-    if let Some(prog) = mount::MountProgram::from_u32(call.proc) {
-        Ok(match prog {
-            mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output),
-            mount::MountProgram::MOUNTPROC3_MNT => {
-                mountproc3_mnt(xid, input, output, context).await
-            }
-            mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await,
-            mount::MountProgram::MOUNTPROC3_UMNT => {
-                mountproc3_umnt(xid, input, output, context).await
-            }
-
-            mount::MountProgram::MOUNTPROC3_UMNTALL => {
-                mountproc3_umnt_all(xid, output, context).await
-            }
-
-            mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await,
-        }
-        .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))?)
-    } else {
+    let Some(prog) = mount::MountProgram::from_u32(call.proc) else {
         error!("Invalid procedure number for Mount");
-        Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL))
+        return Err(ProtocolErrors::RpcAccepted(accept_body::PROC_UNAVAIL));
+    };
+    match prog {
+        mount::MountProgram::MOUNTPROC3_NULL => mountproc3_null(xid, output),
+        mount::MountProgram::MOUNTPROC3_MNT => mountproc3_mnt(xid, input, output, context).await,
+        mount::MountProgram::MOUNTPROC3_DUMP => mountproc3_dump(xid, output, context).await,
+        mount::MountProgram::MOUNTPROC3_UMNT => mountproc3_umnt(xid, input, output, context).await,
+
+        mount::MountProgram::MOUNTPROC3_UMNTALL => mountproc3_umnt_all(xid, output, context).await,
+
+        mount::MountProgram::MOUNTPROC3_EXPORT => mountproc3_export(xid, output, context).await,
     }
+    .map_err(|_| ProtocolErrors::RpcAccepted(accept_body::GARBAGE_ARGS))
 }
