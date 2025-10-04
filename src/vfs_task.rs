@@ -140,9 +140,18 @@ impl VfsTask {
                         )))
                     }
                 },
-                mount::PROGRAM => {
-                    Ok(nfs::mount::handle_mount(xid, call, input, output, &self.context).await?)
-                }
+                mount::PROGRAM => match call.vers {
+                    mount::VERSION => {
+                        Ok(nfs::mount::handle_mount(xid, call, input, output, &self.context)
+                            .await?)
+                    }
+                    v => {
+                        warn!("Unsupported Mount version: {}", v);
+                        Err(ProtocolErrors::RpcAccepted(accept_body::PROG_MISMATCH(
+                            mismatch_info { low: mount::VERSION, high: mount::VERSION },
+                        )))
+                    }
+                },
                 prog if prog == NFS_ACL_PROGRAM
                     || prog == NFS_ID_MAP_PROGRAM
                     || prog == NFS_METADATA_PROGRAM =>
