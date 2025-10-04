@@ -5,7 +5,6 @@ mod random;
 mod utils;
 
 use std::process::Command;
-use std::time::Duration;
 
 const EXPORT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/", "exports");
 
@@ -22,13 +21,7 @@ fn integration_test() {
     // std::thread::sleep(Duration::from_secs(10));
 
     let mut mount = Command::new("sudo")
-        .args(&[
-            "mount",
-            "-t",
-            "nfs",
-            "127.0.0.1:/",
-            "/home/ierin/github/nfs-mamont/exports",
-        ])
+        .args(["mount", "-t", "nfs", "127.0.0.1:/", "/home/ierin/github/nfs-mamont/exports"])
         .spawn()
         .unwrap();
     mount.wait().unwrap();
