@@ -20,8 +20,7 @@ fn read_dir(path: impl AsRef<Path>) -> impl Iterator<Item = DirEntry> {
 /// - create files inside directory
 /// - assert them with readdir
 /// - delete directory
-#[test]
-fn create_read_delete() {
+pub fn create_read_delete() {
     let dir_path = utils::join(&[&EXPORT_DIR, &"test_dir"]);
 
     std::fs::create_dir(&dir_path).unwrap();
@@ -35,7 +34,7 @@ fn create_read_delete() {
         create_file(&file_path);
     }
 
-    let file_names: HashSet<_> = FILES.iter().map(ToOwned::to_owned).into_iter().collect();
+    let file_names: HashSet<_> = FILES.iter().map(ToOwned::to_owned).collect();
     for entry in read_dir(&dir_path) {
         assert!(file_names.contains(entry.file_name().to_str().unwrap()));
     }
