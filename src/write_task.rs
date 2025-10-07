@@ -1,25 +1,23 @@
+use crate::message_types::{EarlyReply, Response};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
 
-/// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
+/// Writes [`vfs_task::VfsTask`] responses to a network connection.
 pub struct WriteTask {
-    _writehalf: OwnedWriteHalf,
-    _result_receiver: UnboundedReceiver<()>,
+    writehalf: OwnedWriteHalf,
+    request_recv: UnboundedReceiver<Response>,
+    early_recv: UnboundedReceiver<EarlyReply>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<()>) -> Self {
-        Self { _writehalf: writehalf, _result_receiver: result_receiver }
-    }
-
-    /// Spawns a [`WriteTask`]  that writes command results to a socket.
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(
+        writehalf: OwnedWriteHalf,
+        request_recv: UnboundedReceiver<Response>,
+        early_recv: UnboundedReceiver<EarlyReply>,
+    ) -> JoinHandle<()> {
+        tokio::spawn(Self { writehalf, request_recv, early_recv }.run())
     }
 
     async fn run(self) {

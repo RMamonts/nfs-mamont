@@ -1,30 +1,29 @@
+use crate::message_types::{Request, Response};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::task::JoinHandle;
 
 /// Process RPC commands,sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
-    _command_receiver: UnboundedReceiver<()>,
-    _result_sender: UnboundedSender<()>,
+    receiver: UnboundedReceiver<Request>,
+    sender: UnboundedSender<Response>,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
-    pub fn new(
-        command_receiver: UnboundedReceiver<()>,
-        result_sender: UnboundedSender<()>,
-    ) -> Self {
-        Self { _command_receiver: command_receiver, _result_sender: result_sender }
+    pub fn spawn(
+        receiver: UnboundedReceiver<Request>,
+        sender: UnboundedSender<Response>,
+    ) -> JoinHandle<()> {
+        let vfs_task = Self { receiver, sender };
+        tokio::spawn(async move { vfs_task.run().await })
     }
 
-    /// Spawns a [`VfsTask`].
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
-    }
-
-    async fn run(self) {
-        todo!("Implement VfsTask")
+    async fn run(mut self) {
+        loop {
+            match self.receiver.recv().await {
+                None => {}
+                Some(_) => {}
+            }
+        }
     }
 }
