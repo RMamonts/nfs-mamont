@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -68,30 +69,6 @@ impl EarlyReplySender {
     }
 }
 
-/// Receiver for early reply messages
-pub struct EarlyReplyRecv {
-    recv: Receiver<EarlyReply>,
-}
-
-impl EarlyReplyRecv {
-    /// Receives the next early reply from the channel
-    pub async fn recv(&mut self) -> Option<EarlyReply> {
-        self.recv.recv().await
-    }
-}
-
-/// Receiver for procedure reply messages
-pub struct ReplyRecv {
-    recv: Receiver<Reply>,
-}
-
-impl ReplyRecv {
-    /// Receives the next procedure reply from the channel
-    pub async fn recv(&mut self) -> Option<Reply> {
-        self.recv.recv().await
-    }
-}
-
 /// Sender for procedure reply messages
 pub struct ReplySender {
     sender: Sender<Reply>,
@@ -145,13 +122,13 @@ pub fn create_proc_channel(size: usize) -> (ProcSender, ProcRecv) {
 }
 
 /// Creates a new unbounded channel for procedure replies
-pub fn create_reply_channel(size: usize) -> (ReplySender, ReplyRecv) {
+pub fn create_reply_channel(size: usize) -> (ReplySender, Receiver<Reply>) {
     let (sender, recv) = mpsc::channel::<Reply>(size);
-    (ReplySender { sender }, ReplyRecv { recv })
+    (ReplySender { sender }, recv)
 }
 
 /// Creates a new unbounded channel for early replies
-pub fn create_early_reply_channel(size: usize) -> (EarlyReplySender, EarlyReplyRecv) {
+pub fn create_early_reply_channel(size: usize) -> (EarlyReplySender, Receiver<EarlyReply>) {
     let (sender, recv) = mpsc::channel::<EarlyReply>(size);
-    (EarlyReplySender { sender }, EarlyReplyRecv { recv })
+    (EarlyReplySender { sender }, recv)
 }
