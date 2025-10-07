@@ -115,19 +115,19 @@ impl ProcRecv {
     }
 }
 
-/// Creates a new unbounded channel for procedure calls
+/// Creates a new channel for procedure calls
 pub fn create_proc_channel(size: usize) -> (ProcSender, ProcRecv) {
     let (sender, recv) = mpsc::channel::<Procedure>(size);
     (ProcSender { sender }, ProcRecv { recv })
 }
 
-/// Creates a new unbounded channel for procedure replies
+/// Creates a new channel for procedure replies
 pub fn create_reply_channel(size: usize) -> (ReplySender, Receiver<Reply>) {
     let (sender, recv) = mpsc::channel::<Reply>(size);
     (ReplySender { sender }, recv)
 }
 
-/// Creates a new unbounded channel for early replies
+/// Creates a new channel for early replies
 pub fn create_early_reply_channel(size: usize) -> (EarlyReplySender, Receiver<EarlyReply>) {
     let (sender, recv) = mpsc::channel::<EarlyReply>(size);
     (EarlyReplySender { sender }, recv)
