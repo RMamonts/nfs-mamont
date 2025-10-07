@@ -1,4 +1,4 @@
-use crate::message_types::{EarlyReply, Request};
+use crate::message_types::{EarlyReply, Procedure};
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
-    request_send: UnboundedSender<Request>,
+    request_send: UnboundedSender<Procedure>,
     early_send: UnboundedSender<EarlyReply>,
 }
 
@@ -15,7 +15,7 @@ impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn spawn(
         readhalf: OwnedReadHalf,
-        request_send: UnboundedSender<Request>,
+        request_send: UnboundedSender<Procedure>,
         early_send: UnboundedSender<EarlyReply>,
     ) -> JoinHandle<()> {
         tokio::spawn(Self { readhalf, request_send, early_send }.run())
