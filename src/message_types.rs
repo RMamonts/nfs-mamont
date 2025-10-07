@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, Sender};
 
 /// Represents a procedure call with transaction ID and command arguments
 pub struct Procedure {
@@ -53,24 +53,24 @@ pub enum EarlyResult {
 
 /// Sender for early reply messages
 pub struct EarlyReplySender {
-    sender: UnboundedSender<EarlyReply>,
+    sender: Sender<EarlyReply>,
 }
 
 impl EarlyReplySender {
     /// Sends a null early reply for the given transaction ID
     pub async fn send_null(&self, xid: u32) -> Result<(), SendError<EarlyReply>> {
-        self.sender.send(EarlyReply { xid, result: EarlyResult::Null })
+        self.sender.send(EarlyReply { xid, result: EarlyResult::Null }).await
     }
 
     /// Sends an RPC error early reply for the given transaction ID
     pub async fn send_error(&self, xid: u32) -> Result<(), SendError<EarlyReply>> {
-        self.sender.send(EarlyReply { xid, result: EarlyResult::RPCError })
+        self.sender.send(EarlyReply { xid, result: EarlyResult::RPCError }).await
     }
 }
 
 /// Receiver for early reply messages
 pub struct EarlyReplyRecv {
-    recv: UnboundedReceiver<EarlyReply>,
+    recv: Receiver<EarlyReply>,
 }
 
 impl EarlyReplyRecv {
@@ -82,7 +82,7 @@ impl EarlyReplyRecv {
 
 /// Receiver for procedure reply messages
 pub struct ReplyRecv {
-    recv: UnboundedReceiver<Reply>,
+    recv: Receiver<Reply>,
 }
 
 impl ReplyRecv {
@@ -94,41 +94,41 @@ impl ReplyRecv {
 
 /// Sender for procedure reply messages
 pub struct ReplySender {
-    sender: UnboundedSender<Reply>,
+    sender: Sender<Reply>,
 }
 
 impl ReplySender {
     /// Sends a successful procedure reply
     pub async fn send_ok_reply(&self, xid: u32, res: ProcResOk) -> Result<(), SendError<Reply>> {
-        self.sender.send(Reply { xid, result: ProcResult::Ok(res) })
+        self.sender.send(Reply { xid, result: ProcResult::Ok(res) }).await
     }
 
     /// Sends an error procedure reply
     pub async fn send_error_reply(&self, xid: u32, err: ProcError) -> Result<(), SendError<Reply>> {
-        self.sender.send(Reply { xid, result: ProcResult::Error(err) })
+        self.sender.send(Reply { xid, result: ProcResult::Error(err) }).await
     }
 }
 
 /// Sender for procedure call messages
 pub struct ProcSender {
-    sender: UnboundedSender<Procedure>,
+    sender: Sender<Procedure>,
 }
 
 impl ProcSender {
     /// Sends an NFSv3 procedure call with the given transaction ID
     pub async fn send_nfsv3(&self, xid: u32) -> Result<(), SendError<Procedure>> {
-        self.sender.send(Procedure { xid, args: Command::NFSv3Command })
+        self.sender.send(Procedure { xid, args: Command::NFSv3Command }).await
     }
 
     /// Sends a mount procedure call with the given transaction ID
     pub async fn send_mount(&self, xid: u32) -> Result<(), SendError<Procedure>> {
-        self.sender.send(Procedure { xid, args: Command::MountCommand })
+        self.sender.send(Procedure { xid, args: Command::MountCommand }).await
     }
 }
 
 /// Receiver for procedure call messages
 pub struct ProcRecv {
-    recv: UnboundedReceiver<Procedure>,
+    recv: Receiver<Procedure>,
 }
 
 impl ProcRecv {
@@ -139,19 +139,19 @@ impl ProcRecv {
 }
 
 /// Creates a new unbounded channel for procedure calls
-pub fn create_proc_channel() -> (ProcSender, ProcRecv) {
-    let (sender, recv) = mpsc::unbounded_channel::<Procedure>();
+pub fn create_proc_channel(size: usize) -> (ProcSender, ProcRecv) {
+    let (sender, recv) = mpsc::channel::<Procedure>(size);
     (ProcSender { sender }, ProcRecv { recv })
 }
 
 /// Creates a new unbounded channel for procedure replies
-pub fn create_reply_channel() -> (ReplySender, ReplyRecv) {
-    let (sender, recv) = mpsc::unbounded_channel::<Reply>();
+pub fn create_reply_channel(size: usize) -> (ReplySender, ReplyRecv) {
+    let (sender, recv) = mpsc::channel::<Reply>(size);
     (ReplySender { sender }, ReplyRecv { recv })
 }
 
 /// Creates a new unbounded channel for early replies
-pub fn create_early_reply_channel() -> (EarlyReplySender, EarlyReplyRecv) {
-    let (sender, recv) = mpsc::unbounded_channel::<EarlyReply>();
+pub fn create_early_reply_channel(size: usize) -> (EarlyReplySender, EarlyReplyRecv) {
+    let (sender, recv) = mpsc::channel::<EarlyReply>(size);
     (EarlyReplySender { sender }, EarlyReplyRecv { recv })
 }
