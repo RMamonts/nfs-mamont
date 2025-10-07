@@ -1,17 +1,17 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
-
+#![allow(dead_code)]
 mod message_types;
 mod read_task;
 mod stream_writer;
 mod vfs_task;
 
-use crate::message_types::{EarlyReply, Procedure, Reply};
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+
+use crate::message_types::{create_early_reply_channel, create_proc_channel, create_reply_channel};
 use crate::read_task::ReadTask;
 use crate::stream_writer::StreamWriter;
 use crate::vfs_task::VfsTask;
-use tokio::net::TcpListener;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
@@ -27,11 +27,11 @@ pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
 async fn process_socket(socket: TcpStream) {
     let (readhalf, writehalf) = socket.into_split();
 
-    let (args_send, args_recv) = mpsc::unbounded_channel::<Procedure>();
-    let (reply_send, reply_recv) = mpsc::unbounded_channel::<Reply>();
-    let (early_send, early_recv) = mpsc::unbounded_channel::<EarlyReply>();
+    let (proc_sender, proc_recv) = create_proc_channel();
+    let (reply_sender, reply_recv) = create_reply_channel();
+    let (early_send, early_recv) = create_early_reply_channel();
 
-    ReadTask::spawn(readhalf, args_send, early_send);
-    VfsTask::spawn(args_recv, reply_send);
+    ReadTask::spawn(readhalf, proc_sender, early_send);
+    VfsTask::spawn(proc_recv, reply_sender);
     StreamWriter::spawn(writehalf, reply_recv, early_recv);
 }

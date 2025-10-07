@@ -1,24 +1,25 @@
-use crate::message_types::{EarlyReply, Procedure};
+#![allow(dead_code)]
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
+
+use crate::message_types::{EarlyReplySender, ProcSender};
 
 /// Reads RPC commands from a network connection, parses it,
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
-    request_send: UnboundedSender<Procedure>,
-    early_send: UnboundedSender<EarlyReply>,
+    proc_send: ProcSender,
+    early_send: EarlyReplySender,
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn spawn(
         readhalf: OwnedReadHalf,
-        request_send: UnboundedSender<Procedure>,
-        early_send: UnboundedSender<EarlyReply>,
+        proc_send: ProcSender,
+        early_send: EarlyReplySender,
     ) -> JoinHandle<()> {
-        tokio::spawn(Self { readhalf, request_send, early_send }.run())
+        tokio::spawn(Self { readhalf, proc_send, early_send }.run())
     }
 
     async fn run(self) {
