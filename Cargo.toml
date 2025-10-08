@@ -11,4 +11,5 @@ rust-version = "1.83.0"
 doctest = false
 
 [dependencies]
+async-trait = "0.1.89"
 tokio = { version = "1.47", features = ["full", "time"] }
