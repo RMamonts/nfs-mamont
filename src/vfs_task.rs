@@ -1,30 +1,24 @@
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+#[allow(dead_code)]
+use tokio::task::JoinHandle;
 
-/// Process RPC commands,sends operation results to [`crate::write_task::WriteTask`].
+use crate::message_types::{ProcRecv, ReplySender};
+
+/// Process RPC commands,sends operation results to [`crate::stream_writer::StreamWriter`].
 pub struct VfsTask {
-    _command_receiver: UnboundedReceiver<()>,
-    _result_sender: UnboundedSender<()>,
+    proc_recv: ProcRecv,
+    reply_sender: ReplySender,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
-    pub fn new(
-        command_receiver: UnboundedReceiver<()>,
-        result_sender: UnboundedSender<()>,
-    ) -> Self {
-        Self { _command_receiver: command_receiver, _result_sender: result_sender }
+    pub fn spawn(proc_recv: ProcRecv, reply_sender: ReplySender) -> JoinHandle<()> {
+        tokio::spawn(async move { Self { proc_recv, reply_sender }.run().await })
     }
 
-    /// Spawns a [`VfsTask`].
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
-    }
-
-    async fn run(self) {
-        todo!("Implement VfsTask")
+    #[allow(clippy::redundant_pattern_matching)]
+    async fn run(mut self) {
+        while let Some(_) = self.proc_recv.recv().await {
+            todo!("Do something with request")
+        }
     }
 }
