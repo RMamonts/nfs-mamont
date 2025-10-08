@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::vfs::Vfs;
 
-/// Process RPC commands,sends operation results to [`crate::write_task::WriteTask`].
+/// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask<V: Vfs + 'static> {
     _command_receiver: UnboundedReceiver<()>,
     _result_sender: UnboundedSender<()>,
