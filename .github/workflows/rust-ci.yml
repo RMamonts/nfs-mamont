@@ -42,10 +42,9 @@ jobs:
   test:
     name: Build and Test
     needs: [lint]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest]
         rust: ["1.75.0", "1.88.0"]
 
     steps:
@@ -59,11 +58,13 @@ jobs:
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-${{ matrix.rust }}
+          key: ${{ matrix.rust }}
           cache-on-failure: true
 
       # installed before build for better cache
+
       # TODO: uncomment after there will be more than one test suite
+      # nextest is faster than default cargo test
       # - name: Install cargo-nextest
       #   run: cargo install cargo-nextest --locked
 
@@ -72,16 +73,21 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose --all-features
+        # TODO: uncomment after there will be more than one test suite
+        # and delete line above
         # run: cargo nextest run --verbose --all-features
 
 
   security:
     name: Security Audit
-    needs: [lint]
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Run cargo-audit
         uses: rustsec/audit-check@v2
@@ -119,7 +125,7 @@ jobs:
 
   udeps:
     name: Check Unused Dependencies
-    needs: [test]
+    needs: [security]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
