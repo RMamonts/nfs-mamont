@@ -38,6 +38,7 @@ enum MountProgram {
     MOUNTPROC3_EXPORT = 5,
 }
 
+#[derive(Debug)]
 struct mountres3_ok {
     fhandle: fhandle3,
     auth_flavors: Vec<i32>,
@@ -45,6 +46,7 @@ struct mountres3_ok {
 
 type mountlist = Option<Box<mountbody>>;
 
+#[derive(Debug)]
 struct mountbody {
     ml_hostname: name,
     ml_directory: dirpath,
@@ -53,6 +55,7 @@ struct mountbody {
 
 type groups = Option<Box<groupnode>>;
 
+#[derive(Debug)]
 struct groupnode {
     gr_name: name,
     gr_next: groups,
@@ -60,6 +63,7 @@ struct groupnode {
 
 type exports = Option<Box<exportnode>>;
 
+#[derive(Debug)]
 struct exportnode {
     ex_dir: dirpath,
     ex_groups: groups,
