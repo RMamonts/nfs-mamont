@@ -6,7 +6,6 @@
 //! definitions from the RFC.
 
 use async_trait::async_trait;
-use std::ops::{BitAnd, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 /// Convenient result alias used by all VFS operations.
 pub type VfsResult<T> = Result<T, NfsError>;
@@ -85,60 +84,13 @@ pub enum NfsError {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileHandle(pub Vec<u8>);
 
-impl FileHandle {
-    pub fn new(raw: Vec<u8>) -> Self {
-        assert!(raw.len() <= MAX_FILE_HANDLE_LEN, "file handle exceeds RFC limit");
-        Self(raw)
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
 /// Canonical representation of a filesystem path according to RFC limits.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FsPath(pub String);
 
-impl FsPath {
-    pub fn new(path: impl Into<String>) -> Self {
-        let value = path.into();
-        assert!(value.len() <= MAX_PATH_LEN, "path exceeds RFC limit");
-        Self(value)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for FsPath {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
 /// File or directory name that respects RFC limits.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileName(pub String);
-
-impl FileName {
-    pub fn new(name: impl Into<String>) -> Self {
-        let value = name.into();
-        assert!(value.len() <= MAX_NAME_LEN, "file name exceeds RFC limit");
-        Self(value)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for FileName {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
 
 /// POSIX-like file types enumerated in RFC 1813 3.3.1.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -164,12 +116,6 @@ pub struct DeviceId {
 pub struct FileTime {
     pub seconds: i64,
     pub nanos: u32,
-}
-
-impl FileTime {
-    pub const fn new(seconds: i64, nanos: u32) -> Self {
-        Self { seconds, nanos }
-    }
 }
 
 /// Full file attributes (RFC 1813 3.3.1).
@@ -198,23 +144,11 @@ pub struct AttrDigest {
     pub ctime: FileTime,
 }
 
-impl From<&FileAttr> for AttrDigest {
-    fn from(value: &FileAttr) -> Self {
-        Self { size: value.size, mtime: value.mtime, ctime: value.ctime }
-    }
-}
-
 /// Weak cache consistency information (RFC 1813 3.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct WccData {
     pub before: Option<AttrDigest>,
     pub after: Option<FileAttr>,
-}
-
-impl WccData {
-    pub fn empty() -> Self {
-        Self { before: None, after: None }
-    }
 }
 
 /// Strategy for updating timestamps in [`SetAttr`].
@@ -237,19 +171,6 @@ pub struct SetAttr {
     pub mtime: SetTime,
 }
 
-impl Default for SetAttr {
-    fn default() -> Self {
-        Self {
-            mode: None,
-            uid: None,
-            gid: None,
-            size: None,
-            atime: SetTime::DontChange,
-            mtime: SetTime::DontChange,
-        }
-    }
-}
-
 /// Guard used by [`Vfs::set_attr`] to enforce weak cache consistency.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum SetAttrGuard {
@@ -268,74 +189,6 @@ pub struct LookupResult {
 /// Mask of access rights (RFC 1813 3.3.4).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub struct AccessMask(u32);
-
-impl AccessMask {
-    pub const READ: AccessMask = AccessMask(0x0001);
-    pub const LOOKUP: AccessMask = AccessMask(0x0002);
-    pub const MODIFY: AccessMask = AccessMask(0x0004);
-    pub const EXTEND: AccessMask = AccessMask(0x0008);
-    pub const DELETE: AccessMask = AccessMask(0x0010);
-    pub const EXECUTE: AccessMask = AccessMask(0x0020);
-
-    /// Creates an empty mask.
-    pub const fn empty() -> Self {
-        AccessMask(0)
-    }
-
-    /// Returns raw bit representation.
-    pub const fn bits(self) -> u32 {
-        self.0
-    }
-
-    /// Checks whether all bits from `other` are present.
-    pub const fn contains(self, other: AccessMask) -> bool {
-        (self.0 & other.0) == other.0
-    }
-}
-
-impl BitOr for AccessMask {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        AccessMask(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for AccessMask {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl BitAnd for AccessMask {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        AccessMask(self.0 & rhs.0)
-    }
-}
-
-impl BitXor for AccessMask {
-    type Output = Self;
-
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        AccessMask(self.0 ^ rhs.0)
-    }
-}
-
-impl BitXorAssign for AccessMask {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        self.0 ^= rhs.0;
-    }
-}
-
-impl Not for AccessMask {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        AccessMask(!self.0)
-    }
-}
 
 /// Result returned by ACCESS (RFC 1813 3.3.4).
 #[derive(Debug, Clone, PartialEq)]
@@ -498,42 +351,6 @@ pub struct FsInfo {
 /// Filesystem capability flags (RFC 1813 3.3.19).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub struct FsProperties(u32);
-
-impl FsProperties {
-    pub const HARD_LINK: FsProperties = FsProperties(0x0000_0001);
-    pub const SYMLINK: FsProperties = FsProperties(0x0000_0002);
-    pub const HOMOGENEOUS: FsProperties = FsProperties(0x0000_0008);
-    pub const CAN_SET_TIME: FsProperties = FsProperties(0x0000_0010);
-
-    /// Returns an empty property mask.
-    pub const fn empty() -> Self {
-        FsProperties(0)
-    }
-
-    /// Returns raw property bits.
-    pub const fn bits(self) -> u32 {
-        self.0
-    }
-
-    /// Checks if all bits in `other` are set.
-    pub const fn contains(self, other: FsProperties) -> bool {
-        (self.0 & other.0) == other.0
-    }
-}
-
-impl BitOr for FsProperties {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        FsProperties(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for FsProperties {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
 
 /// POSIX path configuration information (RFC 1813 3.3.20).
 #[derive(Debug, Clone, PartialEq)]
