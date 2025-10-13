@@ -205,7 +205,6 @@ pub struct SymlinkTarget(pub String);
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReadResult {
     pub data: Vec<u8>,
-    pub eof: bool,
     pub file_attr: Option<FileAttr>,
 }
 
@@ -307,7 +306,6 @@ pub struct ReadDirResult {
     pub directory_attr: Option<FileAttr>,
     pub cookie_verifier: CookieVerifier,
     pub entries: Vec<DirectoryEntry>,
-    pub eof: bool,
 }
 
 /// Result of READDIRPLUS (RFC 1813 3.3.17).
@@ -316,7 +314,6 @@ pub struct ReadDirPlusResult {
     pub directory_attr: Option<FileAttr>,
     pub cookie_verifier: CookieVerifier,
     pub entries: Vec<DirectoryPlusEntry>,
-    pub eof: bool,
 }
 
 /// Dynamic filesystem statistics (RFC 1813 3.3.18).
