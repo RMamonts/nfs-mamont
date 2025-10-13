@@ -680,4 +680,3 @@ pub trait Vfs: Sync + Send {
     async fn commit(&self, handle: &FileHandle, offset: u64, count: u32)
         -> VfsResult<CommitResult>;
 }
-
