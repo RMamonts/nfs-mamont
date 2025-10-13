@@ -8,7 +8,7 @@ const RPC_VERSION: u32 = 2;
 enum accept_stat {
     SUCCESS = 0,
     PROG_UNAVAIL = 1,
-    PROG_MISMATTCH(mismatch_info) = 2,
+    PROG_MISMATCH(mismatch_info) = 2,
     PROC_UNAVAIL = 3,
     GARBAGE_ARGS = 4,
     SYSTEM_ERR = 5,
