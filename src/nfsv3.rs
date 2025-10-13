@@ -268,7 +268,7 @@ type sattrguard3 = Option<nfstime3>;
 struct SETATTR3args {
     object: nfs_fh3,
     new_attribute: sattr3,
-    guard: Option<nfstime3>,
+    guard: sattrguard3,
 }
 
 #[allow(dead_code)]
