@@ -4,6 +4,7 @@ mod mount;
 mod nfsv3;
 mod read_task;
 mod rpc;
+pub mod vfs;
 mod vfs_task;
 mod write_task;
 

@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-/// Process RPC commands,sends operation results to [`crate::write_task::WriteTask`].
+/// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
     _command_receiver: UnboundedReceiver<()>,
     _result_sender: UnboundedSender<()>,
