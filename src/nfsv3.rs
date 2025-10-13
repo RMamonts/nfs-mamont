@@ -15,7 +15,7 @@ const NFS3_WRITEVERFSIZE: u32 = 8;
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum NFS_V3_PROGRAM {
+enum NFS_V3 {
     NFSPROC3_NULL = 0,
     NFSPROC3_GETATTR(GETATTR3args) = 1,
     NFSPROC3_SETATTR(SETATTR3args) = 2,
