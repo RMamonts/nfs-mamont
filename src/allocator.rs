@@ -88,12 +88,13 @@ impl Buffer {
         Ok(layout.pad_to_align())
     }
 
-    fn compute_layout(layout_size: usize) -> Result<Layout, LayoutError> {
+    fn compute_layout(payload_size: usize) -> Result<Layout, LayoutError> {
         let header_layout = Self::repr_c_layout(Self::HEADER_BUFFER_FIELDS)?;
-        let (layout, _) =
-            header_layout.extend(Layout::for_value(vec![0u8; layout_size].as_slice()))?;
 
-        Ok(layout.pad_to_align())
+        let payload_layout = Layout::array::<u8>(payload_size)?;
+        let (full_layout, _) = header_layout.extend(payload_layout)?;
+
+        Ok(full_layout.pad_to_align())
     }
 
     fn layout(&self) -> Layout {
