@@ -67,32 +67,42 @@ impl Buffer {
         self.as_mut_and_next().0
     }
 
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe { &(*self.as_ptr()).payload }
+    }
+
+    pub fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
     pub fn mut_next(&mut self) -> &mut Option<Buffer> {
         self.as_mut_and_next().1
     }
 
     pub fn as_mut_and_next(&mut self) -> (&mut [u8], &mut Option<Buffer>) {
-        // Safety: TODO()
+        // Safety:
+        // We use signle linked list --- then user has now way to
+        // obtain interleaved mutable references as `payload` never reachable
+        // via `next` pointer.
+        //
+        // Then we return well align mutable references to non overlaping memory
+        // regions with lifetime bounded to self.
         let as_mut = unsafe { &mut (*self.0.as_ptr()).payload };
         let next = unsafe { &mut (*self.0.as_ptr()).next };
 
         (as_mut, next)
     }
 
-    fn repr_c_layout(fields: &[Layout]) -> Result<Layout, LayoutError> {
+    fn compute_layout(payload_size: usize) -> Result<Layout, LayoutError> {
         let mut layout = Layout::from_size_align(0, 1)?;
-        for &field in fields {
+
+        for &field in Self::HEADER_BUFFER_FIELDS {
             let (new_layout, _) = layout.extend(field)?;
             layout = new_layout;
         }
-        Ok(layout.pad_to_align())
-    }
-
-    fn compute_layout(payload_size: usize) -> Result<Layout, LayoutError> {
-        let header_layout = Self::repr_c_layout(Self::HEADER_BUFFER_FIELDS)?;
 
         let payload_layout = Layout::array::<u8>(payload_size)?;
-        let (full_layout, _) = header_layout.extend(payload_layout)?;
+        let (full_layout, _) = layout.extend(payload_layout)?;
 
         Ok(full_layout.pad_to_align())
     }
@@ -147,23 +157,22 @@ impl BufferChain {
     pub fn blocking_dealloc(Self { buffer: mut next_buffer, sender }: Self) {
         while let Some(mut buffer) = next_buffer {
             next_buffer = buffer.mut_next().take();
-            sender.blocking_send(buffer).expect("can't send buffer");
+            sender.blocking_send(buffer).expect("can't send blocking");
         }
     }
 
     pub async fn dealloc(Self { buffer: mut next_buffer, sender }: Self) {
         while let Some(mut buffer) = next_buffer {
             next_buffer = buffer.mut_next().take();
-            sender.send(buffer).await.expect("can't send blocking");
+            sender.send(buffer).await.expect("can't send async");
         }
     }
 }
 
 struct Allocator {
-    Receiver,
-    Sender,
-    size: usize,
-    count: usize,
+    receiver: Receiver,
+    sender: Sender,
+    capacity: usize,
 }
 
 impl Allocator {
@@ -175,59 +184,64 @@ impl Allocator {
             sender.send(buffer).await.expect("cannot init buffers");
         }
 
-        Self { sender, reciever, size, count }
+        Self { sender, receiver, capacity: size * count }
     }
 
     pub async fn alloc(&mut self, mut size: usize) -> BufferChain {
-        assert!(size < self.size * self.count);
+        assert!(size < self.capacity);
 
         let mut chain = BufferChain::new(self.sender.clone());
-        while size != 0 {
-            let buffer = self.reciever.recv().await.expect("channel not to be closed");
+        while size > 0 {
+            let buffer = self.receiver.recv().await.expect("channel not to be closed");
 
+            size = size.saturating_sub(buffer.len());
             chain.push(buffer);
-            size = size.wrapping_sub(self.size);
         }
 
         chain
     }
 }
 
-// Checks that: we can use public [`Buffer`] api.
-#[test]
-fn payload_len() {
-    const SIZE: usize = 12345;
-    const VALUE: &[u8] = &[1, 2, 3, 4];
+#[cfg(test)]
+mod test {
+    use super::*;
 
-    let mut buffer = Buffer::alloc(SIZE);
+    // Checks that: we can use public [`Buffer`] api.
+    #[test]
+    fn payload_len() {
+        const SIZE: usize = 12345;
+        const VALUE: &[u8] = &[1, 2, 3, 4];
 
-    assert_eq!(buffer.as_mut().len(), SIZE);
+        let mut buffer = Buffer::alloc(SIZE);
 
-    let mut_slice = buffer.as_mut();
-    for (&value, buffer) in VALUE.iter().zip(mut_slice.iter_mut()) {
-        *buffer = value;
+        assert_eq!(buffer.as_mut().len(), SIZE);
+
+        let mut_slice = buffer.as_mut();
+        for (&value, buffer) in VALUE.iter().zip(mut_slice.iter_mut()) {
+            *buffer = value;
+        }
+        assert_eq!(&mut_slice[0..VALUE.len()], VALUE);
+
+        // Safety: same buffer, only called only once
+        unsafe {
+            buffer.dealloc();
+        }
     }
-    assert_eq!(&mut_slice[0..VALUE.len()], VALUE);
 
-    // Safety: same buffer, only called only once
-    unsafe {
-        buffer.dealloc();
+    // Checks that: we can use public [`Buffer`] api.
+    #[test]
+    fn buffer_chain() {
+        const BUFFER_COUNT: usize = 4;
+        const SIZE: usize = 12345;
+        const VALUE: &[u8] = &[1, 2, 3, 4];
+
+        let (sender, _reciever) = mpsc::channel(BUFFER_COUNT);
+        let mut buffer_chain = BufferChain::new(sender);
+
+        buffer_chain.push(Buffer::alloc(SIZE));
+        buffer_chain.push(Buffer::alloc(SIZE));
+
+        let vec = BufferChain::to_vec(&mut buffer_chain);
+        assert_eq!(vec.len(), 2);
     }
-}
-
-// Checks that: we can use public [`Buffer`] api.
-#[test]
-fn buffer_chain() {
-    const BUFFER_COUNT: usize = 4;
-    const SIZE: usize = 12345;
-    const VALUE: &[u8] = &[1, 2, 3, 4];
-
-    let (sender, _reciever) = mpsc::channel(BUFFER_COUNT);
-    let mut buffer_chain = BufferChain::new(sender);
-
-    buffer_chain.push(Buffer::alloc(SIZE));
-    buffer_chain.push(Buffer::alloc(SIZE));
-
-    let vec = BufferChain::to_vec(&mut buffer_chain);
-    assert_eq!(vec.len(), 2);
 }
