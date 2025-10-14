@@ -1,19 +1,19 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 #[allow(dead_code)]
-pub const MOUNT_PROGRAM: u32 = 100005;
+const MOUNT_PROGRAM: u32 = 100005;
 #[allow(dead_code)]
-pub const MOUNT_VERSION: u32 = 3;
+const MOUNT_VERSION: u32 = 3;
 #[allow(dead_code)]
 const MNTPATHLEN: u32 = 1024;
 #[allow(dead_code)]
 const MNTNAMLEN: u32 = 255;
 #[allow(dead_code)]
-const FHSIZE3: u32 = 64;
+const FHSIZE3: u32 = 8;
 
-type fhandle3 = Vec<u8>;
-type dirpath = String;
-type name = String;
+type fhandle3 = [u8; FHSIZE3 as usize];
+type dirpath = Vec<u8>;
+type name = Vec<u8>;
 
 #[allow(dead_code)]
 enum mountstat3 {

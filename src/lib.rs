@@ -1,7 +1,11 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
-mod allocator;
+pub mod allocator;
+mod mount;
+mod nfsv3;
 mod read_task;
+mod rpc;
+pub mod vfs;
 mod vfs_task;
 mod write_task;
 
