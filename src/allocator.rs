@@ -107,7 +107,7 @@ impl Buffer {
 }
 
 type Sender = mpsc::Sender<Buffer>;
-type Reciever = mpsc::Receiver<Buffer>;
+type Receiver = mpsc::Receiver<Buffer>;
 
 struct BufferChain {
     buffer: Option<Buffer>,
