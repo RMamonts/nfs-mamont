@@ -168,7 +168,7 @@ struct Allocator {
 
 impl Allocator {
     pub async fn new(size: usize, count: usize) -> Self {
-        let (sender, reciever) = mpsc::channel::<Buffer>(count);
+        let (sender, receiver) = mpsc::channel::<Buffer>(count);
 
         for _ in 0..count {
             let buffer = Buffer::alloc(size);
