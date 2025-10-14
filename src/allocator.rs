@@ -160,7 +160,7 @@ impl BufferChain {
 
 struct Allocator {
     Receiver,
-    sender: mpsc::Sender<Buffer>,
+    Sender,
     size: usize,
     count: usize,
 }
