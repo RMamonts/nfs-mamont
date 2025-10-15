@@ -55,7 +55,6 @@ impl Allocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::runtime::Builder;
 
     const BUFFER_SIZE: usize = 32;
     const BUFFER_COUNT: usize = 4;
@@ -80,13 +79,10 @@ mod tests {
         Chain::dealloc(second).await;
     }
 
-    #[test]
+    #[tokio::test(flavor = "current_thread")]
     #[should_panic]
-    fn alloc_panics_if_request_exceeds_capacity() {
-        let runtime = Builder::new_current_thread().enable_all().build().expect("runtime");
-        runtime.block_on(async {
-            let mut allocator = Allocator::new(BUFFER_SIZE, BUFFER_COUNT).await;
-            allocator.alloc(BUFFER_SIZE * BUFFER_COUNT).await;
-        });
+    async fn alloc_panics_if_request_exceeds_capacity() {
+        let mut allocator = Allocator::new(BUFFER_SIZE, BUFFER_COUNT).await;
+        allocator.alloc(BUFFER_SIZE * BUFFER_COUNT).await;
     }
 }
