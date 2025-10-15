@@ -29,9 +29,6 @@ impl Buffer {
             alloc::handle_alloc_error(layout)
         }
 
-        // Safety: non null, memory of size `size`, owning pointer
-        // Discassed: https://users.rust-lang.org/t/can-i-create-a-reference-to-a-custom-dst-from-raw-parts-on-stable/63261
-        assert!(!ptr.is_null());
         let ptr: *mut [()] = unsafe { std::slice::from_raw_parts_mut(ptr as *mut (), size) };
 
         // Rustonumicon: https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#pointer-to-pointer-cast
