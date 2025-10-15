@@ -289,7 +289,7 @@ impl Vfs for InMemoryVfs {
         _name: &FileName,
         _node: SpecialNode,
     ) -> VfsResult<CreatedNode> {
-        Err(NfsError::NotSupp)
+        unimplemented!()
     }
 
     async fn remove(&self, _parent: &FileHandle, _name: &FileName) -> VfsResult<RemovalResult> {
