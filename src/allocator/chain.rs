@@ -52,7 +52,7 @@ impl Chain {
     pub async fn dealloc(Self { buffer: mut next_buffer, sender }: Self) {
         while let Some(mut buffer) = next_buffer {
             next_buffer = buffer.mut_next().take();
-            sender.send(buffer).await.expect("can't send async");
+            let _ = sender.send(buffer).await;
         }
     }
 }
