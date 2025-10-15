@@ -10,7 +10,7 @@ struct BufferLayout {
     next: Option<Buffer>,
     // Allocation layout.
     layout: Layout,
-    // Actuall data.
+    // Actual data.
     payload: [u8],
 }
 
