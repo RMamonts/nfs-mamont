@@ -137,4 +137,35 @@ mod test {
             buffer.dealloc();
         }
     }
+
+    #[test]
+    fn freshly_allocated_buffer_is_zeroed() {
+        const SIZE: usize = 64;
+
+        let mut buffer = Buffer::alloc(SIZE);
+        assert_eq!(buffer.len(), SIZE);
+        assert!(buffer.as_slice().iter().all(|&byte| byte == 0));
+
+        unsafe {
+            buffer.dealloc();
+        }
+    }
+
+    #[test]
+    fn mut_next_links_and_unlinks_nodes() {
+        let mut head = Buffer::alloc(8);
+        let tail = Buffer::alloc(16);
+
+        assert!(head.mut_next().is_none());
+
+        *head.mut_next() = Some(tail);
+        let mut restored_tail = head.mut_next().take().expect("tail must be attached");
+        assert_eq!(restored_tail.len(), 16);
+        assert!(head.mut_next().is_none());
+
+        unsafe {
+            restored_tail.dealloc();
+            head.dealloc();
+        }
+    }
 }

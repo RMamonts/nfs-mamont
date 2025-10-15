@@ -51,3 +51,42 @@ impl Allocator {
         chain
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::runtime::Builder;
+
+    const BUFFER_SIZE: usize = 32;
+    const BUFFER_COUNT: usize = 4;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn alloc_provides_requested_capacity() {
+        let mut allocator = Allocator::new(BUFFER_SIZE, BUFFER_COUNT).await;
+        let requested = BUFFER_SIZE + 5;
+
+        let mut chain = allocator.alloc(requested).await;
+        let allocated = {
+            let buffers = Chain::to_vec(&mut chain);
+            buffers.iter().map(|buffer| buffer.len()).sum::<usize>()
+        };
+
+        assert!(allocated >= requested);
+        assert!(allocated <= requested + BUFFER_SIZE);
+
+        Chain::dealloc(chain).await;
+
+        let second = allocator.alloc(BUFFER_SIZE / 2).await;
+        Chain::dealloc(second).await;
+    }
+
+    #[test]
+    #[should_panic]
+    fn alloc_panics_if_request_exceeds_capacity() {
+        let runtime = Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let mut allocator = Allocator::new(BUFFER_SIZE, BUFFER_COUNT).await;
+            allocator.alloc(BUFFER_SIZE * BUFFER_COUNT).await;
+        });
+    }
+}
