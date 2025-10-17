@@ -2,6 +2,7 @@
 
 mod mount;
 mod nfsv3;
+mod parser;
 mod read_task;
 mod rpc;
 pub mod vfs;
