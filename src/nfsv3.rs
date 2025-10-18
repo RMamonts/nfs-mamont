@@ -1,5 +1,10 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
-use crate::parser::to_parse::{StringWithMaxLen, VecWithMaxLen};
+
+use std::io::Read;
+
+use crate::parser::to_parse::{parse, StringWithMaxLen, ToParse, VecWithMaxLen};
+use crate::parser::ParserError;
+use crate::{parse_enum, parse_struct};
 
 #[allow(dead_code)]
 const NFS_PROGRAM: u32 = 100003;
@@ -167,12 +172,14 @@ enum ftype3 {
     NF3SOCK = 6,
     NF3FIFO = 7,
 }
+parse_enum!(ftype3; NF3REG = 1,NF3DIR = 2,NF3BLK = 3,NF3CHR = 4,NF3LNK = 5,NF3SOCK = 6,NF3FIFO = 7);
 
 #[allow(dead_code)]
 struct specdata3 {
     specdata1: u32,
     specdata2: u32,
 }
+parse_struct!(specdata3, specdata1, specdata2);
 
 #[allow(dead_code)]
 type nfs_fh3 = VecWithMaxLen<NFS3_FHSIZE>;
@@ -182,6 +189,7 @@ struct nfstime3 {
     seconds: u32,
     nseconds: u32,
 }
+parse_struct!(nfstime3, seconds, nseconds);
 
 #[allow(dead_code)]
 struct fattr3 {
@@ -231,12 +239,36 @@ enum set_atime {
     SET_TO_CLIENT_TIME(nfstime3) = 2,
 }
 
+impl ToParse for set_atime {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+        let disc = u32::parse(src)?;
+        match disc {
+            0 => Ok(set_atime::DONT_CHANGE),
+            1 => Ok(set_atime::SET_TO_SERVER_TIME),
+            2 => Ok(set_atime::SET_TO_CLIENT_TIME(parse(src)?)),
+            _ => Err(ParserError::EnumDiscMismatch),
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[repr(u32)]
 enum set_mtime {
     DONT_CHANGE = 0,
     SET_TO_SERVER_TIME = 1,
     SET_TO_CLIENT_TIME(nfstime3) = 2,
+}
+
+impl ToParse for set_mtime {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+        let disc = u32::parse(src)?;
+        match disc {
+            0 => Ok(set_mtime::DONT_CHANGE),
+            1 => Ok(set_mtime::SET_TO_SERVER_TIME),
+            2 => Ok(set_mtime::SET_TO_CLIENT_TIME(parse(src)?)),
+            _ => Err(ParserError::EnumDiscMismatch),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -248,12 +280,14 @@ struct sattr3 {
     atime: set_atime,
     mtime: set_mtime,
 }
+parse_struct!(sattr3, mode, uid, gid, size, atime, mtime);
 
 #[allow(dead_code)]
 struct diropargs3 {
     dir: nfs_fh3,
     name: filename3,
 }
+parse_struct!(diropargs3, dir, name);
 
 #[allow(dead_code)]
 struct GETATTR3args {
@@ -374,6 +408,7 @@ enum stable_how {
     DATA_SYNC = 1,
     FILE_SYNC = 2,
 }
+parse_enum!(stable_how; UNSTABLE = 0, DATA_SYNC = 1, FILE_SYNC = 2);
 
 #[allow(dead_code)]
 struct WRITE3args {
@@ -403,6 +438,18 @@ enum createhow3 {
     UNCHECKED(sattr3) = 0,
     GUARDED(sattr3) = 1,
     EXCLUSIVE(createverf3) = 2,
+}
+
+impl ToParse for createhow3 {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+        let disc = u32::parse(src)?;
+        match disc {
+            0 => Ok(createhow3::UNCHECKED(parse(src)?)),
+            1 => Ok(createhow3::UNCHECKED(parse(src)?)),
+            2 => Ok(createhow3::EXCLUSIVE(parse(src)?)),
+            _ => Err(ParserError::EnumDiscMismatch),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -446,6 +493,7 @@ struct symlinkdata3 {
     symlink_attributes: sattr3,
     symlink_data: nfspath3,
 }
+parse_struct!(symlinkdata3, symlink_attributes, symlink_data);
 
 #[allow(dead_code)]
 struct SYMLINK3args {
@@ -470,6 +518,7 @@ struct devicedata3 {
     dev_attributes: sattr3,
     spec: specdata3,
 }
+parse_struct!(devicedata3, dev_attributes, spec);
 
 #[allow(dead_code)]
 #[repr(u32)]
@@ -481,6 +530,22 @@ enum mknoddata3 {
     NF3LNK = 5,
     NF3SOCK(sattr3) = 6,
     NF3FIFO(sattr3) = 7,
+}
+
+impl ToParse for mknoddata3 {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+        let disc = u32::parse(src)?;
+        match disc {
+            1 => Ok(mknoddata3::NF3REG),
+            2 => Ok(mknoddata3::NF3DIR),
+            3 => Ok(mknoddata3::NF3BLK(parse(src)?)),
+            4 => Ok(mknoddata3::NF3CHR(parse(src)?)),
+            5 => Ok(mknoddata3::NF3LNK),
+            6 => Ok(mknoddata3::NF3SOCK(parse(src)?)),
+            7 => Ok(mknoddata3::NF3FIFO(parse(src)?)),
+            _ => Err(ParserError::EnumDiscMismatch),
+        }
+    }
 }
 
 #[allow(dead_code)]

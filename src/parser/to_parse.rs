@@ -97,6 +97,18 @@ impl<T: ToParse> ToParse for Vec<T> {
 }
 #[allow(dead_code)]
 pub struct VecWithMaxLen<const N: usize>(Vec<u8>);
+impl<const N: usize> ToParse for VecWithMaxLen<N> {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+        let size = u32::parse(src)?;
+        if size as usize > N {
+            return Err(ParserError::VecTooLong);
+        }
+        let mut vec = vec![0u8; size as usize];
+        src.read_exact(&mut vec).map_err(|_| ParserError::ReadError)?;
+        read_padding(src, size as usize)?;
+        Ok(VecWithMaxLen(vec))
+    }
+}
 
 #[allow(dead_code)]
 pub struct StringWithMaxLen<const N: usize>(String);

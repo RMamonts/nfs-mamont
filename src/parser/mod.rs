@@ -4,6 +4,7 @@ pub mod to_parse;
 #[allow(unused)]
 pub enum ParserError {
     StringTooLong,
+    VecTooLong,
     ReadError,
     EnumDiscMismatch,
     ArrayConvertError,
