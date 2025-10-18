@@ -5,9 +5,9 @@ pub mod to_parse;
 pub enum Error {
     StringTooLong,
     VecTooLong,
-    IOError,
+    IO,
     EnumDiscMismatch,
-    ArrayConvertError,
+    ArrayConvert,
     IncorrectString,
     IncorrectFilehandle,
     IncorrectPadding,
