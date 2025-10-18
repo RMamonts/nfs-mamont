@@ -94,11 +94,13 @@ impl<T: ToParse> ToParse for Vec<T> {
         Ok(vec)
     }
 }
+#[allow(dead_code)]
+pub struct VecWithMaxLen<const N: usize>(Vec<u8>);
 
 #[allow(dead_code)]
-pub struct StringWithMaxLength<const N: usize>(String);
+pub struct StringWithMaxLen<const N: usize>(String);
 
-impl<const N: usize> ToParse for StringWithMaxLength<N> {
+impl<const N: usize> ToParse for StringWithMaxLen<N> {
     fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
         let size = u32::parse(src)?;
         if size as usize > N {
@@ -107,7 +109,7 @@ impl<const N: usize> ToParse for StringWithMaxLength<N> {
         let mut vec = vec![0u8; size as usize];
         src.read_exact(&mut vec).map_err(|_| ParserError::ReadError)?;
         read_padding(src, size as usize)?;
-        Ok(StringWithMaxLength(String::from_utf8(vec).map_err(|_| ParserError::IncorrectString)?))
+        Ok(StringWithMaxLen(String::from_utf8(vec).map_err(|_| ParserError::IncorrectString)?))
     }
 }
 

@@ -1,17 +1,21 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
+use crate::parser::to_parse::{StringWithMaxLen, VecWithMaxLen};
 
 #[allow(dead_code)]
 const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
 const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
-const NFS3_FHSIZE: u32 = 64;
+const NFS3_FHSIZE: usize = 64;
 #[allow(dead_code)]
 const NFS3_COOKIEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_CREATEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_WRITEVERFSIZE: u32 = 8;
+
+const MAX_FILENAME_SIZE: usize = 255;
+const MAX_PATH_SIZE: usize = 255;
 
 #[allow(dead_code)]
 #[repr(u32)]
@@ -40,8 +44,10 @@ enum NFS_V3 {
     NFSPROC3_COMMIT(COMMIT3args) = 21,
 }
 
-type filename3 = Vec<u8>;
-type nfspath3 = Vec<u8>;
+#[allow(dead_code)]
+type filename3 = StringWithMaxLen<MAX_FILENAME_SIZE>;
+#[allow(dead_code)]
+type nfspath3 = StringWithMaxLen<MAX_PATH_SIZE>;
 type fileid3 = u64;
 type cookie3 = u64;
 type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE as usize];
@@ -169,9 +175,7 @@ struct specdata3 {
 }
 
 #[allow(dead_code)]
-struct nfs_fh3 {
-    data: Vec<u8>,
-}
+type nfs_fh3 = VecWithMaxLen<NFS3_FHSIZE>;
 
 #[allow(dead_code)]
 struct nfstime3 {
