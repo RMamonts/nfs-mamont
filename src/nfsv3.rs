@@ -3,7 +3,7 @@
 use std::io::Read;
 
 use crate::parser::to_parse::{parse, StringWithMaxLen, ToParse, VecWithMaxLen};
-use crate::parser::ParserError;
+use crate::parser::Error;
 use crate::{parse_enum, parse_struct};
 
 #[allow(dead_code)]
@@ -11,7 +11,7 @@ const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
 const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
-const NFS3_FHSIZE: usize = 64;
+const NFS3_FHSIZE: u32 = 64;
 #[allow(dead_code)]
 const NFS3_COOKIEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
@@ -19,8 +19,8 @@ const NFS3_CREATEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_WRITEVERFSIZE: u32 = 8;
 
-const MAX_FILENAME_SIZE: usize = 255;
-const MAX_PATH_SIZE: usize = 255;
+const MAX_FILENAME_SIZE: u32 = 255;
+const MAX_PATH_SIZE: u32 = 255;
 
 #[allow(dead_code)]
 #[repr(u32)]
@@ -240,13 +240,13 @@ enum set_atime {
 }
 
 impl ToParse for set_atime {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
         let disc = u32::parse(src)?;
         match disc {
             0 => Ok(set_atime::DONT_CHANGE),
             1 => Ok(set_atime::SET_TO_SERVER_TIME),
             2 => Ok(set_atime::SET_TO_CLIENT_TIME(parse(src)?)),
-            _ => Err(ParserError::EnumDiscMismatch),
+            _ => Err(Error::EnumDiscMismatch),
         }
     }
 }
@@ -260,13 +260,13 @@ enum set_mtime {
 }
 
 impl ToParse for set_mtime {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
         let disc = u32::parse(src)?;
         match disc {
             0 => Ok(set_mtime::DONT_CHANGE),
             1 => Ok(set_mtime::SET_TO_SERVER_TIME),
             2 => Ok(set_mtime::SET_TO_CLIENT_TIME(parse(src)?)),
-            _ => Err(ParserError::EnumDiscMismatch),
+            _ => Err(Error::EnumDiscMismatch),
         }
     }
 }
@@ -441,13 +441,13 @@ enum createhow3 {
 }
 
 impl ToParse for createhow3 {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
         let disc = u32::parse(src)?;
         match disc {
             0 => Ok(createhow3::UNCHECKED(parse(src)?)),
             1 => Ok(createhow3::UNCHECKED(parse(src)?)),
             2 => Ok(createhow3::EXCLUSIVE(parse(src)?)),
-            _ => Err(ParserError::EnumDiscMismatch),
+            _ => Err(Error::EnumDiscMismatch),
         }
     }
 }
@@ -533,7 +533,7 @@ enum mknoddata3 {
 }
 
 impl ToParse for mknoddata3 {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
+    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
         let disc = u32::parse(src)?;
         match disc {
             1 => Ok(mknoddata3::NF3REG),
@@ -543,7 +543,7 @@ impl ToParse for mknoddata3 {
             5 => Ok(mknoddata3::NF3LNK),
             6 => Ok(mknoddata3::NF3SOCK(parse(src)?)),
             7 => Ok(mknoddata3::NF3FIFO(parse(src)?)),
-            _ => Err(ParserError::EnumDiscMismatch),
+            _ => Err(Error::EnumDiscMismatch),
         }
     }
 }

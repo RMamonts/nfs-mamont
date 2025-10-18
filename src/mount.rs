@@ -7,11 +7,11 @@ const MOUNT_PROGRAM: u32 = 100005;
 #[allow(dead_code)]
 const MOUNT_VERSION: u32 = 3;
 #[allow(dead_code)]
-const MNTPATHLEN: usize = 1024;
+const MNTPATHLEN: u32 = 1024;
 #[allow(dead_code)]
-const MNTNAMLEN: usize = 255;
+const MNTNAMLEN: u32 = 255;
 #[allow(dead_code)]
-const FHSIZE3: usize = 64;
+const FHSIZE3: u32 = 64;
 
 type fhandle3 = VecWithMaxLen<FHSIZE3>;
 type dirpath = StringWithMaxLen<MNTPATHLEN>;

@@ -3,7 +3,7 @@ use crate::parser::to_parse::VecWithMaxLen;
 
 #[allow(dead_code)]
 const RPC_VERSION: u32 = 2;
-const MAX_AUTH_OPAQUE: usize = 400;
+const MAX_AUTH_OPAQUE: u32 = 400;
 
 #[allow(dead_code)]
 #[repr(u32)]
