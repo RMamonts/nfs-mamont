@@ -1,6 +1,8 @@
+use std::io::Read;
+use std::mem::MaybeUninit;
+
 use super::ParserError;
 use byteorder::{BigEndian, ReadBytesExt};
-use std::io::Read;
 
 pub const ALIGNMENT: usize = 4;
 
@@ -55,22 +57,21 @@ impl<T: ToParse> ToParse for Option<T> {
 
 impl<const N: usize> ToParse for [u8; N] {
     fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
-        let mut buf = vec![0u8; N];
-        src.read_exact(&mut buf).map_err(|_| ParserError::ReadError)?;
+        let mut result = [0; N];
+        src.read_exact(&mut result).map_err(|_| ParserError::ReadError)?;
         read_padding(src, N)?;
-        let res = unsafe { Box::from_raw(Box::into_raw(buf.into_boxed_slice()) as *mut [u8; N]) };
-        Ok(*res)
+        Ok(result)
     }
 }
 
 impl<const N: usize, T: ToParse> ToParse for [T; N] {
     fn parse<R: Read>(src: &mut R) -> Result<Self, ParserError> {
-        let mut buf = Vec::<T>::with_capacity(N);
-        for _ in 0..N {
-            buf.push(T::parse(src)?);
+        let mut buf: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
+
+        for elem in buf.iter_mut() {
+            elem.write(T::parse(src)?);
         }
-        let res = unsafe { Box::from_raw(Box::into_raw(buf.into_boxed_slice()) as *mut [T; N]) };
-        Ok(*res)
+        Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
     }
 }
 
