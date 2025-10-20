@@ -5,10 +5,9 @@
 //! expressed using idiomatic Rust naming instead of the original C/XDR
 //! definitions from the RFC.
 
-use async_trait::async_trait;
+use std::io;
 
-/// Convenient result alias used by all VFS operations.
-pub type VfsResult<T> = Result<T, NfsError>;
+use async_trait::async_trait;
 
 /// Maximum number of bytes allowed in a file handle (per RFC 1813 2.4).
 pub const MAX_FILE_HANDLE_LEN: usize = 8;
@@ -18,67 +17,6 @@ pub const MAX_NAME_LEN: usize = 255;
 
 /// Maximum number of bytes allowed in a file path (per RFC 1813 2.4).
 pub const MAX_PATH_LEN: usize = 1024;
-
-/// NFSv3 status codes (RFC 1813 2.6).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum NfsError {
-    // NFS3ERR_PERM
-    Perm,
-    // NFS3ERR_NOENT
-    NoEnt,
-    // NFS3ERR_IO
-    Io,
-    // NFS3ERR_NXIO
-    NxIo,
-    // NFS3ERR_ACCES
-    Access,
-    // NFS3ERR_EXIST
-    Exist,
-    // NFS3ERR_XDEV
-    XDev,
-    // NFS3ERR_NODEV
-    Nodev,
-    // NFS3ERR_NOTDIR
-    NotDir,
-    // NFS3ERR_ISDIR
-    IsDir,
-    // NFS3ERR_INVAL
-    Inval,
-    // NFS3ERR_FBIG
-    FBig,
-    // NFS3ERR_NOSPC
-    NoSpc,
-    // NFS3ERR_ROFS
-    RoFs,
-    // NFS3ERR_MLINK
-    MLink,
-    // NFS3ERR_NAME_TOO_LONG
-    NameTooLong,
-    // NFS3ERR_NOT_EMPTY
-    NotEmpty,
-    // NFS3ERR_DQUOT
-    DQuot,
-    // NFS3ERR_STALE
-    Stale,
-    // NFS3ERR_REMOTE
-    Remote,
-    // NFS3ERR_BAD_COOKIE
-    BadCookie,
-    // NFS3ERR_BADHANDLE
-    BadHandle,
-    // NFS3ERR_NOT_SYNC
-    NotSync,
-    // NFS3ERR_NOTSUPP
-    NotSupp,
-    // NFS3ERR_TOOSMALL
-    TooSmall,
-    // NFS3ERR_SERVERFAULT
-    ServerFault,
-    // NFS3ERR_BADTYPE
-    BadType,
-    // NFS3ERR_JUKEBOX
-    Jukebox,
-}
 
 /// Handle that uniquely identifies an inode inside the exported filesystem.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -372,7 +310,7 @@ pub struct CommitResult {
 #[async_trait]
 pub trait Vfs: Sync + Send {
     /// Procedure 1: GETATTR – fetch file attributes.
-    async fn get_attr(&self, handle: &FileHandle) -> VfsResult<FileAttr>;
+    async fn get_attr(&self, handle: &FileHandle) -> io::Result<FileAttr>;
 
     /// Procedure 2: SETATTR – mutate file attributes with optional guard.
     async fn set_attr(
@@ -380,19 +318,20 @@ pub trait Vfs: Sync + Send {
         handle: &FileHandle,
         attr: SetAttr,
         guard: SetAttrGuard,
-    ) -> VfsResult<WccData>;
+    ) -> io::Result<WccData>;
 
     /// Procedure 3: LOOKUP – resolve a name within a directory.
-    async fn lookup(&self, parent: &FileHandle, name: &FileName) -> VfsResult<LookupResult>;
+    async fn lookup(&self, parent: &FileHandle, name: &FileName) -> io::Result<LookupResult>;
 
     /// Procedure 4: ACCESS – evaluate requested access mask.
-    async fn access(&self, handle: &FileHandle, mask: AccessMask) -> VfsResult<AccessResult>;
+    async fn access(&self, handle: &FileHandle, mask: AccessMask) -> io::Result<AccessResult>;
 
     /// Procedure 5: READLINK – read symbolic link contents.
-    async fn read_link(&self, handle: &FileHandle) -> VfsResult<(SymlinkTarget, Option<FileAttr>)>;
+    async fn read_link(&self, handle: &FileHandle)
+        -> io::Result<(SymlinkTarget, Option<FileAttr>)>;
 
     /// Procedure 6: READ – read file data.
-    async fn read(&self, handle: &FileHandle, offset: u64, count: u32) -> VfsResult<ReadResult>;
+    async fn read(&self, handle: &FileHandle, offset: u64, count: u32) -> io::Result<ReadResult>;
 
     /// Procedure 7: WRITE – write file data with stability mode.
     async fn write(
@@ -401,7 +340,7 @@ pub trait Vfs: Sync + Send {
         offset: u64,
         data: &[u8],
         mode: WriteMode,
-    ) -> VfsResult<WriteResult>;
+    ) -> io::Result<WriteResult>;
 
     /// Procedure 8: CREATE – create and optionally initialize a regular file.
     async fn create(
@@ -409,7 +348,7 @@ pub trait Vfs: Sync + Send {
         parent: &FileHandle,
         name: &FileName,
         mode: CreateMode,
-    ) -> VfsResult<CreatedNode>;
+    ) -> io::Result<CreatedNode>;
 
     /// Procedure 9: MKDIR – create a directory.
     async fn make_dir(
@@ -417,7 +356,7 @@ pub trait Vfs: Sync + Send {
         parent: &FileHandle,
         name: &FileName,
         attr: SetAttr,
-    ) -> VfsResult<CreatedNode>;
+    ) -> io::Result<CreatedNode>;
 
     /// Procedure 10: SYMLINK – create a symbolic link.
     async fn make_symlink(
@@ -426,7 +365,7 @@ pub trait Vfs: Sync + Send {
         name: &FileName,
         target: &SymlinkTarget,
         attr: SetAttr,
-    ) -> VfsResult<CreatedNode>;
+    ) -> io::Result<CreatedNode>;
 
     /// Procedure 11: MKNOD – create a special node.
     async fn make_node(
@@ -434,13 +373,13 @@ pub trait Vfs: Sync + Send {
         parent: &FileHandle,
         name: &FileName,
         node: SpecialNode,
-    ) -> VfsResult<CreatedNode>;
+    ) -> io::Result<CreatedNode>;
 
     /// Procedure 12: REMOVE – delete a file.
-    async fn remove(&self, parent: &FileHandle, name: &FileName) -> VfsResult<RemovalResult>;
+    async fn remove(&self, parent: &FileHandle, name: &FileName) -> io::Result<RemovalResult>;
 
     /// Procedure 13: RMDIR – delete an empty directory.
-    async fn remove_dir(&self, parent: &FileHandle, name: &FileName) -> VfsResult<RemovalResult>;
+    async fn remove_dir(&self, parent: &FileHandle, name: &FileName) -> io::Result<RemovalResult>;
 
     /// Procedure 14: RENAME – atomically move a file or directory.
     async fn rename(
@@ -449,7 +388,7 @@ pub trait Vfs: Sync + Send {
         from_name: &FileName,
         to_parent: &FileHandle,
         to_name: &FileName,
-    ) -> VfsResult<RenameResult>;
+    ) -> io::Result<RenameResult>;
 
     /// Procedure 15: LINK – create a hard link.
     async fn link(
@@ -457,7 +396,7 @@ pub trait Vfs: Sync + Send {
         source: &FileHandle,
         new_parent: &FileHandle,
         new_name: &FileName,
-    ) -> VfsResult<LinkResult>;
+    ) -> io::Result<LinkResult>;
 
     /// Procedure 16: READDIR – iterate directory entries.
     async fn read_dir(
@@ -466,7 +405,7 @@ pub trait Vfs: Sync + Send {
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-    ) -> VfsResult<ReadDirResult>;
+    ) -> io::Result<ReadDirResult>;
 
     /// Procedure 17: READDIRPLUS – iterate directory entries with attributes.
     async fn read_dir_plus(
@@ -476,18 +415,22 @@ pub trait Vfs: Sync + Send {
         verifier: CookieVerifier,
         max_bytes: u32,
         max_handles: u32,
-    ) -> VfsResult<ReadDirPlusResult>;
+    ) -> io::Result<ReadDirPlusResult>;
 
     /// Procedure 18: FSSTAT – fetch dynamic filesystem statistics.
-    async fn fs_stat(&self, handle: &FileHandle) -> VfsResult<FsStat>;
+    async fn fs_stat(&self, handle: &FileHandle) -> io::Result<FsStat>;
 
     /// Procedure 19: FSINFO – fetch static filesystem information.
-    async fn fs_info(&self, handle: &FileHandle) -> VfsResult<FsInfo>;
+    async fn fs_info(&self, handle: &FileHandle) -> io::Result<FsInfo>;
 
     /// Procedure 20: PATHCONF – fetch POSIX path capabilities.
-    async fn path_conf(&self, handle: &FileHandle) -> VfsResult<PathConfig>;
+    async fn path_conf(&self, handle: &FileHandle) -> io::Result<PathConfig>;
 
     /// Procedure 21: COMMIT – ensure previous writes reach stable storage.
-    async fn commit(&self, handle: &FileHandle, offset: u64, count: u32)
-        -> VfsResult<CommitResult>;
+    async fn commit(
+        &self,
+        handle: &FileHandle,
+        offset: u64,
+        count: u32,
+    ) -> io::Result<CommitResult>;
 }
