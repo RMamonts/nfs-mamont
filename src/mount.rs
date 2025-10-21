@@ -1,7 +1,5 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
-use crate::parser::to_parse::{StringWithMaxLen, VecWithMaxLen};
-
 #[allow(dead_code)]
 const MOUNT_PROGRAM: u32 = 100005;
 #[allow(dead_code)]
@@ -13,9 +11,9 @@ const MNTNAMLEN: u32 = 255;
 #[allow(dead_code)]
 const FHSIZE3: u32 = 64;
 
-type fhandle3 = VecWithMaxLen<FHSIZE3>;
-type dirpath = StringWithMaxLen<MNTPATHLEN>;
-type name = StringWithMaxLen<MNTNAMLEN>;
+type fhandle3 = Vec<u8>;
+type dirpath = String;
+type name = String;
 
 #[allow(dead_code)]
 enum mountstat3 {

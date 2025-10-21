@@ -2,183 +2,132 @@ use std::io::Read;
 use std::mem::MaybeUninit;
 
 use byteorder::{BigEndian, ReadBytesExt};
+use num_traits::FromPrimitive;
 
 use super::Error;
 
+#[allow(dead_code)]
 pub const ALIGNMENT: usize = 4;
 
-#[allow(unused)]
-pub trait ToParse: Sized {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error>;
-}
-
-#[allow(unused)]
-pub fn parse<T: ToParse, R: Read>(src: &mut R) -> Result<T, Error> {
-    T::parse(src)
-}
-
-pub fn read_padding<R: Read>(src: &mut R, n: usize) -> Result<(), Error> {
+#[allow(dead_code)]
+fn read_padding(src: &mut (impl Read + ?Sized), n: usize) -> Result<(), Error> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
 }
 
-impl ToParse for u32 {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        src.read_u32::<BigEndian>().map_err(|_| Error::IO)
-    }
-}
-
-impl ToParse for u64 {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        src.read_u64::<BigEndian>().map_err(|_| Error::IO)
-    }
-}
-
-impl ToParse for bool {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let discr = parse::<u32, R>(src)?;
-        match discr {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => Err(Error::EnumDiscMismatch),
-        }
-    }
-}
-
-impl<T: ToParse> ToParse for Option<T> {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let disc = parse::<bool, R>(src)?;
-        match disc {
-            true => Ok(Some(T::parse(src)?)),
-            false => Ok(None),
-        }
-    }
-}
-
-impl<const N: usize> ToParse for [u8; N] {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let mut result = [0; N];
-        src.read_exact(&mut result).map_err(|_| Error::IO)?;
-        read_padding(src, N)?;
-        Ok(result)
-    }
-}
-
-impl<const N: usize, T: ToParse> ToParse for [T; N] {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let mut buf: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
-
-        for elem in buf.iter_mut() {
-            elem.write(T::parse(src)?);
-        }
-        Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
-    }
-}
-
-impl ToParse for Vec<u8> {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let size = u32::parse(src)?;
-        let mut vec = vec![0u8; size as usize];
-        src.read_exact(&mut vec).map_err(|_| Error::IO)?;
-        read_padding(src, size as usize)?;
-        Ok(vec)
-    }
-}
-
-impl<T: ToParse> ToParse for Vec<T> {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let size = u32::parse(src)?;
-        let mut vec = Vec::with_capacity(size as usize);
-        for _ in 0..size {
-            vec.push(T::parse(src)?);
-        }
-        Ok(vec)
-    }
-}
 #[allow(dead_code)]
-pub struct VecWithMaxLen<const N: u32>(Vec<u8>);
-impl<const N: u32> ToParse for VecWithMaxLen<N> {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let size = u32::parse(src)?;
-        if size > N {
-            return Err(Error::VecTooLong);
-        }
-        let mut vec = vec![0u8; size as usize];
-        src.read_exact(&mut vec).map_err(|_| Error::IO)?;
-        read_padding(src, size as usize)?;
-        Ok(VecWithMaxLen(vec))
+pub fn parse_u8(src: &mut (impl Read + ?Sized)) -> Result<u8, Error> {
+    src.read_u8().map_err(|_| Error::IO)
+}
+
+#[allow(dead_code)]
+pub fn parse_u32(src: &mut (impl Read + ?Sized)) -> Result<u32, Error> {
+    src.read_u32::<BigEndian>().map_err(|_| Error::IO)
+}
+
+#[allow(dead_code)]
+pub fn parse_u64(src: &mut (impl Read + ?Sized)) -> Result<u64, Error> {
+    src.read_u64::<BigEndian>().map_err(|_| Error::IO)
+}
+
+#[allow(dead_code)]
+pub fn parse_bool(src: &mut (impl Read + ?Sized)) -> Result<bool, Error> {
+    let discr = parse_u32(src)?;
+    match discr {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Error::EnumDiscMismatch),
     }
 }
 
 #[allow(dead_code)]
-pub struct StringWithMaxLen<const N: u32>(String);
-
-impl<const N: u32> ToParse for StringWithMaxLen<N> {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let size = u32::parse(src)?;
-        if size > N {
-            return Err(Error::StringTooLong);
-        }
-        let mut vec = vec![0u8; size as usize];
-        src.read_exact(&mut vec).map_err(|_| Error::IO)?;
-        read_padding(src, size as usize)?;
-        Ok(StringWithMaxLen(String::from_utf8(vec).map_err(|_| Error::IncorrectString)?))
+pub fn parse_option<T>(
+    src: &mut impl Read,
+    cont: impl FnOnce(&mut dyn Read) -> Result<T, Error>,
+) -> Result<Option<T>, Error> {
+    let disc = parse_bool(src)?;
+    match disc {
+        true => Ok(Some(cont(src)?)),
+        false => Ok(None),
     }
 }
 
-impl ToParse for String {
-    fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-        let size = u32::parse(src)?;
-        let mut vec = vec![0u8; size as usize];
-        src.read_exact(&mut vec).map_err(|_| Error::IO)?;
-        read_padding(src, size as usize)?;
-        String::from_utf8(vec).map_err(|_| Error::IncorrectString)
+#[allow(dead_code)]
+pub fn parse_array<const N: usize, T>(
+    src: &mut impl Read,
+    cont: impl Fn(&mut dyn Read) -> Result<T, Error>,
+) -> Result<[T; N], Error> {
+    let mut buf: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
+    for elem in buf.iter_mut() {
+        elem.write(cont(src)?);
     }
+    read_padding(src, N * size_of::<T>())?;
+    Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
 }
 
-#[macro_export]
-macro_rules! parse_struct {
-    ($t:ident, $($element:ident),*) => {
-        impl ToParse for $t {
-            fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-                Ok($t {$($element: parse(src)?,)*})
-            }
-        }
-    };
+#[allow(dead_code)]
+pub fn parse_vector<T>(
+    src: &mut impl Read,
+    cont: impl Fn(&mut dyn Read) -> Result<T, Error>,
+) -> Result<Vec<T>, Error> {
+    let size = parse_u32(src)?;
+    let mut vec = Vec::with_capacity(size as usize);
+    for _ in 0..size {
+        vec.push(cont(src)?);
+    }
+    read_padding(src, size_of::<T>() * size as usize)?;
+    Ok(vec)
 }
 
-#[macro_export]
-macro_rules! parse_enum {
-    ($enum:ident; $($variant:ident = $disc:expr),* $(,)?) => {
-        impl ToParse for $enum {
-            fn parse<R: Read>(src: &mut R) -> Result<Self, Error> {
-                let disc = u32::parse(src)?;
-                match disc {
-                    $(
-                        $disc => Ok(Self::$variant),
-                    )*
-                    _ => Err(Error::EnumDiscMismatch),
-                }
-            }
-        }
-    };
+#[allow(dead_code)]
+pub fn parse_vec_max_size<const N: usize, T>(
+    src: &mut impl Read,
+    cont: impl Fn(&mut dyn Read) -> Result<T, Error>,
+) -> Result<Vec<T>, Error> {
+    let size = parse_u32(src)?;
+    if size as usize > N {
+        return Err(Error::VecTooLong);
+    }
+    let mut vec = Vec::with_capacity(size as usize);
+    for _ in 0..size {
+        vec.push(cont(src)?);
+    }
+    read_padding(src, size_of::<T>() * size as usize)?;
+    Ok(vec)
+}
+
+#[allow(dead_code)]
+pub fn parse_string_max_len<const N: usize>(src: &mut impl Read) -> Result<String, Error> {
+    let vec = parse_vec_max_size::<N, u8>(src, |s| parse_u8(s))?;
+    String::from_utf8(vec).map_err(|_| Error::IncorrectString)
+}
+
+#[allow(dead_code)]
+pub fn parse_string(src: &mut impl Read) -> Result<String, Error> {
+    let vec = parse_vector(src, |s| parse_u8(s))?;
+    String::from_utf8(vec).map_err(|_| Error::IncorrectString)
+}
+
+#[allow(dead_code)]
+fn parse_c_enum<T: FromPrimitive>(src: &mut impl Read) -> Result<T, Error> {
+    let val = FromPrimitive::from_u32(parse_u32(src)?);
+    match val {
+        Some(res) => Ok(res),
+        None => Err(Error::EnumDiscMismatch),
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::parser::to_parse::{StringWithMaxLen, ToParse};
+    use crate::parser::to_parse::{
+        parse_array, parse_bool, parse_option, parse_string, parse_string_max_len, parse_u32,
+        parse_u64, parse_u8, parse_vector,
+    };
     use crate::parser::Error;
     use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-    use std::fmt::Debug;
     use std::io::Cursor;
 
-    fn run_test<T: ToParse + PartialEq + Debug>(mut src: Cursor<Vec<u8>>, res: &mut [T]) {
-        for correct_res in res {
-            let val = T::parse(&mut src).expect("Cannot parse value!");
-            assert_eq!(val, *correct_res)
-        }
-    }
     fn run_test_u8(mut src: Cursor<Vec<u8>>, res: &mut [u8]) {
         for correct_res in res {
             let val = src.read_u8().expect("Cannot read byte!");
@@ -189,37 +138,49 @@ mod test {
 
     #[test]
     fn test_u32() {
-        let mut init = [0u32, 7, 788965];
-        let mut src = Vec::with_capacity(size_of::<u32>() * init.len());
+        let init = [0u32, 7, 788965];
+        let mut src = Cursor::new(Vec::with_capacity(size_of::<u32>() * init.len()));
         for i in init {
             src.write_u32::<BigEndian>(i).unwrap();
         }
-        run_test(Cursor::new(src), &mut init)
+        src.set_position(0);
+        for correct_res in init {
+            let val = parse_u32(&mut src).expect("Cannot parse value!");
+            assert_eq!(val, correct_res)
+        }
     }
 
     #[test]
     fn test_u64() {
-        let mut init = [2u64, 0, 125, 78569];
-        let mut src = Vec::with_capacity(size_of::<u64>() * init.len());
+        let init = [2u64, 0, 125, 78569];
+        let mut src = Cursor::new(Vec::with_capacity(size_of::<u64>() * init.len()));
         for i in init {
             src.write_u64::<BigEndian>(i).unwrap();
         }
-        run_test(Cursor::new(src), &mut init)
+        src.set_position(0);
+        for correct_res in init {
+            let val = parse_u64(&mut src).expect("Cannot parse value!");
+            assert_eq!(val, correct_res)
+        }
     }
 
     #[test]
     fn test_bool() {
-        let mut init = [true, false, true];
-        let mut src = Vec::with_capacity(size_of::<u32>() * init.len());
+        let init = [true, false, true];
+        let mut src = Cursor::new(Vec::with_capacity(size_of::<u32>() * init.len()));
         for i in init {
             src.write_u32::<BigEndian>(if i { 1 } else { 0 }).unwrap();
         }
-        run_test(Cursor::new(src), &mut init)
+        src.set_position(0);
+        for correct_res in init {
+            let val = parse_bool(&mut src).expect("Cannot parse value!");
+            assert_eq!(val, correct_res)
+        }
     }
 
     #[test]
     fn test_option() {
-        let mut init = [None, Some(85u32), Some(0)];
+        let init = [None, Some(85u32), Some(0)];
         let mut src = Vec::new();
         for op in init {
             if let Some(val) = op {
@@ -229,15 +190,21 @@ mod test {
                 src.write_u32::<BigEndian>(0).unwrap();
             }
         }
-        run_test(Cursor::new(src), &mut init);
+        let mut src = Cursor::new(src);
+        for correct_res in init {
+            let val = parse_option(&mut src, |s| parse_u32(s)).expect("Cannot parse value!");
+            assert_eq!(val, correct_res)
+        }
     }
 
     #[test]
     fn test_fixed_array() {
-        let mut init = [457u32, 475, 0];
+        let init = [457u32, 475, 0];
         let mut src = Vec::new();
         init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
-        run_test(Cursor::new(src), &mut init);
+        let mut src = Cursor::new(src);
+        let val = parse_array::<3, u32>(&mut src, |s| parse_u32(s)).expect("Cannot parse value!");
+        assert_eq!(val, init)
     }
 
     #[test]
@@ -259,7 +226,7 @@ mod test {
         let padding_len = (4 - (init.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = Vec::<u8>::parse(&mut Cursor::new(src)).unwrap();
+        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -272,7 +239,7 @@ mod test {
             src.write_u8(*i).unwrap();
         }
         src.push(0);
-        let result = Vec::<u8>::parse(&mut Cursor::new(src)).unwrap();
+        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -283,7 +250,7 @@ mod test {
         for i in &init {
             src.write_u8(*i).unwrap();
         }
-        let result = <[u8; 3]>::parse(&mut Cursor::new(src));
+        let result = parse_array::<3, u8>(&mut Cursor::new(src), |s| parse_u8(s));
         assert!(matches!(result, Err(Error::IncorrectPadding)));
     }
 
@@ -295,7 +262,7 @@ mod test {
             src.write_u8(*i).unwrap();
         }
         src.push(4);
-        let result = <[u8; 3]>::parse(&mut Cursor::new(src)).unwrap();
+        let result = parse_array::<3, u8>(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
         assert_eq!(init, result);
     }
 
@@ -306,7 +273,7 @@ mod test {
         for i in &init {
             src.write_u32::<BigEndian>(*i).unwrap();
         }
-        let result = <[u32; 3]>::parse(&mut Cursor::new(src)).unwrap();
+        let result = parse_array::<3, u32>(&mut Cursor::new(src), |s| parse_u32(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -315,7 +282,7 @@ mod test {
         let init = [78u32, 0, 78965];
         let mut src = Vec::new();
         let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
-        let result = <[u32; 4]>::parse(&mut Cursor::new(src));
+        let result = parse_array::<4, u32>(&mut Cursor::new(src), |s| parse_u32(s));
         assert!(matches!(result, Err(Error::IO)));
     }
 
@@ -327,25 +294,10 @@ mod test {
         for i in &init {
             src.write_u32::<BigEndian>(*i).unwrap();
         }
-        let result = Vec::<u32>::parse(&mut Cursor::new(src)).unwrap();
+        let result = parse_vector(&mut Cursor::new(src), |s| parse_u32(s)).unwrap();
         assert_eq!(result, init);
     }
 
-    #[test]
-    fn test_vec_of_string() {
-        let data = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
-        let mut src = Vec::new();
-
-        src.write_u32::<BigEndian>(data.len() as u32).unwrap();
-        for s in &data {
-            src.write_u32::<BigEndian>(s.len() as u32).unwrap();
-            src.extend_from_slice(s.as_bytes());
-            let padding_len = (4 - (s.len() % 4)) % 4;
-            src.extend(vec![0u8; padding_len]);
-        }
-        let result = Vec::<String>::parse(&mut Cursor::new(src)).unwrap();
-        assert_eq!(result, data);
-    }
     #[test]
     fn test_string_utf8_error() {
         let mut src = Vec::new();
@@ -353,7 +305,7 @@ mod test {
         src.write_u32::<BigEndian>(invalid_utf8.len() as u32).unwrap();
         src.extend_from_slice(&invalid_utf8);
         src.push(0);
-        let result = String::parse(&mut Cursor::new(src));
+        let result = parse_string(&mut Cursor::new(src));
         assert!(matches!(result, Err(Error::IncorrectString)));
     }
 
@@ -363,8 +315,8 @@ mod test {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
         src.extend_from_slice(test_string.as_bytes());
-        let result = StringWithMaxLen::<10>::parse(&mut Cursor::new(src)).unwrap();
-        assert_eq!(result.0, test_string);
+        let result = parse_string_max_len::<10>(&mut Cursor::new(src)).unwrap();
+        assert_eq!(result, test_string);
     }
 
     #[test]
@@ -377,15 +329,16 @@ mod test {
         let padding_len = (4 - (test_string.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = StringWithMaxLen::<10>::parse(&mut Cursor::new(src));
-        assert!(matches!(result, Err(Error::StringTooLong)));
+        let result = parse_string_max_len::<10>(&mut Cursor::new(src));
+        println!("{:?}", result);
+        assert!(matches!(result, Err(Error::VecTooLong)));
     }
 
     #[test]
     fn test_read_error() {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(10).unwrap();
-        let result = Vec::<u8>::parse(&mut Cursor::new(src));
+        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s));
         assert!(matches!(result, Err(Error::IO)));
     }
 }

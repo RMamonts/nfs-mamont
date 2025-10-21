@@ -1,8 +1,8 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
-use crate::parser::to_parse::VecWithMaxLen;
 
 #[allow(dead_code)]
 const RPC_VERSION: u32 = 2;
+#[allow(dead_code)]
 const MAX_AUTH_OPAQUE: u32 = 400;
 
 #[allow(dead_code)]
@@ -90,7 +90,7 @@ enum auth_flavor {
 #[allow(dead_code)]
 struct opaque_auth {
     flavor: auth_flavor,
-    body: VecWithMaxLen<MAX_AUTH_OPAQUE>,
+    body: Vec<u8>,
 }
 
 #[allow(dead_code)]
