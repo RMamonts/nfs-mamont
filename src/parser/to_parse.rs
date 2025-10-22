@@ -110,7 +110,7 @@ pub fn parse_string(src: &mut impl Read) -> Result<String, Error> {
 }
 
 #[allow(dead_code)]
-fn parse_c_enum<T: FromPrimitive>(src: &mut impl Read) -> Result<T, Error> {
+pub fn parse_c_enum<T: FromPrimitive>(src: &mut impl Read) -> Result<T, Error> {
     let val = FromPrimitive::from_u32(parse_u32(src)?);
     match val {
         Some(res) => Ok(res),
@@ -120,30 +120,24 @@ fn parse_c_enum<T: FromPrimitive>(src: &mut impl Read) -> Result<T, Error> {
 
 #[cfg(test)]
 mod test {
+    use std::io::Cursor;
+
+    use byteorder::{BigEndian, WriteBytesExt};
+
     use crate::parser::to_parse::{
         parse_array, parse_bool, parse_option, parse_string, parse_string_max_len, parse_u32,
         parse_u64, parse_u8, parse_vector,
     };
     use crate::parser::Error;
-    use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-    use std::io::Cursor;
-
-    fn run_test_u8(mut src: Cursor<Vec<u8>>, res: &mut [u8]) {
-        for correct_res in res {
-            let val = src.read_u8().expect("Cannot read byte!");
-            assert_eq!(val, *correct_res)
-        }
-        assert_eq!(src.position(), src.get_mut().len() as u64)
-    }
 
     #[test]
     fn test_u32() {
         let init = [0u32, 7, 788965];
-        let mut src = Cursor::new(Vec::with_capacity(size_of::<u32>() * init.len()));
+        let mut src = Vec::with_capacity(size_of::<u32>() * init.len());
         for i in init {
             src.write_u32::<BigEndian>(i).unwrap();
         }
-        src.set_position(0);
+        let mut src = Cursor::new(src);
         for correct_res in init {
             let val = parse_u32(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
@@ -153,11 +147,11 @@ mod test {
     #[test]
     fn test_u64() {
         let init = [2u64, 0, 125, 78569];
-        let mut src = Cursor::new(Vec::with_capacity(size_of::<u64>() * init.len()));
+        let mut src = Vec::with_capacity(size_of::<u64>() * init.len());
         for i in init {
             src.write_u64::<BigEndian>(i).unwrap();
         }
-        src.set_position(0);
+        let mut src = Cursor::new(src);
         for correct_res in init {
             let val = parse_u64(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
@@ -167,11 +161,11 @@ mod test {
     #[test]
     fn test_bool() {
         let init = [true, false, true];
-        let mut src = Cursor::new(Vec::with_capacity(size_of::<u32>() * init.len()));
+        let mut src = Vec::with_capacity(size_of::<u32>() * init.len());
         for i in init {
             src.write_u32::<BigEndian>(if i { 1 } else { 0 }).unwrap();
         }
-        src.set_position(0);
+        let mut src = Cursor::new(src);
         for correct_res in init {
             let val = parse_bool(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
@@ -198,21 +192,13 @@ mod test {
     }
 
     #[test]
-    fn test_fixed_array() {
+    fn test_array_u32() {
         let init = [457u32, 475, 0];
         let mut src = Vec::new();
         init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
         let mut src = Cursor::new(src);
         let val = parse_array::<3, u32>(&mut src, |s| parse_u32(s)).expect("Cannot parse value!");
         assert_eq!(val, init)
-    }
-
-    #[test]
-    fn test_u8_array() {
-        let mut init = [255u8, 1, 4, 7, 0];
-        let mut src = Vec::new();
-        init.map(|i| src.write_u8(i).unwrap());
-        run_test_u8(Cursor::new(src), &mut init);
     }
 
     #[test]
@@ -255,29 +241,6 @@ mod test {
     }
 
     #[test]
-    fn test_u8_array_correct() {
-        let init = [1u8, 2, 3];
-        let mut src = Vec::new();
-        for i in &init {
-            src.write_u8(*i).unwrap();
-        }
-        src.push(4);
-        let result = parse_array::<3, u8>(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
-        assert_eq!(init, result);
-    }
-
-    #[test]
-    fn test_u32_array_success() {
-        let init = [1u32, 0, 457148];
-        let mut src = Vec::new();
-        for i in &init {
-            src.write_u32::<BigEndian>(*i).unwrap();
-        }
-        let result = parse_array::<3, u32>(&mut Cursor::new(src), |s| parse_u32(s)).unwrap();
-        assert_eq!(result, init);
-    }
-
-    #[test]
     fn test_u8_array_miss_elements() {
         let init = [78u32, 0, 78965];
         let mut src = Vec::new();
@@ -307,6 +270,17 @@ mod test {
         src.push(0);
         let result = parse_string(&mut Cursor::new(src));
         assert!(matches!(result, Err(Error::IncorrectString)));
+    }
+
+    #[test]
+    fn test_string_valid() {
+        let test_string = "test string".to_string();
+        let mut src = Vec::new();
+        src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
+        src.extend_from_slice(test_string.as_bytes());
+        src.write_u8(0u8).unwrap();
+        let result = parse_string(&mut Cursor::new(src)).unwrap();
+        assert_eq!(result, test_string);
     }
 
     #[test]
