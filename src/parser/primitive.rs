@@ -2,7 +2,7 @@ use std::io::Read;
 use std::mem::MaybeUninit;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use num_traits::FromPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 
 use super::Error;
 
@@ -71,12 +71,12 @@ pub fn parse_vector<T>(
     src: &mut impl Read,
     cont: impl Fn(&mut dyn Read) -> Result<T, Error>,
 ) -> Result<Vec<T>, Error> {
-    let size = parse_u32(src)?;
-    let mut vec = Vec::with_capacity(size as usize);
+    let size = parse_u32_as_usize(src)?;
+    let mut vec = Vec::with_capacity(size);
     for _ in 0..size {
         vec.push(cont(src)?);
     }
-    read_padding(src, size_of::<T>() * size as usize)?;
+    read_padding(src, size_of::<T>() * size)?;
     Ok(vec)
 }
 
@@ -85,15 +85,15 @@ pub fn parse_vec_max_size<const N: usize, T>(
     src: &mut impl Read,
     cont: impl Fn(&mut dyn Read) -> Result<T, Error>,
 ) -> Result<Vec<T>, Error> {
-    let size = parse_u32(src)?;
-    if size as usize > N {
+    let size = parse_u32_as_usize(src)?;
+    if size > N {
         return Err(Error::MaxELemLimit);
     }
-    let mut vec = Vec::with_capacity(size as usize);
+    let mut vec = Vec::with_capacity(size);
     for _ in 0..size {
         vec.push(cont(src)?);
     }
-    read_padding(src, size_of::<T>() * size as usize)?;
+    read_padding(src, size_of::<T>() * size)?;
     Ok(vec)
 }
 
@@ -115,6 +115,14 @@ pub fn parse_c_enum<T: FromPrimitive>(src: &mut impl Read) -> Result<T, Error> {
     match val {
         Some(res) => Ok(res),
         None => Err(Error::EnumDiscMismatch),
+    }
+}
+
+#[allow(dead_code)]
+fn parse_u32_as_usize(src: &mut impl Read) -> Result<usize, Error> {
+    match parse_u32(src)?.to_usize() {
+        None => Err(Error::TypeConv),
+        Some(n) => Ok(n),
     }
 }
 

@@ -12,4 +12,5 @@ pub enum Error {
     EnumDiscMismatch,
     IncorrectString(FromUtf8Error),
     IncorrectPadding,
+    TypeConv,
 }
