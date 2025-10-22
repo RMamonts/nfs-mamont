@@ -1,15 +1,15 @@
-mod nfsv3;
-pub mod to_parse;
+use std::io;
+use std::string::FromUtf8Error;
+
+pub mod nfsv3;
+pub mod primitive;
 
 #[derive(Debug)]
 #[allow(unused)]
 pub enum Error {
-    StringTooLong,
-    VecTooLong,
-    IO,
+    MaxELemLimit,
+    IO(io::Error),
     EnumDiscMismatch,
-    ArrayConvert,
-    IncorrectString,
-    IncorrectFilehandle,
+    IncorrectString(FromUtf8Error),
     IncorrectPadding,
 }

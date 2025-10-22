@@ -4,7 +4,7 @@ use crate::nfsv3::{
     createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime3, sattr3, set_atime,
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
-use crate::parser::to_parse::{
+use crate::parser::primitive::{
     parse_array, parse_option, parse_string_max_len, parse_u32, parse_u64, parse_u8,
     parse_vec_max_size,
 };
@@ -116,7 +116,7 @@ mod tests {
     use std::io::Cursor;
 
     use crate::nfsv3::ftype3;
-    use crate::parser::to_parse::parse_c_enum;
+    use crate::parser::primitive::parse_c_enum;
 
     use super::*;
 
@@ -134,7 +134,7 @@ mod tests {
         let data = [0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
 
-        assert!(matches!(parse_specdata3(&mut src), Err(Error::IO)));
+        assert!(matches!(parse_specdata3(&mut src), Err(Error::IO(_))));
     }
 
     #[test]
@@ -152,7 +152,7 @@ mod tests {
         let data = [0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
 
-        assert!(matches!(parse_nfstime(&mut src), Err(Error::IO)));
+        assert!(matches!(parse_nfstime(&mut src), Err(Error::IO(_))));
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
         data.extend(vec![0x00; MAX_FILEHANDLE + 1]);
 
         let mut src = Cursor::new(&data);
-        assert!(matches!(parse_nfs_fh3(&mut src), Err(Error::VecTooLong)));
+        assert!(matches!(parse_nfs_fh3(&mut src), Err(Error::MaxELemLimit)));
     }
 
     #[test]
