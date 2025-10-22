@@ -312,7 +312,6 @@ mod test {
         src.extend(vec![0u8; padding_len]);
 
         let result = parse_string_max_len::<10>(&mut Cursor::new(src));
-        println!("{:?}", result);
         assert!(matches!(result, Err(Error::MaxELemLimit)));
     }
 
