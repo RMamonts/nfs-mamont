@@ -11,7 +11,7 @@ const MNTNAMLEN: u32 = 255;
 #[allow(dead_code)]
 const FHSIZE3: u32 = 64;
 
-type fhandle3 = Vec<u8>;
+type fhandle3 = [u8; 8];
 type dirpath = Vec<u8>;
 type name = Vec<u8>;
 

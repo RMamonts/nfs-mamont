@@ -170,7 +170,7 @@ struct specdata3 {
 
 #[allow(dead_code)]
 struct nfs_fh3 {
-    data: Vec<u8>,
+    data: [u8; 8],
 }
 
 #[allow(dead_code)]
