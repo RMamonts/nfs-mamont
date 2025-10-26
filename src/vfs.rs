@@ -371,9 +371,6 @@ pub struct CommitResult {
 /// Virtual File System trait mirroring all NFSv3 procedures.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    /// Procedure 0: NULL – sanity check / ping.
-    async fn null(&self) -> VfsResult<()>;
-
     /// Procedure 1: GETATTR – fetch file attributes.
     async fn get_attr(&self, handle: &FileHandle) -> VfsResult<FileAttr>;
 
