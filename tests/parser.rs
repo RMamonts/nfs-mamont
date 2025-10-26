@@ -5,7 +5,6 @@ mod nfsv3 {
     use nfs_mamont::parser::nfsv3::{
         parse_createhow3, parse_devicedata3, parse_diropargs3, parse_mknoddata3, parse_nfs_fh3,
         parse_nfstime, parse_sattr3, parse_set_atime, parse_set_mtime, parse_symlinkdata3,
-        MAX_FILEHANDLE,
     };
     use nfs_mamont::parser::primitive::parse_c_enum;
     use nfs_mamont::parser::Error;
@@ -122,32 +121,22 @@ mod nfsv3 {
 
     #[test]
     fn test_parse_nfs_fh3_success() {
-        let data = [0x00, 0x00, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00];
+        let data = [0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00];
         let mut src = Cursor::new(&data);
 
         let result = parse_nfs_fh3(&mut src).unwrap();
-        assert_eq!(result.data, vec![0x01, 0x02, 0x03]);
-    }
-
-    #[test]
-    fn test_parse_nfs_fh3_exceeds_max_size() {
-        let mut data = vec![0xFF, 0xFF, 0xFF, 0xFF];
-        data.extend(vec![0x00; MAX_FILEHANDLE + 1]);
-
-        let mut src = Cursor::new(&data);
-        assert!(matches!(parse_nfs_fh3(&mut src), Err(Error::MaxELemLimit)));
+        assert_eq!(result.data, [0x01, 0x02, 0x03, 0x00, 0x00, 0x00,0x00,0x00]);
     }
 
     #[test]
     fn test_parse_diropargs3_success() {
-        let data = [
-            0x00, 0x00, 0x00, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a', b'b',
+        let data = [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a', b'b',
             b'c', 0x00,
         ];
         let mut src = Cursor::new(&data);
 
         let result = parse_diropargs3(&mut src).unwrap();
-        assert_eq!(result.dir.data, vec![0x01, 0x02]);
+        assert_eq!(result.dir.data, [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
         assert_eq!(result.name, "abc");
     }
 

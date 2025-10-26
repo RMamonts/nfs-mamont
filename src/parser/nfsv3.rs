@@ -6,14 +6,13 @@ use crate::nfsv3::{
 };
 use crate::parser::primitive::{
     parse_array, parse_option, parse_string_max_len, parse_u32, parse_u64, parse_u8,
-    parse_vec_max_size,
 };
 use crate::parser::Error;
 
 #[allow(dead_code)]
 const MAX_FILENAME: usize = 255;
 #[allow(dead_code)]
-pub const MAX_FILEHANDLE: usize = 255;
+pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
 const MAX_FILEPATH: usize = 255;
 
@@ -62,7 +61,7 @@ pub fn parse_sattr3(src: &mut dyn Read) -> Result<sattr3, Error> {
 
 #[allow(dead_code)]
 pub fn parse_nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3, Error> {
-    Ok(nfs_fh3 { data: parse_vec_max_size(src, |s| parse_u8(s), MAX_FILEHANDLE)? })
+    Ok(nfs_fh3 { data: parse_array::<MAX_FILEHANDLE, u8>(src, |s| parse_u8(s))? })
 }
 
 #[allow(dead_code)]

@@ -179,7 +179,7 @@ pub struct specdata3 {
 
 #[allow(dead_code)]
 pub struct nfs_fh3 {
-    pub data: Vec<u8>,
+    pub data: [u8; 8],
 }
 
 #[allow(dead_code)]
