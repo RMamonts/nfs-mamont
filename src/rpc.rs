@@ -3,7 +3,7 @@
 #[allow(dead_code)]
 const RPC_VERSION: u32 = 2;
 #[allow(dead_code)]
-const MAX_AUTH_OPAQUE: u32 = 400;
+const MAX_AUTH_OPAQUE_LEN: u32 = 400;
 
 #[allow(dead_code)]
 #[repr(u32)]
