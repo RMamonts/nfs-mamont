@@ -5,7 +5,7 @@ use crate::nfsv3::{
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
 use crate::parser::primitive::{array, option, string_max_len, to_u32, to_u64, to_u8};
-use crate::parser::Error;
+use crate::parser::{Error, Result};
 
 #[allow(dead_code)]
 const MAX_FILENAME: usize = 255;
@@ -15,16 +15,16 @@ pub const MAX_FILEHANDLE: usize = 8;
 const MAX_FILEPATH: usize = 255;
 
 #[allow(dead_code)]
-pub fn specdata3(src: &mut dyn Read) -> Result<specdata3, Error> {
+pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
     Ok(specdata3 { specdata1: to_u32(src)?, specdata2: to_u32(src)? })
 }
 
-pub fn nfstime(src: &mut dyn Read) -> Result<nfstime3, Error> {
+pub fn nfstime(src: &mut dyn Read) -> Result<nfstime3> {
     Ok(nfstime3 { seconds: to_u32(src)?, nseconds: to_u32(src)? })
 }
 
 #[allow(dead_code)]
-pub fn set_atime(src: &mut dyn Read) -> Result<set_atime, Error> {
+pub fn set_atime(src: &mut dyn Read) -> Result<set_atime> {
     match to_u32(src)? {
         0 => Ok(set_atime::DONT_CHANGE),
         1 => Ok(set_atime::SET_TO_SERVER_TIME),
@@ -34,7 +34,7 @@ pub fn set_atime(src: &mut dyn Read) -> Result<set_atime, Error> {
 }
 
 #[allow(dead_code)]
-pub fn set_mtime(src: &mut dyn Read) -> Result<set_mtime, Error> {
+pub fn set_mtime(src: &mut dyn Read) -> Result<set_mtime> {
     let disc = to_u32(src)?;
     match disc {
         0 => Ok(set_mtime::DONT_CHANGE),
@@ -45,7 +45,7 @@ pub fn set_mtime(src: &mut dyn Read) -> Result<set_mtime, Error> {
 }
 
 #[allow(dead_code)]
-pub fn sattr3(src: &mut dyn Read) -> Result<sattr3, Error> {
+pub fn sattr3(src: &mut dyn Read) -> Result<sattr3> {
     Ok(sattr3 {
         mode: option(src, |s| to_u32(s))?,
         uid: option(src, |s| to_u32(s))?,
@@ -57,17 +57,17 @@ pub fn sattr3(src: &mut dyn Read) -> Result<sattr3, Error> {
 }
 
 #[allow(dead_code)]
-pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3, Error> {
+pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
     Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE, u8>(src, |s| to_u8(s))? })
 }
 
 #[allow(dead_code)]
-pub fn diropargs3(src: &mut dyn Read) -> Result<diropargs3, Error> {
+pub fn diropargs3(src: &mut dyn Read) -> Result<diropargs3> {
     Ok(diropargs3 { dir: nfs_fh3(src)?, name: string_max_len(src, MAX_FILEPATH)? })
 }
 
 #[allow(dead_code)]
-pub fn createhow3(src: &mut dyn Read) -> Result<createhow3, Error> {
+pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
     match to_u32(src)? {
         0 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
         1 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
@@ -77,7 +77,7 @@ pub fn createhow3(src: &mut dyn Read) -> Result<createhow3, Error> {
 }
 
 #[allow(dead_code)]
-pub fn symlinkdata3(src: &mut dyn Read) -> Result<symlinkdata3, Error> {
+pub fn symlinkdata3(src: &mut dyn Read) -> Result<symlinkdata3> {
     Ok(symlinkdata3 {
         symlink_attributes: sattr3(src)?,
         symlink_data: string_max_len(src, MAX_FILEPATH)?,
@@ -85,12 +85,12 @@ pub fn symlinkdata3(src: &mut dyn Read) -> Result<symlinkdata3, Error> {
 }
 
 #[allow(dead_code)]
-pub fn devicedata3(src: &mut dyn Read) -> Result<devicedata3, Error> {
+pub fn devicedata3(src: &mut dyn Read) -> Result<devicedata3> {
     Ok(devicedata3 { dev_attributes: sattr3(src)?, spec: specdata3(src)? })
 }
 
 #[allow(dead_code)]
-pub fn mknoddata3(src: &mut dyn Read) -> Result<mknoddata3, Error> {
+pub fn mknoddata3(src: &mut dyn Read) -> Result<mknoddata3> {
     match to_u32(src)? {
         1 => Ok(mknoddata3::NF3REG),
         2 => Ok(mknoddata3::NF3DIR),
