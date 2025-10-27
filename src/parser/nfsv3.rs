@@ -4,7 +4,9 @@ use crate::nfsv3::{
     createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime3, sattr3, set_atime,
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
-use crate::parser::primitive::{array, option, string_max_len, to_u32, to_u64, to_u8};
+use crate::parser::primitive::{
+    array, option, string_max_len, to_u32, to_u64, to_u8, u32_as_usize,
+};
 use crate::parser::{Error, Result};
 
 #[allow(dead_code)]
@@ -58,6 +60,10 @@ pub fn sattr3(src: &mut dyn Read) -> Result<sattr3> {
 
 #[allow(dead_code)]
 pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
+    let size = u32_as_usize(src)?;
+    if size != MAX_FILEHANDLE {
+        return Err(Error::BadFileHandle);
+    }
     Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE, u8>(src, |s| to_u8(s))? })
 }
 

@@ -111,6 +111,6 @@ pub fn c_enum<T: FromPrimitive>(src: &mut dyn Read) -> Result<T> {
 }
 
 #[allow(dead_code)]
-fn u32_as_usize(src: &mut dyn Read) -> Result<usize> {
+pub fn u32_as_usize(src: &mut dyn Read) -> Result<usize> {
     to_u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
 }

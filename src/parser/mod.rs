@@ -15,4 +15,5 @@ pub enum Error {
     IncorrectString(FromUtf8Error),
     IncorrectPadding,
     ImpossibleTypeCast,
+    BadFileHandle,
 }
