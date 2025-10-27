@@ -190,6 +190,31 @@ pub struct LookupResult {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub struct AccessMask(u32);
 
+impl AccessMask {
+    pub const READ: Self = Self(0x0001);
+    pub const LOOKUP: Self = Self(0x0002);
+    pub const MODIFY: Self = Self(0x0004);
+    pub const EXTEND: Self = Self(0x0008);
+    pub const DELETE: Self = Self(0x0010);
+    pub const EXECUTE: Self = Self(0x0020);
+
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    pub const fn contains(self, other: Self) -> bool {
+        (self.0 & other.0) != 0
+    }
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+}
+
 /// Result returned by ACCESS (RFC 1813 3.3.4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessResult {
