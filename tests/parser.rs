@@ -1,65 +1,66 @@
 mod nfsv3 {
+    use std::io::Cursor;
+
     use nfs_mamont::nfsv3::{createhow3, set_atime, set_mtime, NFS3_CREATEVERFSIZE};
     use nfs_mamont::nfsv3::{ftype3, mknoddata3};
-    use nfs_mamont::parser::nfsv3::parse_specdata3;
+    use nfs_mamont::parser::nfsv3::specdata3;
     use nfs_mamont::parser::nfsv3::{
-        parse_createhow3, parse_devicedata3, parse_diropargs3, parse_mknoddata3, parse_nfs_fh3,
-        parse_nfstime, parse_sattr3, parse_set_atime, parse_set_mtime, parse_symlinkdata3,
+        createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, set_atime,
+        set_mtime, symlinkdata3,
     };
-    use nfs_mamont::parser::primitive::parse_c_enum;
+    use nfs_mamont::parser::primitive::c_enum;
     use nfs_mamont::parser::Error;
-    use std::io::Cursor;
 
     #[test]
     fn test_parse_specdata3_success() {
         let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
         let mut src = Cursor::new(&data);
-        let result = parse_specdata3(&mut src).unwrap();
+        let result = specdata3(&mut src).unwrap();
         assert_eq!(result.specdata1, 1);
         assert_eq!(result.specdata2, 2);
     }
 
     #[test]
-    fn test_parse_specdata3_error() {
+    fn test_specdata3_error() {
         let data = [0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
 
-        assert!(matches!(parse_specdata3(&mut src), Err(Error::IO(_))));
+        assert!(matches!(specdata3(&mut src), Err(Error::IO(_))));
     }
 
     #[test]
-    fn test_parse_nfstime_success() {
+    fn test_nfstime_success() {
         let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
         let mut src = Cursor::new(&data);
 
-        let result = parse_nfstime(&mut src).unwrap();
+        let result = nfstime(&mut src).unwrap();
         assert_eq!(result.seconds, 1);
         assert_eq!(result.nseconds, 2);
     }
 
     #[test]
-    fn test_parse_nfstime_error() {
+    fn test_nfstime_error() {
         let data = [0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
 
-        assert!(matches!(parse_nfstime(&mut src), Err(Error::IO(_))));
+        assert!(matches!(nfstime(&mut src), Err(Error::IO(_))));
     }
 
     #[test]
-    fn test_parse_set_atime_all_cases() {
+    fn test_set_atime_all_cases() {
         let data = [0x00, 0x00, 0x00, 0x00];
         let mut src = Cursor::new(&data);
-        let result = parse_set_atime(&mut src).unwrap();
+        let result = set_atime(&mut src).unwrap();
         assert!(matches!(result, set_atime::DONT_CHANGE));
 
         let data = [0x00, 0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
-        let result = parse_set_atime(&mut src).unwrap();
+        let result = set_atime(&mut src).unwrap();
         assert!(matches!(result, set_atime::SET_TO_SERVER_TIME));
 
         let data = [0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
         let mut src = Cursor::new(&data);
-        let result = parse_set_atime(&mut src).unwrap();
+        let result = set_atime(&mut src).unwrap();
         match result {
             set_atime::SET_TO_CLIENT_TIME(nfstime) => {
                 assert_eq!(nfstime.seconds, 1);
@@ -70,24 +71,24 @@ mod nfsv3 {
 
         let data = [0x00, 0x00, 0x00, 0x03];
         let mut src = Cursor::new(&data);
-        assert!(matches!(parse_set_atime(&mut src), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(set_atime(&mut src), Err(Error::EnumDiscMismatch)));
     }
 
     #[test]
-    fn test_parse_set_mtime_all_variants() {
+    fn test_set_mtime_all_variants() {
         let data = [0x00, 0x00, 0x00, 0x00];
         let mut src = Cursor::new(&data);
-        let result = parse_set_mtime(&mut src).unwrap();
+        let result = set_mtime(&mut src).unwrap();
         assert!(matches!(result, set_mtime::DONT_CHANGE));
 
         let data = [0x00, 0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
-        let result = parse_set_mtime(&mut src).unwrap();
+        let result = set_mtime(&mut src).unwrap();
         assert!(matches!(result, set_mtime::SET_TO_SERVER_TIME));
 
         let data = [0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
         let mut src = Cursor::new(&data);
-        let result = parse_set_mtime(&mut src).unwrap();
+        let result = set_mtime(&mut src).unwrap();
         match result {
             set_mtime::SET_TO_CLIENT_TIME(nfstime) => {
                 assert_eq!(nfstime.seconds, 1);
@@ -98,11 +99,11 @@ mod nfsv3 {
 
         let data = [0x00, 0x00, 0x00, 0x03];
         let mut src = Cursor::new(&data);
-        assert!(matches!(parse_set_mtime(&mut src), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(set_mtime(&mut src), Err(Error::EnumDiscMismatch)));
     }
 
     #[test]
-    fn test_parse_sattr3_success() {
+    fn test_sattr3_success() {
         let data = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x01,
@@ -110,7 +111,7 @@ mod nfsv3 {
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_sattr3(&mut src).unwrap();
+        let result = sattr3(&mut src).unwrap();
         assert!(result.mode.is_none());
         assert_eq!(result.uid, Some(1));
         assert!(result.gid.is_none());
@@ -120,35 +121,36 @@ mod nfsv3 {
     }
 
     #[test]
-    fn test_parse_nfs_fh3_success() {
+    fn test_nfs_fh3_success() {
         let data = [0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00];
         let mut src = Cursor::new(&data);
 
-        let result = parse_nfs_fh3(&mut src).unwrap();
-        assert_eq!(result.data, [0x01, 0x02, 0x03, 0x00, 0x00, 0x00,0x00,0x00]);
+        let result = nfs_fh3(&mut src).unwrap();
+        assert_eq!(result.data, [0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00]);
     }
 
     #[test]
-    fn test_parse_diropargs3_success() {
-        let data = [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a', b'b',
+    fn test_diropargs3_success() {
+        let data = [
+            0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a', b'b',
             b'c', 0x00,
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_diropargs3(&mut src).unwrap();
+        let result = diropargs3(&mut src).unwrap();
         assert_eq!(result.dir.data, [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
         assert_eq!(result.name, "abc");
     }
 
     #[test]
-    fn test_parse_createhow3_unchecked() {
+    fn test_createhow3_unchecked() {
         let data = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_createhow3(&mut src).unwrap();
+        let result = createhow3(&mut src).unwrap();
         assert!(matches!(result, createhow3::UNCHECKED(_)));
 
         let data = [
@@ -157,7 +159,7 @@ mod nfsv3 {
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_createhow3(&mut src).unwrap();
+        let result = createhow3(&mut src).unwrap();
         match result {
             createhow3::EXCLUSIVE(verifier) => {
                 assert_eq!(verifier.len(), NFS3_CREATEVERFSIZE);
@@ -169,11 +171,11 @@ mod nfsv3 {
         let data = [0x00, 0x00, 0x00, 0x03];
         let mut src = Cursor::new(&data);
 
-        assert!(matches!(parse_createhow3(&mut src), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(createhow3(&mut src), Err(Error::EnumDiscMismatch)));
     }
 
     #[test]
-    fn test_parse_symlinkdata3_success() {
+    fn test_symlinkdata3_success() {
         let data = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
@@ -181,12 +183,12 @@ mod nfsv3 {
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_symlinkdata3(&mut src).unwrap();
+        let result = symlinkdata3(&mut src).unwrap();
         assert_eq!(result.symlink_data, "hello");
     }
 
     #[test]
-    fn test_parse_devicedata3_success() {
+    fn test_devicedata3_success() {
         let data = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
@@ -194,21 +196,21 @@ mod nfsv3 {
         ];
         let mut src = Cursor::new(&data);
 
-        let result = parse_devicedata3(&mut src).unwrap();
+        let result = devicedata3(&mut src).unwrap();
         assert_eq!(result.spec.specdata1, 1);
         assert_eq!(result.spec.specdata2, 2);
     }
 
     #[test]
-    fn test_parse_mknoddata3_all_variants() {
+    fn test_mknoddata3_all_variants() {
         let data = [0x00, 0x00, 0x00, 0x01];
         let mut src = Cursor::new(&data);
-        let result = parse_mknoddata3(&mut src).unwrap();
+        let result = mknoddata3(&mut src).unwrap();
         assert!(matches!(result, mknoddata3::NF3REG));
 
         let data = [0x00, 0x00, 0x00, 0x02];
         let mut src = Cursor::new(&data);
-        let result = parse_mknoddata3(&mut src).unwrap();
+        let result = mknoddata3(&mut src).unwrap();
         assert!(matches!(result, mknoddata3::NF3DIR));
 
         let data = [
@@ -217,29 +219,29 @@ mod nfsv3 {
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02,
         ];
         let mut src = Cursor::new(&data);
-        let result = parse_mknoddata3(&mut src).unwrap();
+        let result = mknoddata3(&mut src).unwrap();
         assert!(matches!(result, mknoddata3::NF3BLK(_)));
 
         let data = [0x00, 0x00, 0x00, 0x05];
         let mut src = Cursor::new(&data);
-        let result = parse_mknoddata3(&mut src).unwrap();
+        let result = mknoddata3(&mut src).unwrap();
         assert!(matches!(result, mknoddata3::NF3LNK));
 
         let data = [0x00, 0x00, 0x00, 0x08];
         let mut src = Cursor::new(&data);
-        assert!(matches!(parse_mknoddata3(&mut src), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(mknoddata3(&mut src), Err(Error::EnumDiscMismatch)));
     }
 
     #[test]
     fn test_c_enum() {
         let data = [0x00, 0x00, 0x00, 0x06];
         let mut src = Cursor::new(&data);
-        let result = parse_c_enum(&mut src).unwrap();
+        let result = c_enum(&mut src).unwrap();
         assert!(matches!(result, ftype3::NF3SOCK));
 
         let data = [0x00, 0x00, 0x00, 0x08];
         let mut src = Cursor::new(&data);
-        let result = parse_c_enum::<ftype3>(&mut src);
+        let result = c_enum::<ftype3>(&mut src);
         assert!(matches!(result, Err(Error::EnumDiscMismatch)));
     }
 }
@@ -250,8 +252,7 @@ mod primitive {
     use byteorder::{BigEndian, WriteBytesExt};
 
     use nfs_mamont::parser::primitive::{
-        parse_array, parse_bool, parse_option, parse_string, parse_string_max_len, parse_u32,
-        parse_u64, parse_u8, parse_vector,
+        array, option, string, string_max_len, to_bool, to_u32, to_u64, to_u8, vector,
     };
     use nfs_mamont::parser::Error;
 
@@ -264,7 +265,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = parse_u32(&mut src).expect("Cannot parse value!");
+            let val = to_u32(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -278,7 +279,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = parse_u64(&mut src).expect("Cannot parse value!");
+            let val = to_u64(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -292,7 +293,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = parse_bool(&mut src).expect("Cannot parse value!");
+            let val = to_bool(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -311,7 +312,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = parse_option(&mut src, |s| parse_u32(s)).expect("Cannot parse value!");
+            let val = option(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -322,7 +323,7 @@ mod primitive {
         let mut src = Vec::new();
         init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
         let mut src = Cursor::new(src);
-        let val = parse_array::<3, u32>(&mut src, |s| parse_u32(s)).expect("Cannot parse value!");
+        let val = array::<3, u32>(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
         assert_eq!(val, init)
     }
 
@@ -337,7 +338,7 @@ mod primitive {
         let padding_len = (4 - (init.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -350,7 +351,7 @@ mod primitive {
             src.write_u8(*i).unwrap();
         }
         src.push(0);
-        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -361,7 +362,7 @@ mod primitive {
         for i in &init {
             src.write_u8(*i).unwrap();
         }
-        let result = parse_array::<3, u8>(&mut Cursor::new(src), |s| parse_u8(s));
+        let result = array::<3, u8>(&mut Cursor::new(src), |s| to_u8(s));
         assert!(matches!(result, Err(Error::IncorrectPadding)));
     }
 
@@ -370,7 +371,7 @@ mod primitive {
         let init = [78u32, 0, 78965];
         let mut src = Vec::new();
         let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
-        let result = parse_array::<4, u32>(&mut Cursor::new(src), |s| parse_u32(s));
+        let result = array::<4, u32>(&mut Cursor::new(src), |s| to_u32(s));
         assert!(matches!(result, Err(Error::IO(_))));
     }
 
@@ -382,7 +383,7 @@ mod primitive {
         for i in &init {
             src.write_u32::<BigEndian>(*i).unwrap();
         }
-        let result = parse_vector(&mut Cursor::new(src), |s| parse_u32(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| to_u32(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -393,7 +394,7 @@ mod primitive {
         src.write_u32::<BigEndian>(invalid_utf8.len() as u32).unwrap();
         src.extend_from_slice(&invalid_utf8);
         src.push(0);
-        let result = parse_string(&mut Cursor::new(src));
+        let result = string(&mut Cursor::new(src));
         assert!(matches!(result, Err(Error::IncorrectString(_))));
     }
 
@@ -404,7 +405,7 @@ mod primitive {
         src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
         src.extend_from_slice(test_string.as_bytes());
         src.write_u8(0u8).unwrap();
-        let result = parse_string(&mut Cursor::new(src)).unwrap();
+        let result = string(&mut Cursor::new(src)).unwrap();
         assert_eq!(result, test_string);
     }
 
@@ -414,7 +415,7 @@ mod primitive {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
         src.extend_from_slice(test_string.as_bytes());
-        let result = parse_string_max_len(&mut Cursor::new(src), 10).unwrap();
+        let result = string_max_len(&mut Cursor::new(src), 10).unwrap();
         assert_eq!(result, test_string);
     }
 
@@ -428,7 +429,7 @@ mod primitive {
         let padding_len = (4 - (test_string.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = parse_string_max_len(&mut Cursor::new(src), 10);
+        let result = string_max_len(&mut Cursor::new(src), 10);
         assert!(matches!(result, Err(Error::MaxELemLimit)));
     }
 
@@ -436,7 +437,7 @@ mod primitive {
     fn test_read_error() {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(10).unwrap();
-        let result = parse_vector(&mut Cursor::new(src), |s| parse_u8(s));
+        let result = vector(&mut Cursor::new(src), |s| to_u8(s));
         assert!(matches!(result, Err(Error::IO(_))));
     }
 }
