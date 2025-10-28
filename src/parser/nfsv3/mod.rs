@@ -1,3 +1,5 @@
+mod procedures;
+
 use std::io::Read;
 
 use crate::nfsv3::{
@@ -8,6 +10,7 @@ use crate::parser::primitive::{
     array, option, string_max_len, to_u32, to_u64, to_u8, u32_as_usize,
 };
 use crate::parser::{Error, Result};
+use crate::vfs::{FileHandle, FileName};
 
 #[allow(dead_code)]
 const MAX_FILENAME: usize = 255;
@@ -15,6 +18,11 @@ const MAX_FILENAME: usize = 255;
 pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
 const MAX_FILEPATH: usize = 255;
+
+pub struct DirOpArg {
+    object: FileHandle,
+    name: FileName,
+}
 
 #[allow(dead_code)]
 pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
