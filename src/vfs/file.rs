@@ -1,9 +1,10 @@
+pub const UID_SIZE: usize = 8;
 pub const HANDLE_SIZE: usize = 8;
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Clone)]
+#[derive(Clone, Eq, Hash, PartialEq, Copy)]
 #[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
