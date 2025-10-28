@@ -100,11 +100,9 @@ pub enum NfsError {
     TooSmall,
 
     // No ServerFault here.
-
     /// An attempt was made to create an object of a type not
     /// supported by the [`Vfs`] implementation.
     BadType,
-
     // No JUKEBOX here.
 }
 
