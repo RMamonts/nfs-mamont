@@ -81,7 +81,7 @@ pub enum NfsError {
     Jukebox,
 }
 
-/// Digest used for weak cache consistency in [`WccData`].
+/// Weak cache consistency attributes.
 #[derive(Copy, Clone)]
 pub struct WccAttr {
     pub size: u64,
@@ -89,7 +89,7 @@ pub struct WccAttr {
     pub ctime: file::Time,
 }
 
-/// Weak cache consistency information (RFC 1813 3.1).
+/// Weak cache consistency information.
 #[derive(Clone)]
 pub struct WccData {
     pub before: Option<WccAttr>,
@@ -104,7 +104,7 @@ pub enum SetTime {
     ClientProvided(file::Time),
 }
 
-/// Attribute modifications (RFC 1813 3.3.2).
+/// Attribute modification.
 #[derive(Clone)]
 pub struct SetAttr {
     pub mode: Option<u32>,
@@ -130,25 +130,25 @@ pub struct LookupResult {
     pub directory_attr: Option<file::Attr>,
 }
 
-/// Mask of access rights (RFC 1813 3.3.4).
+/// Mask of access rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct AccessMask(u32);
 
-/// Result returned by [`Vfs::access`] (RFC 1813 3.3.4).
+/// Result returned by [`Vfs::access`].
 #[derive(Clone)]
 pub struct AccessResult {
     pub granted: AccessMask,
     pub file_attr: Option<file::Attr>,
 }
 
-/// Data returned by [`Vfs::read`] (RFC 1813 3.3.6).
+/// Data returned by [`Vfs::read`].
 #[derive(Clone)]
 pub struct ReadResult {
     pub data: Vec<u8>,
     pub file_attr: Option<file::Attr>,
 }
 
-/// Stability guarantee requested by [`Vfs::write`] (RFC 1813 3.3.7).
+/// Stability guarantee requested by [`Vfs::write`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WriteMode {
     Unstable,
@@ -156,11 +156,11 @@ pub enum WriteMode {
     FileSync,
 }
 
-/// Stable write verifier (RFC 1813 3.3.7).
+/// Stable write verifier.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct StableVerifier(pub [u8; 8]);
 
-/// Result returned by [`Vfs::write`] (RFC 1813 3.3.7).
+/// Result returned by [`Vfs::write`].
 #[derive(Clone)]
 pub struct WriteResult {
     pub count: u32,
@@ -169,7 +169,7 @@ pub struct WriteResult {
     pub file_attr: Option<file::Attr>,
 }
 
-/// Creation strategy (RFC 1813 3.3.8).
+/// Creation strategy.
 #[derive(Clone)]
 pub enum CreateMode {
     Unchecked { attr: SetAttr },
@@ -185,7 +185,7 @@ pub struct CreatedNode {
     pub directory_wcc: WccData,
 }
 
-/// Special node description used by [`Vfs::make_node`] (RFC 1813 3.3.11).
+/// Special node description used by [`Vfs::make_node`].
 #[derive(Clone)]
 pub enum SpecialNode {
     Block { device: file::Device, attr: SetAttr },
@@ -200,25 +200,25 @@ pub struct RemovalResult {
     pub directory_wcc: WccData,
 }
 
-/// Result returned by [`Vfs::link`] (RFC 1813 3.3.15).
+/// Result returned by [`Vfs::link`].
 #[derive(Clone)]
 pub struct LinkResult {
     pub new_file_attr: Option<file::Attr>,
     pub directory_wcc: WccData,
 }
 
-/// Result returned by [`Vfs::rename`] (RFC 1813 3.3.14).
+/// Result returned by [`Vfs::rename`].
 #[derive(Clone)]
 pub struct RenameResult {
     pub from_directory_wcc: WccData,
     pub to_directory_wcc: WccData,
 }
 
-/// Cookie used for directory iteration (RFC 1813 3.3.16).
+/// Cookie used for directory iteration.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct DirectoryCookie(pub u64);
 
-/// Cookie verifier (RFC 1813 3.3.16).
+/// Cookie verifier.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct CookieVerifier(pub [u8; 8]);
 
@@ -240,7 +240,7 @@ pub struct DirectoryPlusEntry {
     pub attr: Option<file::Attr>,
 }
 
-/// Result of [`Vfs::read_dir`] (RFC 1813 3.3.16).
+/// Result of [`Vfs::read_dir`].
 #[derive(Clone)]
 pub struct ReadDirResult {
     pub directory_attr: Option<file::Attr>,
@@ -248,7 +248,7 @@ pub struct ReadDirResult {
     pub entries: Vec<DirectoryEntry>,
 }
 
-/// Result of [`Vfs::read_dir_plus`] (RFC 1813 3.3.17).
+/// Result of [`Vfs::read_dir_plus`].
 #[derive(Clone)]
 pub struct ReadDirPlusResult {
     pub directory_attr: Option<file::Attr>,
@@ -256,7 +256,7 @@ pub struct ReadDirPlusResult {
     pub entries: Vec<DirectoryPlusEntry>,
 }
 
-/// Dynamic filesystem statistics (RFC 1813 3.3.18).
+/// Dynamic filesystem statistics.
 #[derive(Clone)]
 pub struct FsStat {
     pub total_bytes: u64,
@@ -269,7 +269,7 @@ pub struct FsStat {
     pub file_attr: Option<file::Attr>,
 }
 
-/// Static filesystem information (RFC 1813 3.3.19).
+/// Static filesystem information.
 #[derive(Clone)]
 pub struct FsInfo {
     pub read_max: u32,
@@ -285,12 +285,12 @@ pub struct FsInfo {
     pub file_attr: Option<file::Attr>,
 }
 
-/// Filesystem capability flags (RFC 1813 3.3.19).
+/// Filesystem capability flags.
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct FsProperties(u32);
 
-/// POSIX path configuration information (RFC 1813 3.3.20).
+/// POSIX path configuration information.
 #[derive(Clone)]
 pub struct PathConfig {
     pub file_attr: Option<file::Attr>,
@@ -302,7 +302,7 @@ pub struct PathConfig {
     pub case_preserving: bool,
 }
 
-/// Result returned by [`Vfs::commit`] (RFC 1813 3.3.21).
+/// Result returned by [`Vfs::commit`].
 #[derive(Clone)]
 pub struct CommitResult {
     pub file_attr: Option<file::Attr>,
@@ -407,7 +407,7 @@ pub trait Vfs: Sync + Send {
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-        max_filess: u32,
+        max_files: u32,
     ) -> Result<ReadDirPlusResult>;
 
     /// Get dynamic filesystem statistics.
