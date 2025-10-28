@@ -1,4 +1,3 @@
-
 pub const UID_SIZE: usize = 8;
 
 /// Unique file identifier.
