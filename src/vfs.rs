@@ -5,10 +5,12 @@
 //! expressed using idiomatic Rust naming instead of the original C/XDR
 //! definitions from the RFC.
 
+use std::path::{Path, PathBuf};
+
 use async_trait::async_trait;
 
-/// Convenient result alias used by all VFS operations.
-pub type VfsResult<T> = Result<T, NfsError>;
+/// Result of [`Vfs`] operations.
+pub type Result<T> = std::result::Result<T, NfsError>;
 
 /// Maximum number of bytes allowed in a file handle (per RFC 1813 2.4).
 pub const MAX_FILE_HANDLE_LEN: usize = 8;
@@ -16,11 +18,11 @@ pub const MAX_FILE_HANDLE_LEN: usize = 8;
 /// Maximum number of bytes allowed in a file name (per RFC 1813 2.4).
 pub const MAX_NAME_LEN: usize = 255;
 
-/// Maximum number of bytes allowed in a file path (per RFC 1813 2.4).
+/// Maximum length of path passed into [`Vfs`] methods.
 pub const MAX_PATH_LEN: usize = 1024;
 
-/// NFSv3 status codes (RFC 1813 2.6).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+/// [`Vfs`] errors.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum NfsError {
     // NFS3ERR_PERM
     Perm,
@@ -80,88 +82,87 @@ pub enum NfsError {
     Jukebox,
 }
 
-/// Handle that uniquely identifies an inode inside the exported filesystem.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FileHandle(pub Vec<u8>);
+mod file {
+    pub const UID_SIZE: usize = 8;
 
-/// Canonical representation of a filesystem path according to RFC limits.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FsPath(pub String);
+    /// Unique file identifier.
+    /// 
+    /// Corresponds to the file handle from RFC 1813.
+    #[derive(Clone)]
+    #[allow(dead_code)]
+    #[allow(clippy::upper_case_acronyms)]
+    pub struct UID(pub [u8; UID_SIZE]);
 
-/// File or directory name that respects RFC limits.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FileName(pub String);
+    /// File type.
+    #[derive(Clone, Copy)]
+    pub enum Type {
+        Regular,
+        Directory,
+        BlockDevice,
+        CharacterDevice,
+        Symlink,
+        Socket,
+        Fifo,
+    }
 
-/// POSIX-like file types enumerated in RFC 1813 3.3.1.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum FileType {
-    Regular,
-    Directory,
-    BlockDevice,
-    CharacterDevice,
-    Symlink,
-    Socket,
-    Fifo,
+    /// File attributes.
+    #[derive(Clone)]
+    pub struct Attr {
+        pub file_type: Type,
+        pub mode: u32,
+        pub nlink: u32,
+        pub uid: u32,
+        pub gid: u32,
+        pub size: u64,
+        pub used: u64,
+        pub device: Option<Device>,
+        pub fsid: u64,
+        pub fileid: u64,
+        pub atime: Time,
+        pub mtime: Time,
+        pub ctime: Time,
+    }
+
+    /// Time of file [`super::Vfs`] operations.
+    #[derive(Copy, Clone)]
+    pub struct Time {
+        pub seconds: i64,
+        pub nanos: u32,
+    }
+
+    /// Major and minor device pair.
+    #[derive(Copy, Clone)]
+    pub struct Device {
+        pub major: u32,
+        pub minor: u32,
+    }
 }
 
-/// Representation of a major/minor device pair.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct DeviceId {
-    pub major: u32,
-    pub minor: u32,
-}
-
-/// Timestamp structure matching `nfstime3`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct FileTime {
-    pub seconds: i64,
-    pub nanos: u32,
-}
-
-/// Full file attributes (RFC 1813 3.3.1).
-#[derive(Debug, Clone, PartialEq)]
-pub struct FileAttr {
-    pub file_type: FileType,
-    pub mode: u32,
-    pub nlink: u32,
-    pub uid: u32,
-    pub gid: u32,
+/// Digest used for weak cache consistency in [`WccData`].
+#[derive(Copy, Clone)]
+pub struct WccAttr {
     pub size: u64,
-    pub used: u64,
-    pub device: Option<DeviceId>,
-    pub fsid: u64,
-    pub fileid: u64,
-    pub atime: FileTime,
-    pub mtime: FileTime,
-    pub ctime: FileTime,
-}
-
-/// Digest used for weak cache consistency (size, mtime, ctime).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct AttrDigest {
-    pub size: u64,
-    pub mtime: FileTime,
-    pub ctime: FileTime,
+    pub mtime: file::Time,
+    pub ctime: file::Time,
 }
 
 /// Weak cache consistency information (RFC 1813 3.1).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct WccData {
-    pub before: Option<AttrDigest>,
-    pub after: Option<FileAttr>,
+    pub before: Option<WccAttr>,
+    pub after: Option<file::Attr>,
 }
 
 /// Strategy for updating timestamps in [`SetAttr`].
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone)]
 pub enum SetTime {
-    #[default]
     DontChange,
     ServerCurrent,
-    ClientProvided(FileTime),
+    ClientProvided(file::Time),
 }
 
 /// Attribute modifications (RFC 1813 3.3.2).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct SetAttr {
     pub mode: Option<u32>,
     pub uid: Option<u32>,
@@ -172,44 +173,40 @@ pub struct SetAttr {
 }
 
 /// Guard used by [`Vfs::set_attr`] to enforce weak cache consistency.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum SetAttrGuard {
-    None,
-    Check { ctime: FileTime },
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
+pub struct SetAttrGuard {
+    ctime: file::Time,
 }
 
-/// Result of a LOOKUP operation (RFC 1813 3.3.3).
-#[derive(Debug, Clone, PartialEq)]
+/// Result of a [`Vfs::lookup`] operation (RFC 1813 3.3.3).
+#[derive(Clone)]
 pub struct LookupResult {
-    pub handle: FileHandle,
-    pub object_attr: FileAttr,
-    pub directory_attr: Option<FileAttr>,
+    pub file: file::UID,
+    pub object_attr: file::Attr,
+    pub directory_attr: Option<file::Attr>,
 }
 
 /// Mask of access rights (RFC 1813 3.3.4).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct AccessMask(u32);
 
-/// Result returned by ACCESS (RFC 1813 3.3.4).
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::access`] (RFC 1813 3.3.4).
+#[derive(Clone)]
 pub struct AccessResult {
     pub granted: AccessMask,
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
 }
 
-/// Target path stored in a symbolic link (RFC 1813 3.3.5).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SymlinkTarget(pub String);
-
-/// Data returned by READ (RFC 1813 3.3.6).
-#[derive(Debug, Clone, PartialEq)]
+/// Data returned by [`Vfs::read`] (RFC 1813 3.3.6).
+#[derive(Clone)]
 pub struct ReadResult {
     pub data: Vec<u8>,
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
 }
 
-/// Stability guarantee requested by WRITE (RFC 1813 3.3.7).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+/// Stability guarantee requested by [`Vfs::write`] (RFC 1813 3.3.7).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WriteMode {
     Unstable,
     DataSync,
@@ -217,107 +214,107 @@ pub enum WriteMode {
 }
 
 /// Stable write verifier (RFC 1813 3.3.7).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct StableVerifier(pub [u8; 8]);
 
-/// Result returned by WRITE (RFC 1813 3.3.7).
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::write`] (RFC 1813 3.3.7).
+#[derive(Clone)]
 pub struct WriteResult {
     pub count: u32,
     pub committed: WriteMode,
     pub verifier: StableVerifier,
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
 }
 
 /// Creation strategy (RFC 1813 3.3.8).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub enum CreateMode {
     Unchecked { attr: SetAttr },
     Guarded { attr: SetAttr, verifier: [u8; 8] },
     Exclusive { verifier: [u8; 8] },
 }
 
-/// Result returned by CREATE and similar operations.
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::create`] and similar operations.
+#[derive(Clone)]
 pub struct CreatedNode {
-    pub handle: FileHandle,
-    pub attr: FileAttr,
+    pub file: file::UID,
+    pub attr: file::Attr,
     pub directory_wcc: WccData,
 }
 
-/// Special node description used by MKNOD (RFC 1813 3.3.11).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Special node description used by [`Vfs::make_node`] (RFC 1813 3.3.11).
+#[derive(Clone)]
 pub enum SpecialNode {
-    Block { device: DeviceId, attr: SetAttr },
-    Character { device: DeviceId, attr: SetAttr },
+    Block { device: file::Device, attr: SetAttr },
+    Character { device: file::Device, attr: SetAttr },
     Socket { attr: SetAttr },
     Fifo { attr: SetAttr },
 }
 
-/// Result returned by REMOVE and RMDIR operations.
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::remove`] and [`Vfs::remove_dir`] operations.
+#[derive(Clone)]
 pub struct RemovalResult {
     pub directory_wcc: WccData,
 }
 
-/// Result returned by LINK (RFC 1813 3.3.15).
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::link`] (RFC 1813 3.3.15).
+#[derive(Clone)]
 pub struct LinkResult {
-    pub new_file_attr: Option<FileAttr>,
+    pub new_file_attr: Option<file::Attr>,
     pub directory_wcc: WccData,
 }
 
-/// Result returned by RENAME (RFC 1813 3.3.14).
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::rename`] (RFC 1813 3.3.14).
+#[derive(Clone)]
 pub struct RenameResult {
     pub from_directory_wcc: WccData,
     pub to_directory_wcc: WccData,
 }
 
 /// Cookie used for directory iteration (RFC 1813 3.3.16).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct DirectoryCookie(pub u64);
 
 /// Cookie verifier (RFC 1813 3.3.16).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Copy, Clone, PartialEq, Eq,)]
 pub struct CookieVerifier(pub [u8; 8]);
 
-/// Minimal directory entry returned by READDIR.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Minimal directory entry returned by [`Vfs::read_dir`].
+#[derive(Clone, PartialEq, Eq)]
 pub struct DirectoryEntry {
     pub cookie: DirectoryCookie,
-    pub name: FileName,
+    pub name: String,
     pub fileid: u64,
 }
 
-/// Extended directory entry returned by READDIRPLUS.
-#[derive(Debug, Clone, PartialEq)]
+/// Extended directory entry returned by [`Vfs::read_dir_plus`].
+#[derive(Clone)]
 pub struct DirectoryPlusEntry {
     pub cookie: DirectoryCookie,
-    pub name: FileName,
+    pub name: String,
     pub fileid: u64,
-    pub handle: Option<FileHandle>,
-    pub attr: Option<FileAttr>,
+    pub file: Option<file::UID>,
+    pub attr: Option<file::Attr>,
 }
 
-/// Result of READDIR (RFC 1813 3.3.16).
-#[derive(Debug, Clone, PartialEq)]
+/// Result of [`Vfs::read_dir`] (RFC 1813 3.3.16).
+#[derive(Clone)]
 pub struct ReadDirResult {
-    pub directory_attr: Option<FileAttr>,
+    pub directory_attr: Option<file::Attr>,
     pub cookie_verifier: CookieVerifier,
     pub entries: Vec<DirectoryEntry>,
 }
 
-/// Result of READDIRPLUS (RFC 1813 3.3.17).
-#[derive(Debug, Clone, PartialEq)]
+/// Result of [`Vfs::read_dir_plus`] (RFC 1813 3.3.17).
+#[derive(Clone)]
 pub struct ReadDirPlusResult {
-    pub directory_attr: Option<FileAttr>,
+    pub directory_attr: Option<file::Attr>,
     pub cookie_verifier: CookieVerifier,
     pub entries: Vec<DirectoryPlusEntry>,
 }
 
 /// Dynamic filesystem statistics (RFC 1813 3.3.18).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct FsStat {
     pub total_bytes: u64,
     pub free_bytes: u64,
@@ -326,11 +323,11 @@ pub struct FsStat {
     pub free_files: u64,
     pub available_files: u64,
     pub invarsec: u32,
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
 }
 
 /// Static filesystem information (RFC 1813 3.3.19).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct FsInfo {
     pub read_max: u32,
     pub read_pref: u32,
@@ -340,19 +337,20 @@ pub struct FsInfo {
     pub write_multiple: u32,
     pub directory_pref: u32,
     pub max_file_size: u64,
-    pub time_delta: FileTime,
+    pub time_delta: file::Time,
     pub properties: FsProperties,
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
 }
 
 /// Filesystem capability flags (RFC 1813 3.3.19).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+#[allow(dead_code)]
+#[derive(Clone)]
 pub struct FsProperties(u32);
 
 /// POSIX path configuration information (RFC 1813 3.3.20).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct PathConfig {
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
     pub max_link: u32,
     pub max_name: u32,
     pub no_trunc: bool,
@@ -361,136 +359,123 @@ pub struct PathConfig {
     pub case_preserving: bool,
 }
 
-/// Result returned by COMMIT (RFC 1813 3.3.21).
-#[derive(Debug, Clone, PartialEq)]
+/// Result returned by [`Vfs::commit`] (RFC 1813 3.3.21).
+#[derive(Clone)]
 pub struct CommitResult {
-    pub file_attr: Option<FileAttr>,
+    pub file_attr: Option<file::Attr>,
     pub verifier: StableVerifier,
 }
 
-/// Virtual File System trait mirroring all NFSv3 procedures.
+/// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    /// Procedure 0: NULL – sanity check / ping.
-    async fn null(&self) -> VfsResult<()>;
+    /// Get file attributes.
+    async fn get_attr(&self, file: &file::UID) -> Result<file::Attr>;
 
-    /// Procedure 1: GETATTR – fetch file attributes.
-    async fn get_attr(&self, handle: &FileHandle) -> VfsResult<FileAttr>;
-
-    /// Procedure 2: SETATTR – mutate file attributes with optional guard.
+    /// Set file attributes with optional guard.
     async fn set_attr(
         &self,
-        handle: &FileHandle,
+        file: &file::UID,
         attr: SetAttr,
-        guard: SetAttrGuard,
-    ) -> VfsResult<WccData>;
+        guard: Option<SetAttrGuard>,
+    ) -> Result<WccData>;
 
-    /// Procedure 3: LOOKUP – resolve a name within a directory.
-    async fn lookup(&self, parent: &FileHandle, name: &FileName) -> VfsResult<LookupResult>;
+    /// Lookup a name within a directory.
+    async fn lookup(&self, parent: &file::UID, name: &str) -> Result<LookupResult>;
 
-    /// Procedure 4: ACCESS – evaluate requested access mask.
-    async fn access(&self, handle: &FileHandle, mask: AccessMask) -> VfsResult<AccessResult>;
+    /// Check requested access mask.
+    async fn access(&self, file: &file::UID, mask: AccessMask) -> Result<AccessResult>;
 
-    /// Procedure 5: READLINK – read symbolic link contents.
-    async fn read_link(&self, handle: &FileHandle) -> VfsResult<(SymlinkTarget, Option<FileAttr>)>;
+    /// Read symbolic link contents.
+    async fn read_link(&self, file: &file::UID) -> Result<(PathBuf, Option<file::Attr>)>;
 
-    /// Procedure 6: READ – read file data.
-    async fn read(&self, handle: &FileHandle, offset: u64, count: u32) -> VfsResult<ReadResult>;
+    /// Read file data.
+    async fn read(&self, file: &file::UID, offset: u64, count: u32) -> Result<ReadResult>;
 
-    /// Procedure 7: WRITE – write file data with stability mode.
+    /// Write file data with stability mode.
     async fn write(
         &self,
-        handle: &FileHandle,
+        file: &file::UID,
         offset: u64,
         data: &[u8],
         mode: WriteMode,
-    ) -> VfsResult<WriteResult>;
+    ) -> Result<WriteResult>;
 
-    /// Procedure 8: CREATE – create and optionally initialize a regular file.
-    async fn create(
-        &self,
-        parent: &FileHandle,
-        name: &FileName,
-        mode: CreateMode,
-    ) -> VfsResult<CreatedNode>;
+    /// Create and optionally initialize a regular file.
+    async fn create(&self, parent: &file::UID, name: &str, mode: CreateMode)
+        -> Result<CreatedNode>;
 
-    /// Procedure 9: MKDIR – create a directory.
-    async fn make_dir(
-        &self,
-        parent: &FileHandle,
-        name: &FileName,
-        attr: SetAttr,
-    ) -> VfsResult<CreatedNode>;
+    /// Create a directory.
+    async fn make_dir(&self, parent: &file::UID, name: &str, attr: SetAttr) -> Result<CreatedNode>;
 
-    /// Procedure 10: SYMLINK – create a symbolic link.
+    /// Create a symbolic link.
     async fn make_symlink(
         &self,
-        parent: &FileHandle,
-        name: &FileName,
-        target: &SymlinkTarget,
+        parent: &file::UID,
+        name: &str,
+        target: &Path,
         attr: SetAttr,
-    ) -> VfsResult<CreatedNode>;
+    ) -> Result<CreatedNode>;
 
-    /// Procedure 11: MKNOD – create a special node.
+    /// Create a special node.
     async fn make_node(
         &self,
-        parent: &FileHandle,
-        name: &FileName,
+        parent: &file::UID,
+        name: &str,
         node: SpecialNode,
-    ) -> VfsResult<CreatedNode>;
+    ) -> Result<CreatedNode>;
 
-    /// Procedure 12: REMOVE – delete a file.
-    async fn remove(&self, parent: &FileHandle, name: &FileName) -> VfsResult<RemovalResult>;
+    /// Delete a file.
+    async fn remove(&self, parent: &file::UID, name: &str) -> Result<RemovalResult>;
 
-    /// Procedure 13: RMDIR – delete an empty directory.
-    async fn remove_dir(&self, parent: &FileHandle, name: &FileName) -> VfsResult<RemovalResult>;
+    /// Delete an empty directory.
+    async fn remove_dir(&self, parent: &file::UID, name: &str) -> Result<RemovalResult>;
 
-    /// Procedure 14: RENAME – atomically move a file or directory.
+    /// Atomically move a file or directory.
     async fn rename(
         &self,
-        from_parent: &FileHandle,
-        from_name: &FileName,
-        to_parent: &FileHandle,
-        to_name: &FileName,
-    ) -> VfsResult<RenameResult>;
+        from_parent: &file::UID,
+        from_name: &str,
+        to_parent: &file::UID,
+        to_name: &str,
+    ) -> Result<RenameResult>;
 
-    /// Procedure 15: LINK – create a hard link.
+    /// Create a hard link.
     async fn link(
         &self,
-        source: &FileHandle,
-        new_parent: &FileHandle,
-        new_name: &FileName,
-    ) -> VfsResult<LinkResult>;
+        source: &file::UID,
+        new_parent: &file::UID,
+        new_name: &str,
+    ) -> Result<LinkResult>;
 
-    /// Procedure 16: READDIR – iterate directory entries.
+    /// Iterate directory entries.
     async fn read_dir(
         &self,
-        handle: &FileHandle,
+        file: &file::UID,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-    ) -> VfsResult<ReadDirResult>;
+    ) -> Result<ReadDirResult>;
 
-    /// Procedure 17: READDIRPLUS – iterate directory entries with attributes.
+    /// Iterate directory entries with attributes.
     async fn read_dir_plus(
         &self,
-        handle: &FileHandle,
+        file: &file::UID,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-        max_handles: u32,
-    ) -> VfsResult<ReadDirPlusResult>;
+        max_filess: u32,
+    ) -> Result<ReadDirPlusResult>;
 
-    /// Procedure 18: FSSTAT – fetch dynamic filesystem statistics.
-    async fn fs_stat(&self, handle: &FileHandle) -> VfsResult<FsStat>;
+    /// Get dynamic filesystem statistics.
+    async fn fs_stat(&self, file: &file::UID) -> Result<FsStat>;
 
-    /// Procedure 19: FSINFO – fetch static filesystem information.
-    async fn fs_info(&self, handle: &FileHandle) -> VfsResult<FsInfo>;
+    /// Get static filesystem information.
+    async fn fs_info(&self, file: &file::UID) -> Result<FsInfo>;
 
-    /// Procedure 20: PATHCONF – fetch POSIX path capabilities.
-    async fn path_conf(&self, handle: &FileHandle) -> VfsResult<PathConfig>;
+    /// Get POSIX path capabilities.
+    async fn path_conf(&self, file: &file::UID) -> Result<PathConfig>;
 
-    /// Procedure 21: COMMIT – ensure previous writes reach stable storage.
-    async fn commit(&self, handle: &FileHandle, offset: u64, count: u32)
-        -> VfsResult<CommitResult>;
+    /// Commit previous writes to stable storage.
+    async fn commit(&self, file: &file::UID, offset: u64, count: u32) -> Result<CommitResult>;
 }
