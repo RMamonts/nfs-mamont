@@ -86,7 +86,7 @@ mod file {
     pub const UID_SIZE: usize = 8;
 
     /// Unique file identifier.
-    /// 
+    ///
     /// Corresponds to the file handle from RFC 1813.
     #[derive(Clone)]
     #[allow(dead_code)]
@@ -276,7 +276,7 @@ pub struct RenameResult {
 pub struct DirectoryCookie(pub u64);
 
 /// Cookie verifier (RFC 1813 3.3.16).
-#[derive(Copy, Clone, PartialEq, Eq,)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct CookieVerifier(pub [u8; 8]);
 
 /// Minimal directory entry returned by [`Vfs::read_dir`].
