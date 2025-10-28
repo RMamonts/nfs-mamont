@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 #[allow(dead_code)]
-pub(crate) const RPC_VERSION: u32 = 2;
+pub const RPC_VERSION: u32 = 2;
 #[allow(dead_code)]
 const MAX_AUTH_OPAQUE_LEN: u32 = 400;
 
