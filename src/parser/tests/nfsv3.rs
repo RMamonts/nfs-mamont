@@ -1,10 +1,11 @@
 #![cfg(test)]
 
+use std::io::Cursor;
+
 use crate::nfsv3::{createhow3, ftype3, mknoddata3, set_atime, set_mtime, NFS3_CREATEVERFSIZE};
 use crate::parser::nfsv3::*;
 use crate::parser::primitive::c_enum;
 use crate::parser::Error;
-use std::io::Cursor;
 
 #[test]
 fn test_parse_specdata3_success() {
