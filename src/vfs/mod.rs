@@ -23,62 +23,89 @@ pub const MAX_PATH_LEN: usize = 1024;
 /// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum NfsError {
-    // NFS3ERR_PERM
+    /// Not owner. The operation was not allowed because the
+    /// caller is either not a privileged user (root) or not the
+    /// owner of the target of the operation.
     Perm,
-    // NFS3ERR_NOENT
+    /// No such file or directory. The file or directory name
+    /// specified does not exist.
     NoEnt,
-    // NFS3ERR_IO
+    /// I/O error. A hard error (for example, a disk error)
+    /// occurred while processing the requested operation.
     Io,
-    // NFS3ERR_NXIO
+    /// I/O error. No such device or address.
     NxIo,
-    // NFS3ERR_ACCES
+    /// Permission denied. The caller does not have the correct
+    /// permission to perform the requested operation. Contrast
+    /// this with NFS3ERR_PERM, which restricts itself to owner
+    /// or privileged user permission failures.
     Access,
-    // NFS3ERR_EXIST
+    /// File exists. The file specified already exists.
     Exist,
-    // NFS3ERR_XDEV
+    /// Attempt to do a cross-device hard link.
     XDev,
-    // NFS3ERR_NODEV
+    /// No such device.
     Nodev,
-    // NFS3ERR_NOTDIR
+    /// Not a directory. The caller specified a non-directory in
+    /// a directory operation.
     NotDir,
-    // NFS3ERR_ISDIR
+    /// Is a directory. The caller specified a directory in a
+    /// non-directory operation.
     IsDir,
-    // NFS3ERR_INVAL
+    /// Invalid argument or unsupported argument for an
+    /// operation. Two examples are attempting a READLINK on an
+    /// object other than a symbolic link or attempting to
+    /// SETATTR a time field on a server that does not support
+    /// this operation.
     Inval,
-    // NFS3ERR_FBIG
+    /// File too large. The operation would have caused a file to
+    /// grow beyond the server's limit.
     FBig,
-    // NFS3ERR_NOSPC
+    /// No space left on device. The operation would have caused
+    /// the server's file system to exceed its limit.
     NoSpc,
-    // NFS3ERR_ROFS
-    RoFs,
-    // NFS3ERR_MLINK
+    /// Read-only file system. A modifying operation was
+    /// attempted on a read-only file system.
+    ROFs,
+    /// Too many hard links.
     MLink,
-    // NFS3ERR_NAME_TOO_LONG
+    /// The filename in an operation was too long.
     NameTooLong,
-    // NFS3ERR_NOT_EMPTY
+    /// An attempt was made to remove a directory that was not
+    /// empty.
     NotEmpty,
-    // NFS3ERR_DQUOT
+    /// Resource (quota) hard limit exceeded. The user's resource
+    /// limit on the server has been exceeded.
     DQuot,
-    // NFS3ERR_STALE
+    /// Invalid file handle. The file handle given in the
+    /// arguments was invalid. The file referred to by that file
+    /// handle no longer exists or access to it has been
+    /// revoked.
     Stale,
-    // NFS3ERR_REMOTE
+    /// Too many levels of remote in path. The file handle given
+    /// in the arguments referred to a file on a non-local file
+    /// system on the server.
     Remote,
-    // NFS3ERR_BAD_COOKIE
-    BadCookie,
-    // NFS3ERR_BADHANDLE
+    /// Illegal NFS file handle. The file handle failed internal
+    /// consistency checks.
     BadHandle,
-    // NFS3ERR_NOT_SYNC
+    /// Update synchronization mismatch was detected during a
+    /// [`Vfs::set_attr`] operation.
     NotSync,
-    // NFS3ERR_NOTSUPP
+    /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
+    BadCookie,
+    /// Operation is not supported.
     NotSupp,
-    // NFS3ERR_TOOSMALL
+    /// Buffer or request is too small.
     TooSmall,
-    // NFS3ERR_SERVERFAULT
-    ServerFault,
-    // NFS3ERR_BADTYPE
+
+    // No ServerFault here.
+
+    /// An attempt was made to create an object of a type not
+    /// supported by the [`Vfs`] implementation.
     BadType,
-    // NFS3ERR_JUKEBOX
-    Jukebox,
+
+    // No JUKEBOX here.
 }
 
 /// Weak cache consistency attributes.
