@@ -5,7 +5,7 @@ use crate::nfsv3::{
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
 use crate::parser::primitive::{
-    array, option, string_max_len, to_u32, to_u64, to_u8, u32_as_usize,
+    array, option, string_max_size, to_u32, to_u64, to_u8, u32_as_usize,
 };
 use crate::parser::{Error, Result};
 
@@ -14,7 +14,7 @@ const MAX_FILENAME: usize = 255;
 #[allow(dead_code)]
 pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
-const MAX_FILEPATH: usize = 255;
+const MAX_FILEPATH: usize = 1024;
 
 #[allow(dead_code)]
 pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
@@ -69,14 +69,14 @@ pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
 
 #[allow(dead_code)]
 pub fn diropargs3(src: &mut dyn Read) -> Result<diropargs3> {
-    Ok(diropargs3 { dir: nfs_fh3(src)?, name: string_max_len(src, MAX_FILEPATH)? })
+    Ok(diropargs3 { dir: nfs_fh3(src)?, name: string_max_size(src, MAX_FILEPATH)? })
 }
 
 #[allow(dead_code)]
 pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
     match to_u32(src)? {
         0 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
-        1 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
+        1 => Ok(createhow3::GUARDED(sattr3(src)?)),
         2 => Ok(createhow3::EXCLUSIVE(array::<NFS3_CREATEVERFSIZE, u8>(src, |s| to_u8(s))?)),
         _ => Err(Error::EnumDiscMismatch),
     }
@@ -86,7 +86,7 @@ pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
 pub fn symlinkdata3(src: &mut dyn Read) -> Result<symlinkdata3> {
     Ok(symlinkdata3 {
         symlink_attributes: sattr3(src)?,
-        symlink_data: string_max_len(src, MAX_FILEPATH)?,
+        symlink_data: string_max_size(src, MAX_FILEPATH)?,
     })
 }
 

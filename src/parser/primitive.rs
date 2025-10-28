@@ -10,7 +10,7 @@ use super::{Error, Result};
 pub const ALIGNMENT: usize = 4;
 
 #[allow(dead_code)]
-fn read_padding(src: &mut dyn Read, n: usize) -> Result<()> {
+fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
@@ -60,7 +60,7 @@ pub fn array<const N: usize, T>(
     for elem in buf.iter_mut() {
         elem.write(cont(src)?);
     }
-    read_padding(src, N * size_of::<T>())?;
+    padding(src, N * size_of::<T>())?;
     Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
 }
 
@@ -71,7 +71,7 @@ pub fn vector<T>(src: &mut dyn Read, cont: impl Fn(&mut dyn Read) -> Result<T>) 
     for _ in 0..size {
         vec.push(cont(src)?);
     }
-    read_padding(src, size_of::<T>() * size)?;
+    padding(src, size_of::<T>() * size)?;
     Ok(vec)
 }
 
@@ -89,12 +89,12 @@ pub fn vec_max_size<T>(
     for _ in 0..size {
         vec.push(cont(src)?);
     }
-    read_padding(src, size_of::<T>() * size)?;
+    padding(src, size_of::<T>() * size)?;
     Ok(vec)
 }
 
 #[allow(dead_code)]
-pub fn string_max_len(src: &mut dyn Read, max_size: usize) -> Result<String> {
+pub fn string_max_size(src: &mut dyn Read, max_size: usize) -> Result<String> {
     let vec = vec_max_size(src, |s| to_u8(s), max_size)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
