@@ -5,8 +5,7 @@ pub const UID_SIZE: usize = 8;
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone)]
 #[allow(dead_code)]
-#[allow(clippy::upper_case_acronyms)]
-pub struct UID(pub [u8; UID_SIZE]);
+pub struct Uid(pub [u8; UID_SIZE]);
 
 /// File type.
 #[derive(Clone, Copy)]
