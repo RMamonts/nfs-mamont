@@ -11,7 +11,7 @@ use async_trait::async_trait;
 pub type VfsResult<T> = Result<T, NfsError>;
 
 /// Maximum number of bytes allowed in a file handle (per RFC 1813 2.4).
-pub const MAX_FILE_HANDLE_LEN: usize = 64;
+pub const MAX_FILE_HANDLE_LEN: usize = 8;
 
 /// Maximum number of bytes allowed in a file name (per RFC 1813 2.4).
 pub const MAX_NAME_LEN: usize = 255;
@@ -82,7 +82,7 @@ pub enum NfsError {
 
 /// Handle that uniquely identifies an inode inside the exported filesystem.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FileHandle(pub Vec<u8>);
+pub struct FileHandle(pub [u8; MAX_FILE_HANDLE_LEN]);
 
 /// Canonical representation of a filesystem path according to RFC limits.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -114,7 +114,7 @@ pub struct DeviceId {
 /// Timestamp structure matching `nfstime3`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct FileTime {
-    pub seconds: i64,
+    pub seconds: u32,
     pub nanos: u32,
 }
 
@@ -188,7 +188,7 @@ pub struct LookupResult {
 
 /// Mask of access rights (RFC 1813 3.3.4).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
-pub struct AccessMask(u32);
+pub struct AccessMask(pub u32);
 
 /// Result returned by ACCESS (RFC 1813 3.3.4).
 #[derive(Debug, Clone, PartialEq)]
@@ -233,7 +233,7 @@ pub struct WriteResult {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CreateMode {
     Unchecked { attr: SetAttr },
-    Guarded { attr: SetAttr, verifier: [u8; 8] },
+    Guarded { attr: SetAttr },
     Exclusive { verifier: [u8; 8] },
 }
 
@@ -252,6 +252,9 @@ pub enum SpecialNode {
     Character { device: DeviceId, attr: SetAttr },
     Socket { attr: SetAttr },
     Fifo { attr: SetAttr },
+    Regular,
+    Directory,
+    SymbolicLink,
 }
 
 /// Result returned by REMOVE and RMDIR operations.
@@ -280,7 +283,7 @@ pub struct DirectoryCookie(pub u64);
 
 /// Cookie verifier (RFC 1813 3.3.16).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
-pub struct CookieVerifier(pub [u8; 8]);
+pub struct CookieVerifier(pub u64);
 
 /// Minimal directory entry returned by READDIR.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
