@@ -1,7 +1,9 @@
 use std::cmp::min;
-use std::io::{self, ErrorKind, Read, Write};
+use std::io;
+use std::io::{ErrorKind, Read};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use log::error;
+use tokio::io::AsyncReadExt;
 use tokio::net::tcp::OwnedReadHalf;
 
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
@@ -14,179 +16,190 @@ use crate::parser::nfsv3::procedures::{
     MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs, ReadDirPlusArgs, ReadLinkArgs, RemoveArgs,
     RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
 };
-use crate::parser::primitive::u32;
-use crate::parser::rpc::{auth, AuthFlavor, AuthStat};
+use crate::parser::primitive::to_u32;
+use crate::parser::rpc::AuthStat;
 use crate::parser::{Error, Result};
 use crate::rpc::{rpc_body, RPC_VERSION};
 
+// recalculate
 const MAX_MESSAGE_LEN: usize = 1500;
 const MIN_MESSAGE_LEN: usize = 24;
 
-#[derive(Debug)]
 struct RpcMessage {
     program: u32,
     procedure: u32,
     version: u32,
 }
 
-struct ReadBuffer {
-    data: Vec<u8>,
-    read_pos: usize,
-    write_pos: usize,
+struct CustomCursor {
+    buffer: Vec<u8>,
+    position: usize,
+    read_bytes: usize
 }
 
-#[allow(dead_code)]
-impl ReadBuffer {
-    fn new(capacity: usize) -> Self {
-        Self { data: vec![0u8; capacity], read_pos: 0, write_pos: 0 }
-    }
-
-    fn bytes_read(&self) -> usize {
-        self.read_pos
-    }
-    fn available_read(&self) -> usize {
-        self.write_pos - self.read_pos
-    }
-
-    fn available_write(&self) -> usize {
-        self.data.len() - self.write_pos
-    }
-
-    fn read_slice(&self) -> &[u8] {
-        &self.data[self.read_pos..self.write_pos]
-    }
-
-    fn write_slice(&mut self) -> &mut [u8] {
-        &mut self.data[self.write_pos..]
-    }
-
-    fn consume(&mut self, n: usize) {
-        self.read_pos += n;
-    }
-
-    fn extend(&mut self, n: usize) {
-        self.write_pos += n;
-    }
-
-    fn compact(&mut self) {
-        if self.read_pos > 0 {
-            self.data.copy_within(self.read_pos..self.write_pos, 0);
-            self.write_pos -= self.read_pos;
-            self.read_pos = 0;
+impl CustomCursor {
+    fn new(size: usize) -> Self {
+        Self {
+            buffer: vec![0u8; size],
+            position: 0,
+            read_bytes: 0,
         }
     }
-
-    fn clear(&mut self) {
-        self.read_pos = 0;
-        self.write_pos = 0;
+    fn writer_slice(&mut self) -> &mut [u8] {
+        &mut self.buffer[self.read_bytes..]
     }
 
-    fn len(&self) -> usize {
-        self.data.len()
+    fn extend_read_bytes(&mut self, n: usize) {
+        self.read_bytes += n;
+    }
+
+    fn available_to_read(&mut self) -> usize {
+        self.read_bytes - self.position
+    }
+
+    fn position(&self) -> usize {
+        self.position
     }
 }
 
-impl Read for ReadBuffer {
+impl Read for CustomCursor {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.available_read());
-        buf[..len].copy_from_slice(&self.data[self.read_pos..self.read_pos + len]);
-        self.consume(len);
+        let len = min(buf.len(),self.read_bytes) - self.position;
+        if len == 0 {
+            return Err(io::Error::new(ErrorKind::UnexpectedEof, "No more data available"));
+        }
+        buf[..len].copy_from_slice(&self.buffer[self.position..self.read_bytes]);
+        self.position+=len;
         Ok(len)
     }
 }
 
-impl Write for ReadBuffer {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.available_write());
-        self.write_slice()[..len].copy_from_slice(&buf[..len]);
-        self.extend(len);
-        Ok(len)
-    }
 
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-pub struct RpcParser {
-    buffer: ReadBuffer,
+// need my own cursor!!!
+struct Parser {
+    // actual allocator
+    allocator: (),
+    buffer: CustomCursor,
     socket: OwnedReadHalf,
     last: bool,
-    current_frame_size: usize,
+    frame_size: usize,
 }
 
-#[allow(dead_code)]
-impl RpcParser {
-    pub fn new(socket: OwnedReadHalf, size: usize) -> Self {
-        Self { buffer: ReadBuffer::new(size), socket, last: false, current_frame_size: 0 }
+impl Parser {
+    // what with allocator?
+    #[allow(dead_code)]
+    pub fn new(socket: OwnedReadHalf) -> Self {
+        Self {
+            allocator: (),
+            buffer: CustomCursor::new(MAX_MESSAGE_LEN),
+            socket,
+            last: false,
+            frame_size: 0,
+        }
     }
 
-    // used only in the beginning of parsing
-    async fn fill_buffer(&mut self, min_bytes: usize) -> Result<()> {
-        while self.buffer.available_read() < min_bytes {
-            if self.buffer.available_write() == 0 {
-                return Err(Error::IO(io::Error::new(
-                    ErrorKind::UnexpectedEof,
-                    "Buffer exhausted",
-                )));
+    #[allow(dead_code)]
+    async fn read_with_check<T>(
+        &mut self,
+        caller: impl Fn(&mut dyn Read) -> Result<T>,
+    ) -> Result<T> {
+        // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
+        // definitely be enough to read what we are planning
+        match caller(&mut self.buffer) {
+            Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+                // called whenever we need to read more data
+                let bytes_read = self.socket.read(self.buffer.writer_slice()).await;
+                match bytes_read {
+                    Ok(0) => {
+                        // closing connection
+                        // or
+                        // means that we exceed size - > need to use allocator (that only possible with write!!!)
+                        Err(Error::IO(err))
+                    }
+                    Ok(n) => {
+                        self.buffer.extend_read_bytes(n);
+                        Box::pin(self.read_with_check(caller)).await
+                    }
+                    Err(e) => Err(Error::IO(e)),
+                }
             }
+            Err(err) => Err(err),
+            Ok(value) => Ok(value),
+        }
+    }
+
+    #[allow(dead_code)]
+    async fn initial_read(&mut self) -> Result<()> {
+        // called whenever we need to read more data
+        while self.buffer.available_to_read() < MIN_MESSAGE_LEN {
+            let size = self.socket.read(self.buffer.writer_slice()).await.map_err(Error::IO)?;
+            self.buffer.extend_read_bytes(size);
         }
 
-        let bytes_read = self.socket.read(self.buffer.write_slice()).await.map_err(Error::IO)?;
-
-        if bytes_read == 0 {
-            return Err(Error::IO(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed")));
-        }
-
-        self.buffer.extend(bytes_read);
+        // new cursor
+        // parsing header
+        let head = to_u32( &mut self.buffer)?;
+        self.last = head & 0x8000_0000 == 0x8000_0000;
+        self.frame_size = (head & 0x7FFF_FFFF) as usize;
 
         Ok(())
     }
 
-    async fn read_message_header(&mut self) -> Result<()> {
-        self.fill_buffer(MIN_MESSAGE_LEN).await?;
+    // does not look good
+    #[allow(dead_code)]
+    pub async fn parse_new_message(&mut self) -> Result<Box<Arguments>> {
+        // do some errors checking
+        if let Err(error) = self.initial_read().await {
+            error!("{error:?} occur while reading from socket");
+            return Err(error);
+        }
 
-        let header = u32(&mut self.buffer)?;
-        self.last = header & 0x8000_0000 != 0;
-        self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
+        // do some errors checking
+        let msg = match self.parse_header().await {
+            Ok(msg) => msg,
+            Err(error) => {
+                // make some matching
+                return Err(error);
+            }
+        };
+        let procedure = self.parse_proc(msg).await?;
 
-        // find out about these two checks
-
-        if self.current_frame_size > MAX_MESSAGE_LEN {
+        if self.buffer.position() != self.frame_size {
             return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Frame size exceeds maximum",
+                io::ErrorKind::InvalidInput,
+                "Parsed data don't match frame size",
             )));
         }
 
-        if !self.last {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::Unsupported,
-                "Fragmented messages not supported",
-            )));
-        }
-
-        Ok(())
+        Ok(procedure)
     }
 
-    async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
-        let msg_type = u32(&mut self.buffer)?;
+    #[allow(dead_code)]
+    async fn parse_header(&mut self) -> Result<RpcMessage> {
+        // parse rpc header with all needed checks
+        let msg_type = to_u32(&mut self.buffer)?;
         if msg_type == rpc_body::REPLY as u32 {
+            error!("Receive RPC reply message");
+            // do we need to do it here? Maybe in read_new_message?
             return Err(Error::MessageTypeMismatch);
         }
 
-        let rpc_version = u32(&mut self.buffer)?;
-        if rpc_version != RPC_VERSION {
+        let prc_vers = to_u32(&mut self.buffer)?;
+
+        if prc_vers != RPC_VERSION {
+            error!("RPC version mismatch");
             return Err(Error::RpcVersionMismatch);
         }
 
-        let program = u32(&mut self.buffer)?;
-        let version = u32(&mut self.buffer)?;
-        let procedure = u32(&mut self.buffer)?;
+        let program = to_u32(&mut self.buffer)?;
+        let version = to_u32(&mut self.buffer)?;
+        let procedure = to_u32(&mut self.buffer)?;
 
-        let auth_status = self.parse_authentication().await?;
-        if auth_status != AuthStat::AuthOk {
-            return Err(Error::AuthError(auth_status));
+
+        let auth = self.authentication().await?;
+        if auth != AuthStat::AuthOk {
+            error!("Authentication failed: {auth:?}");
+            return Err(Error::AuthError(auth));
         }
 
         Ok(RpcMessage { program, procedure, version })
@@ -197,92 +210,38 @@ impl RpcParser {
             NFS_PROGRAM => {
                 match head.version {
                     NFS_VERSION => {
+                        //proc analysis
                         Ok(Box::new(match head.procedure {
                             0 => Arguments::Null,
-                            1 => Arguments::GetAttr(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, get_attr)
-                                    .await?,
-                            ),
-                            2 => Arguments::SetAttr(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, set_attr)
-                                    .await?,
-                            ),
-                            3 => Arguments::LookUp(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, lookup)
-                                    .await?,
-                            ),
-                            4 => Arguments::Access(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, access)
-                                    .await?,
-                            ),
-                            5 => Arguments::ReadLink(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, readlink)
-                                    .await?,
-                            ),
-                            6 => Arguments::Read(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, read).await?,
-                            ),
+                            1 => Arguments::GetAttr(self.read_with_check(get_attr).await?),
+                            2 => Arguments::SetAttr(self.read_with_check(set_attr).await?),
+                            3 => Arguments::LookUp(self.read_with_check(lookup).await?),
+                            4 => Arguments::Access(self.read_with_check(access).await?),
+                            5 => Arguments::ReadLink(self.read_with_check(readlink).await?),
+                            6 => Arguments::Read(self.read_with_check(read).await?),
                             // some other logic with allocator!!!
-                            7 => Arguments::Write(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, write).await?,
-                            ),
-
-                            8 => Arguments::Create(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, create)
-                                    .await?,
-                            ),
-                            9 => Arguments::MkDir(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, mkdir).await?,
-                            ),
-                            10 => Arguments::SymLink(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, symlink)
-                                    .await?,
-                            ),
-                            11 => Arguments::MkNod(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, mknod).await?,
-                            ),
-                            12 => Arguments::Remove(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, remove)
-                                    .await?,
-                            ),
-                            13 => Arguments::RmDir(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, rmdir).await?,
-                            ),
-                            14 => Arguments::Rename(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, rename)
-                                    .await?,
-                            ),
-                            15 => Arguments::Link(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, link).await?,
-                            ),
-                            16 => Arguments::ReadDir(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, readdir)
-                                    .await?,
-                            ),
-                            17 => Arguments::ReadDirPlus(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, readdir_plus)
-                                    .await?,
-                            ),
-                            18 => Arguments::FsStat(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, fsstat)
-                                    .await?,
-                            ),
-                            19 => Arguments::FsInfo(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, fsinfo)
-                                    .await?,
-                            ),
-                            20 => Arguments::PathConf(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, pathconf)
-                                    .await?,
-                            ),
-                            21 => Arguments::Commit(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, commit)
-                                    .await?,
-                            ),
+                            7 => Arguments::Write(self.read_with_check(write).await?),
+                            8 => Arguments::Create(self.read_with_check(create).await?),
+                            9 => Arguments::MkDir(self.read_with_check(mkdir).await?),
+                            10 => Arguments::SymLink(self.read_with_check(symlink).await?),
+                            11 => Arguments::MkNod(self.read_with_check(mknod).await?),
+                            12 => Arguments::Remove(self.read_with_check(remove).await?),
+                            13 => Arguments::RmDir(self.read_with_check(rmdir).await?),
+                            14 => Arguments::Rename(self.read_with_check(rename).await?),
+                            15 => Arguments::Link(self.read_with_check(link).await?),
+                            16 => Arguments::ReadDir(self.read_with_check(readdir).await?),
+                            17 => Arguments::ReadDirPlus(self.read_with_check(readdir_plus).await?),
+                            18 => Arguments::FsStat(self.read_with_check(fsstat).await?),
+                            19 => Arguments::FsInfo(self.read_with_check(fsinfo).await?),
+                            20 => Arguments::PathConf(self.read_with_check(pathconf).await?),
+                            21 => Arguments::Commit(self.read_with_check(commit).await?),
                             _ => return Err(Error::ProcedureMismatch),
                         }))
                     }
-                    _ => Err(Error::ProgramVersionMismatch),
+                    _ => {
+                        // version mismatch
+                        Err(Error::ProgramVersionMismatch)
+                    }
                 }
             }
 
@@ -290,140 +249,32 @@ impl RpcParser {
                 if head.version != MOUNT_VERSION {
                     return Err(Error::ProgramVersionMismatch);
                 }
+                // proc analysis
                 Ok(Box::new(match head.procedure {
                     0 => Arguments::Null,
-                    1 => Arguments::Mount(
-                        parse_with_retry(&mut self.buffer, &mut self.socket, mount).await?,
-                    ),
+                    1 => Arguments::Mount(self.read_with_check(mount).await?),
                     2 => Arguments::Dump,
-                    3 => Arguments::Unmount(
-                        parse_with_retry(&mut self.buffer, &mut self.socket, unmount).await?,
-                    ),
+                    3 => Arguments::Unmount(self.read_with_check(unmount).await?),
                     4 => Arguments::UnmountAll,
                     5 => Arguments::Export,
                     _ => return Err(Error::ProcedureMismatch),
                 }))
             }
-            _ => Err(Error::ProgramMismatch),
-        }
-    }
-
-    // TODO: add some error handling
-    pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
-        self.read_message_header().await?;
-        let rpc_header = match self.parse_rpc_header().await {
-            Err(error) => {
-                match error {
-                    //these one to send to write directly to writetask and continue parsing
-                    //use discard_current_message
-                    Error::MessageTypeMismatch => {}
-                    Error::RpcVersionMismatch => {}
-                    Error::AuthError(_) => {}
-                    Error::ProgramMismatch => {}
-                    Error::ProcedureMismatch => {}
-                    Error::ProgramVersionMismatch => {}
-                    //these one are fatal, but some still need replies (parse_error and server_error)
-                    //probably simply drop everything after sending sata to other tasks
-                    Error::IO(_) => {}
-                    _ => {
-
-                    }
-                }
-            }
-            Ok(_) => {}
-        };
-        //same as with header
-        let procedure = match self.parse_proc(rpc_header).await {
-            Ok(_) => {}
-            Err(_) => {}
-        }
-        // that's done after normal parsing without errors
-        self.finalize_parsing()?;
-        Ok(procedure)
-    }
-
-    // used after successful parsing - with no errors
-    fn finalize_parsing(&mut self) -> Result<()> {
-        if self.buffer.bytes_read() != self.current_frame_size {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Unparsed data remaining in frame",
-            )));
-        }
-
-        self.buffer.compact();
-        self.current_frame_size = 0;
-        self.last = false;
-        Ok(())
-    }
-
-    // used after non-fatal errors - to clean remaining data from socket
-    // !!! implement some logic for write - we would need allocator
-    pub async fn discard_current_message(&mut self) -> Result<()> {
-        let remaining = self.current_frame_size - self.buffer.bytes_read();
-
-        let mut total_discarded = 0;
-        while total_discarded < remaining {
-            self.buffer.clear();
-            let read = self.socket.read(self.buffer.write_slice()).await.map_err(Error::IO)?;
-            if read == 0 {
-                break;
-            }
-            total_discarded += read;
-        }
-        self.buffer.clear();
-        self.current_frame_size = 0;
-        self.last = false;
-        Ok(())
-    }
-
-    async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        let auth = auth(&mut self.buffer)?;
-        match auth.flavor {
-            AuthFlavor::AuthNone => {
-                Ok(AuthStat::AuthOk)
-            }
             _ => {
-                unimplemented!()
+                // here is prog mismatch
+                Err(Error::ProgramMismatch)
             }
         }
+    }
+
+    async fn authentication(&mut self) -> Result<AuthStat> {
+        todo!()
     }
 }
 
 #[allow(dead_code)]
-async fn parse_with_retry<T>(
-    buffer: &mut ReadBuffer,
-    socket: &mut (impl AsyncRead + Unpin),
-    caller: impl Fn(&mut dyn Read) -> Result<T>,
-) -> Result<T> {
-    // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
-    // definitely be enough to read what we are planning
-    match caller(buffer) {
-        Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
-            // called whenever we need to read more data
-            let bytes_read = socket.read(buffer.write_slice()).await;
-            match bytes_read {
-                Ok(0) => {
-                    // closing connection
-                    // or
-                    // means that we exceed size - > need to use allocator (that only possible with write!!!)
-                    Err(Error::IO(err))
-                }
-                Ok(n) => {
-                    buffer.extend(n);
-                    Box::pin(parse_with_retry(buffer, socket, caller)).await
-                }
-                Err(e) => Err(Error::IO(e)),
-            }
-        }
-        result => result,
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Debug)]
 pub enum Arguments {
-    // NFSv3
+    // NSGv3
     Null,
     GetAttr(GetAttrArgs),
     SetAttr(SetAttrArgs),
@@ -452,4 +303,5 @@ pub enum Arguments {
     Export,
     Dump,
     UnmountAll,
+    ExportAll,
 }
