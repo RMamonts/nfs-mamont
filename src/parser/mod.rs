@@ -1,8 +1,11 @@
 pub mod mount;
 pub mod nfsv3;
+mod parser;
 pub mod primitive;
+mod rpc;
 mod tests;
 
+use crate::parser::rpc::AuthStat;
 use std::io;
 use std::string::FromUtf8Error;
 
@@ -18,4 +21,10 @@ pub enum Error {
     IncorrectPadding,
     ImpossibleTypeCast,
     BadFileHandle,
+    MessageTypeMismatch,
+    RpcVersionMismatch,
+    AuthError(AuthStat),
+    ProgramMismatch,
+    ProcedureMismatch,
+    ProgramVersionMismatch,
 }
