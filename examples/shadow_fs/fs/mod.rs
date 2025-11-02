@@ -8,6 +8,9 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::task;
 
+use nix::sys::statvfs;
+use nix::unistd;
+
 use nfs_mamont::vfs;
 
 mod shadow;
@@ -17,7 +20,7 @@ mod utils;
 pub use shadow::ShadowFS;
 
 use utils::{
-    apply_setattr, ensure_supported_attr, file_name_string, join_child, map_io_error,
+    apply_setattr, ensure_supported_attr, file_name_string, join_child, map_io_error, map_errno,
     ENTRY_ESTIMATE_BYTES,
 };
 
@@ -519,32 +522,35 @@ impl vfs::Vfs for ShadowFS {
 
     async fn fs_stat(&self, handle: &vfs::FileHandle) -> vfs::VfsResult<vfs::FsStat> {
         let attr = self.get_attr(handle).await.ok();
-        // TODO: Make correct
+        let rel = self.rel_path_from_handle(handle).await?;
+        let abs = self.full_path(&rel);
+        
+        let stats = statvfs::statvfs(&abs).map_err(map_errno)?;
+
         Ok(vfs::FsStat {
-            total_bytes: 0,
-            free_bytes: 0,
-            available_bytes: 0,
-            total_files: 0,
-            free_files: 0,
-            available_files: 0,
-            invarsec: 0,
+            total_bytes: stats.fragment_size() * stats.blocks(),
+            free_bytes: stats.fragment_size() * stats.blocks_free(),
+            available_bytes: stats.fragment_size() * stats.blocks_available(),
+            total_files: stats.files(),
+            free_files: stats.files_free(),
+            available_files: stats.files_available(),
+            invarsec: vfs::VOLATILE_FS_INVARSEC,
             file_attr: attr,
         })
     }
 
     async fn fs_info(&self, handle: &vfs::FileHandle) -> vfs::VfsResult<vfs::FsInfo> {
         let attr = self.get_attr(handle).await.ok();
-        // TODO: Adjust these parameters as needed and move to constants.
         Ok(vfs::FsInfo {
-            read_max: 1 << 20,
-            read_pref: 64 << 10,
-            read_multiple: 1,
-            write_max: 1 << 20,
-            write_pref: 64 << 10,
-            write_multiple: 1,
-            directory_pref: 4 << 10,
+            read_max: vfs::READ_MAX,
+            read_pref: vfs::READ_PREF,
+            read_multiple: vfs::READ_MULTIPLE,
+            write_max: vfs::WRITE_MAX,
+            write_pref: vfs::WRITE_PREF,
+            write_multiple: vfs::WRITE_MULTIPLE,
+            directory_pref: vfs::READDIR_PREF,
             max_file_size: u64::MAX,
-            time_delta: vfs::FileTime { seconds: 1, nanos: 0 },
+            time_delta: vfs::FileTime { seconds: 0, nanos: vfs::DEFAULT_TIME_DELTA_NSEC },
             properties: vfs::FsProperties::default(),
             file_attr: attr,
         })
@@ -552,10 +558,18 @@ impl vfs::Vfs for ShadowFS {
 
     async fn path_conf(&self, handle: &vfs::FileHandle) -> vfs::VfsResult<vfs::PathConfig> {
         let attr = self.get_attr(handle).await.ok();
+        let rel = self.rel_path_from_handle(handle).await?;
+        let abs = self.full_path(&rel);
+
+        let max_link:u32 = match unistd::pathconf(&abs, unistd::PathconfVar::LINK_MAX).map_err(map_errno)? {
+            Some(m) => m as u32,
+            _ => u32::MAX
+        };
+        
         Ok(vfs::PathConfig {
             file_attr: attr,
             // TODO: Adjust these parameters as needed and move to constants.
-            max_link: 1024,
+            max_link: max_link,
             max_name: vfs::MAX_NAME_LEN as u32,
             no_trunc: true,
             chown_restricted: true,

@@ -298,17 +298,11 @@ struct LOOKUP3resfail {
     dir_attributes: post_op_attr,
 }
 
-#[allow(dead_code)]
 const ACCESS3_READ: u32 = 0x0001;
-#[allow(dead_code)]
 const ACCESS3_LOOKUP: u32 = 0x0002;
-#[allow(dead_code)]
 const ACCESS3_MODIFY: u32 = 0x0004;
-#[allow(dead_code)]
 const ACCESS3_EXTEND: u32 = 0x0008;
-#[allow(dead_code)]
 const ACCESS3_DELETE: u32 = 0x0010;
-#[allow(dead_code)]
 const ACCESS3_EXECUTE: u32 = 0x0020;
 
 #[allow(dead_code)]
@@ -656,14 +650,10 @@ struct FSSTAT3resfail {
     obj_attributes: post_op_attr,
 }
 
-#[allow(dead_code)]
-const FSF3_LINK: u32 = 0x0001;
-#[allow(dead_code)]
-const FSF3_SYMLINK: u32 = 0x0002;
-#[allow(dead_code)]
-const FSF3_HOMOGENEOUS: u32 = 0x0008;
-#[allow(dead_code)]
-const FSF3_CANSETTIME: u32 = 0x0010;
+pub const FSF3_LINK: u32 = 0x0001;
+pub const FSF3_SYMLINK: u32 = 0x0002;
+pub const FSF3_HOMOGENEOUS: u32 = 0x0008;
+pub const FSF3_CANSETTIME: u32 = 0x0010;
 
 #[allow(dead_code)]
 struct FSINFOargs {

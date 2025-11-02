@@ -7,6 +7,8 @@
 
 use async_trait::async_trait;
 
+use crate::nfsv3;
+
 /// Convenient result alias used by all VFS operations.
 pub type VfsResult<T> = Result<T, NfsError>;
 
@@ -18,6 +20,26 @@ pub const MAX_NAME_LEN: usize = 255;
 
 /// Maximum number of bytes allowed in a file path (per RFC 1813 2.4).
 pub const MAX_PATH_LEN: usize = 1024;
+
+/// Maximum size of a write request data supported by the server.
+pub const WRITE_MAX: u32 = 32768;
+
+pub const WRITE_PREF: u32 = WRITE_MAX;
+
+pub const WRITE_MULTIPLE: u32 = 512;
+
+/// Maximum size of a read request supported by the server.
+pub const READ_MAX: u32 = 32768;
+
+pub const READ_PREF: u32 = READ_MAX;
+
+pub const READ_MULTIPLE: u32 = 512;
+
+pub const READDIR_PREF: u32 = READ_MAX;
+
+pub const DEFAULT_TIME_DELTA_NSEC: u32 = 100;
+
+pub const VOLATILE_FS_INVARSEC: u32 = 0;
 
 /// NFSv3 status codes (RFC 1813 2.6).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -371,8 +393,19 @@ pub struct FsInfo {
 }
 
 /// Filesystem capability flags (RFC 1813 3.3.19).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct FsProperties(u32);
+
+impl Default for FsProperties {
+    fn default() -> Self {
+        FsProperties(
+            nfsv3::FSF3_LINK
+                | nfsv3::FSF3_SYMLINK
+                | nfsv3::FSF3_HOMOGENEOUS
+                | nfsv3::FSF3_CANSETTIME,
+        )
+    }
+}
 
 /// POSIX path configuration information (RFC 1813 3.3.20).
 #[derive(Debug, Clone, PartialEq)]

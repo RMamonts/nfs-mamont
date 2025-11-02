@@ -3,6 +3,8 @@ use std::io;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 
+use nix::errno::Errno;
+use nix::libc::ENOENT;
 use tokio::fs::OpenOptions;
 use tokio::task;
 
@@ -24,6 +26,15 @@ pub fn map_io_error(err: io::Error) -> vfs::NfsError {
         ReadOnlyFilesystem => vfs::NfsError::RoFs,
         StorageFull | OutOfMemory => vfs::NfsError::NoSpc,
         _ => vfs::NfsError::Io,
+    }
+}
+
+pub fn map_errno(err: Errno) -> vfs::NfsError {
+    use vfs::NfsError::*;
+    match err {
+        Errno::EPERM => Access,
+        Errno::ENOENT => NoEnt,
+        _ => Io
     }
 }
 

@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 async-trait = "0.1.89"
+nix = { version = "0.30.1", features = ["feature", "fs"] }
 tokio = { version = "1.47", features = ["full", "time"] }
 
 [dev-dependencies]
