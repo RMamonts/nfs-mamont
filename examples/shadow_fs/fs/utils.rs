@@ -34,7 +34,7 @@ pub fn map_errno(err: Errno) -> vfs::NfsError {
     match err {
         Errno::EPERM => Access,
         Errno::ENOENT => NoEnt,
-        _ => Io
+        _ => Io,
     }
 }
 

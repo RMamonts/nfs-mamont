@@ -20,7 +20,7 @@ mod utils;
 pub use shadow::ShadowFS;
 
 use utils::{
-    apply_setattr, ensure_supported_attr, file_name_string, join_child, map_io_error, map_errno,
+    apply_setattr, ensure_supported_attr, file_name_string, join_child, map_errno, map_io_error,
     ENTRY_ESTIMATE_BYTES,
 };
 
@@ -524,7 +524,7 @@ impl vfs::Vfs for ShadowFS {
         let attr = self.get_attr(handle).await.ok();
         let rel = self.rel_path_from_handle(handle).await?;
         let abs = self.full_path(&rel);
-        
+
         let stats = statvfs::statvfs(&abs).map_err(map_errno)?;
 
         Ok(vfs::FsStat {
@@ -561,11 +561,12 @@ impl vfs::Vfs for ShadowFS {
         let rel = self.rel_path_from_handle(handle).await?;
         let abs = self.full_path(&rel);
 
-        let max_link:u32 = match unistd::pathconf(&abs, unistd::PathconfVar::LINK_MAX).map_err(map_errno)? {
-            Some(m) => m as u32,
-            _ => u32::MAX
-        };
-        
+        let max_link: u32 =
+            match unistd::pathconf(&abs, unistd::PathconfVar::LINK_MAX).map_err(map_errno)? {
+                Some(m) => m as u32,
+                _ => u32::MAX,
+            };
+
         Ok(vfs::PathConfig {
             file_attr: attr,
             // TODO: Adjust these parameters as needed and move to constants.
