@@ -5,7 +5,7 @@ use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::parser::primitive::{
-    array, option, string, string_max_size, bool, u32, u64, u8, vector,
+    array, bool, option, string, string_max_size, u32, u64, u8, vector,
 };
 use crate::parser::Error;
 

@@ -1,16 +1,11 @@
-pub mod procedures;
-
 use std::io::Read;
 
 use crate::nfsv3::{
     createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime3, sattr3, set_atime,
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
-use crate::parser::primitive::{
-    array, option, string_max_size, u32, u64, u8, u32_as_usize,
-};
+use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64, u8};
 use crate::parser::{Error, Result};
-use crate::vfs::{FileHandle, FileName};
 
 #[allow(dead_code)]
 const MAX_FILENAME: usize = 255;
@@ -18,13 +13,6 @@ const MAX_FILENAME: usize = 255;
 pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
 const MAX_FILEPATH: usize = 1024;
-
-#[cfg_attr(test, derive(Eq, PartialEq))]
-#[derive(Debug)]
-pub struct DirOpArg {
-    pub object: FileHandle,
-    pub name: FileName,
-}
 
 #[allow(dead_code)]
 pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
@@ -69,8 +57,7 @@ pub fn sattr3(src: &mut dyn Read) -> Result<sattr3> {
 
 #[allow(dead_code)]
 pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
-    let size = u32_as_usize(src)?;
-    if size != MAX_FILEHANDLE {
+    if u32_as_usize(src)? != MAX_FILEHANDLE {
         return Err(Error::BadFileHandle);
     }
     Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE, u8>(src, |s| u8(s))? })
