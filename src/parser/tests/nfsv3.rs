@@ -4,7 +4,7 @@ use std::io::Cursor;
 
 use crate::nfsv3::{createhow3, ftype3, mknoddata3, set_atime, set_mtime, NFS3_CREATEVERFSIZE};
 use crate::parser::nfsv3::*;
-use crate::parser::primitive::c_enum;
+use crate::parser::primitive::variant;
 use crate::parser::Error;
 
 #[test]
@@ -239,11 +239,11 @@ fn test_mknoddata3_all_variants() {
 fn test_c_enum() {
     let data = [0x00, 0x00, 0x00, 0x06];
     let mut src = Cursor::new(&data);
-    let result = c_enum(&mut src).unwrap();
+    let result = variant(&mut src).unwrap();
     assert!(matches!(result, ftype3::NF3SOCK));
 
     let data = [0x00, 0x00, 0x00, 0x08];
     let mut src = Cursor::new(&data);
-    let result = c_enum::<ftype3>(&mut src);
+    let result = variant::<ftype3>(&mut src);
     assert!(matches!(result, Err(Error::EnumDiscMismatch)));
 }

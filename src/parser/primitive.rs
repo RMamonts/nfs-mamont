@@ -17,23 +17,23 @@ fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub fn to_u8(src: &mut dyn Read) -> Result<u8> {
+pub fn u8(src: &mut dyn Read) -> Result<u8> {
     src.read_u8().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn to_u32(src: &mut dyn Read) -> Result<u32> {
+pub fn u32(src: &mut dyn Read) -> Result<u32> {
     src.read_u32::<BigEndian>().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn to_u64(src: &mut dyn Read) -> Result<u64> {
+pub fn u64(src: &mut dyn Read) -> Result<u64> {
     src.read_u64::<BigEndian>().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn to_bool(src: &mut dyn Read) -> Result<bool> {
-    match to_u32(src)? {
+pub fn bool(src: &mut dyn Read) -> Result<bool> {
+    match u32(src)? {
         0 => Ok(false),
         1 => Ok(true),
         _ => Err(Error::EnumDiscMismatch),
@@ -45,7 +45,7 @@ pub fn option<T>(
     src: &mut dyn Read,
     cont: impl FnOnce(&mut dyn Read) -> Result<T>,
 ) -> Result<Option<T>> {
-    match to_bool(src)? {
+    match bool(src)? {
         true => Ok(Some(cont(src)?)),
         false => Ok(None),
     }
@@ -95,22 +95,22 @@ pub fn vec_max_size<T>(
 
 #[allow(dead_code)]
 pub fn string_max_size(src: &mut dyn Read, max_size: usize) -> Result<String> {
-    let vec = vec_max_size(src, |s| to_u8(s), max_size)?;
+    let vec = vec_max_size(src, |s| u8(s), max_size)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
 #[allow(dead_code)]
 pub fn string(src: &mut dyn Read) -> Result<String> {
-    let vec = vector(src, |s| to_u8(s))?;
+    let vec = vector(src, |s| u8(s))?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
 #[allow(dead_code)]
-pub fn c_enum<T: FromPrimitive>(src: &mut dyn Read) -> Result<T> {
-    FromPrimitive::from_u32(to_u32(src)?).ok_or(Error::EnumDiscMismatch)
+pub fn variant<T: FromPrimitive>(src: &mut dyn Read) -> Result<T> {
+    FromPrimitive::from_u32(u32(src)?).ok_or(Error::EnumDiscMismatch)
 }
 
 #[allow(dead_code)]
 pub fn u32_as_usize(src: &mut dyn Read) -> Result<usize> {
-    to_u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
+    u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
 }

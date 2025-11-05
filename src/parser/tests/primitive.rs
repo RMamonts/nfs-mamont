@@ -5,7 +5,7 @@ use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt};
 
 use crate::parser::primitive::{
-    array, option, string, string_max_size, to_bool, to_u32, to_u64, to_u8, vector,
+    array, bool, option, string, string_max_size, u32, u64, u8, vector,
 };
 use crate::parser::Error;
 
@@ -18,7 +18,7 @@ fn test_u32() {
     }
     let mut src = Cursor::new(src);
     for correct_res in init {
-        let val = to_u32(&mut src).expect("Cannot parse value!");
+        let val = u32(&mut src).expect("Cannot parse value!");
         assert_eq!(val, correct_res)
     }
 }
@@ -32,7 +32,7 @@ fn test_u64() {
     }
     let mut src = Cursor::new(src);
     for correct_res in init {
-        let val = to_u64(&mut src).expect("Cannot parse value!");
+        let val = u64(&mut src).expect("Cannot parse value!");
         assert_eq!(val, correct_res)
     }
 }
@@ -46,7 +46,7 @@ fn test_bool() {
     }
     let mut src = Cursor::new(src);
     for correct_res in init {
-        let val = to_bool(&mut src).expect("Cannot parse value!");
+        let val = bool(&mut src).expect("Cannot parse value!");
         assert_eq!(val, correct_res)
     }
 }
@@ -65,7 +65,7 @@ fn test_option() {
     }
     let mut src = Cursor::new(src);
     for correct_res in init {
-        let val = option(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
+        let val = option(&mut src, |s| u32(s)).expect("Cannot parse value!");
         assert_eq!(val, correct_res)
     }
 }
@@ -76,7 +76,7 @@ fn test_array_u32() {
     let mut src = Vec::new();
     init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
     let mut src = Cursor::new(src);
-    let val = array::<3, u32>(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
+    let val = array::<3, u32>(&mut src, |s| u32(s)).expect("Cannot parse value!");
     assert_eq!(val, init)
 }
 
@@ -91,7 +91,7 @@ fn test_vec_u8() {
     let padding_len = (4 - (init.len() % 4)) % 4;
     src.extend(vec![0u8; padding_len]);
 
-    let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
+    let result = vector(&mut Cursor::new(src), |s| u8(s)).unwrap();
     assert_eq!(result, init);
 }
 
@@ -104,7 +104,7 @@ fn test_vec_u8_with_padding() {
         src.write_u8(*i).unwrap();
     }
     src.push(0);
-    let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
+    let result = vector(&mut Cursor::new(src), |s| u8(s)).unwrap();
     assert_eq!(result, init);
 }
 
@@ -115,7 +115,7 @@ fn test_u8_array_padding_error() {
     for i in &init {
         src.write_u8(*i).unwrap();
     }
-    let result = array::<3, u8>(&mut Cursor::new(src), |s| to_u8(s));
+    let result = array::<3, u8>(&mut Cursor::new(src), |s| u8(s));
     assert!(matches!(result, Err(Error::IncorrectPadding)));
 }
 
@@ -124,7 +124,7 @@ fn test_u8_array_miss_elements() {
     let init = [78u32, 0, 78965];
     let mut src = Vec::new();
     let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
-    let result = array::<4, u32>(&mut Cursor::new(src), |s| to_u32(s));
+    let result = array::<4, u32>(&mut Cursor::new(src), |s| u32(s));
     assert!(matches!(result, Err(Error::IO(_))));
 }
 
@@ -136,7 +136,7 @@ fn test_vec_u32() {
     for i in &init {
         src.write_u32::<BigEndian>(*i).unwrap();
     }
-    let result = vector(&mut Cursor::new(src), |s| to_u32(s)).unwrap();
+    let result = vector(&mut Cursor::new(src), |s| u32(s)).unwrap();
     assert_eq!(result, init);
 }
 
@@ -190,6 +190,6 @@ fn test_string_with_max_len_too_long() {
 fn test_read_error() {
     let mut src = Vec::new();
     src.write_u32::<BigEndian>(10).unwrap();
-    let result = vector(&mut Cursor::new(src), |s| to_u8(s));
+    let result = vector(&mut Cursor::new(src), |s| u8(s));
     assert!(matches!(result, Err(Error::IO(_))));
 }
