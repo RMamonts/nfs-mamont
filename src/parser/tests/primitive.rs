@@ -74,7 +74,7 @@ fn test_option() {
 fn test_array_u32() {
     let init = [457u32, 475, 0];
     let mut src = Vec::new();
-    init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
+    let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
     let mut src = Cursor::new(src);
     let val = array::<3, u32>(&mut src, |s| u32(s)).expect("Cannot parse value!");
     assert_eq!(val, init)
