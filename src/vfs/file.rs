@@ -5,7 +5,7 @@ pub const UID_SIZE: usize = 8;
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone)]
 #[allow(dead_code)]
-pub struct Handle(pub [u8; UID_SIZE]);
+pub struct Uid(pub [u8; UID_SIZE]);
 
 /// File type.
 #[derive(Clone, Copy)]
