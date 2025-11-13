@@ -1,71 +1,13 @@
-//! Virtual File System trait definition for NFSv3 (RFC 1813).
-//!
-//! This module exposes a Rust-friendly interface that mirrors the
-//! procedures described in the NFS version 3 specification. All types are
-//! expressed using idiomatic Rust naming instead of the original C/XDR
-//! definitions from the RFC.
+//! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-mod file {
-    pub const UID_SIZE: usize = 8;
-
-    /// Unique file identifier.
-    ///
-    /// Corresponds to the file handle from RFC 1813.
-    #[derive(Clone)]
-    #[allow(dead_code)]
-    pub struct Uid(pub [u8; UID_SIZE]);
-
-    /// File type.
-    #[derive(Clone, Copy)]
-    pub enum Type {
-        Regular,
-        Directory,
-        BlockDevice,
-        CharacterDevice,
-        Symlink,
-        Socket,
-        Fifo,
-    }
-
-    /// File attributes.
-    #[derive(Clone)]
-    pub struct Attr {
-        pub file_type: Type,
-        pub mode: u32,
-        pub nlink: u32,
-        pub uid: u32,
-        pub gid: u32,
-        pub size: u64,
-        pub used: u64,
-        pub device: Option<Device>,
-        pub fsid: u64,
-        pub fileid: u64,
-        pub atime: Time,
-        pub mtime: Time,
-        pub ctime: Time,
-    }
-
-    /// Time of file [`super::Vfs`] operations.
-    #[derive(Copy, Clone)]
-    pub struct Time {
-        pub seconds: i64,
-        pub nanos: u32,
-    }
-
-    /// Major and minor device pair.
-    #[derive(Copy, Clone)]
-    pub struct Device {
-        pub major: u32,
-        pub minor: u32,
-    }
-}
+mod file;
 
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
 /// Result of [`Vfs`] operations.
-pub type Result<T> = std::result::Result<T, NfsError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Maximum length of names passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
@@ -75,19 +17,20 @@ pub const MAX_PATH_LEN: usize = 1024;
 
 /// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum NfsError {
+pub enum Error {
+    // Assume PERM.
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
     /// owner of the target of the operation.
-    Perm,
+    Permission,
+    // Assume NOENT.
     /// No such file or directory. The file or directory name
     /// specified does not exist.
-    NoEnt,
+    NoEntry,
     /// I/O error. A hard error (for example, a disk error)
     /// occurred while processing the requested operation.
-    Io,
-    /// I/O error. No such device or address.
-    NxIo,
+    IO,
+    // No `NXIO` error, how it relates to plain IO error?
     /// Permission denied. The caller does not have the correct
     /// permission to perform the requested operation. Contrast
     /// this with NFS3ERR_PERM, which restricts itself to owner
@@ -98,65 +41,80 @@ pub enum NfsError {
     /// Attempt to do a cross-device hard link.
     XDev,
     /// No such device.
-    Nodev,
+    NoDev,
     /// Not a directory. The caller specified a non-directory in
     /// a directory operation.
     NotDir,
     /// Is a directory. The caller specified a directory in a
     /// non-directory operation.
     IsDir,
+    // Assume INVAL.
     /// Invalid argument or unsupported argument for an
-    /// operation. Two examples are attempting a READLINK on an
+    /// operation. Two examples are attempting a [`Vfs::read_link`] on an
     /// object other than a symbolic link or attempting to
-    /// SETATTR a time field on a server that does not support
+    /// [`Vfs::set_attr`] a time field on a server that does not support
     /// this operation.
-    Inval,
+    InvalidArgument,
+    // Assume FBIG.
     /// File too large. The operation would have caused a file to
     /// grow beyond the server's limit.
-    FBig,
+    FileTooLarge,
+    // Assume NOSPC.
     /// No space left on device. The operation would have caused
     /// the server's file system to exceed its limit.
-    NoSpc,
+    NoSpace,
+    // Assume ROFS.
     /// Read-only file system. A modifying operation was
     /// attempted on a read-only file system.
-    ROFs,
+    ReadOnlyFs,
+    // Assume MLINK
     /// Too many hard links.
-    MLink,
+    TooManyLinks,
     /// The filename in an operation was too long.
     NameTooLong,
     /// An attempt was made to remove a directory that was not
     /// empty.
     NotEmpty,
+    // Assume DQUOT.
     /// Resource (quota) hard limit exceeded. The user's resource
     /// limit on the server has been exceeded.
-    DQuot,
+    QuotaExceeded,
+    // Assume STALE.
     /// Invalid file handle. The file handle given in the
     /// arguments was invalid. The file referred to by that file
     /// handle no longer exists or access to it has been
     /// revoked.
-    Stale,
+    StaleFile,
+    // Assume REMOTE.
     /// Too many levels of remote in path. The file handle given
     /// in the arguments referred to a file on a non-local file
     /// system on the server.
-    Remote,
+    TooManyLevelsOfRemote,
+    // Assume BADHANLE.
     /// Illegal NFS file handle. The file handle failed internal
     /// consistency checks.
-    BadHandle,
+    BadFileHandle,
+    // Assume NOT_SYNC.
     /// Update synchronization mismatch was detected during a
     /// [`Vfs::set_attr`] operation.
     NotSync,
+    // Assume BAD_COOKIE.
     /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
     BadCookie,
+    // Assume NOTSUPP.
     /// Operation is not supported.
     NotSupp,
+    // Assume TOOSMALL.
     /// Buffer or request is too small.
     TooSmall,
 
-    // No ServerFault here.
+    // No `SERVERFAULT` here, since it is file system interface,
+    // not a server interface.
     /// An attempt was made to create an object of a type not
     /// supported by the [`Vfs`] implementation.
     BadType,
-    // No JUKEBOX here.
+    // No `JUKEBOX` here, since it is file systemm inteface,
+    // not a server interface.
 }
 
 /// Weak cache consistency attributes.
@@ -203,7 +161,7 @@ pub struct SetAttrGuard {
 /// Result of a [`Vfs::lookup`] operation (RFC 1813 3.3.3).
 #[derive(Clone)]
 pub struct LookupResult {
-    pub file: file::Uid,
+    pub file: file::Handle,
     pub object_attr: file::Attr,
     pub directory_attr: Option<file::Attr>,
 }
@@ -258,7 +216,7 @@ pub enum CreateMode {
 /// Result returned by [`Vfs::create`] and similar operations.
 #[derive(Clone)]
 pub struct CreatedNode {
-    pub file: file::Uid,
+    pub file: file::Handle,
     pub attr: file::Attr,
     pub directory_wcc: WccData,
 }
@@ -314,7 +272,7 @@ pub struct DirectoryPlusEntry {
     pub cookie: DirectoryCookie,
     pub name: String,
     pub fileid: u64,
-    pub file: Option<file::Uid>,
+    pub file: Option<file::Handle>,
     pub attr: Option<file::Attr>,
 }
 
@@ -391,48 +349,57 @@ pub struct CommitResult {
 #[async_trait]
 pub trait Vfs: Sync + Send {
     /// Get file attributes.
-    async fn get_attr(&self, file: &file::Uid) -> Result<file::Attr>;
+    async fn get_attr(&self, file: &file::Handle) -> Result<file::Attr>;
 
     /// Set file attributes with optional guard.
     async fn set_attr(
         &self,
-        file: &file::Uid,
+        file: &file::Handle,
         attr: SetAttr,
         guard: Option<SetAttrGuard>,
     ) -> Result<WccData>;
 
     /// Lookup a name within a directory.
-    async fn lookup(&self, parent: &file::Uid, name: &str) -> Result<LookupResult>;
+    async fn lookup(&self, parent: &file::Handle, name: &str) -> Result<LookupResult>;
 
     /// Check requested access mask.
-    async fn access(&self, file: &file::Uid, mask: AccessMask) -> Result<AccessResult>;
+    async fn access(&self, file: &file::Handle, mask: AccessMask) -> Result<AccessResult>;
 
     /// Read symbolic link contents.
-    async fn read_link(&self, file: &file::Uid) -> Result<(PathBuf, Option<file::Attr>)>;
+    async fn read_link(&self, file: &file::Handle) -> Result<(PathBuf, Option<file::Attr>)>;
 
     /// Read file data.
-    async fn read(&self, file: &file::Uid, offset: u64, count: u32) -> Result<ReadResult>;
+    async fn read(&self, file: &file::Handle, offset: u64, count: u32) -> Result<ReadResult>;
 
     /// Write file data with stability mode.
     async fn write(
         &self,
-        file: &file::Uid,
+        file: &file::Handle,
         offset: u64,
         data: &[u8],
         mode: WriteMode,
     ) -> Result<WriteResult>;
 
     /// Create and optionally initialize a regular file.
-    async fn create(&self, parent: &file::Uid, name: &str, mode: CreateMode)
-        -> Result<CreatedNode>;
+    async fn create(
+        &self,
+        parent: &file::Handle,
+        name: &str,
+        mode: CreateMode,
+    ) -> Result<CreatedNode>;
 
     /// Create a directory.
-    async fn make_dir(&self, parent: &file::Uid, name: &str, attr: SetAttr) -> Result<CreatedNode>;
+    async fn make_dir(
+        &self,
+        parent: &file::Handle,
+        name: &str,
+        attr: SetAttr,
+    ) -> Result<CreatedNode>;
 
     /// Create a symbolic link.
     async fn make_symlink(
         &self,
-        parent: &file::Uid,
+        parent: &file::Handle,
         name: &str,
         target: &Path,
         attr: SetAttr,
@@ -441,38 +408,38 @@ pub trait Vfs: Sync + Send {
     /// Create a special node.
     async fn make_node(
         &self,
-        parent: &file::Uid,
+        parent: &file::Handle,
         name: &str,
         node: SpecialNode,
     ) -> Result<CreatedNode>;
 
     /// Delete a file.
-    async fn remove(&self, parent: &file::Uid, name: &str) -> Result<RemovalResult>;
+    async fn remove(&self, parent: &file::Handle, name: &str) -> Result<RemovalResult>;
 
     /// Delete an empty directory.
-    async fn remove_dir(&self, parent: &file::Uid, name: &str) -> Result<RemovalResult>;
+    async fn remove_dir(&self, parent: &file::Handle, name: &str) -> Result<RemovalResult>;
 
     /// Atomically move a file or directory.
     async fn rename(
         &self,
-        from_parent: &file::Uid,
+        from_parent: &file::Handle,
         from_name: &str,
-        to_parent: &file::Uid,
+        to_parent: &file::Handle,
         to_name: &str,
     ) -> Result<RenameResult>;
 
     /// Create a hard link.
     async fn link(
         &self,
-        source: &file::Uid,
-        new_parent: &file::Uid,
+        source: &file::Handle,
+        new_parent: &file::Handle,
         new_name: &str,
     ) -> Result<LinkResult>;
 
     /// Iterate directory entries.
     async fn read_dir(
         &self,
-        file: &file::Uid,
+        file: &file::Handle,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
@@ -481,7 +448,7 @@ pub trait Vfs: Sync + Send {
     /// Iterate directory entries with attributes.
     async fn read_dir_plus(
         &self,
-        file: &file::Uid,
+        file: &file::Handle,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
@@ -489,14 +456,14 @@ pub trait Vfs: Sync + Send {
     ) -> Result<ReadDirPlusResult>;
 
     /// Get dynamic filesystem statistics.
-    async fn fs_stat(&self, file: &file::Uid) -> Result<FsStat>;
+    async fn fs_stat(&self, file: &file::Handle) -> Result<FsStat>;
 
     /// Get static filesystem information.
-    async fn fs_info(&self, file: &file::Uid) -> Result<FsInfo>;
+    async fn fs_info(&self, file: &file::Handle) -> Result<FsInfo>;
 
     /// Get POSIX path capabilities.
-    async fn path_conf(&self, file: &file::Uid) -> Result<PathConfig>;
+    async fn path_conf(&self, file: &file::Handle) -> Result<PathConfig>;
 
     /// Commit previous writes to stable storage.
-    async fn commit(&self, file: &file::Uid, offset: u64, count: u32) -> Result<CommitResult>;
+    async fn commit(&self, file: &file::Handle, offset: u64, count: u32) -> Result<CommitResult>;
 }
