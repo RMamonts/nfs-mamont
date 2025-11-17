@@ -1,5 +1,6 @@
 pub mod nfsv3;
 pub mod primitive;
+#[cfg(test)]
 mod tests;
 
 use std::io;

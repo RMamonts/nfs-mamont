@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use std::io::Cursor;
 
 use crate::nfsv3::{createhow3, ftype3, mknoddata3, set_atime, set_mtime, NFS3_CREATEVERFSIZE};
@@ -142,7 +140,7 @@ fn test_diropargs3_success() {
 
     let result = diropargs3(&mut src).unwrap();
     assert_eq!(result.dir.data, [0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    assert_eq!(result.name, "abc");
+    assert_eq!(result.name, String::from("abc"));
 }
 
 #[test]
@@ -165,7 +163,7 @@ fn test_createhow3_unchecked() {
     let result = createhow3(&mut src).unwrap();
     match result {
         createhow3::EXCLUSIVE(verifier) => {
-            assert_eq!(verifier.len(), NFS3_CREATEVERFSIZE);
+            assert_eq!(verifier.len(), NFS3_CREATEVERFSIZE as usize);
             assert_eq!(verifier[0], 0x01);
         }
         _ => panic!("Expected EXCLUSIVE"),
@@ -187,7 +185,7 @@ fn test_symlinkdata3_success() {
     let mut src = Cursor::new(&data);
 
     let result = symlinkdata3(&mut src).unwrap();
-    assert_eq!(result.symlink_data, "hello");
+    assert_eq!(result.symlink_data, String::from("hello"));
 }
 
 #[test]

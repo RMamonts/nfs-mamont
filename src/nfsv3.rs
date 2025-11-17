@@ -11,7 +11,7 @@ const NFS3_FHSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_COOKIEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
-pub const NFS3_CREATEVERFSIZE: usize = 8;
+pub const NFS3_CREATEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_WRITEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
@@ -53,7 +53,7 @@ type nfspath3 = String;
 type fileid3 = u64;
 type cookie3 = u64;
 type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE as usize];
-type createverf3 = [u8; NFS3_CREATEVERFSIZE];
+type createverf3 = [u8; NFS3_CREATEVERFSIZE as usize];
 type writeverf3 = [u8; NFS3_WRITEVERFSIZE as usize];
 type uid3 = u32;
 type gid3 = u32;
@@ -178,8 +178,8 @@ pub struct specdata3 {
 }
 
 #[allow(dead_code)]
-struct nfs_fh3 {
-    data: [u8; NFS3_FHSIZE as usize],
+pub struct nfs_fh3 {
+    pub data: [u8; NFS3_FHSIZE as usize],
 }
 
 #[allow(dead_code)]
