@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use std::io::Cursor;
 
 use byteorder::{BigEndian, WriteBytesExt};
