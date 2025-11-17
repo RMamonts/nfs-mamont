@@ -11,7 +11,7 @@ use async_trait::async_trait;
 pub type VfsResult<T> = Result<T, NfsError>;
 
 /// Maximum number of bytes allowed in a file handle (per RFC 1813 2.4).
-pub const MAX_FILE_HANDLE_LEN: usize = 64;
+pub const MAX_FILE_HANDLE_LEN: usize = 8;
 
 /// Maximum number of bytes allowed in a file name (per RFC 1813 2.4).
 pub const MAX_NAME_LEN: usize = 255;

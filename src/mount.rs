@@ -9,9 +9,9 @@ const MNTPATHLEN: u32 = 1024;
 #[allow(dead_code)]
 const MNTNAMLEN: u32 = 255;
 #[allow(dead_code)]
-const FHSIZE3: u32 = 64;
+const FHSIZE3: u32 = 8;
 
-type fhandle3 = Vec<u8>;
+type fhandle3 = [u8; FHSIZE3 as usize];
 type dirpath = Vec<u8>;
 type name = Vec<u8>;
 
