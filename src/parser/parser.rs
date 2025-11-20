@@ -15,7 +15,7 @@ use crate::parser::nfsv3::procedures::{
     RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
 };
 use crate::parser::primitive::u32;
-use crate::parser::rpc::AuthStat;
+use crate::parser::rpc::{auth, AuthFlavor, AuthStat};
 use crate::parser::{Error, Result};
 use crate::rpc::{rpc_body, RPC_VERSION};
 
@@ -311,8 +311,33 @@ impl RpcParser {
     // TODO: add some error handling
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
         self.read_message_header().await?;
-        let rpc_header = self.parse_rpc_header().await?;
-        let procedure = self.parse_proc(rpc_header).await?;
+        let rpc_header = match self.parse_rpc_header().await {
+            Err(error) => {
+                match error {
+                    //these one to send to write directly to writetask and continue parsing
+                    //use discard_current_message
+                    Error::MessageTypeMismatch => {}
+                    Error::RpcVersionMismatch => {}
+                    Error::AuthError(_) => {}
+                    Error::ProgramMismatch => {}
+                    Error::ProcedureMismatch => {}
+                    Error::ProgramVersionMismatch => {}
+                    //these one are fatal, but some still need replies (parse_error and server_error)
+                    //probably simply drop everything after sending sata to other tasks
+                    Error::IO(_) => {}
+                    _ => {
+
+                    }
+                }
+            }
+            Ok(_) => {}
+        };
+        //same as with header
+        let procedure = match self.parse_proc(rpc_header).await {
+            Ok(_) => {}
+            Err(_) => {}
+        }
+        // that's done after normal parsing without errors
         self.finalize_parsing()?;
         Ok(procedure)
     }
@@ -353,8 +378,15 @@ impl RpcParser {
     }
 
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        // TODO
-        Ok(AuthStat::AuthOk)
+        let auth = auth(&mut self.buffer)?;
+        match auth.flavor {
+            AuthFlavor::AuthNone => {
+                Ok(AuthStat::AuthOk)
+            }
+            _ => {
+                unimplemented!()
+            }
+        }
     }
 }
 
