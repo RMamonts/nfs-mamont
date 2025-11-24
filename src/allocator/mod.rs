@@ -1,3 +1,6 @@
+//! Defines [`Allocator`] interface used to bound allocation of buffers
+//! for user data transmission inside NFS-Mamont implementation.
+
 mod buffer;
 mod list;
 mod slice;
@@ -18,11 +21,11 @@ type Receiver<T> = mpsc::UnboundedReceiver<T>;
 /// Allocates [`Slice`]'s.
 #[async_trait]
 pub trait Allocator {
-    /// Allocates [`Slice`] of specified size.
+    /// Returns [`Slice`] of specified size.
     ///
     /// # Parameters
     ///
-    /// - `size` --- size of returnred slice.
+    /// - `size` --- size of returned slice.
     ///
     /// # Panic
     ///
@@ -33,10 +36,17 @@ pub trait Allocator {
 pub struct Impl {
     receiver: Receiver<Buffer>,
     sender: Sender<Buffer>,
-    capacity: usize,
+    buffer_size: NonZeroUsize,
+    buffer_count: NonZeroUsize,
 }
 
 impl Impl {
+    /// Returns new [`Allocator`] IMPlementation.
+    ///
+    /// # Parameters
+    ///
+    /// - `size` --- size of each buffer to allocate
+    /// - `count` --- number of buffers to allocate
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel::<Buffer>();
 
@@ -44,23 +54,27 @@ impl Impl {
             sender.send(Buffer::new(size)).expect("to init Allocator");
         }
 
-        Self { sender, receiver, capacity: size.get() * count.get() }
+        Self { sender, receiver, buffer_size: size, buffer_count: count }
     }
 }
 
 #[async_trait]
 impl Allocator for Impl {
     async fn alloc(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
-        assert!(size.get() <= self.capacity, "cannot allocate more than allocattor capacity");
+        assert!(
+            size.get() <= self.buffer_size.get() * self.buffer_count.get(),
+            "cannot allocate more than allocattor capacity"
+        );
 
         let mut remain_size = size.get();
-        let mut buffers = Vec::with_capacity(remain_size);
+        let mut buffers = Vec::with_capacity(remain_size.div_ceil(self.buffer_size.get()));
 
         while remain_size > 0 {
             let buffer = self.receiver.recv().await?;
+            assert_eq!(buffer.len(), self.buffer_size.get());
 
             remain_size = remain_size.saturating_sub(buffer.len());
-            buffers.push(buffer);
+            buffers.push(self.receiver.recv().await?);
         }
 
         let list = List::new(buffers, self.sender.clone());

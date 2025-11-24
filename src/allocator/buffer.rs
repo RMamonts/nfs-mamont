@@ -1,23 +1,21 @@
+//! Defines heap allocated [`Buffer`] used to store raw-bytes.
+
 use std::num::NonZeroUsize;
 
 /// Pointer to the heap allocated [u8] slice.
-pub struct Buffer(Vec<u8>);
+pub struct Buffer(Box<[u8]>);
 
 impl Buffer {
-    /// Allocates zeroed buffer with specified size.
+    /// Returns new heap allocated buffer, initialized with zeroed buffers of specified size.
     ///
     /// # Parameters:
-    /// - `size` --- size of buffer to allocate.
+    ///
+    /// - `size` --- size of zero initialized buffer to allocate.
     pub fn new(size: NonZeroUsize) -> Self {
-        Self(vec![0; size.get()])
+        Self(vec![0; size.get()].into_boxed_slice())
     }
 
-    /// Returns mutable slice to inner buffer.
-    pub fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut()
-    }
-
-    /// Returns length of the buffer.
+    /// Returns contained number of bytes.
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -25,6 +23,7 @@ impl Buffer {
 
 impl std::ops::Deref for Buffer {
     type Target = [u8];
+
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
     }
