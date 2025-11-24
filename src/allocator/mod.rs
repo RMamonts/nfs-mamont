@@ -9,18 +9,24 @@ use tokio::sync::mpsc;
 
 use buffer::Buffer;
 use list::List;
-use slice::Slice;
+
+pub use slice::Slice;
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
 
-/// Allocates [`List`]'s of buffers.
+/// Allocates [`Slice`]'s.
 #[async_trait]
 pub trait Allocator {
-    /// Allocates [`List`] at least the specified size.
+    /// Allocates [`Slice`] of specified size.
     ///
-    /// # Parameters:
-    /// - `size` --- least size of allocated [`List`].
+    /// # Parameters
+    ///
+    /// - `size` --- size of returnred slice.
+    ///
+    /// # Panic
+    ///
+    /// This method panics if size is greater then allocator capacity.
     async fn alloc(&mut self, size: NonZeroUsize) -> Option<slice::Slice>;
 }
 
