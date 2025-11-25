@@ -11,7 +11,7 @@ use async_trait::async_trait;
 pub type VfsResult<T> = Result<T, NfsError>;
 
 /// Maximum number of bytes allowed in a file handle (per RFC 1813 2.4).
-pub const MAX_FILE_HANDLE_LEN: usize = 64;
+pub const MAX_FILE_HANDLE_LEN: usize = 8;
 
 /// Maximum number of bytes allowed in a file name (per RFC 1813 2.4).
 pub const MAX_NAME_LEN: usize = 255;
@@ -371,9 +371,6 @@ pub struct CommitResult {
 /// Virtual File System trait mirroring all NFSv3 procedures.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    /// Procedure 0: NULL – sanity check / ping.
-    async fn null(&self) -> VfsResult<()>;
-
     /// Procedure 1: GETATTR – fetch file attributes.
     async fn get_attr(&self, handle: &FileHandle) -> VfsResult<FileAttr>;
 
