@@ -26,7 +26,7 @@ impl Slice {
         let len = buffers.iter().map(|buffer| buffer.len()).sum();
 
         assert!(range.start <= len, "cannot index list as slice from start");
-        assert!(range.end < len, "cannot index list as slice to end");
+        assert!(range.end <= len, "cannot index list as slice to end");
 
         Self { buffers, range, sender }
     }
