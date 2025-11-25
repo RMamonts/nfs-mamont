@@ -1,6 +1,6 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
-/// Represents bounded by custome range [`List`] of buffers.
+/// Represents bounded by custome range list of buffers.
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -12,12 +12,12 @@ impl Slice {
     ///
     /// # Parameters
     ///
-    /// - `list` --- list of buffers.
+    /// - `buffers` --- vec of buffers.
     /// - `range` --- range to which slice will allow access.
     ///
     /// # Panics
     ///
-    /// This function will panics if called if length range bound greater then length of `list`.
+    /// This function will panics if called if length range bound greater then length of `buffers`.
     pub fn new(
         buffers: Vec<Box<[u8]>>,
         range: std::ops::Range<usize>,
@@ -26,7 +26,7 @@ impl Slice {
         let len = buffers.iter().map(|buffer| buffer.len()).sum();
 
         assert!(range.start <= len, "cannot index list as slice from start");
-        assert!(range.end <= len, "cannot index list as slice to end");
+        assert!(range.end < len, "cannot index list as slice to end");
 
         Self { buffers, range, sender }
     }
