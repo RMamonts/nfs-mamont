@@ -1,8 +1,6 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
 //! for user data transmission inside NFS-Mamont implementation.
 
-mod buffer;
-mod list;
 mod slice;
 
 use std::num::NonZeroUsize;
@@ -10,13 +8,11 @@ use std::num::NonZeroUsize;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use buffer::Buffer;
-use list::List;
-
 pub use slice::Slice;
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
+type Buffer = Box<[u8]>;
 
 /// Allocates [`Slice`]'s.
 #[async_trait]
@@ -51,7 +47,7 @@ impl Impl {
         let (sender, receiver) = mpsc::unbounded_channel::<Buffer>();
 
         for _ in 0..count.get() {
-            sender.send(Buffer::new(size)).expect("to init Allocator");
+            sender.send(vec![0; size.get()].into_boxed_slice()).expect("to init Allocator");
         }
 
         Self { sender, receiver, buffer_size: size, buffer_count: count }
@@ -74,13 +70,10 @@ impl Allocator for Impl {
             assert_eq!(buffer.len(), self.buffer_size.get());
 
             remain_size = remain_size.saturating_sub(buffer.len());
-            buffers.push(self.receiver.recv().await?);
+            buffers.push(buffer);
         }
 
-        let list = List::new(buffers, self.sender.clone());
-        let slice = Slice::new(list, 0..size.get());
-
-        Some(slice)
+        Some(Slice::new(buffers, 0..size.get(), self.sender.clone()))
     }
 }
 
@@ -88,6 +81,7 @@ impl Allocator for Impl {
 mod tests {
     use std::io::Write;
     use std::num::NonZeroUsize;
+    use std::time::Duration;
 
     use super::Allocator as _;
     use super::Impl;
@@ -152,5 +146,100 @@ mod tests {
 
         assert!(slice_iter.next().is_none());
         assert!(slice_iter.next().is_none());
+    }
+
+    #[tokio::test]
+    async fn allocate_more_then_size() {
+        const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+        const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+
+        let mut allocator = Impl::new(SIZE, COUNT);
+
+        const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() + 1).unwrap();
+        let mut slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
+
+        let to_write: Vec<u8> = (0..ALLOC_SIZE.get()).map(|u| u as u8).collect();
+
+        {
+            let mut slice_iter = (&mut slice).into_iter();
+
+            let mut first_buffer = slice_iter.next().unwrap();
+            assert_eq!(first_buffer.len(), SIZE.get());
+            assert!(first_buffer.iter().all(|&u| u == 0));
+
+            let mut second_buffer = slice_iter.next().unwrap();
+            assert_eq!(second_buffer.len(), ALLOC_SIZE.get() - SIZE.get());
+            assert!(second_buffer.iter().all(|&u| u == 0));
+
+            assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+
+            first_buffer.write_all(&to_write.as_slice()[..SIZE.get()]).unwrap();
+            second_buffer.write_all(&to_write.as_slice()[SIZE.get()..]).unwrap();
+        }
+
+        let mut slice_iter = (&mut slice).into_iter();
+
+        let first_buffer = slice_iter.next().unwrap();
+        assert_eq!(first_buffer.len(), SIZE.get());
+        assert_eq!(first_buffer, &to_write.as_slice()[..SIZE.get()]);
+
+        let second_buffer = slice_iter.next().unwrap();
+        assert_eq!(second_buffer.len(), ALLOC_SIZE.get() - SIZE.get());
+        assert_eq!(second_buffer, &to_write.as_slice()[SIZE.get()..]);
+
+        assert!(slice_iter.next().is_none());
+        assert!(slice_iter.next().is_none());
+    }
+
+    #[tokio::test]
+    async fn allocate_capacity() {
+        const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+        const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+        const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
+
+        let mut allocator = Impl::new(SIZE, COUNT);
+
+        let mut slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
+        assert_eq!(slice.iter().count(), COUNT.get());
+        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
+
+        let to_verify: Vec<u8> = (0..ALLOC_SIZE.get()).map(|u| (u + 1) as u8).collect();
+        for (idx, mut buffer) in slice.iter_mut().enumerate() {
+            buffer.write_all(&to_verify[idx * SIZE.get()..(idx + 1) * SIZE.get()]).unwrap()
+        }
+
+        let to_verify: Vec<u8> = (0..ALLOC_SIZE.get()).map(|u| (u + 1) as u8).collect();
+        for (idx, buffer) in slice.iter_mut().enumerate() {
+            assert_eq!(buffer, &to_verify[idx * SIZE.get()..(idx + 1) * SIZE.get()])
+        }
+    }
+
+    #[tokio::test]
+    async fn reclaiming() {
+        const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+        const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+        const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
+
+        let mut allocator = Impl::new(SIZE, COUNT);
+
+        for _ in 0..5 {
+            let slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
+            assert_eq!(slice.iter().count(), COUNT.get());
+            assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
+
+            tokio::time::timeout(Duration::from_millis(120), async {
+                allocator.alloc(NonZeroUsize::new(1).unwrap()).await.unwrap();
+                unreachable!("allocator should hang")
+            })
+            .await
+            .unwrap_err();
+
+            drop(slice);
+
+            let slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
+            assert_eq!(slice.iter().count(), COUNT.get());
+            assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
+        }
     }
 }
