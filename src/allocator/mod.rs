@@ -90,38 +90,48 @@ mod tests {
     async fn allocate_less_than_size() {
         const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
         const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+        const LESS_THEN_ONE: usize = SIZE.get() - 1;
+        const ALL: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
 
         let mut allocator = Impl::new(SIZE, COUNT);
 
-        const SLICE_LEN: usize = SIZE.get() - 1;
-        let to_write: Vec<u8> = (0..SLICE_LEN).map(|u| (u + 1) as u8).collect();
-        let mut slice = allocator.alloc(NonZeroUsize::new(SLICE_LEN).unwrap()).await.unwrap();
+        let to_write: Vec<u8> = (0..LESS_THEN_ONE).map(|u| (u + 1) as u8).collect();
+        let mut slice = allocator.alloc(NonZeroUsize::new(LESS_THEN_ONE).unwrap()).await.unwrap();
 
         {
             let mut slice_iter = (&mut slice).into_iter();
 
             let mut buffer = slice_iter.next().unwrap();
-            assert_eq!(buffer.len(), SLICE_LEN);
+            assert_eq!(buffer.len(), LESS_THEN_ONE);
             buffer.write_all(to_write.as_slice()).unwrap();
 
             assert!(slice_iter.next().is_none());
             assert!(slice_iter.next().is_none());
         }
 
-        let mut slice_iter = (&mut slice).into_iter();
+        {
+            let mut slice_iter = (&mut slice).into_iter();
 
-        let buffer = slice_iter.next().unwrap();
-        assert_eq!(buffer.len(), SLICE_LEN);
-        assert_eq!(buffer, to_write.as_slice());
+            let buffer = slice_iter.next().unwrap();
+            assert_eq!(buffer.len(), LESS_THEN_ONE);
+            assert_eq!(buffer, to_write.as_slice());
 
-        assert!(slice_iter.next().is_none());
-        assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+        }
+
+        drop(slice);
+
+        let slice = allocator.alloc(ALL).await.unwrap();
+        assert_eq!(slice.iter().count(), COUNT.get());
+        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 
     #[tokio::test]
     async fn allocate_size() {
         const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
         const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+        const ALL: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
 
         let mut allocator = Impl::new(SIZE, COUNT);
         let to_write: Vec<u8> = (0..SIZE.get()).map(|u| u as u8).collect();
@@ -138,27 +148,35 @@ mod tests {
             assert!(slice_iter.next().is_none());
         }
 
-        let mut slice_iter = (&mut slice).into_iter();
+        {
+            let mut slice_iter = (&mut slice).into_iter();
 
-        let buffer = slice_iter.next().unwrap();
-        assert_eq!(buffer.len(), SIZE.get());
-        assert_eq!(buffer, to_write.as_slice());
+            let buffer = slice_iter.next().unwrap();
+            assert_eq!(buffer.len(), SIZE.get());
+            assert_eq!(buffer, to_write.as_slice());
 
-        assert!(slice_iter.next().is_none());
-        assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+        }
+
+        drop(slice);
+
+        let slice = allocator.alloc(ALL).await.unwrap();
+        assert_eq!(slice.iter().count(), COUNT.get());
+        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 
     #[tokio::test]
     async fn allocate_more_then_size() {
         const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
         const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+        const MORE_THEN_ONE: NonZeroUsize = NonZeroUsize::new(SIZE.get() + 1).unwrap();
+        const ALL: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
 
         let mut allocator = Impl::new(SIZE, COUNT);
+        let mut slice = allocator.alloc(MORE_THEN_ONE).await.unwrap();
 
-        const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() + 1).unwrap();
-        let mut slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
-
-        let to_write: Vec<u8> = (0..ALLOC_SIZE.get()).map(|u| u as u8).collect();
+        let to_write: Vec<u8> = (0..MORE_THEN_ONE.get()).map(|u| u as u8).collect();
 
         {
             let mut slice_iter = (&mut slice).into_iter();
@@ -168,7 +186,7 @@ mod tests {
             assert!(first_buffer.iter().all(|&u| u == 0));
 
             let mut second_buffer = slice_iter.next().unwrap();
-            assert_eq!(second_buffer.len(), ALLOC_SIZE.get() - SIZE.get());
+            assert_eq!(second_buffer.len(), MORE_THEN_ONE.get() - SIZE.get());
             assert!(second_buffer.iter().all(|&u| u == 0));
 
             assert!(slice_iter.next().is_none());
@@ -178,18 +196,26 @@ mod tests {
             second_buffer.write_all(&to_write.as_slice()[SIZE.get()..]).unwrap();
         }
 
-        let mut slice_iter = (&mut slice).into_iter();
+        {
+            let mut slice_iter = (&mut slice).into_iter();
 
-        let first_buffer = slice_iter.next().unwrap();
-        assert_eq!(first_buffer.len(), SIZE.get());
-        assert_eq!(first_buffer, &to_write.as_slice()[..SIZE.get()]);
+            let first_buffer = slice_iter.next().unwrap();
+            assert_eq!(first_buffer.len(), SIZE.get());
+            assert_eq!(first_buffer, &to_write.as_slice()[..SIZE.get()]);
 
-        let second_buffer = slice_iter.next().unwrap();
-        assert_eq!(second_buffer.len(), ALLOC_SIZE.get() - SIZE.get());
-        assert_eq!(second_buffer, &to_write.as_slice()[SIZE.get()..]);
+            let second_buffer = slice_iter.next().unwrap();
+            assert_eq!(second_buffer.len(), MORE_THEN_ONE.get() - SIZE.get());
+            assert_eq!(second_buffer, &to_write.as_slice()[SIZE.get()..]);
 
-        assert!(slice_iter.next().is_none());
-        assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+            assert!(slice_iter.next().is_none());
+        }
+
+        drop(slice);
+
+        let slice = allocator.alloc(ALL).await.unwrap();
+        assert_eq!(slice.iter().count(), COUNT.get());
+        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 
     #[tokio::test]
@@ -213,6 +239,12 @@ mod tests {
         for (idx, buffer) in slice.iter_mut().enumerate() {
             assert_eq!(buffer, &to_verify[idx * SIZE.get()..(idx + 1) * SIZE.get()])
         }
+
+        drop(slice);
+
+        let slice = allocator.alloc(ALLOC_SIZE).await.unwrap();
+        assert_eq!(slice.iter().count(), COUNT.get());
+        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 
     #[tokio::test]

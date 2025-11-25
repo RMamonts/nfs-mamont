@@ -41,7 +41,9 @@ impl Slice {
 
     /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
     fn deallocate(&mut self) {
-        for buffer in self.buffers.drain(..) {
+        for mut buffer in self.buffers.drain(..) {
+            // No user data should exist after dealloc
+            buffer.iter_mut().for_each(|u| *u = 0);
             // Ignore allocator drop
             let _ = self.sender.send(buffer);
         }
