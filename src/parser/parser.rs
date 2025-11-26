@@ -16,7 +16,7 @@ use crate::parser::nfsv3::procedures::{
     MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs, ReadDirPlusArgs, ReadLinkArgs, RemoveArgs,
     RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
 };
-use crate::parser::primitive::to_u32;
+use crate::parser::primitive::u32;
 use crate::parser::rpc::AuthStat;
 use crate::parser::{Error, Result};
 use crate::rpc::{rpc_body, RPC_VERSION};
@@ -34,16 +34,12 @@ struct RpcMessage {
 struct CustomCursor {
     buffer: Vec<u8>,
     position: usize,
-    read_bytes: usize
+    read_bytes: usize,
 }
 
 impl CustomCursor {
     fn new(size: usize) -> Self {
-        Self {
-            buffer: vec![0u8; size],
-            position: 0,
-            read_bytes: 0,
-        }
+        Self { buffer: vec![0u8; size], position: 0, read_bytes: 0 }
     }
     fn writer_slice(&mut self) -> &mut [u8] {
         &mut self.buffer[self.read_bytes..]
@@ -64,16 +60,15 @@ impl CustomCursor {
 
 impl Read for CustomCursor {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = min(buf.len(),self.read_bytes) - self.position;
+        let len = min(buf.len(), self.read_bytes) - self.position;
         if len == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "No more data available"));
         }
         buf[..len].copy_from_slice(&self.buffer[self.position..self.read_bytes]);
-        self.position+=len;
+        self.position += len;
         Ok(len)
     }
 }
-
 
 // need my own cursor!!!
 struct Parser {
@@ -138,7 +133,7 @@ impl Parser {
 
         // new cursor
         // parsing header
-        let head = to_u32( &mut self.buffer)?;
+        let head = u32(&mut self.buffer)?;
         self.last = head & 0x8000_0000 == 0x8000_0000;
         self.frame_size = (head & 0x7FFF_FFFF) as usize;
 
@@ -177,24 +172,23 @@ impl Parser {
     #[allow(dead_code)]
     async fn parse_header(&mut self) -> Result<RpcMessage> {
         // parse rpc header with all needed checks
-        let msg_type = to_u32(&mut self.buffer)?;
+        let msg_type = u32(&mut self.buffer)?;
         if msg_type == rpc_body::REPLY as u32 {
             error!("Receive RPC reply message");
             // do we need to do it here? Maybe in read_new_message?
             return Err(Error::MessageTypeMismatch);
         }
 
-        let prc_vers = to_u32(&mut self.buffer)?;
+        let prc_vers = u32(&mut self.buffer)?;
 
         if prc_vers != RPC_VERSION {
             error!("RPC version mismatch");
             return Err(Error::RpcVersionMismatch);
         }
 
-        let program = to_u32(&mut self.buffer)?;
-        let version = to_u32(&mut self.buffer)?;
-        let procedure = to_u32(&mut self.buffer)?;
-
+        let program = u32(&mut self.buffer)?;
+        let version = u32(&mut self.buffer)?;
+        let procedure = u32(&mut self.buffer)?;
 
         let auth = self.authentication().await?;
         if auth != AuthStat::AuthOk {
