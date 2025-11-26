@@ -5,7 +5,7 @@ const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
 const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
-const NFS3_FHSIZE: u32 = 64;
+const NFS3_FHSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_COOKIEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
@@ -170,7 +170,7 @@ struct specdata3 {
 
 #[allow(dead_code)]
 struct nfs_fh3 {
-    data: Vec<u8>,
+    data: [u8; NFS3_FHSIZE as usize],
 }
 
 #[allow(dead_code)]
