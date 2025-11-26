@@ -345,70 +345,135 @@ pub struct CommitResult {
     pub verifier: StableVerifier,
 }
 
+pub mod promise {
+    use super::*;
+
+    pub trait GetAttr {
+        fn keep(self, promise: Result<file::Attr>);
+    }
+
+    pub trait SetAttr {
+        fn keep(self, promise: Result<WccData>);
+    }
+
+    pub trait Lookup {
+        fn keep(self, promise: Result<LookupResult>);
+    }
+
+    pub trait Access {
+        fn keep(self, promise: Result<AccessResult>);
+    }
+
+    pub trait ReadLink {
+        fn keep(self, promise: Result<(PathBuf, Option<file::Attr>)>);
+    }
+
+    pub trait Read {
+        fn keep(self, promise: Result<ReadResult>);
+    }
+
+    pub trait Write {
+        fn keep(self, promise: Result<WriteResult>);
+    }
+
+    pub trait Create {
+        fn keep(self, promise: Result<CreatedNode>);
+    }
+
+    pub trait MakeDir {
+        fn keep(self, promise: Result<CreatedNode>);
+    }
+
+    pub trait MakeSymlink {
+        fn keep(self, promise: Result<CreatedNode>);
+    }
+
+    pub trait MakeNode {
+        fn keep(self, promise: Result<CreatedNode>);
+    }
+
+    pub trait Remove {
+        fn keep(self, promise: Result<RemovalResult>);
+    }
+
+    pub trait RemoveDir {
+        fn keep(self, promise: Result<RemovalResult>);
+    }
+
+    pub trait Rename {
+        fn keep(self, promise: Result<RenameResult>);
+    }
+
+    pub trait Link {
+        fn keep(self, promise: Result<LinkResult>);
+    }
+
+    pub trait ReadDir {
+        fn keep(self, promise: Result<ReadDirResult>);
+    }
+
+    pub trait ReadDirPlus {
+        fn keep(self, promise: Result<ReadDirPlusResult>);
+    }
+
+    pub trait FsStat {
+        fn keep(self, promise: Result<super::FsStat>);
+    }
+
+    pub trait FsInof {
+        fn keep(self, promise: Result<FsInfo>);
+    }
+
+    pub trait PathConf {
+        fn keep(self, promise: Result<PathConfig>);
+    }
+
+    pub trait Commit {
+        fn keep(self, promise: Result<CommitResult>);
+    }
+}
+
 /// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
     /// Get file attributes.
-    async fn get_attr(&self, file: &file::Uid) -> Result<file::Attr>;
+    async fn get_attr(&self, file: &file::Uid);
 
     /// Set file attributes with optional guard.
-    async fn set_attr(
-        &self,
-        file: &file::Uid,
-        attr: SetAttr,
-        guard: Option<SetAttrGuard>,
-    ) -> Result<WccData>;
+    async fn set_attr(&self, file: &file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
 
     /// Lookup a name within a directory.
-    async fn lookup(&self, parent: &file::Uid, name: &str) -> Result<LookupResult>;
+    async fn lookup(&self, parent: &file::Uid, name: &str);
 
     /// Check requested access mask.
-    async fn access(&self, file: &file::Uid, mask: AccessMask) -> Result<AccessResult>;
+    async fn access(&self, file: &file::Uid, mask: AccessMask);
 
     /// Read symbolic link contents.
-    async fn read_link(&self, file: &file::Uid) -> Result<(PathBuf, Option<file::Attr>)>;
+    async fn read_link(&self, file: &file::Uid);
 
     /// Read file data.
-    async fn read(&self, file: &file::Uid, offset: u64, count: u32) -> Result<ReadResult>;
+    async fn read(&self, file: &file::Uid, offset: u64, count: u32);
 
     /// Write file data with stability mode.
-    async fn write(
-        &self,
-        file: &file::Uid,
-        offset: u64,
-        data: &[u8],
-        mode: WriteMode,
-    ) -> Result<WriteResult>;
+    async fn write(&self, file: &file::Uid, offset: u64, data: &[u8], mode: WriteMode);
 
     /// Create and optionally initialize a regular file.
-    async fn create(&self, parent: &file::Uid, name: &str, mode: CreateMode)
-        -> Result<CreatedNode>;
+    async fn create(&self, parent: &file::Uid, name: &str, mode: CreateMode);
 
     /// Create a directory.
-    async fn make_dir(&self, parent: &file::Uid, name: &str, attr: SetAttr) -> Result<CreatedNode>;
+    async fn make_dir(&self, parent: &file::Uid, name: &str, attr: SetAttr);
 
     /// Create a symbolic link.
-    async fn make_symlink(
-        &self,
-        parent: &file::Uid,
-        name: &str,
-        target: &Path,
-        attr: SetAttr,
-    ) -> Result<CreatedNode>;
+    async fn make_symlink(&self, parent: &file::Uid, name: &str, target: &Path, attr: SetAttr);
 
     /// Create a special node.
-    async fn make_node(
-        &self,
-        parent: &file::Uid,
-        name: &str,
-        node: SpecialNode,
-    ) -> Result<CreatedNode>;
+    async fn make_node(&self, parent: &file::Uid, name: &str, node: SpecialNode);
 
     /// Delete a file.
-    async fn remove(&self, parent: &file::Uid, name: &str) -> Result<RemovalResult>;
+    async fn remove(&self, parent: &file::Uid, name: &str);
 
     /// Delete an empty directory.
-    async fn remove_dir(&self, parent: &file::Uid, name: &str) -> Result<RemovalResult>;
+    async fn remove_dir(&self, parent: &file::Uid, name: &str);
 
     /// Atomically move a file or directory.
     async fn rename(
@@ -417,15 +482,10 @@ pub trait Vfs: Sync + Send {
         from_name: &str,
         to_parent: &file::Uid,
         to_name: &str,
-    ) -> Result<RenameResult>;
+    );
 
     /// Create a hard link.
-    async fn link(
-        &self,
-        source: &file::Uid,
-        new_parent: &file::Uid,
-        new_name: &str,
-    ) -> Result<LinkResult>;
+    async fn link(&self, source: &file::Uid, new_parent: &file::Uid, new_name: &str);
 
     /// Iterate directory entries.
     async fn read_dir(
@@ -434,7 +494,7 @@ pub trait Vfs: Sync + Send {
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-    ) -> Result<ReadDirResult>;
+    );
 
     /// Iterate directory entries with attributes.
     async fn read_dir_plus(
@@ -444,17 +504,17 @@ pub trait Vfs: Sync + Send {
         verifier: CookieVerifier,
         max_bytes: u32,
         max_files: u32,
-    ) -> Result<ReadDirPlusResult>;
+    );
 
     /// Get dynamic filesystem statistics.
-    async fn fs_stat(&self, file: &file::Uid) -> Result<FsStat>;
+    async fn fs_stat(&self, file: &file::Uid);
 
     /// Get static filesystem information.
-    async fn fs_info(&self, file: &file::Uid) -> Result<FsInfo>;
+    async fn fs_info(&self, file: &file::Uid);
 
     /// Get POSIX path capabilities.
-    async fn path_conf(&self, file: &file::Uid) -> Result<PathConfig>;
+    async fn path_conf(&self, file: &file::Uid);
 
     /// Commit previous writes to stable storage.
-    async fn commit(&self, file: &file::Uid, offset: u64, count: u32) -> Result<CommitResult>;
+    async fn commit(&self, file: &file::Uid, offset: u64, count: u32);
 }
