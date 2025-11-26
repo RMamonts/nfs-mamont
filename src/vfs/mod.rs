@@ -436,46 +436,32 @@ pub mod promise {
 /// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    /// Get file attributes.
     async fn get_attr(&self, file: &file::Uid);
 
-    /// Set file attributes with optional guard.
     async fn set_attr(&self, file: &file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
 
-    /// Lookup a name within a directory.
     async fn lookup(&self, parent: &file::Uid, name: &str);
 
-    /// Check requested access mask.
     async fn access(&self, file: &file::Uid, mask: AccessMask);
 
-    /// Read symbolic link contents.
     async fn read_link(&self, file: &file::Uid);
 
-    /// Read file data.
     async fn read(&self, file: &file::Uid, offset: u64, count: u32);
 
-    /// Write file data with stability mode.
     async fn write(&self, file: &file::Uid, offset: u64, data: &[u8], mode: WriteMode);
 
-    /// Create and optionally initialize a regular file.
     async fn create(&self, parent: &file::Uid, name: &str, mode: CreateMode);
 
-    /// Create a directory.
     async fn make_dir(&self, parent: &file::Uid, name: &str, attr: SetAttr);
 
-    /// Create a symbolic link.
     async fn make_symlink(&self, parent: &file::Uid, name: &str, target: &Path, attr: SetAttr);
 
-    /// Create a special node.
     async fn make_node(&self, parent: &file::Uid, name: &str, node: SpecialNode);
 
-    /// Delete a file.
     async fn remove(&self, parent: &file::Uid, name: &str);
 
-    /// Delete an empty directory.
     async fn remove_dir(&self, parent: &file::Uid, name: &str);
 
-    /// Atomically move a file or directory.
     async fn rename(
         &self,
         from_parent: &file::Uid,
@@ -484,10 +470,8 @@ pub trait Vfs: Sync + Send {
         to_name: &str,
     );
 
-    /// Create a hard link.
     async fn link(&self, source: &file::Uid, new_parent: &file::Uid, new_name: &str);
 
-    /// Iterate directory entries.
     async fn read_dir(
         &self,
         file: &file::Uid,
@@ -496,7 +480,6 @@ pub trait Vfs: Sync + Send {
         max_bytes: u32,
     );
 
-    /// Iterate directory entries with attributes.
     async fn read_dir_plus(
         &self,
         file: &file::Uid,
@@ -506,15 +489,11 @@ pub trait Vfs: Sync + Send {
         max_files: u32,
     );
 
-    /// Get dynamic filesystem statistics.
     async fn fs_stat(&self, file: &file::Uid);
 
-    /// Get static filesystem information.
     async fn fs_info(&self, file: &file::Uid);
 
-    /// Get POSIX path capabilities.
     async fn path_conf(&self, file: &file::Uid);
 
-    /// Commit previous writes to stable storage.
     async fn commit(&self, file: &file::Uid, offset: u64, count: u32);
 }
