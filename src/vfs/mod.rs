@@ -18,7 +18,6 @@ pub const MAX_PATH_LEN: usize = 1024;
 /// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Error {
-    // Assume PERM.
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
     /// owner of the target of the operation.
@@ -30,7 +29,8 @@ pub enum Error {
     /// I/O error. A hard error (for example, a disk error)
     /// occurred while processing the requested operation.
     IO,
-    // No `NXIO` error, how it relates to plain IO error?
+    /// I/O error. No such device or address.
+    NXIO,
     /// Permission denied. The caller does not have the correct
     /// permission to perform the requested operation. Contrast
     /// this with NFS3ERR_PERM, which restricts itself to owner
@@ -48,26 +48,21 @@ pub enum Error {
     /// Is a directory. The caller specified a directory in a
     /// non-directory operation.
     IsDir,
-    // Assume INVAL.
     /// Invalid argument or unsupported argument for an
     /// operation. Two examples are attempting a [`Vfs::read_link`] on an
     /// object other than a symbolic link or attempting to
     /// [`Vfs::set_attr`] a time field on a server that does not support
     /// this operation.
     InvalidArgument,
-    // Assume FBIG.
     /// File too large. The operation would have caused a file to
     /// grow beyond the server's limit.
     FileTooLarge,
-    // Assume NOSPC.
     /// No space left on device. The operation would have caused
     /// the server's file system to exceed its limit.
     NoSpace,
-    // Assume ROFS.
     /// Read-only file system. A modifying operation was
     /// attempted on a read-only file system.
     ReadOnlyFs,
-    // Assume MLINK
     /// Too many hard links.
     TooManyLinks,
     /// The filename in an operation was too long.
@@ -75,46 +70,47 @@ pub enum Error {
     /// An attempt was made to remove a directory that was not
     /// empty.
     NotEmpty,
-    // Assume DQUOT.
     /// Resource (quota) hard limit exceeded. The user's resource
     /// limit on the server has been exceeded.
     QuotaExceeded,
-    // Assume STALE.
     /// Invalid file handle. The file handle given in the
     /// arguments was invalid. The file referred to by that file
     /// handle no longer exists or access to it has been
     /// revoked.
     StaleFile,
-    // Assume REMOTE.
     /// Too many levels of remote in path. The file handle given
     /// in the arguments referred to a file on a non-local file
     /// system on the server.
     TooManyLevelsOfRemote,
-    // Assume BADHANLE.
     /// Illegal NFS file handle. The file handle failed internal
     /// consistency checks.
     BadFileHandle,
-    // Assume NOT_SYNC.
     /// Update synchronization mismatch was detected during a
     /// [`Vfs::set_attr`] operation.
     NotSync,
-    // Assume BAD_COOKIE.
     /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
     BadCookie,
-    // Assume NOTSUPP.
     /// Operation is not supported.
     NotSupp,
-    // Assume TOOSMALL.
     /// Buffer or request is too small.
     TooSmall,
-
-    // No `SERVERFAULT` here, since it is file system interface,
-    // not a server interface.
+    /// An error occurred on the server which does not map to any
+    /// of the legal NFS version 3 protocol error values.  The
+    /// client should translate this into an appropriate error.
+    /// UNIX clients may choose to translate this to EIO.
+    ServerFault,
     /// An attempt was made to create an object of a type not
     /// supported by the [`Vfs`] implementation.
     BadType,
-    // No `JUKEBOX` here, since it is file systemm inteface,
-    // not a server interface.
+    /// The server initiated the request, but was not able to
+    /// complete it in a timely fashion. The client should wait
+    /// and then try the request with a new RPC transaction ID.
+    /// For example, this error should be returned from a server
+    /// that supports hierarchical storage and receives a request
+    /// to process a file that has been migrated. In this case,
+    /// the server should start the immigration process and
+    /// respond to client with this error.
+    JUKEBOX
 }
 
 /// Weak cache consistency attributes.
