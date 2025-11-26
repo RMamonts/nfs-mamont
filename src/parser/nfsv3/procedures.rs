@@ -1,14 +1,17 @@
-use crate::nfsv3::{nfstime3, set_atime, set_mtime};
+use std::io;
+use std::io::{ErrorKind, Read};
+
+use crate::allocator::Slice;
+use crate::nfsv3::{set_atime, set_mtime, stable_how};
 use crate::parser::nfsv3::{
     createhow3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, symlinkdata3, DirOpArg,
 };
-use crate::parser::primitive::{option, to_u32, to_u64};
-use crate::parser::Result;
+use crate::parser::primitive::{option, padding, u32, u32_as_usize, u64, variant};
+use crate::parser::{Error, Result};
 use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DeviceId, DirectoryCookie, FileHandle, FileName,
     FileTime, FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode, WriteMode,
 };
-use std::io::Read;
 
 pub struct GetAttrArgs {
     object: FileHandle,
@@ -44,9 +47,7 @@ pub struct WriteArgs {
     offset: u64,
     count: u32,
     mode: WriteMode,
-
-    // change that to proper chain from allocator!!!
-    data: Vec<u8>,
+    data: Slice,
 }
 
 pub struct CreateArgs {
@@ -121,8 +122,9 @@ pub struct CommitArgs {
     count: u32,
 }
 
-pub fn access(src: &mut impl Read) -> Result<AccessArgs> {
-    Ok(AccessArgs { object: FileHandle(nfs_fh3(src)?.data), access: AccessMask(to_u32(src)?) })
+
+pub fn access(src: &mut dyn Read) -> Result<AccessArgs> {
+    Ok(AccessArgs { object: FileHandle(nfs_fh3(src)?.data), access: AccessMask(u32(src)?) })
 }
 
 pub fn get_attr(src: &mut impl Read) -> Result<GetAttrArgs> {
@@ -150,16 +152,49 @@ pub fn readlink(src: &mut impl Read) -> Result<ReadLinkArgs> {
     Ok(ReadLinkArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-pub fn read(src: &mut impl Read) -> Result<ReadArgs> {
-    Ok(ReadArgs {
+pub fn read(src: &mut dyn Read) -> Result<ReadArgs> {
+    Ok(ReadArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
+}
+
+pub fn write(src: &mut dyn Read, mut slice: Slice) -> Result<WriteArgs> {
+    Ok(WriteArgs {
         object: FileHandle(nfs_fh3(src)?.data),
-        offset: to_u64(src)?,
-        count: to_u32(src)?,
+        offset: u64(src)?,
+        count: u32(src)?,
+        mode: write_mode(src)?,
+        data: {
+            read_in_slice(src, &mut slice)?;
+            slice
+        },
     })
 }
 
-pub fn write(_src: &mut impl Read) -> Result<WriteArgs> {
-    todo!()
+// here comes slice of exact number of bytes we expect to write
+// but current variant knows how to do it if we change fh to var size
+
+pub fn read_in_slice(src: &mut dyn Read, slice: &mut Slice) -> Result<()> {
+    let mut counter = 0;
+    let size = u32_as_usize(src)?;
+    for buf in slice.iter_mut() {
+        src.read_exact(buf).map_err(|e| Error::IO(e))?;
+        counter += buf.len();
+    }
+    if counter != size {
+        return Err(Error::IO(io::Error::new(
+            ErrorKind::InvalidInput,
+            "invalid amount of data read",
+        )));
+    }
+    padding(src, counter)?;
+    Ok(())
+}
+
+fn write_mode(src: &mut dyn Read) -> Result<WriteMode> {
+    Ok(match variant::<stable_how>(src)? {
+        stable_how::UNSTABLE => WriteMode::Unstable,
+        stable_how::DATA_SYNC => WriteMode::DataSync,
+        stable_how::FILE_SYNC => WriteMode::FileSync,
+    })
 }
 
 pub fn create(src: &mut impl Read) -> Result<CreateArgs> {
@@ -233,19 +268,19 @@ pub fn link(src: &mut impl Read) -> Result<LinkArgs> {
 pub fn readdir(src: &mut impl Read) -> Result<ReadDirArgs> {
     Ok(ReadDirArgs {
         object: FileHandle(nfs_fh3(src)?.data),
-        cookie: DirectoryCookie(to_u64(src)?),
-        verf: CookieVerifier(to_u64(src)?),
-        count: to_u32(src)?,
+        cookie: DirectoryCookie(u64(src)?),
+        verf: CookieVerifier(u64(src)?),
+        count: u32(src)?,
     })
 }
 
 pub fn readdir_plus(src: &mut impl Read) -> Result<ReadDirPlusArgs> {
     Ok(ReadDirPlusArgs {
         object: FileHandle(nfs_fh3(src)?.data),
-        cookie: DirectoryCookie(to_u64(src)?),
-        verf: CookieVerifier(to_u64(src)?),
-        count: to_u32(src)?,
-        max_count: to_u32(src)?,
+        cookie: DirectoryCookie(u64(src)?),
+        verf: CookieVerifier(u64(src)?),
+        count: u32(src)?,
+        max_count: u32(src)?,
     })
 }
 
@@ -261,12 +296,8 @@ pub fn pathconf(src: &mut impl Read) -> Result<PathConfArgs> {
     Ok(PathConfArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-pub fn commit(src: &mut impl Read) -> Result<CommitArgs> {
-    Ok(CommitArgs {
-        object: FileHandle(nfs_fh3(src)?.data),
-        offset: to_u64(src)?,
-        count: to_u32(src)?,
-    })
+pub fn commit(src: &mut dyn Read) -> Result<CommitArgs> {
+    Ok(CommitArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
 }
 
 fn convert_attr(attr: sattr3) -> SetAttr {
