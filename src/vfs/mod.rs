@@ -113,30 +113,16 @@ pub enum Error {
     JUKEBOX
 }
 
-/// Weak cache consistency attributes.
-#[derive(Copy, Clone)]
-pub struct WccAttr {
-    pub size: u64,
-    pub mtime: file::Time,
-    pub ctime: file::Time,
-}
+/// TODO(i.erin)
+type PostOpAttr = Option<file::Attr>;
 
-/// Weak cache consistency information.
-#[derive(Clone)]
-pub struct WccData {
-    pub before: Option<WccAttr>,
-    pub after: Option<file::Attr>,
-}
+/// TODO(i.erin)
+type PreOpAttr = Option<file::WccAttr>;
 
-/// Strategy for updating timestamps in [`SetAttr`].
-#[derive(Copy, Clone)]
-pub enum SetTime {
-    DontChange,
-    ServerCurrent,
-    ClientProvided(file::Time),
-}
+/// TODO(i.erin)
+type PostOpFile = Option<file::Uid>;
 
-/// Attribute modification.
+/// TODO(i.erin)
 #[derive(Clone)]
 pub struct SetAttr {
     pub mode: Option<u32>,
@@ -145,6 +131,21 @@ pub struct SetAttr {
     pub size: Option<u64>,
     pub atime: SetTime,
     pub mtime: SetTime,
+}
+
+/// TODO(i.erin)
+#[derive(Clone)]
+pub struct WccData {
+    pub before: Option<file::WccAttr>,
+    pub after: Option<file::Attr>,
+}
+
+/// Strategy for updating timestamps in [`SetAttr`].
+#[derive(Copy, Clone)]
+pub enum SetTime {
+    DontChange,
+    ToServer,
+    ToClient(file::Time),
 }
 
 /// Guard used by [`Vfs::set_attr`] to enforce weak cache consistency.
@@ -432,45 +433,45 @@ pub mod promise {
 /// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    async fn get_attr(&self, file: &file::Uid);
+    async fn get_attr(&self, file: file::Uid);
 
-    async fn set_attr(&self, file: &file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
+    async fn set_attr(&self, file: file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
 
-    async fn lookup(&self, parent: &file::Uid, name: &str);
+    async fn lookup(&self, parent: file::Uid, name: String);
 
-    async fn access(&self, file: &file::Uid, mask: AccessMask);
+    async fn access(&self, file: file::Uid, mask: AccessMask);
 
-    async fn read_link(&self, file: &file::Uid);
+    async fn read_link(&self, file: file::Uid);
 
-    async fn read(&self, file: &file::Uid, offset: u64, count: u32);
+    async fn read(&self, file: file::Uid, offset: u64, count: u32);
 
-    async fn write(&self, file: &file::Uid, offset: u64, data: &[u8], mode: WriteMode);
+    async fn write(&self, file: file::Uid, offset: u64, data: Vec<u8>, mode: WriteMode);
 
-    async fn create(&self, parent: &file::Uid, name: &str, mode: CreateMode);
+    async fn create(&self, parent: file::Uid, name: String, mode: CreateMode);
 
-    async fn make_dir(&self, parent: &file::Uid, name: &str, attr: SetAttr);
+    async fn make_dir(&self, parent: file::Uid, name: String, attr: SetAttr);
 
-    async fn make_symlink(&self, parent: &file::Uid, name: &str, target: &Path, attr: SetAttr);
+    async fn make_symlink(&self, parent: file::Uid, name: String, target: &Path, attr: SetAttr);
 
-    async fn make_node(&self, parent: &file::Uid, name: &str, node: SpecialNode);
+    async fn make_node(&self, parent: file::Uid, name: String, node: SpecialNode);
 
-    async fn remove(&self, parent: &file::Uid, name: &str);
+    async fn remove(&self, parent: file::Uid, name: String);
 
-    async fn remove_dir(&self, parent: &file::Uid, name: &str);
+    async fn remove_dir(&self, parent: file::Uid, name: String);
 
     async fn rename(
         &self,
-        from_parent: &file::Uid,
-        from_name: &str,
-        to_parent: &file::Uid,
-        to_name: &str,
+        from_parent: file::Uid,
+        from_name: String,
+        to_parent: file::Uid,
+        to_name: String,
     );
 
-    async fn link(&self, source: &file::Uid, new_parent: &file::Uid, new_name: &str);
+    async fn link(&self, source: file::Uid, new_parent: file::Uid, new_name: String);
 
     async fn read_dir(
         &self,
-        file: &file::Uid,
+        file: file::Uid,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
@@ -478,18 +479,18 @@ pub trait Vfs: Sync + Send {
 
     async fn read_dir_plus(
         &self,
-        file: &file::Uid,
+        file: file::Uid,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
         max_files: u32,
     );
 
-    async fn fs_stat(&self, file: &file::Uid);
+    async fn fs_stat(&self, file: file::Uid);
 
-    async fn fs_info(&self, file: &file::Uid);
+    async fn fs_info(&self, file: file::Uid);
 
-    async fn path_conf(&self, file: &file::Uid);
+    async fn path_conf(&self, file: file::Uid);
 
-    async fn commit(&self, file: &file::Uid, offset: u64, count: u32);
+    async fn commit(&self, file: file::Uid, offset: u64, count: u32);
 }
