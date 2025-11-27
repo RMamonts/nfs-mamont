@@ -3,7 +3,7 @@ use std::io::{self, ErrorKind, Read, Write};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::tcp::OwnedReadHalf;
-use crate::allocator::Allocator;
+
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::parser::mount::{mount, unmount, MountArgs, UnmountArgs};
@@ -15,8 +15,8 @@ use crate::parser::nfsv3::procedures::{
     RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
 };
 use crate::parser::primitive::u32;
-use crate::parser::rpc::{auth, AuthFlavor, AuthStat};
-use crate::parser::{Error, Result};
+use crate::parser::rpc::{AuthFlavor, AuthStat};
+use crate::parser::{process_suberror, Error, ProgramVersionMismatch, RPCVersionMismatch, Result};
 use crate::rpc::{rpc_body, RPC_VERSION};
 
 const MAX_MESSAGE_LEN: usize = 1500;
@@ -29,91 +29,128 @@ struct RpcMessage {
     version: u32,
 }
 
-struct CustomCursor {
-    buffer: Vec<u8>,
-    position: usize,
-    read_bytes: usize,
+struct ReadBuffer {
+    data: Vec<u8>,
+    read_pos: usize,
+    write_pos: usize,
 }
 
-impl CustomCursor {
-    fn new(size: usize) -> Self {
-        Self { buffer: vec![0u8; size], position: 0, read_bytes: 0 }
-    }
-    fn writer_slice(&mut self) -> &mut [u8] {
-        &mut self.buffer[self.read_bytes..]
+#[allow(dead_code)]
+impl ReadBuffer {
+    fn new(capacity: usize) -> Self {
+        Self { data: vec![0u8; capacity], read_pos: 0, write_pos: 0 }
     }
 
-    fn extend_read_bytes(&mut self, n: usize) {
-        self.read_bytes += n;
+    fn bytes_read(&self) -> usize {
+        self.read_pos
+    }
+    fn available_read(&self) -> usize {
+        self.write_pos - self.read_pos
     }
 
-    fn available_to_read(&mut self) -> usize {
-        self.read_bytes - self.position
+    fn available_write(&self) -> usize {
+        self.data.len() - self.write_pos
     }
 
-    fn position(&self) -> usize {
-        self.position
+    fn read_slice(&self) -> &[u8] {
+        &self.data[self.read_pos..self.write_pos]
     }
-}
 
-impl Read for CustomCursor {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.read_bytes) - self.position;
-        if len == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "No more data available"));
+    fn write_slice(&mut self) -> &mut [u8] {
+        &mut self.data[self.write_pos..]
+    }
+
+    fn consume(&mut self, n: usize) {
+        self.read_pos += n;
+    }
+
+    fn extend(&mut self, n: usize) {
+        self.write_pos += n;
+    }
+
+    fn compact(&mut self) {
+        if self.read_pos > 0 {
+            self.data.copy_within(self.read_pos..self.write_pos, 0);
+            self.write_pos -= self.read_pos;
+            self.read_pos = 0;
         }
-        buf[..len].copy_from_slice(&self.buffer[self.position..self.read_bytes]);
-        self.position += len;
+    }
+
+    fn clear(&mut self) {
+        self.read_pos = 0;
+        self.write_pos = 0;
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl Read for ReadBuffer {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let len = min(buf.len(), self.available_read());
+        buf[..len].copy_from_slice(&self.data[self.read_pos..self.read_pos + len]);
+        self.consume(len);
         Ok(len)
     }
 }
 
-struct Parser {
-    allocator: Box<dyn Allocator>,
-    buffer: CustomCursor,
-    socket: OwnedReadHalf,
-    last: bool,
-    frame_size: usize,
-}
-
-impl Parser {
-    #[allow(dead_code)]
-    pub fn new(socket: OwnedReadHalf, allocator: Box<dyn Allocator>) -> Self {
-        Self {
-            allocator,
-            buffer: CustomCursor::new(MAX_MESSAGE_LEN),
-            socket,
-            last: false,
-            frame_size: 0,
-        }
+impl Write for ReadBuffer {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = min(buf.len(), self.available_write());
+        self.write_slice()[..len].copy_from_slice(&buf[..len]);
+        self.extend(len);
+        Ok(len)
     }
 
-    #[allow(dead_code)]
-    async fn initial_read(&mut self, min_size: usize) -> Result<()> {
-        // called whenever we need to read more data
-        while self.buffer.available_to_read() < min_size {
-            let size = self.socket.read(self.buffer.writer_slice()).await.map_err(Error::IO)?;
-            self.buffer.extend_read_bytes(size);
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+pub struct RpcParser {
+    buffer: ReadBuffer,
+    socket: OwnedReadHalf,
+    last: bool,
+    current_frame_size: usize,
+}
+
+#[allow(dead_code)]
+impl RpcParser {
+    pub fn new(socket: OwnedReadHalf, size: usize) -> Self {
+        Self { buffer: ReadBuffer::new(size), socket, last: false, current_frame_size: 0 }
+    }
+
+    // used only in the beginning of parsing
+    async fn fill_buffer(&mut self, min_bytes: usize) -> Result<()> {
+        while self.buffer.available_read() < min_bytes {
+            if self.buffer.available_write() == 0 {
+                return Err(Error::IO(io::Error::new(
+                    ErrorKind::UnexpectedEof,
+                    "Buffer exhausted",
+                )));
+            }
         }
 
-        // new cursor
-        // parsing header
-        let head = u32(&mut self.buffer)?;
-        self.last = head & 0x8000_0000 == 0x8000_0000;
-        self.frame_size = (head & 0x7FFF_FFFF) as usize;
+        let bytes_read = self.socket.read(self.buffer.write_slice()).await.map_err(Error::IO)?;
+
+        if bytes_read == 0 {
+            return Err(Error::IO(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed")));
+        }
+
+        self.buffer.extend(bytes_read);
+
         Ok(())
     }
 
     async fn read_message_header(&mut self) -> Result<()> {
-        self.initial_read(MIN_MESSAGE_LEN).await?;
-
         let header = u32(&mut self.buffer)?;
         self.last = header & 0x8000_0000 != 0;
-        self.frame_size = (header & 0x7FFF_FFFF) as usize;
+        self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
 
         // find out about these two checks
 
-        if self.frame_size > MAX_MESSAGE_LEN {
+        if self.current_frame_size > MAX_MESSAGE_LEN {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Frame size exceeds maximum",
@@ -138,7 +175,7 @@ impl Parser {
 
         let rpc_version = u32(&mut self.buffer)?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch);
+            return Err(Error::RpcVersionMismatch(RPCVersionMismatch(RPC_VERSION, RPC_VERSION)));
         }
 
         let program = u32(&mut self.buffer)?;
@@ -243,13 +280,19 @@ impl Parser {
                             _ => return Err(Error::ProcedureMismatch),
                         }))
                     }
-                    _ => Err(Error::ProgramVersionMismatch),
+                    _ => Err(Error::ProgramVersionMismatch(ProgramVersionMismatch(
+                        NFS_VERSION,
+                        NFS_VERSION,
+                    ))),
                 }
             }
 
             MOUNT_PROGRAM => {
                 if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch);
+                    return Err(Error::ProgramVersionMismatch(ProgramVersionMismatch(
+                        MOUNT_VERSION,
+                        MOUNT_VERSION,
+                    )));
                 }
                 Ok(Box::new(match head.procedure {
                     0 => Arguments::Null,
@@ -271,58 +314,70 @@ impl Parser {
 
     // TODO: add some error handling
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
+        self.fill_buffer(MIN_MESSAGE_LEN).await?;
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
-            Err(error) => {
-                match error {
-                    //these one to send to write directly to writetask and continue parsing
-                    //use discard_current_message
-                    Error::MessageTypeMismatch => {}
-                    Error::RpcVersionMismatch => {}
-                    Error::AuthError(_) => {}
-                    Error::ProgramMismatch => {}
-                    Error::ProcedureMismatch => {}
-                    Error::ProgramVersionMismatch => {}
-                    //these one are fatal, but some still need replies (parse_error and server_error)
-                    //probably simply drop everything after sending sata to other tasks
-                    Error::IO(_) => {}
-                    _ => {
-
-                    }
-                }
-            }
-            Ok(_) => {}
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
         };
-        //same as with header
-        let procedure = match self.parse_proc(rpc_header).await {
-            Ok(_) => {}
-            Err(_) => {}
-        }
+        let proc = match self.parse_proc(rpc_header).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+
         // that's done after normal parsing without errors
         self.finalize_parsing()?;
-        Ok(procedure)
+        Ok(proc)
     }
 
     // used after successful parsing - with no errors
     fn finalize_parsing(&mut self) -> Result<()> {
-        if self.buffer.read_bytes != self.frame_size {
+        if self.buffer.bytes_read() != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
             )));
         }
 
-        self.buffer.;
-        self.frame_size = 0;
+        self.buffer.compact();
+        self.current_frame_size = 0;
         self.last = false;
         Ok(())
+    }
+
+    async fn match_errors(&mut self, error: Error) -> Error {
+        match error {
+            //these one to send to write directly to writetask and continue parsing
+            //use discard_current_message
+
+            //these one are fatal, but some still need replies (parse_error and server_error)
+            //probably simply drop everything after sending sata to other tasks
+            Error::RpcVersionMismatch(arg) => {
+                process_suberror(Error::RpcVersionMismatch(arg), self.discard_current_message())
+                    .await
+            }
+            Error::ProgramMismatch => {
+                process_suberror(Error::ProgramMismatch, self.discard_current_message()).await
+            }
+            Error::ProcedureMismatch => {
+                process_suberror(Error::ProcedureMismatch, self.discard_current_message()).await
+            }
+            Error::AuthError(e) => {
+                process_suberror(Error::AuthError(e), self.discard_current_message()).await
+            }
+            Error::ProgramVersionMismatch(arg) => {
+                process_suberror(Error::ProgramVersionMismatch(arg), self.discard_current_message())
+                    .await
+            }
+            // these are fatal errors, that would result in dropping current task - no need doing cleaning
+            er => er,
+        }
     }
 
     // used after non-fatal errors - to clean remaining data from socket
     // !!! implement some logic for write - we would need allocator
     pub async fn discard_current_message(&mut self) -> Result<()> {
-        let remaining = self.frame_size - self.buffer.bytes_read();
-
+        let remaining = self.current_frame_size - self.buffer.bytes_read();
         let mut total_discarded = 0;
         while total_discarded < remaining {
             self.buffer.clear();
@@ -333,17 +388,14 @@ impl Parser {
             total_discarded += read;
         }
         self.buffer.clear();
-        self.frame_size = 0;
+        self.current_frame_size = 0;
         self.last = false;
         Ok(())
     }
 
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        let auth = auth(&mut self.buffer)?;
-        match auth.flavor {
-            AuthFlavor::AuthNone => {
-                Ok(AuthStat::AuthOk)
-            }
+        match crate::parser::rpc::auth(&mut self.buffer)?.flavor {
+            AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
             _ => {
                 unimplemented!()
             }
@@ -353,7 +405,7 @@ impl Parser {
 
 #[allow(dead_code)]
 async fn parse_with_retry<T>(
-    buffer: &mut CustomCursor,
+    buffer: &mut ReadBuffer,
     socket: &mut (impl AsyncRead + Unpin),
     caller: impl Fn(&mut dyn Read) -> Result<T>,
 ) -> Result<T> {
@@ -362,7 +414,7 @@ async fn parse_with_retry<T>(
     match caller(buffer) {
         Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
             // called whenever we need to read more data
-            let bytes_read = socket.read(buffer.writer_slice()).await;
+            let bytes_read = socket.read(buffer.write_slice()).await;
             match bytes_read {
                 Ok(0) => {
                     // closing connection
@@ -371,7 +423,7 @@ async fn parse_with_retry<T>(
                     Err(Error::IO(err))
                 }
                 Ok(n) => {
-                    buffer.extend_read_bytes(n);
+                    buffer.extend(n);
                     Box::pin(parse_with_retry(buffer, socket, caller)).await
                 }
                 Err(e) => Err(Error::IO(e)),

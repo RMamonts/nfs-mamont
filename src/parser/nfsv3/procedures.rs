@@ -52,7 +52,6 @@ pub struct ReadArgs {
     pub count: u32,
 }
 
-#[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
 pub struct WriteArgs {
     pub object: FileHandle,
