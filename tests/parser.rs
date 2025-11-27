@@ -8,7 +8,7 @@ mod nfsv3 {
         createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, set_atime,
         set_mtime, symlinkdata3,
     };
-    use nfs_mamont::parser::primitive::c_enum;
+    use nfs_mamont::parser::primitive::variant;
     use nfs_mamont::parser::Error;
 
     #[test]
@@ -243,12 +243,12 @@ mod nfsv3 {
     fn test_c_enum() {
         let data = [0x00, 0x00, 0x00, 0x06];
         let mut src = Cursor::new(&data);
-        let result = c_enum(&mut src).unwrap();
+        let result = variant(&mut src).unwrap();
         assert!(matches!(result, ftype3::NF3SOCK));
 
         let data = [0x00, 0x00, 0x00, 0x08];
         let mut src = Cursor::new(&data);
-        let result = c_enum::<ftype3>(&mut src);
+        let result = variant::<ftype3>(&mut src);
         assert!(matches!(result, Err(Error::EnumDiscMismatch)));
     }
 }
@@ -259,7 +259,7 @@ mod primitive {
     use byteorder::{BigEndian, WriteBytesExt};
 
     use nfs_mamont::parser::primitive::{
-        array, option, string, string_max_len, to_bool, to_u32, to_u64, to_u8, vector,
+        array, bool, option, string, string_max_size, u32, u64, u8, vector,
     };
     use nfs_mamont::parser::Error;
 
@@ -272,7 +272,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = to_u32(&mut src).expect("Cannot parse value!");
+            let val = u32(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -286,7 +286,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = to_u64(&mut src).expect("Cannot parse value!");
+            let val = u64(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -300,7 +300,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = to_bool(&mut src).expect("Cannot parse value!");
+            let val = bool(&mut src).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -319,7 +319,7 @@ mod primitive {
         }
         let mut src = Cursor::new(src);
         for correct_res in init {
-            let val = option(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
+            let val = option(&mut src, |s| u32(s)).expect("Cannot parse value!");
             assert_eq!(val, correct_res)
         }
     }
@@ -328,9 +328,9 @@ mod primitive {
     fn test_array_u32() {
         let init = [457u32, 475, 0];
         let mut src = Vec::new();
-        init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
+        let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
         let mut src = Cursor::new(src);
-        let val = array::<3, u32>(&mut src, |s| to_u32(s)).expect("Cannot parse value!");
+        let val = array::<3, u32>(&mut src, |s| u32(s)).expect("Cannot parse value!");
         assert_eq!(val, init)
     }
 
@@ -345,7 +345,7 @@ mod primitive {
         let padding_len = (4 - (init.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -358,7 +358,7 @@ mod primitive {
             src.write_u8(*i).unwrap();
         }
         src.push(0);
-        let result = vector(&mut Cursor::new(src), |s| to_u8(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| u8(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -369,7 +369,7 @@ mod primitive {
         for i in &init {
             src.write_u8(*i).unwrap();
         }
-        let result = array::<3, u8>(&mut Cursor::new(src), |s| to_u8(s));
+        let result = array::<3, u8>(&mut Cursor::new(src), |s| u8(s));
         assert!(matches!(result, Err(Error::IncorrectPadding)));
     }
 
@@ -378,7 +378,7 @@ mod primitive {
         let init = [78u32, 0, 78965];
         let mut src = Vec::new();
         let _ = init.map(|i| src.write_u32::<BigEndian>(i).unwrap());
-        let result = array::<4, u32>(&mut Cursor::new(src), |s| to_u32(s));
+        let result = array::<4, u32>(&mut Cursor::new(src), |s| u32(s));
         assert!(matches!(result, Err(Error::IO(_))));
     }
 
@@ -390,7 +390,7 @@ mod primitive {
         for i in &init {
             src.write_u32::<BigEndian>(*i).unwrap();
         }
-        let result = vector(&mut Cursor::new(src), |s| to_u32(s)).unwrap();
+        let result = vector(&mut Cursor::new(src), |s| u32(s)).unwrap();
         assert_eq!(result, init);
     }
 
@@ -422,7 +422,7 @@ mod primitive {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
         src.extend_from_slice(test_string.as_bytes());
-        let result = string_max_len(&mut Cursor::new(src), 10).unwrap();
+        let result = string_max_size(&mut Cursor::new(src), 10).unwrap();
         assert_eq!(result, test_string);
     }
 
@@ -436,7 +436,7 @@ mod primitive {
         let padding_len = (4 - (test_string.len() % 4)) % 4;
         src.extend(vec![0u8; padding_len]);
 
-        let result = string_max_len(&mut Cursor::new(src), 10);
+        let result = string_max_size(&mut Cursor::new(src), 10);
         assert!(matches!(result, Err(Error::MaxELemLimit)));
     }
 
@@ -444,7 +444,7 @@ mod primitive {
     fn test_read_error() {
         let mut src = Vec::new();
         src.write_u32::<BigEndian>(10).unwrap();
-        let result = vector(&mut Cursor::new(src), |s| to_u8(s));
+        let result = vector(&mut Cursor::new(src), |s| u8(s));
         assert!(matches!(result, Err(Error::IO(_))));
     }
 }
