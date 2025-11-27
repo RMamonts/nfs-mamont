@@ -179,7 +179,7 @@ pub struct specdata3 {
 
 #[allow(dead_code)]
 pub struct nfs_fh3 {
-    data: [u8; NFS3_FHSIZE as usize],
+    pub data: [u8; NFS3_FHSIZE as usize],
 }
 
 #[allow(dead_code)]
