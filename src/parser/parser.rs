@@ -1,23 +1,24 @@
-use std::cmp::min;
-use std::io::{self, ErrorKind, Read, Write};
-
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::net::tcp::OwnedReadHalf;
-
+use crate::allocator::Allocator;
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::parser::mount::{mount, unmount, MountArgs, UnmountArgs};
 use crate::parser::nfsv3::procedures::{
     access, commit, create, fsinfo, fsstat, get_attr, link, lookup, mkdir, mknod, pathconf, read,
-    readdir, readdir_plus, readlink, remove, rename, rmdir, set_attr, symlink, write, AccessArgs,
-    CommitArgs, CreateArgs, FsInfoArgs, FsStatArgs, GetAttrArgs, LinkArgs, LookUpArgs, MkDirArgs,
-    MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs, ReadDirPlusArgs, ReadLinkArgs, RemoveArgs,
-    RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
+    read_in_slice_async, read_in_slice_sync, readdir, readdir_plus, readlink, remove, rename,
+    rmdir, set_attr, symlink, write, AccessArgs, CommitArgs, CreateArgs, FsInfoArgs, FsStatArgs,
+    GetAttrArgs, LinkArgs, LookUpArgs, MkDirArgs, MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs,
+    ReadDirPlusArgs, ReadLinkArgs, RemoveArgs, RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs,
+    WriteArgs,
 };
-use crate::parser::primitive::u32;
-use crate::parser::rpc::{AuthFlavor, AuthStat};
+use crate::parser::primitive::{u32, ALIGNMENT};
+use crate::parser::rpc::{auth, AuthFlavor, AuthStat};
 use crate::parser::{process_suberror, Error, ProgramVersionMismatch, RPCVersionMismatch, Result};
 use crate::rpc::{rpc_body, RPC_VERSION};
+use std::cmp::min;
+use std::io::{self, ErrorKind, Read, Write};
+use std::num::NonZeroUsize;
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::net::tcp::OwnedReadHalf;
 
 const MAX_MESSAGE_LEN: usize = 1500;
 const MIN_MESSAGE_LEN: usize = 24;
@@ -84,6 +85,11 @@ impl ReadBuffer {
     fn len(&self) -> usize {
         self.data.len()
     }
+
+    // maybe need some check before doing smt like this???
+    fn construct_slice(&mut self, size: usize) -> &mut [u8] {
+        &mut self.data[self.read_pos..self.read_pos + size]
+    }
 }
 
 impl Read for ReadBuffer {
@@ -108,7 +114,8 @@ impl Write for ReadBuffer {
     }
 }
 
-pub struct RpcParser {
+pub struct RpcParser<A: Allocator> {
+    allocator: A,
     buffer: ReadBuffer,
     socket: OwnedReadHalf,
     last: bool,
@@ -116,9 +123,15 @@ pub struct RpcParser {
 }
 
 #[allow(dead_code)]
-impl RpcParser {
-    pub fn new(socket: OwnedReadHalf, size: usize) -> Self {
-        Self { buffer: ReadBuffer::new(size), socket, last: false, current_frame_size: 0 }
+impl<A: Allocator> RpcParser<A> {
+    pub fn new(socket: OwnedReadHalf, size: usize, allocator: A) -> Self {
+        Self {
+            allocator,
+            buffer: ReadBuffer::new(size),
+            socket,
+            last: false,
+            current_frame_size: 0,
+        }
     }
 
     // used only in the beginning of parsing
@@ -222,7 +235,13 @@ impl RpcParser {
                             ),
                             // some other logic with allocator!!!
                             7 => Arguments::Write(
-                                parse_with_retry(&mut self.buffer, &mut self.socket, write).await?,
+                                adapter_for_write(
+                                    &mut self.allocator,
+                                    &mut self.buffer,
+                                    &mut self.socket,
+                                    self.current_frame_size,
+                                )
+                                .await?,
                             ),
 
                             8 => Arguments::Create(
@@ -394,7 +413,7 @@ impl RpcParser {
     }
 
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        match crate::parser::rpc::auth(&mut self.buffer)?.flavor {
+        match auth(&mut self.buffer)?.flavor {
             AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
             _ => {
                 unimplemented!()
@@ -414,8 +433,7 @@ async fn parse_with_retry<T>(
     match caller(buffer) {
         Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
             // called whenever we need to read more data
-            let bytes_read = socket.read(buffer.write_slice()).await;
-            match bytes_read {
+            match socket.read(buffer.write_slice()).await {
                 Ok(0) => {
                     // closing connection
                     // or
@@ -431,6 +449,46 @@ async fn parse_with_retry<T>(
         }
         result => result,
     }
+}
+
+async fn adapter_for_write(
+    alloc: &mut impl Allocator,
+    buffer: &mut ReadBuffer,
+    socket: &mut (impl Unpin + AsyncRead),
+    mut bytes_left: usize,
+) -> Result<WriteArgs> {
+    const SKIP_SIZE: usize = 28;
+    let padding = (ALIGNMENT - (bytes_left - SKIP_SIZE) % ALIGNMENT) % ALIGNMENT;
+    let opaque_size = bytes_left - SKIP_SIZE - padding;
+    if opaque_size < 0 {
+        return Err(Error::IO(io::Error::new(ErrorKind::InvalidData, "invalid array size")));
+    }
+    let mut slice = match alloc.alloc(NonZeroUsize::new(opaque_size).unwrap()).await {
+        Some(slice) => slice,
+        None => {
+            return Err(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))
+        }
+    };
+
+    let (object, offset, count, mode, size) = parse_with_retry(buffer, socket, write).await?;
+    bytes_left -= SKIP_SIZE;
+    // is it true???
+    assert_eq!(count, size as u32);
+    let to_skip = read_in_slice_sync(buffer, &mut slice, size)?;
+    read_in_slice_async(socket, &mut slice, to_skip, opaque_size - to_skip).await?;
+    bytes_left -= size;
+    // all these actions only to read padding
+
+    let pad_in_buf = buffer.available_read();
+    buffer.consume(min(pad_in_buf, padding));
+    let mut tmp_buf = [0u8, 0u8, 0u8, 0u8];
+    socket
+        .read_exact(&mut tmp_buf[..ALIGNMENT - min(pad_in_buf, padding)])
+        .await
+        .map_err(Error::IO)?;
+    bytes_left -= padding;
+    assert_eq!(bytes_left, 0);
+    Ok(WriteArgs { object, offset, count, mode, data: slice })
 }
 
 #[allow(dead_code)]

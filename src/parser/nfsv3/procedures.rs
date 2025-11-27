@@ -1,15 +1,18 @@
-use std::io::Read;
-
-use crate::nfsv3::{set_atime, set_mtime};
+use crate::allocator::Slice;
+use crate::nfsv3::{set_atime, set_mtime, stable_how};
 use crate::parser::nfsv3::{
     createhow3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, symlinkdata3, DirOpArg,
 };
-use crate::parser::primitive::{option, u32, u64};
-use crate::parser::Result;
+use crate::parser::primitive::{option, u32, u32_as_usize, u64, variant};
+use crate::parser::{Error, Result};
 use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DeviceId, DirectoryCookie, FileHandle, FileName,
     FileTime, FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode, WriteMode,
 };
+use std::cmp::min;
+use std::io;
+use std::io::{ErrorKind, Read};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
@@ -191,15 +194,75 @@ pub fn readlink(src: &mut dyn Read) -> Result<ReadLinkArgs> {
 }
 
 pub fn read(src: &mut dyn Read) -> Result<ReadArgs> {
-    Ok(ReadArgs {
-        object: FileHandle(nfs_fh3(src)?.data),
-        offset: u64(src)?,
-        count: u32(src)?,
-    })
+    Ok(ReadArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
 }
 
-pub fn write(_src: &mut dyn Read) -> Result<WriteArgs> {
-    todo!()
+pub fn write(src: &mut dyn Read) -> Result<(FileHandle, u64, u32, WriteMode, usize)> {
+    Ok((FileHandle(nfs_fh3(src)?.data), u64(src)?, u32(src)?, write_mode(src)?, u32_as_usize(src)?))
+}
+
+// here comes slice of exact number of bytes we expect to write
+// but current variant knows how to do it if we change fh to var size
+
+pub async fn read_in_slice_async(
+    src: &mut (dyn AsyncRead + Unpin),
+    slice: &mut Slice,
+    to_skip: usize,
+    to_write: usize,
+) -> Result<()> {
+    let mut left_skip = to_skip;
+    let mut left_write = to_write;
+    for buf in slice.iter_mut() {
+        let in_cur = min(left_skip, buf.len());
+        if left_skip > 0 && in_cur == buf.len() {
+            left_skip -= in_cur;
+            continue;
+        }
+        assert!(left_skip >= 0);
+        let cur_write = min(left_write, buf.len());
+        src.read_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
+        left_write -= cur_write;
+        left_skip = 0;
+    }
+    assert_eq!(left_write, 0);
+    Ok(())
+}
+
+pub fn read_in_slice_sync(
+    src: &mut dyn Read,
+    slice: &mut Slice,
+    mut left_size: usize,
+) -> Result<usize> {
+    let mut counter = 0;
+    let real_size = left_size;
+    for buf in slice.iter_mut() {
+        let block_size = buf.len();
+        let mut read_count = 0;
+        while read_count < min(block_size, left_size) {
+            let n = match src.read(&mut buf[read_count..min(block_size, left_size)]) {
+                Ok(n) => n,
+                Err(_) => return Ok(left_size),
+            };
+            read_count += n;
+            left_size -= n;
+        }
+        counter += read_count
+    }
+    if counter != real_size {
+        return Err(Error::IO(io::Error::new(
+            ErrorKind::InvalidInput,
+            "invalid amount of data read",
+        )));
+    }
+    Ok(counter)
+}
+
+fn write_mode(src: &mut dyn Read) -> Result<WriteMode> {
+    Ok(match variant::<stable_how>(src)? {
+        stable_how::UNSTABLE => WriteMode::Unstable,
+        stable_how::DATA_SYNC => WriteMode::DataSync,
+        stable_how::FILE_SYNC => WriteMode::FileSync,
+    })
 }
 
 pub fn create(src: &mut dyn Read) -> Result<CreateArgs> {
@@ -302,11 +365,7 @@ pub fn pathconf(src: &mut dyn Read) -> Result<PathConfArgs> {
 }
 
 pub fn commit(src: &mut dyn Read) -> Result<CommitArgs> {
-    Ok(CommitArgs {
-        object: FileHandle(nfs_fh3(src)?.data),
-        offset: u64(src)?,
-        count: u32(src)?,
-    })
+    Ok(CommitArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
 }
 
 fn convert_attr(attr: sattr3) -> SetAttr {

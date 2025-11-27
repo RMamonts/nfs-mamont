@@ -35,7 +35,7 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-struct OpaqueAuth {
+pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub opaque: Vec<u8>,
 }
