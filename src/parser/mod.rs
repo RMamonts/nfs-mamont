@@ -11,6 +11,7 @@ pub mod primitive;
 mod rpc;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

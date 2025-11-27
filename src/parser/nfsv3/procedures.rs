@@ -1,3 +1,9 @@
+use std::cmp::min;
+use std::io;
+use std::io::{ErrorKind, Read};
+
+use tokio::io::{AsyncRead, AsyncReadExt};
+
 use crate::allocator::Slice;
 use crate::nfsv3::{set_atime, set_mtime, stable_how};
 use crate::parser::nfsv3::{
@@ -9,10 +15,6 @@ use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DeviceId, DirectoryCookie, FileHandle, FileName,
     FileTime, FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode, WriteMode,
 };
-use std::cmp::min;
-use std::io;
-use std::io::{ErrorKind, Read};
-use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
@@ -215,46 +217,49 @@ pub async fn read_in_slice_async(
     for buf in slice.iter_mut() {
         let in_cur = min(left_skip, buf.len());
         if left_skip > 0 && in_cur == buf.len() {
-            left_skip -= in_cur;
+            left_skip
+                .checked_sub(in_cur)
+                .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
-        assert!(left_skip >= 0);
         let cur_write = min(left_write, buf.len());
         src.read_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
         left_write -= cur_write;
+        left_write
+            .checked_sub(cur_write)
+            .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
         left_skip = 0;
     }
-    assert_eq!(left_write, 0);
     Ok(())
 }
 
 pub fn read_in_slice_sync(
     src: &mut dyn Read,
     slice: &mut Slice,
-    mut left_size: usize,
+    left_size: usize,
 ) -> Result<usize> {
-    let mut counter = 0;
     let real_size = left_size;
     for buf in slice.iter_mut() {
-        let block_size = buf.len();
+        let block_size = min(buf.len(), left_size);
         let mut read_count = 0;
-        while read_count < min(block_size, left_size) {
-            let n = match src.read(&mut buf[read_count..min(block_size, left_size)]) {
+        while read_count < block_size {
+            let n = match src.read(&mut buf[read_count..block_size]) {
                 Ok(n) => n,
                 Err(_) => return Ok(left_size),
             };
             read_count += n;
-            left_size -= n;
+            left_size
+                .checked_sub(n)
+                .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
         }
-        counter += read_count
     }
-    if counter != real_size {
+    if left_size != 0 {
         return Err(Error::IO(io::Error::new(
             ErrorKind::InvalidInput,
             "invalid amount of data read",
         )));
     }
-    Ok(counter)
+    Ok(real_size)
 }
 
 fn write_mode(src: &mut dyn Read) -> Result<WriteMode> {

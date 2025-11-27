@@ -152,7 +152,6 @@ impl<A: Allocator> RpcParser<A> {
         }
 
         self.buffer.extend(bytes_read);
-
         Ok(())
     }
 
@@ -451,6 +450,7 @@ async fn parse_with_retry<T>(
     }
 }
 
+// TODO: review all size checks i do (probably change usize with isize)
 async fn adapter_for_write(
     alloc: &mut impl Allocator,
     buffer: &mut ReadBuffer,
@@ -459,16 +459,13 @@ async fn adapter_for_write(
 ) -> Result<WriteArgs> {
     const SKIP_SIZE: usize = 28;
     let padding = (ALIGNMENT - (bytes_left - SKIP_SIZE) % ALIGNMENT) % ALIGNMENT;
-    let opaque_size = bytes_left - SKIP_SIZE - padding;
-    if opaque_size < 0 {
-        return Err(Error::IO(io::Error::new(ErrorKind::InvalidData, "invalid array size")));
-    }
-    let mut slice = match alloc.alloc(NonZeroUsize::new(opaque_size).unwrap()).await {
-        Some(slice) => slice,
-        None => {
-            return Err(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))
-        }
-    };
+    let opaque_size = bytes_left
+        .checked_sub(SKIP_SIZE + padding)
+        .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidData, "invalid array size")))?;
+    let mut slice = alloc
+        .alloc(NonZeroUsize::new(opaque_size).unwrap())
+        .await
+        .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
 
     let (object, offset, count, mode, size) = parse_with_retry(buffer, socket, write).await?;
     bytes_left -= SKIP_SIZE;
