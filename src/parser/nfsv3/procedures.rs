@@ -59,9 +59,7 @@ pub struct WriteArgs {
     pub offset: u64,
     pub count: u32,
     pub mode: WriteMode,
-
-    // change that to proper chain from allocator!!!
-    pub data: Vec<u8>,
+    pub data: Slice,
 }
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
