@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncRead;
 
 use crate::allocator::Slice;
 use crate::nfsv3::{set_atime, set_mtime, stable_how};
@@ -10,6 +10,7 @@ use crate::parser::nfsv3::{
     createhow3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, symlinkdata3, DirOpArg,
 };
 use crate::parser::primitive::{option, u32, u32_as_usize, u64, variant};
+use crate::parser::read_buffer::CountBuffer;
 use crate::parser::{Error, Result};
 use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DeviceId, DirectoryCookie, FileHandle, FileName,
@@ -206,12 +207,12 @@ pub fn write(src: &mut dyn Read) -> Result<(FileHandle, u64, u32, WriteMode, usi
 // here comes slice of exact number of bytes we expect to write
 // but current variant knows how to do it if we change fh to var size
 
-pub async fn read_in_slice_async(
-    src: &mut (dyn AsyncRead + Unpin),
+pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+    src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
     to_write: usize,
-) -> Result<()> {
+) -> Result<usize> {
     let mut left_skip = to_skip;
     let mut left_write = to_write;
     for buf in slice.iter_mut() {
@@ -223,18 +224,18 @@ pub async fn read_in_slice_async(
             continue;
         }
         let cur_write = min(left_write, buf.len());
-        src.read_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
+        src.fill_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
         left_write -= cur_write;
         left_write
             .checked_sub(cur_write)
             .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
         left_skip = 0;
     }
-    Ok(())
+    Ok(to_write - left_write)
 }
 
-pub fn read_in_slice_sync(
-    src: &mut dyn Read,
+pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+    src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,
 ) -> Result<usize> {
@@ -243,7 +244,7 @@ pub fn read_in_slice_sync(
         let block_size = min(buf.len(), left_size);
         let mut read_count = 0;
         while read_count < block_size {
-            let n = match src.read(&mut buf[read_count..block_size]) {
+            let n = match src.read_to_dest(&mut buf[read_count..block_size]) {
                 Ok(n) => n,
                 Err(_) => return Ok(left_size),
             };

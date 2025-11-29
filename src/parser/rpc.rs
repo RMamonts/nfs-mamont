@@ -7,6 +7,13 @@ use crate::parser::Result;
 
 const MAX_AUTH_SAZE: usize = 400;
 
+#[derive(Debug)]
+pub(super) struct RpcMessage {
+    pub(super) program: u32,
+    pub(super) procedure: u32,
+    pub(super) version: u32,
+}
+
 #[derive(Debug, PartialOrd, PartialEq)]
 pub enum AuthStat {
     AuthOk = 0,
@@ -35,6 +42,7 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
+#[allow(dead_code)]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub opaque: Vec<u8>,
