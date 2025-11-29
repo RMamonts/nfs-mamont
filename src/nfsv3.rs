@@ -2,8 +2,10 @@
 
 use num_derive::FromPrimitive;
 
-pub const NFS_PROGRAM: u32 = 100003;
-pub const NFS_VERSION: u32 = 3;
+#[allow(dead_code)]
+const NFS_PROGRAM: u32 = 100003;
+#[allow(dead_code)]
+const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
 const NFS3_FHSIZE: u32 = 8;
 #[allow(dead_code)]
@@ -371,8 +373,9 @@ struct READ3resfail {
     file_attributes: post_op_attr,
 }
 
+#[allow(dead_code)]
 #[derive(FromPrimitive)]
-pub enum stable_how {
+enum stable_how {
     UNSTABLE = 0,
     DATA_SYNC = 1,
     FILE_SYNC = 2,
@@ -400,6 +403,7 @@ struct WRITE3resfail {
     file_wcc: wcc_data,
 }
 
+#[allow(dead_code)]
 #[repr(u32)]
 pub enum createhow3 {
     UNCHECKED(sattr3) = 0,

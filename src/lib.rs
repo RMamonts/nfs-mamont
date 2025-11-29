@@ -2,7 +2,8 @@
 
 pub mod allocator;
 mod mount;
-mod nfsv3;
+pub mod nfsv3;
+pub mod parser;
 mod read_task;
 mod rpc;
 pub mod vfs;
