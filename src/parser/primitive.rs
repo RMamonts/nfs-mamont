@@ -52,7 +52,8 @@ pub fn option<T>(
 }
 
 #[allow(dead_code)]
-pub fn array<const N: usize, T>(
+
+pub fn array<const N: usize, T: Copy>(
     src: &mut dyn Read,
     cont: impl Fn(&mut dyn Read) -> Result<T>,
 ) -> Result<[T; N]> {

@@ -83,7 +83,9 @@ pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
     match u32(src)? {
         0 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
         1 => Ok(createhow3::GUARDED(sattr3(src)?)),
-        2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE }, u8>(src, |s| u8(s))?)),
+        2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE as usize }, u8>(src, |s| {
+            u8(s)
+        })?)),
 
         _ => Err(Error::EnumDiscMismatch),
     }
