@@ -191,7 +191,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    // TODO: add some error handling
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
         self.fill_buffer(MIN_MESSAGE_LEN).await?;
         self.read_message_header().await?;
@@ -224,36 +223,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    // TODO: don't like
     async fn match_errors(&mut self, error: Error) -> Error {
-        match error {
-            //these one to send to write directly to writetask and continue parsing
-            //use discard_current_message
-
-            //these one are fatal, but some still need replies (parse_error and server_error)
-            //probably simply drop everything after sending sata to other tasks
-            Error::RpcVersionMismatch(arg) => {
-                proc_nested_errors(Error::RpcVersionMismatch(arg), self.discard_current_message())
-                    .await
-            }
-            Error::ProgramMismatch => {
-                proc_nested_errors(Error::ProgramMismatch, self.discard_current_message()).await
-            }
-            Error::ProcedureMismatch => {
-                proc_nested_errors(Error::ProcedureMismatch, self.discard_current_message()).await
-            }
-            Error::AuthError(e) => {
-                proc_nested_errors(Error::AuthError(e), self.discard_current_message()).await
-            }
-            Error::ProgramVersionMismatch(arg) => {
-                proc_nested_errors(
-                    Error::ProgramVersionMismatch(arg),
-                    self.discard_current_message(),
-                )
-                .await
-            }
-            // these are fatal errors, that would result in dropping current task - no need doing cleaning
-            er => er,
+        if let Error::RpcVersionMismatch(_)
+        | Error::ProgramMismatch
+        | Error::ProcedureMismatch
+        | Error::AuthError(_)
+        | Error::ProgramVersionMismatch(_) = &error
+        {
+            proc_nested_errors(error, self.discard_current_message()).await
+        } else {
+            error
         }
     }
 
