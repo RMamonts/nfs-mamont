@@ -10,7 +10,7 @@ use super::{Error, Result};
 pub const ALIGNMENT: usize = 4;
 
 #[allow(dead_code)]
-fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
+pub fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
@@ -52,7 +52,7 @@ pub fn option<T>(
 }
 
 #[allow(dead_code)]
-pub fn array<const N: usize, T: Copy>(
+pub fn array<const N: usize, T>(
     src: &mut dyn Read,
     cont: impl Fn(&mut dyn Read) -> Result<T>,
 ) -> Result<[T; N]> {
