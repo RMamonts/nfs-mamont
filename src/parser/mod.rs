@@ -11,13 +11,12 @@ use std::string::FromUtf8Error;
 
 pub mod mount;
 pub mod nfsv3;
-mod parser;
+mod parser_struct;
 pub mod primitive;
 mod read_buffer;
 mod rpc;
 #[cfg(test)]
 mod tests;
-mod utils;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

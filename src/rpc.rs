@@ -43,6 +43,13 @@ struct rpc_msg {
 
 #[allow(dead_code)]
 #[repr(u32)]
+pub enum rpc_message_type {
+    CALL = 0,
+    REPLY = 1,
+}
+
+#[allow(dead_code)]
+#[repr(u32)]
 pub enum rpc_body {
     CALL(call_body) = 0,
     REPLY(reply_body) = 1,

@@ -19,7 +19,7 @@ use crate::parser::rpc::{auth, AuthFlavor, AuthStat, RpcMessage};
 use crate::parser::{
     proc_nested_errors, Arguments, Error, ProgramVersionMismatch, RPCVersionMismatch, Result,
 };
-use crate::rpc::{rpc_body, RPC_VERSION};
+use crate::rpc::{rpc_message_type, RPC_VERSION};
 
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 1500;
@@ -55,13 +55,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
+    // here we are positively sure, that we can read without retry function
     async fn read_message_header(&mut self) -> Result<()> {
         let header = u32(&mut self.buffer)?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
 
-        // find out about these two checks
-
+        // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::Unsupported,
@@ -71,9 +71,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
+    // here we are positively sure, that we can read without retry function,
+    // because there is Minimum size
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = u32(&mut self.buffer)?;
-        if msg_type == rpc_body::REPLY as u32 {
+        if msg_type == rpc_message_type::REPLY as u32 {
             return Err(Error::MessageTypeMismatch);
         }
 
@@ -92,6 +94,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
 
         Ok(RpcMessage { program, procedure, version })
+    }
+
+    async fn parse_authentication(&mut self) -> Result<AuthStat> {
+        match auth(&mut self.buffer)?.flavor {
+            AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
+            _ => {
+                unimplemented!()
+            }
+        }
     }
 
     async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
@@ -238,7 +249,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     // used after non-fatal errors - to clean remaining data from socket
     // these would work with set of errors we are going to use if for
-    // list of errors that are not fatal are guaranteed not to use allocator before errors!!!
     async fn discard_current_message(&mut self) -> Result<()> {
         let remaining = self.current_frame_size - self.buffer.total_bytes();
         let mut total_discarded = 0;
@@ -254,15 +264,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         self.current_frame_size = 0;
         self.last = false;
         Ok(())
-    }
-
-    async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        match auth(&mut self.buffer)?.flavor {
-            AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
-            _ => {
-                unimplemented!()
-            }
-        }
     }
 }
 
@@ -291,7 +292,6 @@ async fn parse_with_retry<T, S: AsyncRead + Unpin>(
     }
 }
 
-// TODO: need to somehow move frame check out of here
 async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
@@ -301,13 +301,16 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
         .alloc(NonZeroUsize::new(size).unwrap())
         .await
         .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-
-    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
-    let _ = read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
     let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
+    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
+
+    // very ugly!!!
+
     let mut tmp_buf = [0u8, 0u8, 0u8, 0u8];
     let pad_in_buf = min(buffer.available_read(), padding);
-    let _ = buffer.read_to_dest(&mut tmp_buf[..pad_in_buf]);
+    buffer.read_to_dest(&mut tmp_buf[..pad_in_buf]).map_err(Error::IO)?;
     buffer.fill_exact(&mut tmp_buf[..ALIGNMENT - pad_in_buf]).await.map_err(Error::IO)?;
+
     Ok(WriteArgs { object, offset, count, mode, data: slice })
 }

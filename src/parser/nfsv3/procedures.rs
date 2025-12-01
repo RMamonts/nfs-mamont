@@ -1,7 +1,6 @@
 use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
-
 use tokio::io::AsyncRead;
 
 use crate::allocator::Slice;
@@ -206,7 +205,6 @@ pub fn write(src: &mut dyn Read) -> Result<(FileHandle, u64, u32, WriteMode, usi
 
 // here comes slice of exact number of bytes we expect to write
 // but current variant knows how to do it if we change fh to var size
-
 pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
@@ -218,18 +216,16 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     for buf in slice.iter_mut() {
         let in_cur = min(left_skip, buf.len());
         if left_skip > 0 && in_cur == buf.len() {
-            left_skip
+            left_skip = left_skip
                 .checked_sub(in_cur)
                 .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
         let cur_write = min(left_write, buf.len());
         src.fill_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
-        left_write -= cur_write;
-        left_write
+        left_write = left_write
             .checked_sub(cur_write)
             .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
-        left_skip = 0;
     }
     Ok(to_write - left_write)
 }
@@ -239,22 +235,20 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
     slice: &mut Slice,
     left_size: usize,
 ) -> Result<usize> {
-    let real_size = left_size;
+    let mut real_size = 0;
     for buf in slice.iter_mut() {
-        let block_size = min(buf.len(), left_size);
+        let block_size = min(buf.len(), left_size - real_size);
         let mut read_count = 0;
         while read_count < block_size {
             let n = match src.read_to_dest(&mut buf[read_count..block_size]) {
                 Ok(n) => n,
-                Err(_) => return Ok(left_size),
+                Err(_) => return Ok(real_size),
             };
             read_count += n;
-            left_size
-                .checked_sub(n)
-                .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
         }
+        real_size += read_count;
     }
-    if left_size != 0 {
+    if real_size != left_size {
         return Err(Error::IO(io::Error::new(
             ErrorKind::InvalidInput,
             "invalid amount of data read",
