@@ -1,6 +1,7 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
 /// Represents bounded by custome range list of buffers.
+#[derive(Debug)]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,

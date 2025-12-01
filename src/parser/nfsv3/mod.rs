@@ -1,4 +1,4 @@
-mod procedures;
+pub mod procedures;
 
 use std::io::Read;
 
@@ -15,12 +15,13 @@ const MAX_FILENAME: usize = 255;
 #[allow(dead_code)]
 pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
-const MAX_FILEPATH: usize = 255;
+const MAX_FILEPATH: usize = 1024;
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct DirOpArg {
-    object: FileHandle,
-    name: FileName,
+    pub object: FileHandle,
+    pub name: FileName,
 }
 
 #[allow(dead_code)]
@@ -44,8 +45,7 @@ pub fn set_atime(src: &mut dyn Read) -> Result<set_atime> {
 
 #[allow(dead_code)]
 pub fn set_mtime(src: &mut dyn Read) -> Result<set_mtime> {
-    let disc = u32(src)?;
-    match disc {
+    match u32(src)? {
         0 => Ok(set_mtime::DONT_CHANGE),
         1 => Ok(set_mtime::SET_TO_SERVER_TIME),
         2 => Ok(set_mtime::SET_TO_CLIENT_TIME(nfstime(src)?)),
@@ -67,8 +67,7 @@ pub fn sattr3(src: &mut dyn Read) -> Result<sattr3> {
 
 #[allow(dead_code)]
 pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
-    let size = u32_as_usize(src)?;
-    if size != MAX_FILEHANDLE {
+    if u32_as_usize(src)? != MAX_FILEHANDLE {
         return Err(Error::BadFileHandle);
     }
     Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE, u8>(src, |s| u8(s))? })
@@ -83,8 +82,9 @@ pub fn diropargs3(src: &mut dyn Read) -> Result<diropargs3> {
 pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
     match u32(src)? {
         0 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
-        1 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
-        2 => Ok(createhow3::EXCLUSIVE(array::<NFS3_CREATEVERFSIZE, u8>(src, |s| u8(s))?)),
+        1 => Ok(createhow3::GUARDED(sattr3(src)?)),
+        2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE }, u8>(src, |s| u8(s))?)),
+
         _ => Err(Error::EnumDiscMismatch),
     }
 }

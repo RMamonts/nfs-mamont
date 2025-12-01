@@ -12,147 +12,165 @@ use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DeviceId, DirectoryCookie, FileHandle, FileName,
     FileTime, FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode, WriteMode,
 };
-#[allow(dead_code)]
+
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct GetAttrArgs {
-    object: FileHandle,
+    pub object: FileHandle,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct SetAttrArgs {
-    object: FileHandle,
-    new_attribute: SetAttr,
-    guard: SetAttrGuard,
+    pub object: FileHandle,
+    pub new_attribute: SetAttr,
+    pub guard: SetAttrGuard,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct LookUpArgs {
-    object: DirOpArg,
+    pub object: DirOpArg,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct AccessArgs {
-    object: FileHandle,
-    access: AccessMask,
+    pub object: FileHandle,
+    pub access: AccessMask,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct ReadLinkArgs {
-    object: FileHandle,
+    pub object: FileHandle,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct ReadArgs {
-    object: FileHandle,
-    offset: u64,
-    count: u32,
+    pub object: FileHandle,
+    pub offset: u64,
+    pub count: u32,
 }
 
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct WriteArgs {
-    object: FileHandle,
-    offset: u64,
-    count: u32,
-    mode: WriteMode,
-    data: Slice,
+    pub object: FileHandle,
+    pub offset: u64,
+    pub count: u32,
+    pub mode: WriteMode,
+    pub data: Slice,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct CreateArgs {
-    object: DirOpArg,
-    mode: CreateMode,
+    pub object: DirOpArg,
+    pub mode: CreateMode,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct MkDirArgs {
-    object: DirOpArg,
-    attr: SetAttr,
+    pub object: DirOpArg,
+    pub attr: SetAttr,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct SymLinkArgs {
-    object: DirOpArg,
-    attr: SetAttr,
-    path: FsPath,
+    pub object: DirOpArg,
+    pub attr: SetAttr,
+    pub path: FsPath,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct MkNodArgs {
-    object: DirOpArg,
-    mode: SpecialNode,
+    pub object: DirOpArg,
+    pub mode: SpecialNode,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct RemoveArgs {
-    object: DirOpArg,
+    pub object: DirOpArg,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct RmDirArgs {
-    object: DirOpArg,
+    pub object: DirOpArg,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct RenameArgs {
-    from: DirOpArg,
-    to: DirOpArg,
+    pub from: DirOpArg,
+    pub to: DirOpArg,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct LinkArgs {
-    object: FileHandle,
-    link: DirOpArg,
+    pub object: FileHandle,
+    pub link: DirOpArg,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct ReadDirArgs {
-    object: FileHandle,
-    cookie: DirectoryCookie,
-    verf: CookieVerifier,
-    count: u32,
+    pub object: FileHandle,
+    pub cookie: DirectoryCookie,
+    pub verf: CookieVerifier,
+    pub count: u32,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct ReadDirPlusArgs {
-    object: FileHandle,
-    cookie: DirectoryCookie,
-    verf: CookieVerifier,
-    count: u32,
-    max_count: u32,
+    pub object: FileHandle,
+    pub cookie: DirectoryCookie,
+    pub verf: CookieVerifier,
+    pub count: u32,
+    pub max_count: u32,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct FsStatArgs {
-    object: FileHandle,
+    pub object: FileHandle,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct FsInfoArgs {
-    object: FileHandle,
+    pub object: FileHandle,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct PathConfArgs {
-    object: FileHandle,
+    pub object: FileHandle,
 }
 
-#[allow(dead_code)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
 pub struct CommitArgs {
-    object: FileHandle,
-    offset: u64,
-    count: u32,
+    pub object: FileHandle,
+    pub offset: u64,
+    pub count: u32,
 }
 
-#[allow(dead_code)]
 pub fn access(src: &mut dyn Read) -> Result<AccessArgs> {
     Ok(AccessArgs { object: FileHandle(nfs_fh3(src)?.data), access: AccessMask(u32(src)?) })
 }
 
-#[allow(dead_code)]
 pub fn get_attr(src: &mut dyn Read) -> Result<GetAttrArgs> {
     Ok(GetAttrArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-#[allow(dead_code)]
 pub fn set_attr(src: &mut dyn Read) -> Result<SetAttrArgs> {
     Ok(SetAttrArgs {
         object: FileHandle(nfs_fh3(src)?.data),
@@ -166,17 +184,14 @@ pub fn set_attr(src: &mut dyn Read) -> Result<SetAttrArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn lookup(src: &mut dyn Read) -> Result<LookUpArgs> {
     Ok(LookUpArgs { object: convert_diroparg(diropargs3(src)?) })
 }
 
-#[allow(dead_code)]
 pub fn readlink(src: &mut dyn Read) -> Result<ReadLinkArgs> {
     Ok(ReadLinkArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-#[allow(dead_code)]
 pub fn read(src: &mut dyn Read) -> Result<ReadArgs> {
     Ok(ReadArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
 }
@@ -223,7 +238,6 @@ fn write_mode(src: &mut dyn Read) -> Result<WriteMode> {
     })
 }
 
-#[allow(dead_code)]
 pub fn create(src: &mut dyn Read) -> Result<CreateArgs> {
     Ok(CreateArgs {
         object: convert_diroparg(diropargs3(src)?),
@@ -235,12 +249,10 @@ pub fn create(src: &mut dyn Read) -> Result<CreateArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn mkdir(src: &mut dyn Read) -> Result<MkDirArgs> {
     Ok(MkDirArgs { object: convert_diroparg(diropargs3(src)?), attr: convert_attr(sattr3(src)?) })
 }
 
-#[allow(dead_code)]
 pub fn symlink(src: &mut dyn Read) -> Result<SymLinkArgs> {
     let diropargs = diropargs3(src)?;
     let symlink = symlinkdata3(src)?;
@@ -251,7 +263,6 @@ pub fn symlink(src: &mut dyn Read) -> Result<SymLinkArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn mknod(src: &mut dyn Read) -> Result<MkNodArgs> {
     Ok(MkNodArgs {
         object: convert_diroparg(diropargs3(src)?),
@@ -273,17 +284,14 @@ pub fn mknod(src: &mut dyn Read) -> Result<MkNodArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn remove(src: &mut dyn Read) -> Result<RemoveArgs> {
     Ok(RemoveArgs { object: convert_diroparg(diropargs3(src)?) })
 }
 
-#[allow(dead_code)]
 pub fn rmdir(src: &mut dyn Read) -> Result<RmDirArgs> {
     Ok(RmDirArgs { object: convert_diroparg(diropargs3(src)?) })
 }
 
-#[allow(dead_code)]
 pub fn rename(src: &mut dyn Read) -> Result<RenameArgs> {
     Ok(RenameArgs {
         from: convert_diroparg(diropargs3(src)?),
@@ -291,7 +299,6 @@ pub fn rename(src: &mut dyn Read) -> Result<RenameArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn link(src: &mut dyn Read) -> Result<LinkArgs> {
     Ok(LinkArgs {
         object: FileHandle(nfs_fh3(src)?.data),
@@ -299,7 +306,6 @@ pub fn link(src: &mut dyn Read) -> Result<LinkArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn readdir(src: &mut dyn Read) -> Result<ReadDirArgs> {
     Ok(ReadDirArgs {
         object: FileHandle(nfs_fh3(src)?.data),
@@ -309,7 +315,6 @@ pub fn readdir(src: &mut dyn Read) -> Result<ReadDirArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn readdir_plus(src: &mut dyn Read) -> Result<ReadDirPlusArgs> {
     Ok(ReadDirPlusArgs {
         object: FileHandle(nfs_fh3(src)?.data),
@@ -320,22 +325,18 @@ pub fn readdir_plus(src: &mut dyn Read) -> Result<ReadDirPlusArgs> {
     })
 }
 
-#[allow(dead_code)]
 pub fn fsstat(src: &mut dyn Read) -> Result<FsStatArgs> {
     Ok(FsStatArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-#[allow(dead_code)]
 pub fn fsinfo(src: &mut dyn Read) -> Result<FsInfoArgs> {
     Ok(FsInfoArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-#[allow(dead_code)]
 pub fn pathconf(src: &mut dyn Read) -> Result<PathConfArgs> {
     Ok(PathConfArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
 
-#[allow(dead_code)]
 pub fn commit(src: &mut dyn Read) -> Result<CommitArgs> {
     Ok(CommitArgs { object: FileHandle(nfs_fh3(src)?.data), offset: u64(src)?, count: u32(src)? })
 }
