@@ -22,9 +22,9 @@ use crate::parser::{
 use crate::rpc::{rpc_message_type, RPC_VERSION};
 
 #[allow(dead_code)]
-const MAX_MESSAGE_LEN: usize = 1500;
+const MAX_MESSAGE_LEN: usize = 2500;
 #[allow(dead_code)]
-const MIN_MESSAGE_LEN: usize = 24;
+const MIN_MESSAGE_LEN: usize = 32;
 
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: A,
@@ -228,7 +228,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             )));
         }
 
-        self.buffer.compact();
+        self.buffer.clean();
         self.current_frame_size = 0;
         self.last = false;
         Ok(())
@@ -278,12 +278,7 @@ async fn parse_with_retry<T, S: AsyncRead + Unpin>(
         Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
             // called whenever we need to read more data
             match buffer.fill_buffer().await {
-                Ok(0) => {
-                    // closing connection
-                    // or
-                    // means that we exceed size - > need to use allocator (that only possible with write!!!)
-                    Err(Error::IO(err))
-                }
+                Ok(0) => Err(Error::IO(err)),
                 Ok(_) => Box::pin(parse_with_retry(buffer, caller)).await,
                 Err(e) => Err(Error::IO(e)),
             }

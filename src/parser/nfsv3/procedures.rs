@@ -241,8 +241,9 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
         let mut read_count = 0;
         while read_count < block_size {
             let n = match src.read_to_dest(&mut buf[read_count..block_size]) {
+                Ok(0) => return Ok(real_size),
                 Ok(n) => n,
-                Err(_) => return Ok(real_size),
+                Err(e) => return Err(Error::IO(e)),
             };
             read_count += n;
         }

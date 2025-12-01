@@ -17,7 +17,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
     pub(super) async fn fill_buffer(&mut self) -> io::Result<usize> {
         if self.buf.available_write() == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Buffer exhausted"));
+            return Ok(0);
         }
 
         let bytes_read = self.socket.read(self.buf.write_slice()).await?;
@@ -37,13 +37,15 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         Ok(dest.len())
     }
 
-    pub(super) fn compact(&mut self) {
-        self.buf.compact()
+    pub(super) fn clean(&mut self) {
+        self.buf.compact();
+        self.buf.clear();
+        self.total_bytes = 0;
     }
 
     pub(super) fn read_to_dest(&mut self, dest: &mut [u8]) -> io::Result<usize> {
         if dest.is_empty() {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Buffer exhausted"));
+            return Ok(0);
         }
 
         let bytes_read = self.read(dest)?;
