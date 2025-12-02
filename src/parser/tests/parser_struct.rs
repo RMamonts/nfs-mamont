@@ -1,0 +1,28 @@
+use crate::parser::nfsv3::procedures::FsStatArgs;
+use crate::parser::parser_struct::RpcParser;
+use crate::parser::tests::allocator::MockAllocator;
+use crate::parser::tests::socket::MockSocket;
+use crate::parser::Arguments;
+use crate::vfs::FileHandle;
+
+#[tokio::test]
+async fn test_fsstat() {
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x02, 0x00, 0x01, 0x86, 0xA3, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08,
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc);
+    let result = parser.parse_message().await.unwrap();
+    let expected =
+        FsStatArgs { object: FileHandle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
+    match *result {
+        Arguments::FsStat(args) => {
+            assert_eq!(args, expected);
+        }
+        _ => panic!("Wrong result type"),
+    }
+}

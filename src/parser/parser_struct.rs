@@ -24,7 +24,7 @@ use crate::rpc::{rpc_message_type, RPC_VERSION};
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 2500;
 #[allow(dead_code)]
-const MIN_MESSAGE_LEN: usize = 32;
+const MIN_MESSAGE_LEN: usize = 36;
 
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: A,
@@ -35,10 +35,10 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
-    pub fn new(socket: S, size: usize, allocator: A) -> Self {
+    pub fn new(socket: S, allocator: A) -> Self {
         Self {
             allocator,
-            buffer: CountBuffer::new(size, socket),
+            buffer: CountBuffer::new(MAX_MESSAGE_LEN, socket),
             last: false,
             current_frame_size: 0,
         }
@@ -68,6 +68,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Fragmented messages not supported",
             )));
         }
+        let _xid = u32(&mut self.buffer)?;
         Ok(())
     }
 

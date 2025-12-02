@@ -27,7 +27,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         }
 
         self.buf.extend(bytes_read);
-        self.total_bytes += bytes_read;
         Ok(bytes_read)
     }
 
@@ -39,7 +38,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
     pub(super) fn clean(&mut self) {
         self.buf.compact();
-        self.buf.clear();
         self.total_bytes = 0;
     }
 
@@ -55,7 +53,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         }
 
         self.buf.extend(bytes_read);
-        self.total_bytes += bytes_read;
         Ok(bytes_read)
     }
 
