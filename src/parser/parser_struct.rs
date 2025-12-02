@@ -251,17 +251,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     // used after non-fatal errors - to clean remaining data from socket
     // these would work with set of errors we are going to use if for
     async fn discard_current_message(&mut self) -> Result<()> {
+        self.buffer.skip_max(self.current_frame_size - self.buffer.total_bytes());
         let remaining = self.current_frame_size - self.buffer.total_bytes();
         let mut total_discarded = 0;
         while total_discarded < remaining {
-            self.buffer.clear();
+            self.buffer.reset();
             let read = self.buffer.fill_buffer().await.map_err(Error::IO)?;
             if read == 0 {
                 break;
             }
             total_discarded += read;
         }
-        self.buffer.clear();
+        self.buffer.clean();
         self.current_frame_size = 0;
         self.last = false;
         Ok(())

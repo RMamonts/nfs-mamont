@@ -64,8 +64,13 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         self.buf.available_read()
     }
 
-    pub(super) fn clear(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.buf.clear();
+    }
+    pub(super) fn skip_max(&mut self, n: usize) {
+        let skip = min(self.available_read(), n);
+        self.buf.consume(skip);
+        self.total_bytes += skip;
     }
 }
 
