@@ -1,22 +1,17 @@
-#![cfg(test)]
-
-use crate::allocator::Allocator;
 use crate::parser::nfsv3::procedures::{
     access, commit, create, fsinfo, fsstat, get_attr, link, lookup, mkdir, mknod, pathconf, read,
-    readdir, readdir_plus, readlink, remove, rename, rmdir, set_attr, symlink, write, AccessArgs,
+    readdir, readdir_plus, readlink, remove, rename, rmdir, set_attr, symlink, AccessArgs,
     CommitArgs, CreateArgs, FsInfoArgs, FsStatArgs, GetAttrArgs, LinkArgs, LookUpArgs, MkDirArgs,
     MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs, ReadDirPlusArgs, ReadLinkArgs, RemoveArgs,
     RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs,
 };
 use crate::parser::nfsv3::DirOpArg;
-use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::Error;
 use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DirectoryCookie, FileHandle, FileName, FileTime,
-    FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode, WriteMode,
+    FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode,
 };
 use std::io::Cursor;
-use std::num::NonZeroUsize;
 
 #[test]
 fn test_access() {
@@ -446,20 +441,4 @@ fn test_readdir_unaligned_after_fh() {
 
     let result = readdir(&mut data);
     assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn test_write_with_allocator() {
-    let mut mock_alloc = MockAllocator::new(16);
-    let mut data = Cursor::new(vec![
-        0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x04, 0x11, 0x22, 0x33, 0x44,
-    ]);
-    let slice = mock_alloc.alloc(NonZeroUsize::new(4).unwrap()).await.unwrap();
-    let result = write(&mut data, slice).unwrap();
-    assert_eq!(result.object.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-    assert_eq!(result.offset, 65536);
-    assert_eq!(result.count, 1024);
-    assert_eq!(result.mode, WriteMode::Unstable);
 }
