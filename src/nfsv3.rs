@@ -403,6 +403,7 @@ struct WRITE3resfail {
     file_wcc: wcc_data,
 }
 
+#[allow(dead_code)]
 #[repr(u32)]
 pub enum createhow3 {
     UNCHECKED(sattr3) = 0,
