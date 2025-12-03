@@ -69,20 +69,8 @@ impl ReadBuffer {
     fn new(capacity: usize) -> Self {
         Self { data: vec![0u8; capacity], read_pos: 0, write_pos: 0 }
     }
-
-    fn bytes_read(&self) -> usize {
-        self.read_pos
-    }
     fn available_read(&self) -> usize {
         self.write_pos - self.read_pos
-    }
-
-    fn available_write(&self) -> usize {
-        self.data.len() - self.write_pos
-    }
-
-    fn read_slice(&self) -> &[u8] {
-        &self.data[self.read_pos..self.write_pos]
     }
 
     fn write_slice(&mut self, max: usize) -> &mut [u8] {

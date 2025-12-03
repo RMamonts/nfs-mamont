@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-const SEPARATE: usize = 4;
+const SEPARATE: usize = 10;
 
 pub(super) struct MockSocket {
     data: Vec<u8>,

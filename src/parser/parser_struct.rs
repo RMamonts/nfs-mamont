@@ -1,6 +1,7 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
+
 use tokio::io::AsyncRead;
 
 use crate::allocator::Allocator;
@@ -32,22 +33,15 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
-    pub fn new(socket: S, allocator: A) -> Self {
+    pub fn new(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
-            buffer: CountBuffer::new(MAX_MESSAGE_LEN, socket),
+            buffer: CountBuffer::new(size, socket),
             last: false,
             current_frame_size: 0,
         }
     }
 
-    // used only in the beginning of parsing
-    async fn fill_buffer(&mut self, min_bytes: usize) -> Result<()> {
-        self.buffer.fill_buffer(min_bytes).await.map_err(Error::IO)?;
-        Ok(())
-    }
-
-    // here we are positively sure, that we can read without retry function
     async fn read_message_header(&mut self) -> Result<()> {
         let header = u32(&mut self.buffer)?;
         self.last = header & 0x8000_0000 != 0;
@@ -64,8 +58,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    // here we are positively sure, that we can read without retry function,
-    // because there is Minimum size
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = u32(&mut self.buffer)?;
         if msg_type == rpc_message_type::REPLY as u32 {
@@ -157,25 +149,22 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
         // first batch - to parse header
-        self.fill_buffer(MIN_MESSAGE_LEN).await?;
+        self.buffer.fill_buffer(MIN_MESSAGE_LEN).await.map_err(Error::IO)?;
         self.read_message_header().await?;
-        let rpc_header = self.parse_rpc_header().await;
+        let rpc_header = self.parse_rpc_header().await?;
 
         // second batch of bytes - what would be done here with write?
-        self.fill_buffer(self.current_frame_size - MIN_MESSAGE_LEN).await?;
-
-        let header = rpc_header.inspect_err(|_| {
-            self.finalize_parsing();
-        })?;
+        self.buffer
+            .fill_buffer(self.current_frame_size - MIN_MESSAGE_LEN)
+            .await
+            .map_err(Error::IO)?;
 
         let auth_status = self.parse_authentication().await?;
         if auth_status != AuthStat::AuthOk {
             return Err(Error::AuthError(auth_status));
         }
 
-        let proc = self.parse_proc(header).await.inspect_err(|_| {
-            self.finalize_parsing();
-        })?;
+        let proc = self.parse_proc(rpc_header).await?;
 
         if self.buffer.total_bytes() != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
@@ -183,7 +172,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Unparsed data remaining in frame",
             )));
         }
-        // that's done after normal parsing without errors
         self.finalize_parsing();
         Ok(proc)
     }
@@ -208,8 +196,6 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
     let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
     read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
-
-    // very ugly!!!
 
     let mut tmp_buf = [0u8, 0u8, 0u8, 0u8];
     let pad_in_buf = min(buffer.available_read(), padding);
