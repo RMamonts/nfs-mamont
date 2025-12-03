@@ -1,4 +1,5 @@
 use crate::parser::nfsv3::procedures::FsStatArgs;
+
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
@@ -19,10 +20,17 @@ async fn parse_two_correct() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
     let mut parser = RpcParser::new(socket, alloc);
-    let _ = parser.parse_message().await;
-    let result2 = parser.parse_message().await.unwrap();
     let expected =
         FsStatArgs { object: FileHandle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
+    let result1 = parser.parse_message().await;
+    match *result1.unwrap() {
+        Arguments::FsStat(args) => {
+            assert_eq!(args, expected);
+        }
+        _ => panic!("Wrong result type"),
+    }
+    let result2 = parser.parse_message().await.unwrap();
+
     match *result2 {
         Arguments::FsStat(args) => {
             assert_eq!(args, expected);
@@ -52,6 +60,52 @@ async fn parse_after_error() {
     match *result2 {
         Arguments::FsStat(args) => {
             assert_eq!(args, expected);
+        }
+        _ => panic!("Wrong result type"),
+    }
+}
+
+#[tokio::test]
+async fn parse_write_without_async() {
+    let buf = vec![
+        0x80, 0x00, 0x00, 72, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x02, 0x00, 0x01, 0x86, 0xA3, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x11, 0x22, 0x33, 0x44,
+    ];
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(4);
+    let mut parser = RpcParser::new(socket, alloc);
+    let result2 = parser.parse_message().await.unwrap();
+
+    match *result2 {
+        Arguments::Write(args) => {
+            println!("{:?}", args);
+        }
+        _ => panic!("Wrong result type"),
+    }
+}
+
+#[tokio::test]
+async fn parse_write_with_async() {
+    let buf = vec![
+        0x80, 0x00, 0x00, 72, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x02, 0x00, 0x01, 0x86, 0xA3, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05,
+        0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x11, 0x22, 0x33, 0x44,
+    ];
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(4);
+    let mut parser = RpcParser::new(socket, alloc);
+    let result2 = parser.parse_message().await.unwrap();
+
+    match *result2 {
+        Arguments::Write(args) => {
+            println!("{:?}", args);
         }
         _ => panic!("Wrong result type"),
     }

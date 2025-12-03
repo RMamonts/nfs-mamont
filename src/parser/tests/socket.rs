@@ -2,7 +2,10 @@ use std::cmp::min;
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+const SEPARATE: usize = 4;
 
 pub(super) struct MockSocket {
     data: Vec<u8>,
@@ -44,8 +47,8 @@ impl AsyncRead for MockSocket {
     ) -> Poll<std::io::Result<()>> {
         let data = self.get_mut();
         let position = data.position;
-        let remaining = min(buf.remaining(), data.data.len());
-        buf.put_slice(&data.data[position..remaining]);
+        let remaining = min(min(buf.remaining(), data.data.len() - position), SEPARATE);
+        buf.put_slice(&data.data[position..position + remaining]);
         data.position += remaining;
         Poll::Ready(Ok(()))
     }

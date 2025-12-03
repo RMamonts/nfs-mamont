@@ -1,9 +1,11 @@
 use std::cmp::min;
 use std::io;
-use std::io::{ErrorKind, Read, Write};
+use std::io::Read;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+// object to manage all read requests
+// we count bytes read totally
 pub struct CountBuffer<S: AsyncRead + Unpin> {
     buf: ReadBuffer,
     socket: S,
@@ -15,62 +17,35 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         Self { buf: ReadBuffer::new(capacity), socket, total_bytes: 0 }
     }
 
-    pub(super) async fn fill_buffer(&mut self) -> io::Result<usize> {
-        if self.buf.available_write() == 0 {
-            return Ok(0);
-        }
-
-        let bytes_read = self.socket.read(self.buf.write_slice()).await?;
-
-        if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
-        }
-
-        self.buf.extend(bytes_read);
-        Ok(bytes_read)
+    pub(super) async fn fill_buffer(&mut self, len: usize) -> io::Result<usize> {
+        let n = self.socket.read_exact(self.buf.write_slice(len)).await?;
+        self.buf.extend(n);
+        Ok(n)
     }
 
-    pub(super) async fn fill_exact(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
-        self.total_bytes += dest.len();
-        Ok(dest.len())
+    pub(super) fn read_to_dest(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.buf.read(buf)?;
+        self.total_bytes += n;
+        Ok(n)
     }
 
-    pub(super) fn clean(&mut self) {
-        self.buf.compact();
-        self.total_bytes = 0;
-    }
-
-    pub(super) fn read_to_dest(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        if dest.is_empty() {
-            return Ok(0);
-        }
-
-        let bytes_read = self.read(dest)?;
-
-        if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
-        }
-
-        self.buf.extend(bytes_read);
-        Ok(bytes_read)
-    }
-
-    pub(super) fn total_bytes(&self) -> usize {
-        self.total_bytes
+    pub(super) async fn fill_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        self.socket.read_exact(buf).await?;
+        self.total_bytes += buf.len();
+        Ok(())
     }
 
     pub(super) fn available_read(&self) -> usize {
         self.buf.available_read()
     }
 
-    pub(super) fn reset(&mut self) {
-        self.buf.clear();
+    pub(super) fn total_bytes(&self) -> usize {
+        self.total_bytes
     }
-    pub(super) fn skip_max(&mut self, n: usize) {
-        let skip = min(self.available_read(), n);
-        self.buf.consume(skip);
-        self.total_bytes += skip;
+
+    pub(super) fn clean(&mut self) {
+        self.buf.clear();
+        self.total_bytes = 0;
     }
 }
 
@@ -82,6 +57,7 @@ impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
     }
 }
 
+// object to manage static buffer
 struct ReadBuffer {
     data: Vec<u8>,
     read_pos: usize,
@@ -109,8 +85,9 @@ impl ReadBuffer {
         &self.data[self.read_pos..self.write_pos]
     }
 
-    fn write_slice(&mut self) -> &mut [u8] {
-        &mut self.data[self.write_pos..]
+    fn write_slice(&mut self, max: usize) -> &mut [u8] {
+        let size = self.data.len();
+        &mut self.data[self.write_pos..min(self.write_pos + max, size)]
     }
 
     fn consume(&mut self, n: usize) {
@@ -119,14 +96,6 @@ impl ReadBuffer {
 
     fn extend(&mut self, n: usize) {
         self.write_pos += n;
-    }
-
-    fn compact(&mut self) {
-        if self.read_pos > 0 {
-            self.data.copy_within(self.read_pos..self.write_pos, 0);
-            self.write_pos -= self.read_pos;
-            self.read_pos = 0;
-        }
     }
 
     fn clear(&mut self) {
@@ -141,18 +110,5 @@ impl Read for ReadBuffer {
         buf[..len].copy_from_slice(&self.data[self.read_pos..self.read_pos + len]);
         self.consume(len);
         Ok(len)
-    }
-}
-
-impl Write for ReadBuffer {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.available_write());
-        self.write_slice()[..len].copy_from_slice(&buf[..len]);
-        self.extend(len);
-        Ok(len)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }

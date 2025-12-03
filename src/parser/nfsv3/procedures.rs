@@ -1,14 +1,14 @@
+use crate::allocator::Slice;
+use crate::nfsv3::{set_atime, set_mtime, stable_how};
+use crate::parser::primitive::{option, u32, u32_as_usize, u64, variant};
 use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
 use tokio::io::AsyncRead;
 
-use crate::allocator::Slice;
-use crate::nfsv3::{set_atime, set_mtime, stable_how};
 use crate::parser::nfsv3::{
     createhow3, diropargs3, mknoddata3, nfs_fh3, nfstime, sattr3, symlinkdata3, DirOpArg,
 };
-use crate::parser::primitive::{option, u32, u32_as_usize, u64, variant};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::{Error, Result};
 use crate::vfs::{
@@ -203,8 +203,6 @@ pub fn write(src: &mut dyn Read) -> Result<(FileHandle, u64, u32, WriteMode, usi
     Ok((FileHandle(nfs_fh3(src)?.data), u64(src)?, u32(src)?, write_mode(src)?, u32_as_usize(src)?))
 }
 
-// here comes slice of exact number of bytes we expect to write
-// but current variant knows how to do it if we change fh to var size
 pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
@@ -221,8 +219,8 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
                 .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
-        let cur_write = min(left_write, buf.len());
-        src.fill_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
+        let cur_write = min(left_write, buf.len() - left_skip);
+        src.fill_exact(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
         left_write = left_write
             .checked_sub(cur_write)
             .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
@@ -246,14 +244,8 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
                 Err(e) => return Err(Error::IO(e)),
             };
             read_count += n;
+            real_size += n;
         }
-        real_size += read_count;
-    }
-    if real_size != left_size {
-        return Err(Error::IO(io::Error::new(
-            ErrorKind::InvalidInput,
-            "invalid amount of data read",
-        )));
     }
     Ok(real_size)
 }
@@ -356,7 +348,6 @@ pub fn readdir_plus(src: &mut dyn Read) -> Result<ReadDirPlusArgs> {
 pub fn fsstat(src: &mut dyn Read) -> Result<FsStatArgs> {
     Ok(FsStatArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
-
 pub fn fsinfo(src: &mut dyn Read) -> Result<FsInfoArgs> {
     Ok(FsInfoArgs { object: FileHandle(nfs_fh3(src)?.data) })
 }
