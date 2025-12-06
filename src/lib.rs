@@ -3,6 +3,8 @@
 mod mount;
 pub mod nfsv3;
 pub mod parser;
+pub mod export;
+pub mod fs;
 mod read_task;
 mod rpc;
 pub mod vfs;

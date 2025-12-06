@@ -178,6 +178,7 @@ pub struct specdata3 {
 }
 
 #[allow(dead_code)]
+#[derive(Eq, Hash, PartialEq)]
 pub struct nfs_fh3 {
     pub data: [u8; NFS3_FHSIZE as usize],
 }

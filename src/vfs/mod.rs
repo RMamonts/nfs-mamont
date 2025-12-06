@@ -1,6 +1,6 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-mod file;
+pub mod file;
 
 use std::path::{Path, PathBuf};
 
