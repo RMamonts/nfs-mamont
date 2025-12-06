@@ -6,7 +6,7 @@ use crate::nfsv3::{
     createhow3, devicedata3, diropargs3, mknoddata3, nfs_fh3, nfstime3, sattr3, set_atime,
     set_mtime, specdata3, symlinkdata3, NFS3_CREATEVERFSIZE,
 };
-use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64, u8};
+use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::{FileHandle, FileName};
 
@@ -70,7 +70,7 @@ pub fn nfs_fh3(src: &mut dyn Read) -> Result<nfs_fh3> {
     if u32_as_usize(src)? != MAX_FILEHANDLE {
         return Err(Error::BadFileHandle);
     }
-    Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE, u8>(src, |s| u8(s))? })
+    Ok(nfs_fh3 { data: array::<MAX_FILEHANDLE>(src)? })
 }
 
 #[allow(dead_code)]
@@ -83,9 +83,7 @@ pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
     match u32(src)? {
         0 => Ok(createhow3::UNCHECKED(sattr3(src)?)),
         1 => Ok(createhow3::GUARDED(sattr3(src)?)),
-        2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE as usize }, u8>(src, |s| {
-            u8(s)
-        })?)),
+        2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE as usize }>(src)?)),
 
         _ => Err(Error::EnumDiscMismatch),
     }

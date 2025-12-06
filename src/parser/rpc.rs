@@ -2,7 +2,7 @@ use std::io::Read;
 
 use num_derive::FromPrimitive;
 
-use crate::parser::primitive::{u8, variant, vec_max_size};
+use crate::parser::primitive::{variant, vec_max_size};
 use crate::parser::Result;
 
 const MAX_AUTH_SAZE: usize = 400;
@@ -50,6 +50,6 @@ pub struct OpaqueAuth {
 pub fn auth(src: &mut dyn Read) -> Result<OpaqueAuth> {
     Ok(OpaqueAuth {
         flavor: variant::<AuthFlavor>(src)?,
-        opaque: vec_max_size::<u8>(src, |s| u8(s), MAX_AUTH_SAZE)?,
+        opaque: vec_max_size(src, MAX_AUTH_SAZE)?,
     })
 }

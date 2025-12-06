@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::mem::MaybeUninit;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -52,56 +51,43 @@ pub fn option<T>(
 }
 
 #[allow(dead_code)]
-pub fn array<const N: usize, T>(
-    src: &mut dyn Read,
-    cont: impl Fn(&mut dyn Read) -> Result<T>,
-) -> Result<[T; N]> {
-    let mut buf: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
-    for elem in buf.iter_mut() {
-        elem.write(cont(src)?);
-    }
-    padding(src, N * size_of::<T>())?;
-    Ok(unsafe { buf.as_ptr().cast::<[T; N]>().read() })
+pub fn array<const N: usize>(src: &mut dyn Read) -> Result<[u8; N]> {
+    let mut buf = [0u8; N];
+    src.read_exact(&mut buf).map_err(Error::IO)?;
+    padding(src, N)?;
+    Ok(buf)
 }
 
 #[allow(dead_code)]
-pub fn vector<T>(src: &mut dyn Read, cont: impl Fn(&mut dyn Read) -> Result<T>) -> Result<Vec<T>> {
+pub fn vector(src: &mut dyn Read) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
-    let mut vec = Vec::with_capacity(size);
-    for _ in 0..size {
-        vec.push(cont(src)?);
-    }
-    padding(src, size_of::<T>() * size)?;
+    let mut vec = vec![0u8; size];
+    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    padding(src, size)?;
     Ok(vec)
 }
 
 #[allow(dead_code)]
-pub fn vec_max_size<T>(
-    src: &mut dyn Read,
-    cont: impl Fn(&mut dyn Read) -> Result<T>,
-    max_size: usize,
-) -> Result<Vec<T>> {
+pub fn vec_max_size(src: &mut dyn Read, max_size: usize) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     if size > max_size {
         return Err(Error::MaxELemLimit);
     }
-    let mut vec = Vec::with_capacity(size);
-    for _ in 0..size {
-        vec.push(cont(src)?);
-    }
-    padding(src, size_of::<T>() * size)?;
+    let mut vec = vec![0u8; size];
+    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    padding(src, size)?;
     Ok(vec)
 }
 
 #[allow(dead_code)]
 pub fn string_max_size(src: &mut dyn Read, max_size: usize) -> Result<String> {
-    let vec = vec_max_size(src, |s| u8(s), max_size)?;
+    let vec = vec_max_size(src, max_size)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
 #[allow(dead_code)]
 pub fn string(src: &mut dyn Read) -> Result<String> {
-    let vec = vector(src, |s| u8(s))?;
+    let vec = vector(src)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
