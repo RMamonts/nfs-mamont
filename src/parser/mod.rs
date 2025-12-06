@@ -35,7 +35,6 @@ pub struct ProgramVersionMismatch(u32, u32);
 pub struct RPCVersionMismatch(u32, u32);
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub enum Arguments {
     // NFSv3
     Null,

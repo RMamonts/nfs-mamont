@@ -57,7 +57,6 @@ pub struct ReadArgs {
     pub count: u32,
 }
 
-#[derive(Debug)]
 pub struct WriteArgs {
     pub object: FileHandle,
     pub offset: u64,

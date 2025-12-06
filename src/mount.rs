@@ -1,9 +1,9 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 #[allow(dead_code)]
-const MOUNT_PROGRAM: u32 = 100005;
+pub(crate) const MOUNT_PROGRAM: u32 = 100005;
 #[allow(dead_code)]
-const MOUNT_VERSION: u32 = 3;
+pub(crate) const MOUNT_VERSION: u32 = 3;
 #[allow(dead_code)]
 const MNTPATHLEN: u32 = 1024;
 #[allow(dead_code)]
