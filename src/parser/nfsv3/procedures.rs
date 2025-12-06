@@ -221,7 +221,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
             continue;
         }
         let cur_write = min(left_write, buf.len());
-        src.fill_exact(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
+        src.read_from_async(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
         left_write = left_write
             .checked_sub(cur_write)
             .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
@@ -238,8 +238,10 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
     for buf in slice.iter_mut() {
         let block_size = min(buf.len(), left_size - real_size);
         let mut read_count = 0;
+        // for my further notice:
+        // this is done in maner of cyclic read, because we don't know, when we would fail
         while read_count < block_size {
-            let n = match src.read_to_dest(&mut buf[read_count..block_size]) {
+            let n = match src.read_from_inner(&mut buf[read_count..block_size]) {
                 Ok(0) => return Ok(real_size),
                 Ok(n) => n,
                 Err(e) => return Err(Error::IO(e)),

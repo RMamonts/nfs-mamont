@@ -18,7 +18,7 @@ async fn parse_two_correct() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc);
+    let mut parser = RpcParser::new(socket, alloc, 0x35);
     let _ = parser.parse_message().await;
     let result2 = parser.parse_message().await.unwrap();
     let expected =
@@ -44,7 +44,7 @@ async fn parse_after_error() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc);
+    let mut parser = RpcParser::new(socket, alloc, 0x50);
     let _ = parser.parse_message().await;
     let result2 = parser.parse_message().await.unwrap();
     let expected =

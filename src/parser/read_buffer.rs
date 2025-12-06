@@ -1,7 +1,7 @@
+use crate::parser::{Error, Result};
 use std::cmp::min;
 use std::io;
-use std::io::{ErrorKind, Read, Write};
-
+use std::io::{ErrorKind, Read};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub struct CountBuffer<S: AsyncRead + Unpin> {
@@ -15,7 +15,9 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         Self { buf: ReadBuffer::new(capacity), socket, total_bytes: 0 }
     }
 
-    pub(super) async fn fill_buffer(&mut self) -> io::Result<usize> {
+    // this one is critically needed in continuous reading to internal buffer
+    // read into inner buffer from socket
+    pub(super) async fn fill_internal(&mut self) -> io::Result<usize> {
         if self.buf.available_write() == 0 {
             return Ok(0);
         }
@@ -30,7 +32,34 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         Ok(bytes_read)
     }
 
-    pub(super) async fn fill_exact(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+    pub async fn parse_with_retry<T>(
+        &mut self,
+        caller: impl Fn(&mut dyn Read) -> Result<T>,
+    ) -> Result<T> {
+        let retry_start = self.buf.bytes_read();
+        let retry_total = self.total_bytes;
+        // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
+        // definitely be enough to read what we are planning
+        match caller(self) {
+            Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+                // called whenever we need to read more data
+                match self.fill_internal().await {
+                    Ok(0) => Err(Error::IO(err)),
+                    Ok(_) => {
+                        self.buf.reset_read(retry_start);
+                        self.total_bytes = retry_total;
+                        Box::pin(self.parse_with_retry(caller)).await
+                    }
+                    Err(e) => Err(Error::IO(e)),
+                }
+            }
+            result => result,
+        }
+    }
+
+    // read exact (fill exact amount) to internal buffer
+    // read_exact from socket to external buffer
+    pub(super) async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
         self.socket.read_exact(dest).await?;
         self.total_bytes += dest.len();
         Ok(dest.len())
@@ -41,7 +70,8 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         self.total_bytes = 0;
     }
 
-    pub(super) fn read_to_dest(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+    // read from inner to external
+    pub(super) fn read_from_inner(&mut self, dest: &mut [u8]) -> io::Result<usize> {
         if dest.is_empty() {
             return Ok(0);
         }
@@ -64,19 +94,39 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         self.buf.available_read()
     }
 
-    pub(super) fn reset(&mut self) {
-        self.buf.clear();
-    }
-    pub(super) fn skip_max(&mut self, n: usize) {
-        let skip = min(self.available_read(), n);
-        self.buf.consume(skip);
-        self.total_bytes += skip;
+    pub(super) async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
+        let from_inner = self.buf.available_read();
+        self.buf.consume(from_inner);
+        self.total_bytes += from_inner;
+        let from_socket = n - from_inner;
+
+        if from_socket == 0 {
+            return Ok(());
+        }
+
+        let mut src = (&mut self.socket).take(from_socket as u64);
+
+        let mut dest = tokio::io::sink();
+        let actual = tokio::io::copy(&mut src, &mut dest).await?;
+
+        self.total_bytes += actual as usize;
+
+        if actual != from_socket as u64 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Discarded not valid amount of bytes",
+            ));
+        }
+
+        Ok(())
     }
 }
 
 impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.buf.read(buf)?;
+        // apparently, that line is problem: maybe do increment that part somehow in one place?
+        // move that increment from here and do it explicitly
         self.total_bytes += n;
         Ok(n)
     }
@@ -133,6 +183,10 @@ impl ReadBuffer {
         self.read_pos = 0;
         self.write_pos = 0;
     }
+
+    fn reset_read(&mut self, n: usize) {
+        self.read_pos = n;
+    }
 }
 
 impl Read for ReadBuffer {
@@ -141,18 +195,5 @@ impl Read for ReadBuffer {
         buf[..len].copy_from_slice(&self.data[self.read_pos..self.read_pos + len]);
         self.consume(len);
         Ok(len)
-    }
-}
-
-impl Write for ReadBuffer {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.available_write());
-        self.write_slice()[..len].copy_from_slice(&buf[..len]);
-        self.extend(len);
-        Ok(len)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
