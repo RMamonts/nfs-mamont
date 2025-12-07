@@ -6,6 +6,7 @@ mod slice;
 #[cfg(test)]
 mod tests;
 
+use std::future::Future;
 use std::num::NonZeroUsize;
 
 use tokio::sync::mpsc;
@@ -27,10 +28,8 @@ pub trait Allocator {
     /// # Panic
     ///
     /// This method panics if size is greater then allocator capacity.
-    fn allocate(
-        &mut self,
-        size: NonZeroUsize,
-    ) -> impl std::future::Future<Output = Option<slice::Slice>> + Send;
+    fn allocate(&mut self, size: NonZeroUsize)
+        -> impl Future<Output = Option<slice::Slice>> + Send;
 }
 
 pub struct Impl {
