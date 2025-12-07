@@ -5,7 +5,6 @@ use tokio::sync::mpsc;
 use crate::allocator::Receiver;
 use crate::allocator::Slice;
 
-const EMPTY_BUFFER: &[u8] = &[];
 const FIRST_BUFFER: &[u8] = &[1, 2, 3, 4, 5];
 const SECOND_BUFFER: &[u8] = &[6, 7, 8];
 const THIRD_BUFFER: &[u8] = &[9, 10, 11];
@@ -33,17 +32,7 @@ where
     (slice, receiver)
 }
 
-// One buffer tests
-
-#[test]
-fn zero_zero_empty_buffer() {
-    let (slice, _) = make_slice([EMPTY_BUFFER], 0..0);
-
-    let mut iter = slice.iter();
-
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
-}
+// One buffer tests.
 
 #[test]
 fn zero_zero_one_buffer() {
@@ -126,17 +115,7 @@ fn zero_end_one_buffer() {
     assert!(iter.next().is_none());
 }
 
-// two buffers test, but range in first only
-
-#[test]
-fn zero_zero_two_empty_buffers() {
-    let (slice, _) = make_slice([EMPTY_BUFFER, EMPTY_BUFFER], 0..0);
-
-    let mut iter = slice.iter();
-
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
-}
+// Two buffers test, but range in first only.
 
 #[test]
 fn first_zero_zero_two_buffers() {
@@ -222,7 +201,7 @@ fn first_zero_end_two_buffers() {
     assert!(iter.next().is_none());
 }
 
-// two buffers test, but range in second only
+// Two buffers test, but range in second only.
 
 #[test]
 fn second_zero_zero_two_buffers() {
@@ -333,7 +312,7 @@ fn second_zero_end_two_buffers() {
     assert!(iter.next().is_none());
 }
 
-// two buffers, between them
+// Two buffers, between them.
 
 #[test]
 fn last_from_first_first_from_second_two_buffers() {
@@ -392,7 +371,7 @@ fn all_from_first_all_from_second_two_buffers() {
     assert!(iter.next().is_none());
 }
 
-// three buffers, between first and second
+// Three buffers, between first and second.
 
 #[test]
 fn last_from_first_first_from_second_three_buffers() {
@@ -454,7 +433,7 @@ fn all_from_first_all_from_second_three_buffers() {
     assert!(iter.next().is_none());
 }
 
-// three buffers, between second and third
+// Three buffers, between second and third.
 
 #[test]
 fn last_from_second_first_from_third_three_buffers() {
@@ -521,7 +500,7 @@ fn all_from_second_all_from_third_three_buffers() {
     assert!(iter.next().is_none());
 }
 
-// three buffers, between first, second and third
+// Three buffers, between first, second and third.
 
 #[test]
 fn last_from_first_all_from_second_first_from_third_three_buffers() {

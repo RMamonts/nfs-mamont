@@ -24,7 +24,13 @@ impl Slice {
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,
     ) -> Self {
-        let len = buffers.iter().map(|buffer| buffer.len()).sum();
+        let len = buffers
+            .iter()
+            .map(|buffer| {
+                assert!(!buffer.is_empty());
+                buffer.len()
+            })
+            .sum();
 
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
