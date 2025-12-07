@@ -4,7 +4,9 @@ pub mod file;
 
 use std::path::{Path, PathBuf};
 
-use async_trait::async_trait;
+use tokio::sync::mpsc::UnboundedSender;
+
+use crate::nfsv3::*;
 
 /// Result of [`Vfs`] operations.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -229,7 +231,7 @@ pub enum SpecialNode {
 
 /// Result returned by [`Vfs::remove`] and [`Vfs::remove_dir`] operations.
 #[derive(Clone)]
-pub struct RemovalResult {
+pub struct RemoveResult {
     pub directory_wcc: WccData,
 }
 
@@ -342,122 +344,129 @@ pub struct CommitResult {
     pub verifier: StableVerifier,
 }
 
-pub mod promise {
-    use super::*;
+#[derive(Clone)]
+pub struct GetAttrResult {
+    pub file_attr: Option<file::Attr>
+}
 
-    pub trait GetAttr {
-        fn keep(self, promise: Result<file::Attr>);
-    }
+#[derive(Clone)]
+pub struct SetAttrResult {
+    pub obj_wcc: WccData
+}
 
-    pub trait SetAttr {
-        fn keep(self, promise: Result<WccData>);
-    }
+#[derive(Clone)]
+pub struct ReadLinkResult {
+    pub file_attr: Option<file::Attr>,
+    pub data: Option<nfspath3>
+}
 
-    pub trait Lookup {
-        fn keep(self, promise: Result<LookupResult>);
-    }
+#[derive(Clone)]
+pub struct CreateResult {
+    pub file: Option<file::Uid>,
+    pub file_attr: Option<file::Attr>,
+    pub dir_wcc: WccData,
+}
 
-    pub trait Access {
-        fn keep(self, promise: Result<AccessResult>);
-    }
+#[allow(dead_code)]
+pub enum Procedure {
+    // NFSv3
+    Null,
+    GetAttr(nfs_fh3),
+    SetAttr(nfs_fh3, SetAttr, SetAttrGuard),
+    Lookup(nfs_fh3, ),
+    Access(AccessArgs),
+    ReadLink(ReadLinkArgs),
+    Read(ReadArgs),
+    Write(WriteArgs),
+    Create(CreateArgs),
+    MkDir(MkDirArgs),
+    SymLink(SymLinkArgs),
+    MkNod(MkNodArgs),
+    Remove(RemoveArgs),
+    RmDir(RmDirArgs),
+    Rename(RenameArgs),
+    Link(LinkArgs),
+    ReadDir(ReadDirArgs),
+    ReadDirPlus(ReadDirPlusArgs),
+    FsStat(FsStatArgs),
+    FsInfo(FsInfoArgs),
+    PathConf(PathConfArgs),
+    Commit(CommitArgs),
+    // MOUNT
+    Mount(MountArgs),
+    Unmount(UnmountArgs),
+    Export,
+    Dump,
+    UnmountAll,
+}
 
-    pub trait ReadLink {
-        fn keep(self, promise: Result<(PathBuf, Option<file::Attr>)>);
-    }
+#[allow(dead_code)]
+pub enum Response {
+    // NFSv3
+    GetAttr(GetAttrResult),
+    SetAttr(SetAttrResult),
+    Lookup(LookupResult),
+    Access(AccessResult),
+    ReadLink(ReadLinkResult),
+    Read(ReadResult),
+    Write(WriteResult),
+    Create(CreateResult),
+    MkDir,
+    SymLink,
+    MkNod,
+    Remove,
+    RmDir,
+    Rename(RenameResult),
+    Link(LinkResult),
+    ReadDir(ReadDirResult),
+    ReadDirPlus,
+    FsStat,
+    FsInfo,
+    PathConf,
+    Commit(CommitResult),
+    // MOUNT
+    Mount,
+    Unmount,
+    Export,
+    Dump,
+    UnmountAll,
+}
 
-    pub trait Read {
-        fn keep(self, promise: Result<ReadResult>);
-    }
+pub struct DispatcherMessage {
+    
+}
 
-    pub trait Write {
-        fn keep(self, promise: Result<WriteResult>);
-    }
-
-    pub trait Create {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeDir {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeSymlink {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeNode {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait Remove {
-        fn keep(self, promise: Result<RemovalResult>);
-    }
-
-    pub trait RemoveDir {
-        fn keep(self, promise: Result<RemovalResult>);
-    }
-
-    pub trait Rename {
-        fn keep(self, promise: Result<RenameResult>);
-    }
-
-    pub trait Link {
-        fn keep(self, promise: Result<LinkResult>);
-    }
-
-    pub trait ReadDir {
-        fn keep(self, promise: Result<ReadDirResult>);
-    }
-
-    pub trait ReadDirPlus {
-        fn keep(self, promise: Result<ReadDirPlusResult>);
-    }
-
-    pub trait FsStat {
-        fn keep(self, promise: Result<super::FsStat>);
-    }
-
-    pub trait FsInof {
-        fn keep(self, promise: Result<FsInfo>);
-    }
-
-    pub trait PathConf {
-        fn keep(self, promise: Result<PathConfig>);
-    }
-
-    pub trait Commit {
-        fn keep(self, promise: Result<CommitResult>);
-    }
+pub struct Promise {
+    pub channel: UnboundedSender<Response>
 }
 
 /// Virtual File System interface.
-#[async_trait]
 pub trait Vfs: Sync + Send {
-    async fn get_attr(&self, file: file::Uid);
+    async fn get_attr(&self, file: file::Uid) -> Result<Response>;
 
-    async fn set_attr(&self, file: file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
+    async fn set_attr(&self, file: file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>) -> Result<Response>;
 
-    async fn lookup(&self, parent: file::Uid, name: String);
+    async fn lookup(&self, parent: file::Uid, name: String) -> Result<Response>;
 
-    async fn access(&self, file: file::Uid, mask: AccessMask);
+    async fn access(&self, file: file::Uid, mask: AccessMask) -> Result<Response>;
 
-    async fn read_link(&self, file: file::Uid);
+    async fn read_link(&self, file: file::Uid) -> Result<Response>;
 
-    async fn read(&self, file: file::Uid, offset: u64, count: u32);
+    async fn read(&self, file: file::Uid, offset: u64, count: u32) -> Result<Response>;
 
-    async fn write(&self, file: file::Uid, offset: u64, data: Vec<u8>, mode: WriteMode);
+    async fn write(&self, file: file::Uid, offset: u64, data: Vec<u8>, mode: WriteMode) -> Result<Response>;
 
-    async fn create(&self, parent: file::Uid, name: String, mode: CreateMode);
+    async fn create(&mut self, parent: file::Uid, name: String, mode: CreateMode) -> Result<Response>;
 
-    async fn make_dir(&self, parent: file::Uid, name: String, attr: SetAttr);
+    async fn make_dir(&self, parent: file::Uid, name: String, attr: SetAttr) -> Result<Response>;
 
-    async fn make_symlink(&self, parent: file::Uid, name: String, target: &Path, attr: SetAttr);
+    async fn make_symlink(&self, parent: file::Uid, name: String, target: &Path, attr: SetAttr) -> Result<Response>;
 
-    async fn make_node(&self, parent: file::Uid, name: String, node: SpecialNode);
+    async fn make_node(&self, parent: file::Uid, name: String, node: SpecialNode) -> Result<Response>;
 
-    async fn remove(&self, parent: file::Uid, name: String);
+    async fn remove(&self, parent: file::Uid, name: String) -> Result<Response>;
 
-    async fn remove_dir(&self, parent: file::Uid, name: String);
+    async fn remove_dir(&self, parent: file::Uid, name: String) -> Result<Response>;
 
     async fn rename(
         &self,
@@ -465,9 +474,9 @@ pub trait Vfs: Sync + Send {
         from_name: String,
         to_parent: file::Uid,
         to_name: String,
-    );
+    ) -> Result<Response>;
 
-    async fn link(&self, source: file::Uid, new_parent: file::Uid, new_name: String);
+    async fn link(&self, source: file::Uid, new_parent: file::Uid, new_name: String) -> Result<Response>;
 
     async fn read_dir(
         &self,
@@ -475,7 +484,7 @@ pub trait Vfs: Sync + Send {
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
-    );
+    ) -> Result<Response>;
 
     async fn read_dir_plus(
         &self,
@@ -484,13 +493,13 @@ pub trait Vfs: Sync + Send {
         verifier: CookieVerifier,
         max_bytes: u32,
         max_files: u32,
-    );
+    ) -> Result<Response>;
 
-    async fn fs_stat(&self, file: file::Uid);
+    async fn fs_stat(&self, file: file::Uid) -> Result<Response>;
 
-    async fn fs_info(&self, file: file::Uid);
+    async fn fs_info(&self, file: file::Uid) -> Result<Response>;
 
-    async fn path_conf(&self, file: file::Uid);
+    async fn path_conf(&self, file: file::Uid) -> Result<Response>;
 
-    async fn commit(&self, file: file::Uid, offset: u64, count: u32);
+    async fn commit(&self, file: file::Uid, offset: u64, count: u32) -> Result<Response>;
 }

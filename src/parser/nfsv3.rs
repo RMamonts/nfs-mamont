@@ -15,6 +15,39 @@ pub const MAX_FILEHANDLE: usize = 8;
 const MAX_FILEPATH: usize = 1024;
 
 #[allow(dead_code)]
+pub enum Arguments {
+    // NFSv3
+    Null,
+    GetAttr,
+    SetAttr,
+    LookUp,
+    Access,
+    ReadLink,
+    Read,
+    Write,
+    Create,
+    MkDir,
+    SymLink,
+    MkNod,
+    Remove,
+    RmDir,
+    Rename,
+    Link,
+    ReadDir,
+    ReadDirPlus,
+    FsStat,
+    FsInfo,
+    PathConf,
+    Commit,
+    // MOUNT
+    Mount,
+    Unmount,
+    Export,
+    Dump,
+    UnmountAll,
+}
+
+#[allow(dead_code)]
 pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
     Ok(specdata3 { specdata1: u32(src)?, specdata2: u32(src)? })
 }

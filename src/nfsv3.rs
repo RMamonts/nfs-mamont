@@ -48,8 +48,7 @@ enum NFS_V3 {
 
 #[allow(dead_code)]
 type filename3 = String;
-#[allow(dead_code)]
-type nfspath3 = String;
+pub type nfspath3 = String;
 type fileid3 = u64;
 type cookie3 = u64;
 type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE as usize];
