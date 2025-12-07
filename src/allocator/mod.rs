@@ -8,7 +8,6 @@ mod tests;
 
 use std::num::NonZeroUsize;
 
-use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 pub use slice::Slice;
@@ -18,7 +17,6 @@ type Receiver<T> = mpsc::UnboundedReceiver<T>;
 type Buffer = Box<[u8]>;
 
 /// Allocates [`Slice`]'s.
-#[async_trait]
 pub trait Allocator {
     /// Returns [`Slice`] of specified size.
     ///
@@ -29,7 +27,10 @@ pub trait Allocator {
     /// # Panic
     ///
     /// This method panics if size is greater then allocator capacity.
-    async fn allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice>;
+    fn allocate(
+        &mut self,
+        size: NonZeroUsize,
+    ) -> impl std::future::Future<Output = Option<slice::Slice>> + Send;
 }
 
 pub struct Impl {
@@ -59,7 +60,6 @@ impl Impl {
     }
 }
 
-#[async_trait]
 impl Allocator for Impl {
     async fn allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
         assert!(
