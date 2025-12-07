@@ -500,28 +500,20 @@ fn write_all_three_buffers() {
 
     let first_slice = iter.next().unwrap();
     assert_eq!(first_slice, [1, 2, 3, 4, 5].as_mut_slice());
+    first_slice.iter_mut().for_each(|item| *item += 1);
 
     let second_slice = iter.next().unwrap();
     assert_eq!(second_slice, [6, 7, 8].as_mut_slice());
+    second_slice.iter_mut().for_each(|item| *item += 2);
 
     let third_slice = iter.next().unwrap();
     assert_eq!(third_slice, [9, 10, 11].as_mut_slice());
+    third_slice.iter_mut().for_each(|item| *item += 3);
 
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
+    check_iter_is_empty(&mut iter);
 
-    first_slice.iter_mut().for_each(|item| *item += 1);
-    second_slice.iter_mut().for_each(|item| *item += 1);
-    third_slice.iter_mut().for_each(|item| *item += 1);
-
-    let mut iter = slice.iter_mut();
-
-    assert_eq!(iter.next(), Some([2, 3, 4, 5, 6].as_mut_slice()));
-    assert_eq!(iter.next(), Some([7, 8, 9].as_mut_slice()));
-    assert_eq!(iter.next(), Some([10, 11, 12].as_mut_slice()));
-
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
-    assert!(iter.next().is_none());
+    check_slice_content(
+        &mut slice,
+        [[2, 3, 4, 5, 6].as_slice(), [8, 9, 10].as_slice(), [12, 13, 14].as_slice()],
+    );
 }
