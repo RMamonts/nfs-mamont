@@ -15,7 +15,7 @@ pub enum Type {
     /// Directory.
     Directory = 2,
     /// Block special device file.
-    BlockDevice= 3,
+    BlockDevice = 3,
     /// Character special device file.
     CharacterDevice = 4,
     /// Symbolik link.
@@ -93,4 +93,3 @@ pub struct WccAttr {
     /// The time of last change to the attributes of the object before the operation.
     pub ctime: Time,
 }
-

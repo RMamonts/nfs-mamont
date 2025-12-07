@@ -1,8 +1,9 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
 mod file;
+mod promise;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
 
@@ -110,7 +111,7 @@ pub enum Error {
     /// to process a file that has been migrated. In this case,
     /// the server should start the immigration process and
     /// respond to client with this error.
-    JUKEBOX
+    JUKEBOX,
 }
 
 /// TODO(i.erin)
@@ -342,122 +343,72 @@ pub struct CommitResult {
     pub verifier: StableVerifier,
 }
 
-pub mod promise {
-    use super::*;
-
-    pub trait GetAttr {
-        fn keep(self, promise: Result<file::Attr>);
-    }
-
-    pub trait SetAttr {
-        fn keep(self, promise: Result<WccData>);
-    }
-
-    pub trait Lookup {
-        fn keep(self, promise: Result<LookupResult>);
-    }
-
-    pub trait Access {
-        fn keep(self, promise: Result<AccessResult>);
-    }
-
-    pub trait ReadLink {
-        fn keep(self, promise: Result<(PathBuf, Option<file::Attr>)>);
-    }
-
-    pub trait Read {
-        fn keep(self, promise: Result<ReadResult>);
-    }
-
-    pub trait Write {
-        fn keep(self, promise: Result<WriteResult>);
-    }
-
-    pub trait Create {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeDir {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeSymlink {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait MakeNode {
-        fn keep(self, promise: Result<CreatedNode>);
-    }
-
-    pub trait Remove {
-        fn keep(self, promise: Result<RemovalResult>);
-    }
-
-    pub trait RemoveDir {
-        fn keep(self, promise: Result<RemovalResult>);
-    }
-
-    pub trait Rename {
-        fn keep(self, promise: Result<RenameResult>);
-    }
-
-    pub trait Link {
-        fn keep(self, promise: Result<LinkResult>);
-    }
-
-    pub trait ReadDir {
-        fn keep(self, promise: Result<ReadDirResult>);
-    }
-
-    pub trait ReadDirPlus {
-        fn keep(self, promise: Result<ReadDirPlusResult>);
-    }
-
-    pub trait FsStat {
-        fn keep(self, promise: Result<super::FsStat>);
-    }
-
-    pub trait FsInof {
-        fn keep(self, promise: Result<FsInfo>);
-    }
-
-    pub trait PathConf {
-        fn keep(self, promise: Result<PathConfig>);
-    }
-
-    pub trait Commit {
-        fn keep(self, promise: Result<CommitResult>);
-    }
-}
-
 /// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    async fn get_attr(&self, file: file::Uid);
+    async fn get_attr(&self, file: file::Uid, promise: impl promise::GetAttr);
 
-    async fn set_attr(&self, file: file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>);
+    async fn set_attr(
+        &self,
+        file: file::Uid,
+        attr: SetAttr,
+        guard: Option<SetAttrGuard>,
+        promise: impl promise::SetAttr,
+    );
 
-    async fn lookup(&self, parent: file::Uid, name: String);
+    async fn lookup(&self, parent: file::Uid, name: String, promise: impl promise::Lookup);
 
-    async fn access(&self, file: file::Uid, mask: AccessMask);
+    async fn access(&self, file: file::Uid, mask: AccessMask, promise: impl promise::Access);
 
-    async fn read_link(&self, file: file::Uid);
+    async fn read_link(&self, file: file::Uid, promise: impl promise::ReadLink);
 
-    async fn read(&self, file: file::Uid, offset: u64, count: u32);
+    async fn read(&self, file: file::Uid, offset: u64, count: u32, promise: impl promise::Read);
 
-    async fn write(&self, file: file::Uid, offset: u64, data: Vec<u8>, mode: WriteMode);
+    async fn write(
+        &self,
+        file: file::Uid,
+        offset: u64,
+        data: Vec<u8>,
+        mode: WriteMode,
+        promise: impl promise::Write,
+    );
 
-    async fn create(&self, parent: file::Uid, name: String, mode: CreateMode);
+    async fn create(
+        &self,
+        parent: file::Uid,
+        name: String,
+        mode: CreateMode,
+        promise: impl promise::Create,
+    );
 
-    async fn make_dir(&self, parent: file::Uid, name: String, attr: SetAttr);
+    async fn make_dir(
+        &self,
+        parent: file::Uid,
+        name: String,
+        attr: SetAttr,
+        promise: impl promise::MakeDir,
+    );
 
-    async fn make_symlink(&self, parent: file::Uid, name: String, target: &Path, attr: SetAttr);
+    async fn make_symlink(
+        &self,
+        parent: file::Uid,
+        name: String,
+        target: &Path,
+        attr: SetAttr,
+        promise: impl promise::MakeSymlink,
+    );
 
-    async fn make_node(&self, parent: file::Uid, name: String, node: SpecialNode);
+    async fn make_node(
+        &self,
+        parent: file::Uid,
+        name: String,
+        node: SpecialNode,
+        promise: impl promise::MakeNode,
+    );
 
-    async fn remove(&self, parent: file::Uid, name: String);
+    async fn remove(&self, parent: file::Uid, name: String, promise: impl promise::Remove);
 
-    async fn remove_dir(&self, parent: file::Uid, name: String);
+    async fn remove_dir(&self, parent: file::Uid, name: String, promise: impl promise::RemoveDir);
 
     async fn rename(
         &self,
@@ -465,9 +416,16 @@ pub trait Vfs: Sync + Send {
         from_name: String,
         to_parent: file::Uid,
         to_name: String,
+        promise: impl promise::Rename,
     );
 
-    async fn link(&self, source: file::Uid, new_parent: file::Uid, new_name: String);
+    async fn link(
+        &self,
+        source: file::Uid,
+        new_parent: file::Uid,
+        new_name: String,
+        promise: impl promise::Link,
+    );
 
     async fn read_dir(
         &self,
@@ -475,6 +433,7 @@ pub trait Vfs: Sync + Send {
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
+        promise: impl promise::ReadDir,
     );
 
     async fn read_dir_plus(
@@ -484,13 +443,14 @@ pub trait Vfs: Sync + Send {
         verifier: CookieVerifier,
         max_bytes: u32,
         max_files: u32,
+        promise: impl promise::ReadDirPlus,
     );
 
-    async fn fs_stat(&self, file: file::Uid);
+    async fn fs_stat(&self, file: file::Uid, promise: impl promise::FsStat);
 
-    async fn fs_info(&self, file: file::Uid);
+    async fn fs_info(&self, file: file::Uid, promise: impl promise::FsInfo);
 
-    async fn path_conf(&self, file: file::Uid);
+    async fn path_conf(&self, file: file::Uid, promise: impl promise::PathConf);
 
-    async fn commit(&self, file: file::Uid, offset: u64, count: u32);
+    async fn commit(&self, file: file::Uid, offset: u64, count: u32, promise: impl promise::Commit);
 }
