@@ -50,7 +50,9 @@ impl Impl {
         let (sender, receiver) = mpsc::unbounded_channel::<Buffer>();
 
         for _ in 0..count.get() {
-            sender.send(vec![0; size.get()].into_boxed_slice()).expect("to init Allocator");
+            sender
+                .send(vec![0; size.get()].into_boxed_slice())
+                .expect("can't initialize allocator");
         }
 
         Self { sender, receiver, buffer_size: size, buffer_count: count }
