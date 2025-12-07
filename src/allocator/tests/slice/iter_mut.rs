@@ -569,3 +569,43 @@ fn all_from_first_all_from_second_all_from_third_three_buffers() {
     assert!(iter.next().is_none());
     assert!(iter.next().is_none());
 }
+
+// Checks that we can observe what writes to obtained slices.
+
+#[test]
+fn write_all_three_buffers() {
+    let (mut slice, _) = make_slice(
+        [FIRST_BUFFER, SECOND_BUFFER, THIRD_BUFFER],
+        0..FIRST_BUFFER.len() + SECOND_BUFFER.len() + THIRD_BUFFER.len(),
+    );
+    let mut iter = slice.iter_mut();
+
+    let first_slice = iter.next().unwrap();
+    assert_eq!(first_slice, [1, 2, 3, 4, 5].as_mut_slice());
+
+    let second_slice = iter.next().unwrap();
+    assert_eq!(second_slice, [6, 7, 8].as_mut_slice());
+
+    let third_slice = iter.next().unwrap();
+    assert_eq!(third_slice, [9, 10, 11].as_mut_slice());
+
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+
+    first_slice.iter_mut().for_each(|item| *item += 1);
+    second_slice.iter_mut().for_each(|item| *item += 1);
+    third_slice.iter_mut().for_each(|item| *item += 1);
+
+    drop(iter);
+
+    let mut iter = slice.iter_mut();
+
+    assert_eq!(iter.next(), Some([2, 3, 4, 5, 6].as_mut_slice()));
+    assert_eq!(iter.next(), Some([7, 8, 9].as_mut_slice()));
+    assert_eq!(iter.next(), Some([10, 11, 12].as_mut_slice()));
+
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none());
+}
