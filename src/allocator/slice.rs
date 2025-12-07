@@ -24,6 +24,8 @@ impl Slice {
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,
     ) -> Self {
+        assert!(range.start <= range.end, "start should not be greater then end");
+
         let len = buffers
             .iter()
             .map(|buffer| {
