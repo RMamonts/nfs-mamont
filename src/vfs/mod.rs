@@ -1,6 +1,12 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
 mod file;
+
+mod access;
+mod get_attr;
+mod lookup;
+mod set_attr;
+
 mod promise;
 
 use std::path::Path;
@@ -10,10 +16,10 @@ use async_trait::async_trait;
 /// Result of [`Vfs`] operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Maximum length of names passed into [`Vfs`] methods.
+/// Maximum length of name passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
 
-/// Maximum length of file paths passed into [`Vfs`] methods.
+/// Maximum length of file path passed into [`Vfs`] methods.
 pub const MAX_PATH_LEN: usize = 1024;
 
 /// [`Vfs`] errors.
@@ -121,7 +127,7 @@ type PostOpAttr = Option<file::Attr>;
 type PreOpAttr = Option<file::WccAttr>;
 
 /// TODO(i.erin)
-type PostOpFile = Option<file::Uid>;
+type PostOpFile = Option<file::Handle>;
 
 /// TODO(i.erin)
 #[derive(Clone)]
@@ -156,10 +162,13 @@ pub struct SetAttrGuard {
     ctime: file::Time,
 }
 
+/// [`Vfs::get_attr`] returns this on success.
+pub struct GetAttrResult(file::Attr);
+
 /// Result of a [`Vfs::lookup`] operation (RFC 1813 3.3.3).
 #[derive(Clone)]
 pub struct LookupResult {
-    pub file: file::Uid,
+    pub file: file::Handle,
     pub object_attr: file::Attr,
     pub directory_attr: Option<file::Attr>,
 }
@@ -214,7 +223,7 @@ pub enum CreateMode {
 /// Result returned by [`Vfs::create`] and similar operations.
 #[derive(Clone)]
 pub struct CreatedNode {
-    pub file: file::Uid,
+    pub file: file::Handle,
     pub attr: file::Attr,
     pub directory_wcc: WccData,
 }
@@ -270,7 +279,7 @@ pub struct DirectoryPlusEntry {
     pub cookie: DirectoryCookie,
     pub name: String,
     pub fileid: u64,
-    pub file: Option<file::Uid>,
+    pub file: Option<file::Handle>,
     pub attr: Option<file::Attr>,
 }
 
@@ -346,27 +355,44 @@ pub struct CommitResult {
 /// Virtual File System interface.
 #[async_trait]
 pub trait Vfs: Sync + Send {
-    async fn get_attr(&self, file: file::Uid, promise: impl promise::GetAttr);
+    /// Retrieves the attributes for a specified file system object.
+    ///
+    /// # Parameters:
+    ///
+    /// * `file` --- file handle of an object whose attributes are to be retrieved.
+    /// * `promise` --- promise to perform the required operation and return the result.
+    async fn get_attr(&self, file: file::Handle, promise: impl promise::GetAttr);
 
+    /// Changes one or more of the attributes of a file system object on the server.
+    ///
+    /// # Parameters:
+    ///
+    /// * `file` --- file handle for the object.
+    /// * `attr` --- structure describing the attributes to be set and the new values for those attributes.
+    /// * `guard` --- optionally verify that `ctime` of the object matches the client expectation.
+    ///
+    /// If guard is [`Some`] and object ctime differs from the guard one then implementation must preserve
+    /// the object attributes and must return a status of [`Error::NotSync`].
     async fn set_attr(
         &self,
-        file: file::Uid,
+        file: file::Handle,
         attr: SetAttr,
         guard: Option<SetAttrGuard>,
         promise: impl promise::SetAttr,
     );
 
-    async fn lookup(&self, parent: file::Uid, name: String, promise: impl promise::Lookup);
+    ///
+    async fn lookup(&self, parent: file::Handle, name: String, promise: impl promise::Lookup);
 
-    async fn access(&self, file: file::Uid, mask: AccessMask, promise: impl promise::Access);
+    async fn access(&self, file: file::Handle, mask: AccessMask, promise: impl promise::Access);
 
-    async fn read_link(&self, file: file::Uid, promise: impl promise::ReadLink);
+    async fn read_link(&self, file: file::Handle, promise: impl promise::ReadLink);
 
-    async fn read(&self, file: file::Uid, offset: u64, count: u32, promise: impl promise::Read);
+    async fn read(&self, file: file::Handle, offset: u64, count: u32, promise: impl promise::Read);
 
     async fn write(
         &self,
-        file: file::Uid,
+        file: file::Handle,
         offset: u64,
         data: Vec<u8>,
         mode: WriteMode,
@@ -375,7 +401,7 @@ pub trait Vfs: Sync + Send {
 
     async fn create(
         &self,
-        parent: file::Uid,
+        parent: file::Handle,
         name: String,
         mode: CreateMode,
         promise: impl promise::Create,
@@ -383,7 +409,7 @@ pub trait Vfs: Sync + Send {
 
     async fn make_dir(
         &self,
-        parent: file::Uid,
+        parent: file::Handle,
         name: String,
         attr: SetAttr,
         promise: impl promise::MakeDir,
@@ -391,7 +417,7 @@ pub trait Vfs: Sync + Send {
 
     async fn make_symlink(
         &self,
-        parent: file::Uid,
+        parent: file::Handle,
         name: String,
         target: &Path,
         attr: SetAttr,
@@ -400,36 +426,41 @@ pub trait Vfs: Sync + Send {
 
     async fn make_node(
         &self,
-        parent: file::Uid,
+        parent: file::Handle,
         name: String,
         node: SpecialNode,
         promise: impl promise::MakeNode,
     );
 
-    async fn remove(&self, parent: file::Uid, name: String, promise: impl promise::Remove);
+    async fn remove(&self, parent: file::Handle, name: String, promise: impl promise::Remove);
 
-    async fn remove_dir(&self, parent: file::Uid, name: String, promise: impl promise::RemoveDir);
+    async fn remove_dir(
+        &self,
+        parent: file::Handle,
+        name: String,
+        promise: impl promise::RemoveDir,
+    );
 
     async fn rename(
         &self,
-        from_parent: file::Uid,
+        from_parent: file::Handle,
         from_name: String,
-        to_parent: file::Uid,
+        to_parent: file::Handle,
         to_name: String,
         promise: impl promise::Rename,
     );
 
     async fn link(
         &self,
-        source: file::Uid,
-        new_parent: file::Uid,
+        source: file::Handle,
+        new_parent: file::Handle,
         new_name: String,
         promise: impl promise::Link,
     );
 
     async fn read_dir(
         &self,
-        file: file::Uid,
+        file: file::Handle,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
@@ -438,7 +469,7 @@ pub trait Vfs: Sync + Send {
 
     async fn read_dir_plus(
         &self,
-        file: file::Uid,
+        file: file::Handle,
         cookie: DirectoryCookie,
         verifier: CookieVerifier,
         max_bytes: u32,
@@ -446,11 +477,17 @@ pub trait Vfs: Sync + Send {
         promise: impl promise::ReadDirPlus,
     );
 
-    async fn fs_stat(&self, file: file::Uid, promise: impl promise::FsStat);
+    async fn fs_stat(&self, file: file::Handle, promise: impl promise::FsStat);
 
-    async fn fs_info(&self, file: file::Uid, promise: impl promise::FsInfo);
+    async fn fs_info(&self, file: file::Handle, promise: impl promise::FsInfo);
 
-    async fn path_conf(&self, file: file::Uid, promise: impl promise::PathConf);
+    async fn path_conf(&self, file: file::Handle, promise: impl promise::PathConf);
 
-    async fn commit(&self, file: file::Uid, offset: u64, count: u32, promise: impl promise::Commit);
+    async fn commit(
+        &self,
+        file: file::Handle,
+        offset: u64,
+        count: u32,
+        promise: impl promise::Commit,
+    );
 }
