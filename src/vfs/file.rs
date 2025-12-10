@@ -26,6 +26,12 @@ pub enum Type {
     Fifo = 7,
 }
 
+pub enum Mode {
+    Unchecked = 1,
+    Guarded = 2,
+    Exclusive = 3,
+}
+
 /// File attributes.
 #[derive(Clone)]
 pub struct Attr {

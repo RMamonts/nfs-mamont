@@ -24,7 +24,11 @@ impl MamontFs {
 }
 
 impl Vfs for MamontFs {    
-    async fn get_attr(&self, file: file::Uid) -> Result<Response>  { !unimplemented!() }
+    async fn get_attr(&self, file: file::Uid) -> Result<Response>  {
+        let file_node = self.export.get_file_node(uid)?;
+
+        
+    }
 
     async fn set_attr(&self, file: file::Uid, attr: SetAttr, guard: Option<SetAttrGuard>) -> Result<Response>  { !unimplemented!() }
 
@@ -61,6 +65,7 @@ impl Vfs for MamontFs {
             dir_wcc: WccData { before: None, after: None }
         }))
     }
+
     async fn make_dir(&self, parent: file::Uid, name: String, attr: SetAttr) -> Result<Response>  { !unimplemented!() }
 
     async fn make_symlink(&self, parent: file::Uid, name: String, target: &Path, attr: SetAttr) -> Result<Response>  { !unimplemented!() }
