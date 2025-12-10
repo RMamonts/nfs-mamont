@@ -1,7 +1,6 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
 /// Represents bounded by custome range list of buffers.
-#[derive(Debug)]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -15,6 +14,7 @@ impl Slice {
     ///
     /// - `buffers` --- vec of buffers.
     /// - `range` --- range to which slice will allow access.
+    /// - `sender` --- sender to deallocated buffers in drop.
     ///
     /// # Panics
     ///
@@ -24,7 +24,15 @@ impl Slice {
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,
     ) -> Self {
-        let len = buffers.iter().map(|buffer| buffer.len()).sum();
+        assert!(range.start <= range.end, "start should not be greater then end");
+
+        let len = buffers
+            .iter()
+            .map(|buffer| {
+                assert!(!buffer.is_empty());
+                buffer.len()
+            })
+            .sum();
 
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
@@ -44,7 +52,7 @@ impl Slice {
     fn deallocate(&mut self) {
         for mut buffer in self.buffers.drain(..) {
             // No user data should exist after dealloc
-            buffer.iter_mut().for_each(|u| *u = 0);
+            buffer.fill(0u8);
             // Ignore allocator drop
             let _ = self.sender.send(buffer);
         }
@@ -77,16 +85,16 @@ impl<'a> Iterator for Iter<'a> {
             let start = self.range.start;
             let end = self.range.end;
 
+            if start == end {
+                return None;
+            }
+
             // make a progress
             self.range.start = self.range.start.saturating_sub(len);
             self.range.end = self.range.end.saturating_sub(len);
 
             if len > start {
-                return Some(&result[self.range.start..end.min(len)]);
-            }
-
-            if self.range.end == 0 {
-                return None;
+                return Some(&result[start..end.min(len)]);
             }
         }
     }
@@ -121,16 +129,16 @@ impl<'a> Iterator for IterMut<'a> {
             let start = self.range.start;
             let end = self.range.end;
 
+            if start == end {
+                return None;
+            }
+
             // make a progress
             self.range.start = self.range.start.saturating_sub(len);
             self.range.end = self.range.end.saturating_sub(len);
 
             if len > start {
-                return Some(&mut result[self.range.start..end.min(len)]);
-            }
-
-            if self.range.end == 0 {
-                return None;
+                return Some(&mut result[start..end.min(len)]);
             }
         }
     }
