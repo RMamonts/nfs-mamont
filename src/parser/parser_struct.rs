@@ -225,7 +225,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ) -> Result<WriteArgs> {
     let (object, offset, count, mode, size) = buffer.parse_with_retry(write).await?;
     let mut slice = alloc
-        .alloc(NonZeroUsize::new(size).unwrap())
+        .allocate(NonZeroUsize::new(size).unwrap())
         .await
         .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
     let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
