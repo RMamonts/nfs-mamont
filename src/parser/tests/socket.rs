@@ -1,11 +1,10 @@
 use std::cmp::min;
-use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, ReadBuf};
 
-const SEPARATE: usize = 10;
+const SEPARATE: usize = 15;
 
 pub(super) struct MockSocket {
     data: Vec<u8>,
@@ -18,38 +17,28 @@ impl MockSocket {
     }
 }
 
-impl AsyncWrite for MockSocket {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
-        let inner = self.get_mut();
-        inner.data.resize(buf.len(), 0);
-        inner.data.copy_from_slice(buf);
-        Poll::Ready(Ok(buf.len()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Poll::Ready(Ok(()))
-    }
-}
-
 impl AsyncRead for MockSocket {
     fn poll_read(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        let data = self.get_mut();
-        let position = data.position;
-        let remaining = min(min(buf.remaining(), data.data.len() - position), SEPARATE);
-        buf.put_slice(&data.data[position..position + remaining]);
-        data.position += remaining;
+        let inner = self.get_mut();
+        if inner.position >= inner.data.len() {
+            return Poll::Ready(Ok(()));
+        }
+        let remaining_data = inner.data.len() - inner.position;
+
+        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
+
+        if to_read > 0 {
+            let start = inner.position;
+            let end = inner.position + to_read;
+            buf.put_slice(&inner.data[start..end]);
+
+            inner.position += to_read;
+        }
+
         Poll::Ready(Ok(()))
     }
 }

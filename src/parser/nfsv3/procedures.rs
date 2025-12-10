@@ -220,11 +220,12 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
                 .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
-        let cur_write = min(left_write, buf.len());
-        src.read_from_async(&mut buf[left_skip..cur_write]).await.map_err(Error::IO)?;
+        let cur_write = min(left_skip + left_write, buf.len() - left_skip);
+        src.read_from_async(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
         left_write = left_write
             .checked_sub(cur_write)
             .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
+        left_skip = 0;
     }
     Ok(to_write - left_write)
 }
@@ -247,8 +248,8 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
                 Err(e) => return Err(Error::IO(e)),
             };
             read_count += n;
+            real_size += n;
         }
-        real_size += read_count;
     }
     if real_size != left_size {
         return Err(Error::IO(io::Error::new(

@@ -78,11 +78,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let bytes_read = self.read(dest)?;
 
-        if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
-        }
-
-        self.buf.extend(bytes_read);
         Ok(bytes_read)
     }
 
@@ -95,11 +90,10 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     }
 
     pub(super) async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
-        let from_inner = self.buf.available_read();
+        let from_inner = min(self.buf.available_read(), n);
         self.buf.consume(from_inner);
         self.total_bytes += from_inner;
         let from_socket = n - from_inner;
-
         if from_socket == 0 {
             return Ok(());
         }
@@ -108,7 +102,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let mut dest = tokio::io::sink();
         let actual = tokio::io::copy(&mut src, &mut dest).await?;
-
         self.total_bytes += actual as usize;
 
         if actual != from_socket as u64 {
@@ -125,8 +118,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.buf.read(buf)?;
-        // apparently, that line is problem: maybe do increment that part somehow in one place?
-        // move that increment from here and do it explicitly
         self.total_bytes += n;
         Ok(n)
     }
@@ -177,11 +168,6 @@ impl ReadBuffer {
             self.write_pos -= self.read_pos;
             self.read_pos = 0;
         }
-    }
-
-    fn clear(&mut self) {
-        self.read_pos = 0;
-        self.write_pos = 0;
     }
 
     fn reset_read(&mut self, n: usize) {
