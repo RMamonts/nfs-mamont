@@ -6,6 +6,7 @@ pub mod parser;
 mod read_task;
 mod rpc;
 pub mod vfs;
+pub mod nlm;
 mod vfs_task;
 mod write_task;
 
