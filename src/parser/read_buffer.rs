@@ -1,34 +1,49 @@
-use crate::parser::{Error, Result};
 use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
+
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use crate::parser::{Error, Result};
+
+// there is invariant that read never equals write
+// where and how to check that?
 pub struct CountBuffer<S: AsyncRead + Unpin> {
-    buf: ReadBuffer,
+    // actually, there are definitely two
+    bufs: Vec<ReadBuffer>,
+    read: usize,
+    write: usize,
+    retry_mode: bool,
     socket: S,
     total_bytes: usize,
 }
 
 impl<S: AsyncRead + Unpin> CountBuffer<S> {
     pub(super) fn new(capacity: usize, socket: S) -> CountBuffer<S> {
-        Self { buf: ReadBuffer::new(capacity), socket, total_bytes: 0 }
+        Self {
+            bufs: vec![ReadBuffer::new(capacity), ReadBuffer::new(capacity)],
+            read: 0,
+            write: 1,
+            retry_mode: false,
+            socket,
+            total_bytes: 0,
+        }
     }
 
     // this one is critically needed in continuous reading to internal buffer
     // read into inner buffer from socket
-    pub(super) async fn fill_internal(&mut self) -> io::Result<usize> {
-        if self.buf.available_write() == 0 {
+    async fn fill_internal(&mut self) -> io::Result<usize> {
+        if self.bufs[self.write].available_write() == 0 {
             return Ok(0);
         }
 
-        let bytes_read = self.socket.read(self.buf.write_slice()).await?;
-
+        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
 
-        self.buf.extend(bytes_read);
+        self.bufs[self.write].extend(bytes_read);
+
         Ok(bytes_read)
     }
 
@@ -36,24 +51,39 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         &mut self,
         caller: impl Fn(&mut dyn Read) -> Result<T>,
     ) -> Result<T> {
-        let retry_start = self.buf.bytes_read();
+        let retry_start_read = self.bufs[self.read].bytes_read();
+        let retry_start_write = self.bufs[self.write].bytes_read();
         let retry_total = self.total_bytes;
         // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
         // definitely be enough to read what we are planning
         match caller(self) {
             Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+                self.retry_mode = true;
                 // called whenever we need to read more data
                 match self.fill_internal().await {
-                    Ok(0) => Err(Error::IO(err)),
+                    Ok(0) => {
+                        // it is impossible scenario?
+                        Err(Error::IO(err))
+                    }
                     Ok(_) => {
-                        self.buf.reset_read(retry_start);
+                        self.bufs[self.read].reset_read(retry_start_read);
+                        self.bufs[self.write].reset_read(retry_start_write);
                         self.total_bytes = retry_total;
                         Box::pin(self.parse_with_retry(caller)).await
                     }
                     Err(e) => Err(Error::IO(e)),
                 }
             }
-            result => result,
+            Ok(val) => {
+                if self.retry_mode {
+                    self.bufs[self.read].clean();
+                    self.write = (self.write + 1) % 2;
+                    self.read = (self.read + 1) % 2;
+                }
+                self.retry_mode = false;
+                Ok(val)
+            }
+            Err(err) => Err(err),
         }
     }
 
@@ -66,7 +96,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     }
 
     pub(super) fn clean(&mut self) {
-        self.buf.compact();
         self.total_bytes = 0;
     }
 
@@ -85,13 +114,15 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         self.total_bytes
     }
 
-    pub(super) fn available_read(&self) -> usize {
-        self.buf.available_read()
-    }
-
     pub(super) async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
-        let from_inner = min(self.buf.available_read(), n);
-        self.buf.consume(from_inner);
+        let from_inner = {
+            let from_inner1 = min(self.bufs[self.read].available_read(), n);
+            self.bufs[self.read].consume(from_inner1);
+            let from_inner2 = min(self.bufs[self.write].available_read(), n - from_inner1);
+            self.bufs[self.write].consume(from_inner2);
+            from_inner1 + from_inner2
+        };
+
         self.total_bytes += from_inner;
         let from_socket = n - from_inner;
         if from_socket == 0 {
@@ -117,7 +148,11 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
 impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = self.buf.read(buf)?;
+        let n = {
+            let k1 = self.bufs[self.read].read(buf)?;
+            let k2 = self.bufs[self.write].read(&mut buf[k1..])?;
+            k1 + k2
+        };
         self.total_bytes += n;
         Ok(n)
     }
@@ -146,10 +181,6 @@ impl ReadBuffer {
         self.data.len() - self.write_pos
     }
 
-    fn read_slice(&self) -> &[u8] {
-        &self.data[self.read_pos..self.write_pos]
-    }
-
     fn write_slice(&mut self) -> &mut [u8] {
         &mut self.data[self.write_pos..]
     }
@@ -162,16 +193,13 @@ impl ReadBuffer {
         self.write_pos += n;
     }
 
-    fn compact(&mut self) {
-        if self.read_pos > 0 {
-            self.data.copy_within(self.read_pos..self.write_pos, 0);
-            self.write_pos -= self.read_pos;
-            self.read_pos = 0;
-        }
-    }
-
     fn reset_read(&mut self, n: usize) {
         self.read_pos = n;
+    }
+
+    fn clean(&mut self) {
+        self.read_pos = 0;
+        self.write_pos = 0;
     }
 }
 

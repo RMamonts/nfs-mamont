@@ -22,8 +22,6 @@ use crate::rpc::{rpc_message_type, RPC_VERSION};
 
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 2500;
-#[allow(dead_code)]
-const MIN_MESSAGE_LEN: usize = 36;
 
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: A,
@@ -43,20 +41,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    // used only in the beginning of parsing
-    async fn fill_buffer(&mut self, min_bytes: usize) -> Result<()> {
-        while self.buffer.available_read() < min_bytes {
-            match self.buffer.fill_internal().await {
-                Ok(_) => continue,
-                Err(err) => return Err(Error::IO(err)),
-            }
-        }
-        Ok(())
-    }
-
     // here we are positively sure, that we can read without retry function
     async fn read_message_header(&mut self) -> Result<()> {
-        let header = u32(&mut self.buffer)?;
+        let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
 
@@ -67,26 +54,26 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Fragmented messages not supported",
             )));
         }
-        let _xid = u32(&mut self.buffer)?;
+        let _xid = self.buffer.parse_with_retry(u32).await?;
         Ok(())
     }
 
     // here we are positively sure, that we can read without retry function,
     // because there is Minimum size
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
-        let msg_type = u32(&mut self.buffer)?;
+        let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type == rpc_message_type::REPLY as u32 {
             return Err(Error::MessageTypeMismatch);
         }
 
-        let rpc_version = u32(&mut self.buffer)?;
+        let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
             return Err(Error::RpcVersionMismatch(RPCVersionMismatch(RPC_VERSION, RPC_VERSION)));
         }
 
-        let program = u32(&mut self.buffer)?;
-        let version = u32(&mut self.buffer)?;
-        let procedure = u32(&mut self.buffer)?;
+        let program = self.buffer.parse_with_retry(u32).await?;
+        let version = self.buffer.parse_with_retry(u32).await?;
+        let procedure = self.buffer.parse_with_retry(u32).await?;
 
         let auth_status = self.parse_authentication().await?;
         if auth_status != AuthStat::AuthOk {
@@ -97,7 +84,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        match auth(&mut self.buffer)?.flavor {
+        match self.buffer.parse_with_retry(auth).await?.flavor {
             AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
             _ => {
                 unimplemented!()
@@ -165,7 +152,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
-        self.fill_buffer(MIN_MESSAGE_LEN).await?;
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
