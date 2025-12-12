@@ -131,11 +131,20 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let mut src = (&mut self.socket).take(from_socket as u64);
 
-        let mut dest = tokio::io::sink();
-        let actual = tokio::io::copy(&mut src, &mut dest).await?;
-        self.total_bytes += actual as usize;
+        let mut actual = 0;
 
-        if actual != from_socket as u64 {
+        loop {
+            let n = src.read(self.bufs[self.write].write_slice()).await?;
+            if n == 0 {
+                break;
+            }
+            actual += n;
+        }
+
+        self.total_bytes += actual;
+
+        // probably useless, since we have guarantees from Take
+        if actual != from_socket {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 "Discarded not valid amount of bytes",
