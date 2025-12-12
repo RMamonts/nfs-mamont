@@ -6,8 +6,6 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
 
-// there is invariant that read never equals write
-// where and how to check that?
 pub struct CountBuffer<S: AsyncRead + Unpin> {
     // actually, there are definitely two
     bufs: Vec<ReadBuffer>,
@@ -80,6 +78,11 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                     self.write = (self.write + 1) % 2;
                     self.read = (self.read + 1) % 2;
                 }
+                if self.read == self.write {
+                    return Err(Error::IO(io::Error::other(
+                        "Cannot read and write to one buffer simultaneously",
+                    )));
+                }
                 self.retry_mode = false;
                 Ok(val)
             }
@@ -104,10 +107,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         if dest.is_empty() {
             return Ok(0);
         }
-
-        let bytes_read = self.read(dest)?;
-
-        Ok(bytes_read)
+        self.read(dest)
     }
 
     pub(super) fn total_bytes(&self) -> usize {
@@ -148,13 +148,10 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
 impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = {
-            let k1 = self.bufs[self.read].read(buf)?;
-            let k2 = self.bufs[self.write].read(&mut buf[k1..])?;
-            k1 + k2
-        };
-        self.total_bytes += n;
-        Ok(n)
+        let n1 = self.bufs[self.read].read(buf)?;
+        let n2 = self.bufs[self.write].read(&mut buf[n1..])?;
+        self.total_bytes += n1 + n2;
+        Ok(n1 + n2)
     }
 }
 
