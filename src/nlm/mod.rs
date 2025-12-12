@@ -3,6 +3,8 @@ use async_trait::async_trait;
 // TODO: naming
 use crate::vfs::file;
 
+pub mod nsm;
+
 #[allow(dead_code)]
 pub const NETOBJ_SIZE: usize = 8;
 
