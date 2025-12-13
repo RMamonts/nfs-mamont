@@ -3,6 +3,8 @@ use async_trait::async_trait;
 /// Length of the private data.
 pub const PRIVATE_LEN: usize = 16;
 
+pub type StatusResult 
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -62,13 +64,21 @@ pub struct MonitorArgs {
 /// Corresponds to XDR `sm_stat_res`.
 /// Result for `monitor` and `stat`.
 #[derive(Clone)]
-pub struct MonitorResult {
+pub struct NsmStatusResult {
     /// Return status of the call, that indicates,
     /// whether NSM agreed to monitor the given host or not.
     pub result: Status,
     /// State number of the NSM the request was sent to.
     pub state: HostState
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NsmFailError {
+    /// Актуальный state number NSM-сервера, который обработал запрос.
+    pub state: HostState, 
+}
+
+pub type NsmStatusResult = std::result::Result<HostState, Nsm>
 
 /// Corresponds to XDR `status`
 /// Arguments for `notify`.
@@ -111,11 +121,12 @@ pub trait Nsm: Sync + Send {
 mod promise {
     use crate::nlm::nsm::{HostState};
 
-    use super::MonitorResult;
+    use super::NsmStatusResult;
 
-    /// Promise to return 
+    /// Promise to return the result of `monitor` and `stat` procedures,
+    /// i. e. 
     pub trait Monitor {
-        fn keep(self, result: MonitorResult);
+        fn keep(self, result: NsmStatusResult);
     }
 
     pub trait State {
