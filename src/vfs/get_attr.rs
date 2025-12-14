@@ -1,14 +1,18 @@
 //! Defines NFSv3 [`GetAttr`] interface.
 
+use async_trait::async_trait;
+
 use crate::vfs;
 
 use super::file;
 
 /// Defines callback to pass [`GetAttr::get_attr`] result into.
+#[async_trait]
 pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
+#[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
     ///

@@ -2,16 +2,27 @@
 
 mod file;
 
-mod access;
-mod get_attr;
-mod lookup;
-mod set_attr;
-
-mod promise;
-
-use std::path::Path;
-
-use async_trait::async_trait;
+pub mod access;
+pub mod commit;
+pub mod create;
+pub mod fs_info;
+pub mod fs_stat;
+pub mod get_attr;
+pub mod link;
+pub mod lookup;
+pub mod mk_dir;
+pub mod mk_node;
+pub mod path_conf;
+pub mod read;
+pub mod read_dir;
+pub mod read_dir_plus;
+pub mod read_link;
+pub mod remove;
+pub mod rename;
+pub mod rm_dir;
+pub mod set_attr;
+pub mod symlink;
+pub mod write;
 
 /// Result of [`Vfs`] operations.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -98,7 +109,7 @@ pub enum Error {
     /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
     BadCookie,
     /// Operation is not supported.
-    NotSupp,
+    NotSupported,
     /// Buffer or request is too small.
     TooSmall,
     /// An error occurred on the server which does not map to any
@@ -121,373 +132,10 @@ pub enum Error {
 }
 
 /// TODO(i.erin)
-type PostOpAttr = Option<file::Attr>;
-
-/// TODO(i.erin)
-type PreOpAttr = Option<file::WccAttr>;
-
-/// TODO(i.erin)
-type PostOpFile = Option<file::Handle>;
-
-/// TODO(i.erin)
-#[derive(Clone)]
-pub struct SetAttr {
-    pub mode: Option<u32>,
-    pub uid: Option<u32>,
-    pub gid: Option<u32>,
-    pub size: Option<u64>,
-    pub atime: SetTime,
-    pub mtime: SetTime,
-}
-
-/// TODO(i.erin)
 #[derive(Clone)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
     pub after: Option<file::Attr>,
 }
 
-/// Strategy for updating timestamps in [`SetAttr`].
-#[derive(Copy, Clone)]
-pub enum SetTime {
-    DontChange,
-    ToServer,
-    ToClient(file::Time),
-}
-
-/// Guard used by [`Vfs::set_attr`] to enforce weak cache consistency.
-#[derive(Copy, Clone)]
-#[allow(dead_code)]
-pub struct SetAttrGuard {
-    ctime: file::Time,
-}
-
-/// [`Vfs::get_attr`] returns this on success.
-pub struct GetAttrResult(file::Attr);
-
-/// Result of a [`Vfs::lookup`] operation (RFC 1813 3.3.3).
-#[derive(Clone)]
-pub struct LookupResult {
-    pub file: file::Handle,
-    pub object_attr: file::Attr,
-    pub directory_attr: Option<file::Attr>,
-}
-
-/// Mask of access rights.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct AccessMask(u32);
-
-/// Result returned by [`Vfs::access`].
-#[derive(Clone)]
-pub struct AccessResult {
-    pub granted: AccessMask,
-    pub file_attr: Option<file::Attr>,
-}
-
-/// Data returned by [`Vfs::read`].
-#[derive(Clone)]
-pub struct ReadResult {
-    pub data: Vec<u8>,
-    pub file_attr: Option<file::Attr>,
-}
-
-/// Stability guarantee requested by [`Vfs::write`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum WriteMode {
-    Unstable,
-    DataSync,
-    FileSync,
-}
-
-/// Stable write verifier.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct StableVerifier(pub [u8; 8]);
-
-/// Result returned by [`Vfs::write`].
-#[derive(Clone)]
-pub struct WriteResult {
-    pub count: u32,
-    pub committed: WriteMode,
-    pub verifier: StableVerifier,
-    pub file_attr: Option<file::Attr>,
-}
-
-/// Creation strategy.
-#[derive(Clone)]
-pub enum CreateMode {
-    Unchecked { attr: SetAttr },
-    Guarded { attr: SetAttr, verifier: [u8; 8] },
-    Exclusive { verifier: [u8; 8] },
-}
-
-/// Result returned by [`Vfs::create`] and similar operations.
-#[derive(Clone)]
-pub struct CreatedNode {
-    pub file: file::Handle,
-    pub attr: file::Attr,
-    pub directory_wcc: WccData,
-}
-
-/// Special node description used by [`Vfs::make_node`].
-#[derive(Clone)]
-pub enum SpecialNode {
-    Block { device: file::Device, attr: SetAttr },
-    Character { device: file::Device, attr: SetAttr },
-    Socket { attr: SetAttr },
-    Fifo { attr: SetAttr },
-}
-
-/// Result returned by [`Vfs::remove`] and [`Vfs::remove_dir`] operations.
-#[derive(Clone)]
-pub struct RemovalResult {
-    pub directory_wcc: WccData,
-}
-
-/// Result returned by [`Vfs::link`].
-#[derive(Clone)]
-pub struct LinkResult {
-    pub new_file_attr: Option<file::Attr>,
-    pub directory_wcc: WccData,
-}
-
-/// Result returned by [`Vfs::rename`].
-#[derive(Clone)]
-pub struct RenameResult {
-    pub from_directory_wcc: WccData,
-    pub to_directory_wcc: WccData,
-}
-
-/// Cookie used for directory iteration.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct DirectoryCookie(pub u64);
-
-/// Cookie verifier.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub struct CookieVerifier(pub [u8; 8]);
-
-/// Minimal directory entry returned by [`Vfs::read_dir`].
-#[derive(Clone, PartialEq, Eq)]
-pub struct DirectoryEntry {
-    pub cookie: DirectoryCookie,
-    pub name: String,
-    pub fileid: u64,
-}
-
-/// Extended directory entry returned by [`Vfs::read_dir_plus`].
-#[derive(Clone)]
-pub struct DirectoryPlusEntry {
-    pub cookie: DirectoryCookie,
-    pub name: String,
-    pub fileid: u64,
-    pub file: Option<file::Handle>,
-    pub attr: Option<file::Attr>,
-}
-
-/// Result of [`Vfs::read_dir`].
-#[derive(Clone)]
-pub struct ReadDirResult {
-    pub directory_attr: Option<file::Attr>,
-    pub cookie_verifier: CookieVerifier,
-    pub entries: Vec<DirectoryEntry>,
-}
-
-/// Result of [`Vfs::read_dir_plus`].
-#[derive(Clone)]
-pub struct ReadDirPlusResult {
-    pub directory_attr: Option<file::Attr>,
-    pub cookie_verifier: CookieVerifier,
-    pub entries: Vec<DirectoryPlusEntry>,
-}
-
-/// Dynamic filesystem statistics.
-#[derive(Clone)]
-pub struct FsStat {
-    pub total_bytes: u64,
-    pub free_bytes: u64,
-    pub available_bytes: u64,
-    pub total_files: u64,
-    pub free_files: u64,
-    pub available_files: u64,
-    pub invarsec: u32,
-    pub file_attr: Option<file::Attr>,
-}
-
-/// Static filesystem information.
-#[derive(Clone)]
-pub struct FsInfo {
-    pub read_max: u32,
-    pub read_pref: u32,
-    pub read_multiple: u32,
-    pub write_max: u32,
-    pub write_pref: u32,
-    pub write_multiple: u32,
-    pub directory_pref: u32,
-    pub max_file_size: u64,
-    pub time_delta: file::Time,
-    pub properties: FsProperties,
-    pub file_attr: Option<file::Attr>,
-}
-
-/// Filesystem capability flags.
-#[allow(dead_code)]
-#[derive(Clone)]
-pub struct FsProperties(u32);
-
-/// POSIX path configuration information.
-#[derive(Clone)]
-pub struct PathConfig {
-    pub file_attr: Option<file::Attr>,
-    pub max_link: u32,
-    pub max_name: u32,
-    pub no_trunc: bool,
-    pub chown_restricted: bool,
-    pub case_insensitive: bool,
-    pub case_preserving: bool,
-}
-
-/// Result returned by [`Vfs::commit`].
-#[derive(Clone)]
-pub struct CommitResult {
-    pub file_attr: Option<file::Attr>,
-    pub verifier: StableVerifier,
-}
-
-/// Virtual File System interface.
-#[async_trait]
-pub trait Vfs: Sync + Send {
-    /// Retrieves the attributes for a specified file system object.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- file handle of an object whose attributes are to be retrieved.
-    /// * `promise` --- promise to perform the required operation and return the result.
-    async fn get_attr(&self, file: file::Handle, promise: impl promise::GetAttr);
-
-    /// Changes one or more of the attributes of a file system object on the server.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- file handle for the object.
-    /// * `attr` --- structure describing the attributes to be set and the new values for those attributes.
-    /// * `guard` --- optionally verify that `ctime` of the object matches the client expectation.
-    ///
-    /// If guard is [`Some`] and object ctime differs from the guard one then implementation must preserve
-    /// the object attributes and must return a status of [`Error::NotSync`].
-    async fn set_attr(
-        &self,
-        file: file::Handle,
-        attr: SetAttr,
-        guard: Option<SetAttrGuard>,
-        promise: impl promise::SetAttr,
-    );
-
-    ///
-    async fn lookup(&self, parent: file::Handle, name: String, promise: impl promise::Lookup);
-
-    async fn access(&self, file: file::Handle, mask: AccessMask, promise: impl promise::Access);
-
-    async fn read_link(&self, file: file::Handle, promise: impl promise::ReadLink);
-
-    async fn read(&self, file: file::Handle, offset: u64, count: u32, promise: impl promise::Read);
-
-    async fn write(
-        &self,
-        file: file::Handle,
-        offset: u64,
-        data: Vec<u8>,
-        mode: WriteMode,
-        promise: impl promise::Write,
-    );
-
-    async fn create(
-        &self,
-        parent: file::Handle,
-        name: String,
-        mode: CreateMode,
-        promise: impl promise::Create,
-    );
-
-    async fn make_dir(
-        &self,
-        parent: file::Handle,
-        name: String,
-        attr: SetAttr,
-        promise: impl promise::MakeDir,
-    );
-
-    async fn make_symlink(
-        &self,
-        parent: file::Handle,
-        name: String,
-        target: &Path,
-        attr: SetAttr,
-        promise: impl promise::MakeSymlink,
-    );
-
-    async fn make_node(
-        &self,
-        parent: file::Handle,
-        name: String,
-        node: SpecialNode,
-        promise: impl promise::MakeNode,
-    );
-
-    async fn remove(&self, parent: file::Handle, name: String, promise: impl promise::Remove);
-
-    async fn remove_dir(
-        &self,
-        parent: file::Handle,
-        name: String,
-        promise: impl promise::RemoveDir,
-    );
-
-    async fn rename(
-        &self,
-        from_parent: file::Handle,
-        from_name: String,
-        to_parent: file::Handle,
-        to_name: String,
-        promise: impl promise::Rename,
-    );
-
-    async fn link(
-        &self,
-        source: file::Handle,
-        new_parent: file::Handle,
-        new_name: String,
-        promise: impl promise::Link,
-    );
-
-    async fn read_dir(
-        &self,
-        file: file::Handle,
-        cookie: DirectoryCookie,
-        verifier: CookieVerifier,
-        max_bytes: u32,
-        promise: impl promise::ReadDir,
-    );
-
-    async fn read_dir_plus(
-        &self,
-        file: file::Handle,
-        cookie: DirectoryCookie,
-        verifier: CookieVerifier,
-        max_bytes: u32,
-        max_files: u32,
-        promise: impl promise::ReadDirPlus,
-    );
-
-    async fn fs_stat(&self, file: file::Handle, promise: impl promise::FsStat);
-
-    async fn fs_info(&self, file: file::Handle, promise: impl promise::FsInfo);
-
-    async fn path_conf(&self, file: file::Handle, promise: impl promise::PathConf);
-
-    async fn commit(
-        &self,
-        file: file::Handle,
-        offset: u64,
-        count: u32,
-        promise: impl promise::Commit,
-    );
-}
+pub trait Vfs {}

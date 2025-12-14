@@ -1,5 +1,7 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
+use async_trait::async_trait;
+
 use crate::vfs;
 
 use super::file;
@@ -9,10 +11,11 @@ type Result = std::result::Result<vfs::WccData, (vfs::Error, vfs::WccData)>;
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Copy, Clone)]
 pub struct Guard {
-    ctime: file::Time,
+    pub ctime: file::Time,
 }
 
 /// Defines callback to pass [`SetAttr::set_attr`] result into.
+#[async_trait]
 pub trait Promise {
     async fn keep(promise: Result);
 }
@@ -35,7 +38,7 @@ pub struct NewAttr {
     pub mtime: SetTime,
 }
 
-/// File object attribute change interface.
+#[async_trait]
 pub trait SetAttr {
     /// Changes one or more of the attributes of a file system object on the server.
     ///
