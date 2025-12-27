@@ -215,8 +215,6 @@ pub struct TestResult {
 
 #[async_trait]
 pub trait Nlm: Sync + Send {
-    async fn null(&self, promise: impl promise::Null);
-
     async fn test(&self, args: TestArgs, promise: impl promise::Test);
 
     async fn lock(&self, args: LockArgs, promise: impl promise::Lock);
@@ -228,7 +226,7 @@ pub trait Nlm: Sync + Send {
     // Server-to-Client callback
     async fn granted(&self, args: TestArgs, promise: impl promise::Granted);
 
-    // --- Message passing (Asynchronous) procedures ---
+    // Message passing (Asynchronous) procedures
     // These generally return void.
 
     async fn test_msg(&self, args: TestArgs, promise: impl promise::Void);
@@ -241,7 +239,7 @@ pub trait Nlm: Sync + Send {
 
     async fn granted_msg(&self, args: TestArgs, promise: impl promise::Void);
 
-    // --- Message Responses (Callback results) ---
+    // Message Responses (Callback results)
     // These are sent by the server back to client (or vice versa) to report results of _msg calls.
 
     async fn test_res(&self, res: TestResult, promise: impl promise::MsgResult);
@@ -254,7 +252,7 @@ pub trait Nlm: Sync + Send {
 
     async fn granted_res(&self, res: LockResult, promise: impl promise::MsgResult);
 
-    // --- DOS Sharing ---
+    // DOS Sharing
 
     async fn share(&self, args: ShareArgs, promise: impl promise::Share);
 

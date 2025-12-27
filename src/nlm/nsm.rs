@@ -3,17 +3,6 @@ use async_trait::async_trait;
 /// Length of the private data.
 pub const PRIVATE_LEN: usize = 16;
 
-pub type StatusResult 
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    /// NSM agrees to monitor.
-    Success = 0,
-    /// NSM cannot monitor.
-    Fail = 1
-}
-
 /// Name of the host.
 /// Used for both `mon_name` (remote) and `my_name` (local).
 #[allow(dead_code)]
@@ -41,7 +30,6 @@ pub struct HostId {
 }
 
 /// Monitor key: "monitor mon_name for my_id".
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct MonitorKey {
     /// The host to watch (Remote server).
@@ -50,8 +38,7 @@ pub struct MonitorKey {
     pub id: HostId
 }
 
-/// Corresponds to XDR `mon`.
-/// Arguments for monitor procedure.
+/// Arguments for monitor procedure. Corresponds to XDR `mon`.
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct MonitorArgs {
@@ -61,24 +48,15 @@ pub struct MonitorArgs {
     pub private: [u8; PRIVATE_LEN]
 }
 
-/// Corresponds to XDR `sm_stat_res`.
-/// Result for `monitor` and `stat`.
-#[derive(Clone)]
-pub struct NsmStatusResult {
-    /// Return status of the call, that indicates,
-    /// whether NSM agreed to monitor the given host or not.
-    pub result: Status,
-    /// State number of the NSM the request was sent to.
-    pub state: HostState
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NsmFailError {
-    /// Актуальный state number NSM-сервера, который обработал запрос.
+    /// Actual state number of the NSM the request was sent to
     pub state: HostState, 
 }
 
-pub type NsmStatusResult = std::result::Result<HostState, Nsm>
+/// Corresponds to XDR `sm_stat_res`.
+/// Result for `monitor` and `stat`.
+pub type NsmStatusResult = std::result::Result<HostState, NsmFailError>;
 
 /// Corresponds to XDR `status`
 /// Arguments for `notify`.
@@ -92,47 +70,69 @@ pub struct NotifyArgs {
     pub private: [u8; PRIVATE_LEN]
 }
 
+mod Nsm {
+    
+}
+
 #[async_trait]
 pub trait Nsm: Sync + Send {
     /// This procedure does no work.
     /// It is made available to allow server response testing and timing.
+    /// 
+    /// Note: Corresponds to `SM_NULL` from NSM protocol.
     async fn null(&self);
 
     /// Registers a request to monitor a host.
+    /// 
+    /// Note: Corresponds to `SM_MON` from NSM protocol.
     async fn monitor(&self, args: MonitorArgs, promise: impl promise::Monitor);
 
     /// Stops monitoring a specific host for a specific client.
     /// Returns current local NSM state.
+    /// 
+    /// Note: Corresponds to `SM_UNMON` from NSM protocol.
     async fn unmonitor(&self, args: MonitorKey, promise: impl promise::State);
 
     /// Removes all monitoring requests from a specific client ID.
     /// Returns current local NSM state.
+    /// 
+    /// Note: Corresponds to `SM_UNMON_ALL` from NSM protocol.
     async fn unmonitor_all(&self, args: HostId, promise: impl promise::State);
 
+    /// Notifies each host on its notify list of the change in state.
+    /// The host will be found in the notify list if `monitor` (XDR: `SM_MON`)
+    /// call was made to the NSM to register the host.
+    /// 
+    /// Note: Corresponds to `SM_NOTIFY` from NSM protocol.
     async fn notify(&self, args: NotifyArgs, promise: impl promise::Void);
 
     /// Debug helper to simulate a crash/reboot logic.
-    async fn simu_crash(&self, promise: impl promise::Void);
+    /// 
+    /// Note: Corresponds to `SM_SIMU_CRASH` from NSM protocol.
+    async fn simulate_crash(&self, promise: impl promise::Void);
 
     /// Returns the status of the NSM itself.
+    /// 
+    /// Note: Corresponds to `SM_STAT` from NSM protocol.
     async fn stat(&self, promise: impl promise::Monitor);
 }
 
 mod promise {
-    use crate::nlm::nsm::{HostState};
+    use crate::nlm::nsm::{HostState, NsmStatusResult};
 
-    use super::NsmStatusResult;
-
-    /// Promise to return the result of `monitor` and `stat` procedures,
-    /// i. e. 
+    /// Promise to return the result of `monitor` and `stat` procedures.
     pub trait Monitor {
         fn keep(self, result: NsmStatusResult);
     }
 
+    /// Promise to return the result of `unmonitor` and `unmonitor_all` procedures.
+    /// The return value is the state number of the NSM server that processed the request.
     pub trait State {
         fn keep(self, result: HostState);
     }
 
+    /// Promise to return make some post-processing actions after processing
+    /// `notify` and `simulate_crash` procedures that have `void` return type.
     pub trait Void {
         fn keep(self);
     }
