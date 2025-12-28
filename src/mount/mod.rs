@@ -12,8 +12,6 @@ pub const MOUNT_HOST_NAME_LEN: usize = 255;
 /// Maximum bytes in a NFS v3 file handle.
 pub const HANDLE_SIZE: usize = 8;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
