@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+pub mod dump;
 pub mod mnt;
 
 /// Maximum bytes in a path name.
