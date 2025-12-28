@@ -41,8 +41,8 @@ pub trait Mnt {
     ///
     /// # Parameters:
     /// * `dirpath` --- a server pathname of a directory.
-    /// 
-    /// This procedure also results in the server adding a new entry 
+    ///
+    /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
     async fn mnt(&self, dirpath: DirPath, promise: impl Promise);
 }

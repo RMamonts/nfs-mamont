@@ -48,7 +48,7 @@ pub enum Error {
     ServerFault = 9,
 }
 
-/// Entry of the list maintained on the server of clients 
+/// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
 #[derive(Clone)]
 pub struct MountEntry {
