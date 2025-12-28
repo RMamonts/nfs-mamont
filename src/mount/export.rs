@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{ExportEntry, Result};
+use super::ExportEntry;
 
 /// Success result.
 pub struct Success {
@@ -15,15 +15,19 @@ pub struct Success {
     pub exports: Vec<ExportEntry>,
 }
 
+pub type Result = std::result::Result<Success, ()>;
+
 /// Defines callback to pass [`Export::export`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result<Success>);
+    async fn keep(result: Result);
 }
 
 #[async_trait]
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.
+    /// 
+    /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn export(&self, promise: impl Promise);
 }
