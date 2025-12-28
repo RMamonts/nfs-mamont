@@ -1,7 +1,7 @@
-//! Defines Mount version 3 [`Dump`] interface (Procedure 1).
+//! Defines Mount version 3 [`Dump`] interface (Procedure 2).
 //!
-//! as defined in RFC 1813 section 5.2.1.
-//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
+//! as defined in RFC 1813 section 5.2.2.
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
 
 use async_trait::async_trait;
 
