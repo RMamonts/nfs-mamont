@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{MountEntry, Result};
+use super::MountEntry;
 
 /// Success result.
 pub struct Success {
@@ -16,14 +16,18 @@ pub struct Success {
     mount_list: Vec<MountEntry>,
 }
 
+pub type Result = std::result::Result<Success, ()>;
+
 /// Defines callback to pass [`Dump::dump`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result<Success>);
+    async fn keep(result: Result);
 }
 
 #[async_trait]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.
+    ///
+    /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn dump(&self, promise: impl Promise);
 }
