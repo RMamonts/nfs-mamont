@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 pub mod mnt;
+pub mod umnt;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
