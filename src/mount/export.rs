@@ -27,7 +27,7 @@ pub trait Promise {
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.
-    /// 
+    ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn export(&self, promise: impl Promise);
 }
