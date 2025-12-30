@@ -7,8 +7,6 @@ use async_trait::async_trait;
 
 use super::{Cookie, HostName, HostState};
 
-pub type Result = std::result::Result<(), ()>;
-
 /// Status message, that is sent to clients by the NSM, local to the host
 /// that had the status change.
 #[allow(dead_code)]
@@ -24,7 +22,7 @@ pub struct StatusMessage {
 /// Defines callback to pass [`Notify::notify`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    fn keep();
 }
 
 #[async_trait]

@@ -5,12 +5,10 @@
 
 use async_trait::async_trait;
 
-pub type Result = std::result::Result<(), ()>;
-
 /// Defines callback to pass [`SimulateCrash::simulate_crash`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    fn keep();
 }
 
 #[async_trait]
