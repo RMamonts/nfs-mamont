@@ -5,12 +5,10 @@
 
 use async_trait::async_trait;
 
-pub type Result = std::result::Result<(), ()>;
-
 /// Defines callback to pass [`Null::null`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result);
+    async fn keep();
 }
 
 #[async_trait]
