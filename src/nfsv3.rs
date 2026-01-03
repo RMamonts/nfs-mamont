@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
-use num_derive::FromPrimitive;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 #[allow(dead_code)]
 const NFS_PROGRAM: u32 = 100003;
@@ -160,7 +160,7 @@ enum nfsstat3 {
 }
 
 #[allow(dead_code)]
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive, ToPrimitive)]
 pub enum ftype3 {
     NF3REG = 1,
     NF3DIR = 2,

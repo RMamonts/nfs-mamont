@@ -19,12 +19,10 @@ pub fn u32(dest: &mut dyn Write, n: u32) -> io::Result<()> {
     dest.write_u32::<BigEndian>(n)
 }
 
-#[allow(dead_code)]
 pub fn u64(dest: &mut dyn Write, n: u64) -> io::Result<()> {
     dest.write_u64::<BigEndian>(n)
 }
 
-#[allow(dead_code)]
 pub fn bool(dest: &mut dyn Write, b: bool) -> io::Result<()> {
     match b {
         true => dest.write_u32::<BigEndian>(1),
