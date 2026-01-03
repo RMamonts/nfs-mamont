@@ -1,4 +1,6 @@
 mod nfs;
+#[cfg(test)]
+mod tests;
 
 use std::io::{self, Error, ErrorKind, Write};
 
@@ -25,8 +27,8 @@ pub fn u64(dest: &mut dyn Write, n: u64) -> io::Result<()> {
 #[allow(dead_code)]
 pub fn bool(dest: &mut dyn Write, b: bool) -> io::Result<()> {
     match b {
-        true => dest.write_u32::<BigEndian>(0),
-        false => dest.write_u32::<BigEndian>(1),
+        true => dest.write_u32::<BigEndian>(1),
+        false => dest.write_u32::<BigEndian>(0),
     }
 }
 
@@ -36,8 +38,8 @@ pub fn option<T>(
     cont: impl FnOnce(T, &mut dyn Write) -> io::Result<()>,
 ) -> io::Result<()> {
     match opt {
-        Some(val) => dest.write_u32::<BigEndian>(0).and_then(|_| cont(val, dest)),
-        None => dest.write_u32::<BigEndian>(1),
+        Some(val) => bool(dest, true).and_then(|_| cont(val, dest)),
+        None => bool(dest, false),
     }
 }
 
