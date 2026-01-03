@@ -1,25 +1,24 @@
+mod nfs;
+
 use std::io::{self, Error, ErrorKind, Write};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use num_traits::ToPrimitive;
 
-#[allow(dead_code)]
 pub const ALIGNMENT: usize = 4;
 
-#[allow(dead_code)]
 fn padding(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])
 }
 
-#[allow(dead_code)]
-pub fn u32(dest: &mut dyn Write, n: u32) -> std::io::Result<()> {
+pub fn u32(dest: &mut dyn Write, n: u32) -> io::Result<()> {
     dest.write_u32::<BigEndian>(n)
 }
 
 #[allow(dead_code)]
-pub fn u64(dest: &mut dyn Write, n: u64) -> std::io::Result<()> {
+pub fn u64(dest: &mut dyn Write, n: u64) -> io::Result<()> {
     dest.write_u64::<BigEndian>(n)
 }
 
@@ -31,7 +30,6 @@ pub fn bool(dest: &mut dyn Write, b: bool) -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
 pub fn option<T>(
     dest: &mut dyn Write,
     opt: Option<T>,
@@ -43,19 +41,16 @@ pub fn option<T>(
     }
 }
 
-#[allow(dead_code)]
-pub fn array<'a, const N: usize>(dest: &mut dyn Write, slice: &'a [u8]) -> io::Result<()> {
-    dest.write_all(slice).and_then(|_| padding(dest, N))
+pub fn array<const N: usize>(dest: &mut dyn Write, slice: [u8; N]) -> io::Result<()> {
+    dest.write_all(&slice).and_then(|_| padding(dest, N))
 }
 
-#[allow(dead_code)]
 pub fn vector(dest: &mut dyn Write, vec: Vec<u8>) -> io::Result<()> {
     dest.write_u32::<BigEndian>(vec.len() as u32)
         .and_then(|_| dest.write_all(&vec))
         .and_then(|_| padding(dest, vec.len()))
 }
 
-#[allow(dead_code)]
 pub fn vec_max_size(dest: &mut dyn Write, vec: Vec<u8>, max_size: usize) -> io::Result<()> {
     if vec.len() > max_size {
         return Err(Error::new(ErrorKind::InvalidInput, "vector out of bounds"));
@@ -63,7 +58,6 @@ pub fn vec_max_size(dest: &mut dyn Write, vec: Vec<u8>, max_size: usize) -> io::
     vector(dest, vec)
 }
 
-#[allow(dead_code)]
 pub fn string_max_size(dest: &mut dyn Write, string: String, max_size: usize) -> io::Result<()> {
     vec_max_size(dest, string.into_bytes(), max_size)
 }
@@ -82,7 +76,7 @@ pub fn variant<T: ToPrimitive>(dest: &mut dyn Write, val: T) -> io::Result<()> {
 }
 
 #[allow(dead_code)]
-pub fn u32_as_usize(dest: &mut dyn Write, n: usize) -> io::Result<()> {
+pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
