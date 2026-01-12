@@ -17,6 +17,7 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
+    /// The post-operation attributes of the directory
     pub dir_attr: Option<file::Attr>,
 }
 
@@ -25,7 +26,7 @@ type Result = std::result::Result<Success, Fail>;
 /// Defines callback to pass [`Lookup::lookup`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    async fn keep(promise: Result);
 }
 
 #[async_trait]

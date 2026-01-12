@@ -23,7 +23,7 @@ type Result = std::result::Result<Success, Fail>;
 /// Defines callback to pass [`Lookup::lookup`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    async fn keep(promise: Result);
 }
 
 // TODO: implement Mask, issue #27

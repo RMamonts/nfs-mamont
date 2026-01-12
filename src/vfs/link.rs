@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 
@@ -29,7 +29,7 @@ type Result = std::result::Result<Success, Fail>;
 /// Defines callback to pass [`Link::link`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    async fn keep(promise: Result);
 }
 
 #[async_trait]
