@@ -4,7 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
 use async_trait::async_trait;
 
-/// Defines callback to pass [`Umntall::umnt`] result into.
+/// Defines callback to pass [`Umntall::umntall`] result into.
 #[async_trait]
 pub trait Promise {
     async fn keep();
