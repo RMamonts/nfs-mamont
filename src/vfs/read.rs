@@ -44,7 +44,7 @@ pub trait Read {
     ///    This must identify a file system object of type [`file::Type::Regular`],
     ///    otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.
     /// * `offset` --- The position within file at which the read is to begin. If
-    ///    `offset` is greater than ro equal to the size of the file, the [`Success`] is
+    ///    `offset` is greater than or equal to the size of the file, the [`Success`] is
     ///    returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
     /// * `count` --- The number of bytes of data that are to be read. If count is `0`, the
     ///    [`Read::read`] will succeed and return `0` bytes of data. Must be less then or equal
