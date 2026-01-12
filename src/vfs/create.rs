@@ -13,7 +13,7 @@ pub struct Verifier(pub [u8; VERIFY_LEN]);
 pub enum How {
     /// Means that the file should be created without checking
     /// for the existence of a duplicate file in the same
-    /// directory with initial arrtibutes for the file.
+    /// directory with initial attributes for the file.
     Unchecked(super::set_attr::NewAttr),
     /// Specifies that the server should check for the presence
     /// of a duplicate file before performing the create and
