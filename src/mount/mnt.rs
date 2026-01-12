@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{DirPath, Error, Handle};
+use crate::vfs::{FileHandle, FileName, NfsError};
 
 /// Authentication flavors.
 #[derive(Debug)]
@@ -21,13 +21,13 @@ pub enum AuthFlavor {
 pub struct Success {
     /// The file handle for the mounted directory.
     /// This file handle may be used in the NFS protocol.
-    pub file_handle: Handle,
+    pub file_handle: FileHandle,
     /// Vector of RPC authentication flavors that are supported with
     /// the client's use of the file handle (or any file handles derived from it)
     pub auth_flavors: Vec<AuthFlavor>,
 }
 
-pub type Result = std::result::Result<Success, Error>;
+pub type Result = std::result::Result<Success, NfsError>;
 
 /// Defines callback to pass [`Mnt::mnt`] result into.
 #[async_trait]
@@ -44,5 +44,5 @@ pub trait Mnt {
     ///
     /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&self, dirpath: DirPath, promise: impl Promise);
+    async fn mnt(&self, dirpath: FileName, promise: impl Promise);
 }
