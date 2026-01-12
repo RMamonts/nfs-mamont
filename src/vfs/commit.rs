@@ -9,7 +9,7 @@ use super::file;
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the file.
-    pub flie_wcc: vfs::WccData,
+    pub file_wcc: vfs::WccData,
     /// This is a cookie that the client can use to determine
     /// whether the server has rebooted between a call to [vfs::write::Write::write]
     /// and a subsequent call to [`Commit::commit`].
