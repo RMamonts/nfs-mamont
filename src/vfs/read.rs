@@ -21,7 +21,7 @@ pub struct Success {
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub status: vfs::Error,
+    pub error: vfs::Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }

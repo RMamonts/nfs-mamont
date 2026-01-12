@@ -15,7 +15,7 @@ pub struct Success {
 /// Fail result.
 pub struct Fail {
     pub object_attr: Option<file::Attr>,
-    pub status: vfs::Error,
+    pub error: vfs::Error,
 }
 
 type Result = std::result::Result<Success, Fail>;
