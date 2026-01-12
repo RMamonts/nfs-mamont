@@ -54,7 +54,7 @@ pub trait Write {
     ///   This must identify a file system object of type [`file::Type::Regular`].
     /// * `offset` --- The position within file at which the write is to begin.
     /// * `count` --- The number of bytes of data to be written. The size of data must be less
-    ///   than or equal to the fvalue of the TODO(wtmax) field. If greater, the server may
+    ///   than or equal to the value of the TODO(wtmax) field. If greater, the server may
     ///   write only TODO(wtmax) bytes, resulting in a short write.
     /// * `stable` --- If `stable` is [`StableHow::FileSync`], the server must commit the data
     ///   written plus all file system metadata to stable storage before returning results.
