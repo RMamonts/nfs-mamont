@@ -47,7 +47,7 @@ pub trait Read {
     ///    `offset` is greater than or equal to the size of the file, the [`Success`] is
     ///    returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
     /// * `count` --- The number of bytes of data that are to be read. If count is `0`, the
-    ///    [`Read::read`] will succeed and return `0` bytes of data. Must be less then or equal
+    ///    [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
     ///    to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
     ///    bytes, resulting in a shord read.
     async fn read(&self, file: file::Handle, offset: u64, count: u64, promise: impl Promise);
