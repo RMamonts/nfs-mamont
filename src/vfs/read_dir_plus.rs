@@ -3,16 +3,13 @@
 use async_trait::async_trait;
 
 use crate::vfs::{self};
+use crate::vfs::read_dir::CookieVerifier;
 
 use super::file;
 
 // TODO
 /// Identifies a point in the directory.
 pub struct Cookie {}
-
-// TODO
-/// Verifies that point identified by [`Cookie`] is still valid.
-pub struct CookieVerifier {}
 
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
