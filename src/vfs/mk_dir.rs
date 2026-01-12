@@ -35,7 +35,7 @@ pub trait Promise {
 
 #[async_trait]
 pub trait MkDir {
-    /// Ccreates a new subdirectory.
+    /// Creates a new subdirectory.
     ///
     /// # Parameters:
     ///
