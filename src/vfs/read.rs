@@ -40,7 +40,7 @@ pub trait Read {
     ///
     /// # Parameters:
     ///
-    /// * `file` --- The file handle of tthe file from which data is to be read.
+    /// * `file` --- The file handle of the file from which data is to be read.
     ///    This must identify a file system object of type [`file::Type::Regular`],
     ///    otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.
     /// * `offset` --- The position within file at which the read is to begin. If
