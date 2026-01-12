@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_UNMON`] interface (Procedure 3).
+//! Defines NSM SM_UNMON [`Unmonitor`] interface (Procedure 3).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_UNMON.htm>.

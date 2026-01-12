@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_STAT`] interface (Procedure 1).
+//! Defines NSM SM_STAT [`Stat`] interface (Procedure 1).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_STAT.htm>.

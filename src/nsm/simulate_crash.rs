@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_SIMU_CRASH`] interface (Procedure 5).
+//! Defines NSM SM_SIMU_CRASH [`SimulateCrash`] interface (Procedure 5).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_SIMU_CRASH.htm>.

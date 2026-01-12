@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_NULL`] interface (Procedure 0).
+//! Defines NSM SM_NULL [`Null`] interface (Procedure 0).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_SIMU_CRASH.htm>.

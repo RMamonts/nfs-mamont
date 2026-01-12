@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_MON`] interface (Procedure 2).
+//! Defines NSM SM_MON [`Monitor`] interface (Procedure 2).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_MON.htm>.

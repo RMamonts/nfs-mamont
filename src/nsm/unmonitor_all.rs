@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_UNMON_ALL`] interface (Procedure 4).
+//! Defines NSM SM_UNMON_ALL [`UnmonitorAll`] interface (Procedure 4).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_UNMON_ALL.htm>.

@@ -1,4 +1,4 @@
-//! Defines NSM [`SM_NOTIFY`] interface (Procedure 6).
+//! Defines NSM SM_NOTIFY [`Notify`] interface (Procedure 6).
 //!
 //! As defined in XNFS, Version 3W (Open Group Technical Standard)
 //! <https://pubs.opengroup.org/onlinepubs/9629799/SM_NOTIFY.htm>.
