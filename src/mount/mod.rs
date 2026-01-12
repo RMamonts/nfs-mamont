@@ -5,6 +5,7 @@
 
 pub mod dump;
 pub mod mnt;
+pub mod umnt;
 pub mod umntall;
 
 /// Maximum bytes in a path name.
