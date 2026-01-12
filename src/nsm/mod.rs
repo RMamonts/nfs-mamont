@@ -12,25 +12,24 @@ pub mod unmonitor_all;
 /// Length of the private data.
 pub const PRIVATE_LEN: usize = 16;
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct Cookie(pub [u8; PRIVATE_LEN]);
 
 /// Name of the host to be monitored by the NSM.
 /// Corresponds to XDR `sm_name`
-#[allow(dead_code)]
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostName(pub String);
 
 /// State counter of the host monitored by NSM or the NSM host itself,
 /// that should be incremented on reboot.
-#[allow(dead_code)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HostState(pub u32);
 
 /// RPC identity of the local process (e.g., NLM) asking for monitoring.
 /// Corresponds to XDR `my_id`
-#[allow(dead_code)]
+
 #[derive(Clone)]
 pub struct WatcherId {
     /// Name of the host where the callback process runs.
@@ -44,7 +43,7 @@ pub struct WatcherId {
 }
 
 /// Contains the name of the host to be monitored and the watcher's RPC call-back information.
-#[allow(dead_code)]
+
 #[derive(Clone)]
 pub struct MonitorPair {
     /// The host to watch.
