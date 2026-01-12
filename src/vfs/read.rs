@@ -49,6 +49,6 @@ pub trait Read {
     /// * `count` --- The number of bytes of data that are to be read. If count is `0`, the
     ///    [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
     ///    to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
-    ///    bytes, resulting in a shord read.
+    ///    bytes, resulting in a short read.
     async fn read(&self, file: file::Handle, offset: u64, count: u64, promise: impl Promise);
 }
