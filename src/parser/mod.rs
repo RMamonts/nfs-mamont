@@ -1,10 +1,9 @@
+use std::io;
+use std::string::FromUtf8Error;
 pub mod nfsv3;
 pub mod primitive;
 #[cfg(test)]
 mod tests;
-
-use std::io;
-use std::string::FromUtf8Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
