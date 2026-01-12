@@ -51,7 +51,7 @@ pub trait Write {
     /// # Parameters:
     ///
     /// * `file` --- The file handle for the file to which data is to be written.
-    ///   This must idenrify a file system object of type [`file::Type::Regular`].
+    ///   This must identify a file system object of type [`file::Type::Regular`].
     /// * `offset` --- The position within file at which the write is to begin.
     /// * `count` --- The number of bytes of data to be written. The size of data must be less
     ///   than or equal to the fvalue of the TODO(wtmax) field. If greater, the server may
