@@ -5,6 +5,7 @@
 
 pub mod dump;
 pub mod mnt;
+pub mod null;
 pub mod umnt;
 pub mod umntall;
 
