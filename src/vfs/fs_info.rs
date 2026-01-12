@@ -68,5 +68,5 @@ pub trait FsInfo {
     /// # Parameters:
     ///
     /// * `root` --- A file handle identifying a mount point in the file system.
-    async fn fs_info(&self, root: file::Handle);
+    async fn fs_info(&self, root: file::Handle, promise: impl Promise);
 }

@@ -42,5 +42,5 @@ pub trait Commit {
     /// * `offset` --- The position within the file at which the flush is to begin.
     /// * `count` --- The number of bytes of data to flush. If count is `0`, a
     ///   flush from offset to the end of file is done.
-    async fn commit(&self, file: file::Handle, offset: u64, count: u64);
+    async fn commit(&self, file: file::Handle, offset: u64, count: u64, promise: impl Promise);
 }

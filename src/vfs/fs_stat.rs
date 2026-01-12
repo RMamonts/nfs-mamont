@@ -59,5 +59,5 @@ pub trait FsStat {
     /// # Parameters:
     ///
     /// * `root` --- A file handle identifying a mount point in the file system.
-    async fn fs_stat(&self, root: file::Handle);
+    async fn fs_stat(&self, root: file::Handle, promise: impl Promise);
 }

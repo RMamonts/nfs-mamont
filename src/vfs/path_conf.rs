@@ -57,5 +57,5 @@ pub trait PathConf {
     /// # Parameters:
     ///
     /// * `file` --- The file handle for the file system object.
-    async fn path_conf(&self, file: file::Handle);
+    async fn path_conf(&self, file: file::Handle, promise: impl Promise);
 }
