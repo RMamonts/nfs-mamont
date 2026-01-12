@@ -24,7 +24,7 @@ pub struct Success {
     /// If `true`, the server will reject any request to change
     /// either the owner or the group associated with a file if
     /// the caller is not the privileged user. (Uid 0.)
-    pub chown_restircted: bool,
+    pub chown_restricted: bool,
     /// If `true`, the server file system does not distinguish case when interpreting filenames.
     pub case_insensitive: bool,
     /// If `true`, the server file system will preserve the case of a name during a
