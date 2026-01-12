@@ -18,7 +18,7 @@ pub enum Type {
     BlockDevice = 3,
     /// Character special device file.
     CharacterDevice = 4,
-    /// Symbolik link.
+    /// Symbolic link.
     Symlink = 5,
     /// Socket file.
     Socket = 6,
