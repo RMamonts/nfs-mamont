@@ -9,7 +9,7 @@ use super::file;
 pub const VERIFY_LEN: usize = 8;
 pub struct Verifier(pub [u8; VERIFY_LEN]);
 
-/// Describs how the server is to handle the file creation.
+/// Describes how the server is to handle the file creation.
 pub enum How {
     /// Means that the file should be created without checking
     /// for the existence of a duplicate file in the same
