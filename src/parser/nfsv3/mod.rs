@@ -1,3 +1,5 @@
+pub mod procedures;
+
 use std::io::Read;
 
 use crate::nfsv3::{
@@ -6,6 +8,7 @@ use crate::nfsv3::{
 };
 use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64, u8};
 use crate::parser::{Error, Result};
+use crate::vfs::{FileHandle, FileName};
 
 #[allow(dead_code)]
 const MAX_FILENAME: usize = 255;
@@ -13,6 +16,13 @@ const MAX_FILENAME: usize = 255;
 pub const MAX_FILEHANDLE: usize = 8;
 #[allow(dead_code)]
 const MAX_FILEPATH: usize = 1024;
+
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
+pub struct DirOpArg {
+    pub object: FileHandle,
+    pub name: FileName,
+}
 
 #[allow(dead_code)]
 pub fn specdata3(src: &mut dyn Read) -> Result<specdata3> {
@@ -76,6 +86,7 @@ pub fn createhow3(src: &mut dyn Read) -> Result<createhow3> {
         2 => Ok(createhow3::EXCLUSIVE(array::<{ NFS3_CREATEVERFSIZE as usize }, u8>(src, |s| {
             u8(s)
         })?)),
+
         _ => Err(Error::EnumDiscMismatch),
     }
 }

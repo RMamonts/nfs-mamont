@@ -10,7 +10,7 @@ use super::{Error, Result};
 pub const ALIGNMENT: usize = 4;
 
 #[allow(dead_code)]
-fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
+pub fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)

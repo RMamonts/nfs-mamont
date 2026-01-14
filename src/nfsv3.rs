@@ -375,7 +375,7 @@ struct READ3resfail {
 
 #[allow(dead_code)]
 #[derive(FromPrimitive)]
-enum stable_how {
+pub enum stable_how {
     UNSTABLE = 0,
     DATA_SYNC = 1,
     FILE_SYNC = 2,
@@ -403,7 +403,6 @@ struct WRITE3resfail {
     file_wcc: wcc_data,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
 pub enum createhow3 {
     UNCHECKED(sattr3) = 0,
