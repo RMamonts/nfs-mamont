@@ -1,8 +1,9 @@
 use std::io::Cursor;
 
+use byteorder::{BigEndian, WriteBytesExt};
+
 use crate::parser::primitive::{array, string, string_max_size, vector};
 use crate::parser::Error;
-use byteorder::{BigEndian, WriteBytesExt};
 
 #[test]
 fn test_vec_u8() {

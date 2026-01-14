@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::parser::nfsv3::procedures::{
     access, commit, create, fsinfo, fsstat, get_attr, link, lookup, mkdir, mknod, pathconf, read,
     readdir, readdir_plus, readlink, remove, rename, rmdir, set_attr, symlink, AccessArgs,
@@ -11,7 +13,6 @@ use crate::vfs::{
     AccessMask, CookieVerifier, CreateMode, DirectoryCookie, FileHandle, FileName, FileTime,
     FsPath, SetAttr, SetAttrGuard, SetTime, SpecialNode,
 };
-use std::io::Cursor;
 
 #[test]
 fn test_access() {

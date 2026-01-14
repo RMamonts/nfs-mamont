@@ -1,3 +1,17 @@
+//! RPC message parser for NFS and MOUNT protocols.
+//!
+//! This module provides the [`RpcParser`] struct, which parses XDR-encoded RPC messages
+//! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
+//!
+//! - RPC message framing and headers
+//! - Authentication (currently only AUTH_NONE)
+//! - NFSv3 procedure parsing (all 22 procedures)
+//! - MOUNT protocol procedure parsing
+//! - Error handling and message discarding on protocol errors
+//!
+//! The parser uses a [`CountBuffer`] to efficiently read from async streams while
+//! supporting retry logic for parsing operations that may need additional data.
+
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 
@@ -23,6 +37,32 @@ use crate::rpc::{rpc_message_type, RPC_VERSION};
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 2500;
 
+/// Parser for RPC messages over async streams.
+///
+/// `RpcParser` parses complete RPC messages from an async stream, handling
+/// message framing, RPC headers, authentication, and procedure-specific arguments.
+/// It supports both NFSv3 and MOUNT protocols.
+///
+/// The parser uses an allocator for operations that require dynamic memory
+/// allocation (such as WRITE operations with variable-length data).
+///
+/// # Type Parameters
+///
+/// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
+/// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
+///
+/// # Example
+///
+/// ```no_run
+/// use tokio::io::AsyncRead;
+/// use crate::parser::parser_struct::RpcParser;
+/// use crate::allocator::Allocator;
+///
+/// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
+/// let mut parser = RpcParser::new(socket, alloc, 4096);
+/// let args = parser.parse_message().await?;
+/// # }
+/// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: A,
     buffer: CountBuffer<S>,
@@ -32,6 +72,17 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+    /// Creates a new `RpcParser` with the specified buffer size.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket` - The async stream to read RPC messages from
+    /// * `allocator` - The allocator to use for dynamic memory allocation
+    /// * `size` - The size of the internal read buffer (used for each of the two buffers)
+    ///
+    /// # Returns
+    ///
+    /// A new `RpcParser` instance ready to parse messages.
     pub fn new(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
@@ -41,7 +92,20 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    // here we are positively sure, that we can read without retry function
+    /// Reads and parses the RPC message header.
+    ///
+    /// The message header contains:
+    /// - A 32-bit word with the most significant bit indicating if this is the last fragment
+    /// - The remaining 31 bits containing the fragment size
+    /// - The transaction ID (XID)
+    ///
+    /// Currently, fragmented messages are not supported and will return an error.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the header was successfully parsed, or an error if:
+    /// - The message is fragmented (not supported)
+    /// - An I/O error occurs
     async fn read_message_header(&mut self) -> Result<()> {
         let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
@@ -58,8 +122,24 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    // here we are positively sure, that we can read without retry function,
-    // because there is Minimum size
+    /// Parses the RPC call header.
+    ///
+    /// The RPC header contains:
+    /// - Message type (must be CALL, not REPLY)
+    /// - RPC version (must match the expected version)
+    /// - Program number (NFS or MOUNT)
+    /// - Program version
+    /// - Procedure number
+    /// - Authentication information
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`RpcMessage`] containing the program, version, and procedure,
+    /// or an error if:
+    /// - The message type is REPLY (not expected for incoming calls)
+    /// - The RPC version doesn't match
+    /// - Authentication fails
+    /// - An I/O error occurs
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type == rpc_message_type::REPLY as u32 {
@@ -83,6 +163,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(RpcMessage { program, procedure, version })
     }
 
+    /// Parses and validates RPC authentication.
+    ///
+    /// Currently only AUTH_NONE is supported.
+    ///
+    /// # Returns
+    ///
+    /// Returns [`AuthStat::AuthOk`] if authentication succeeds, or an error
+    /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
         match self.buffer.parse_with_retry(auth).await?.flavor {
             AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
@@ -92,6 +180,27 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
+    /// Parses procedure-specific arguments based on the RPC message header.
+    ///
+    /// This method dispatches to the appropriate parser based on the program
+    /// (NFS or MOUNT) and procedure number. It supports all NFSv3 procedures
+    /// (0-21) and MOUNT procedures (0-5).
+    ///
+    /// For the WRITE procedure (NFS procedure 7), this uses a special adapter
+    /// that allocates memory for the write data.
+    ///
+    /// # Arguments
+    ///
+    /// * `head` - The parsed RPC message header containing program, version, and procedure
+    ///
+    /// # Returns
+    ///
+    /// Returns a boxed [`Arguments`] enum variant containing the parsed procedure arguments,
+    /// or an error if:
+    /// - The program is not recognized (NFS or MOUNT)
+    /// - The program version doesn't match
+    /// - The procedure number is invalid
+    /// - Parsing the procedure arguments fails
     async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
         match head.program {
             NFS_PROGRAM => match head.version {
@@ -151,6 +260,22 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
+    /// Parses a complete RPC message from the stream.
+    ///
+    /// This is the main entry point for parsing. It performs the following steps:
+    /// 1. Reads the message header (framing)
+    /// 2. Parses the RPC call header
+    /// 3. Parses procedure-specific arguments
+    /// 4. Validates that all data in the frame was consumed
+    /// 5. Cleans up internal state for the next message
+    ///
+    /// If a protocol error occurs (version mismatch, auth error, etc.), the parser
+    /// will attempt to discard the remaining message data to maintain stream alignment.
+    ///
+    /// # Returns
+    ///
+    /// Returns a boxed [`Arguments`] enum variant containing the parsed procedure arguments,
+    /// or an error if parsing fails at any stage.
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
@@ -167,7 +292,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(proc)
     }
 
-    // used after successful parsing - with no errors
+    /// Finalizes parsing by validating that all frame data was consumed.
+    ///
+    /// This method is called after successful parsing to ensure that:
+    /// - All bytes in the message frame were consumed
+    /// - Internal buffer state is reset for the next message
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if validation passes, or an error if unparsed data
+    /// remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
         if self.buffer.total_bytes() != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
@@ -182,6 +316,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
+    /// Handles errors by potentially discarding the current message.
+    ///
+    /// For certain protocol-level errors (version mismatches, auth errors, etc.),
+    /// this method discards the remaining message data to maintain stream alignment
+    /// for subsequent messages. For other errors, it returns them as-is.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error that occurred during parsing
+    ///
+    /// # Returns
+    ///
+    /// Returns the error, potentially after attempting to discard the message.
     async fn match_errors(&mut self, error: Error) -> Error {
         if let Error::RpcVersionMismatch(_)
         | Error::ProgramMismatch
@@ -195,8 +342,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    // used after non-fatal errors - to clean remaining data from socket
-    // these would work with set of errors we are going to use if for
+    /// Discards the remaining data in the current message frame.
+    ///
+    /// This method is called after protocol-level errors to skip over the
+    /// remaining bytes in the current message, ensuring the stream is aligned
+    /// for parsing the next message.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the message was successfully discarded, or an error
+    /// if an I/O error occurs while discarding.
     async fn discard_current_message(&mut self) -> Result<()> {
         let remaining = self.current_frame_size - self.buffer.total_bytes();
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
@@ -205,6 +360,26 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 }
 
+/// Special adapter for parsing WRITE procedure arguments.
+///
+/// The WRITE procedure requires special handling because it includes variable-length
+/// data that must be allocated. This function:
+/// 1. Parses the fixed portion of the WRITE arguments
+/// 2. Allocates memory for the write data
+/// 3. Reads the data from the buffer (handling both sync and async portions)
+/// 4. Discards any padding bytes
+///
+/// # Arguments
+///
+/// * `alloc` - The allocator to use for allocating the write data buffer
+/// * `buffer` - The buffer to read from
+///
+/// # Returns
+///
+/// Returns the parsed [`WriteArgs`] with allocated data, or an error if:
+/// - Parsing fails
+/// - Memory allocation fails
+/// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
