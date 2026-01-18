@@ -19,6 +19,7 @@ pub fn args(src: &mut impl Read) -> Result<create::Args> {
 mod tests {
     use std::io::Cursor;
 
+    use crate::parser::Error;
     use crate::vfs::create;
     use crate::vfs::set_attr;
 
@@ -61,5 +62,39 @@ mod tests {
         ];
 
         assert!(super::args(&mut Cursor::new(DATA)).is_err());
+    }
+
+    #[test]
+    fn test_how_unchecked() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let result = super::how(&mut Cursor::new(&DATA)).unwrap();
+        assert!(matches!(result, create::How::Unchecked(_)));
+    }
+
+    #[test]
+    fn test_how_exclusive() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x02, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
+            0x0D, 0x0E, 0x0F, 0x10,
+        ];
+
+        let result = super::how(&mut Cursor::new(&DATA)).unwrap();
+        assert!(matches!(result, create::How::Exclusive(_)));
+    }
+
+    #[test]
+    fn test_how_failure() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03];
+
+        assert!(matches!(super::how(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
     }
 }

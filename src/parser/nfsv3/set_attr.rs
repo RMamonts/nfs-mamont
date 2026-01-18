@@ -6,6 +6,10 @@ use crate::parser::nfsv3::file;
 use crate::parser::Result;
 use crate::vfs::set_attr;
 
+pub fn set_time(_src: &mut impl Read) -> Result<set_attr::SetTime> {
+    todo!()
+}
+
 pub fn new_attr(_src: &mut impl Read) -> Result<set_attr::NewAttr> {
     todo!()
 }
@@ -69,5 +73,62 @@ mod tests {
 
         let result = super::args(&mut Cursor::new(DATA));
         assert!(matches!(result, Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_set_time_dont_change() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
+
+        let result = super::set_time(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, set_attr::SetTime::DontChange));
+    }
+
+    #[test]
+    fn test_set_time_to_server() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x01];
+
+        let result = super::set_time(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, set_attr::SetTime::ToServer));
+    }
+
+    #[test]
+    fn test_set_time_to_client() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x02
+        ];
+
+        let result = super::set_time(&mut Cursor::new(DATA)).unwrap();
+
+        assert!(matches!(result, set_attr::SetTime::ToClient(file::Time { seconds: 1, nanos: 2 })));
+    }
+
+    #[test]
+    fn test_set_time_failure() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03];
+
+        assert!(matches!(super::set_time(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+    }
+
+    #[test]
+    fn test_new_attr_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01,
+        ];
+
+        let result = super::new_attr(&mut Cursor::new(DATA)).unwrap();
+
+        assert!(result.mode.is_none());
+        assert_eq!(result.uid, Some(1));
+        assert!(result.gid.is_none());
+        assert_eq!(result.size, Some(1));
+        assert!(matches!(result.atime, set_attr::SetTime::DontChange));
+        assert!(matches!(result.mtime, set_attr::SetTime::ToServer));
     }
 }

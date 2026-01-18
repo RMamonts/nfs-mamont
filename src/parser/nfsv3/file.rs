@@ -58,3 +58,127 @@ pub fn device(src: &mut impl Read) -> Result<file::Device> {
 pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::parser::Error;
+    use crate::vfs::file;
+
+    use super::device;
+
+    #[test]
+    fn test_parse_device_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02
+        ];
+
+        let result = device(&mut Cursor::new(DATA)).unwrap();
+
+        assert_eq!(result.major, 1);
+        assert_eq!(result.minor, 2);
+    }
+
+    #[test]
+    fn test_device_error() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[0x00, 0x00, 0x01];
+        let mut src = Cursor::new(DATA);
+
+        assert!(matches!(device(&mut src), Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_nfstime_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02
+        ];
+
+        let result = super::time(&mut Cursor::new(DATA)).unwrap();
+
+        assert_eq!(result.seconds, 1);
+        assert_eq!(result.nanos, 2);
+    }
+
+    #[test]
+    fn test_nfstime_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x01];
+
+        assert!(matches!(super::time(&mut Cursor::new(&DATA)), Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_nfs_fh3_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        ];
+
+        let result = super::handle(&mut Cursor::new(DATA)).unwrap();
+
+        assert_eq!(result.0, [0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_nfs_fh3_badfh() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        ];
+
+        let result = super::handle(&mut Cursor::new(DATA));
+
+        assert!(matches!(result, Err(Error::BadFileHandle)));
+    }
+
+    #[test]
+    fn test_type_regular() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x01];
+
+        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, file::Type::Regular));
+    }
+
+    #[test]
+    fn test_type_dir() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02];
+
+        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, file::Type::Directory));
+    }
+
+    #[test]
+    fn test_type_block() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x02,
+        ];
+
+        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, file::Type::BlockDevice));
+    }
+
+    #[test]
+    fn test_type_symlink() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x05];
+
+        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
+        assert!(matches!(result, file::Type::Symlink));
+    }
+
+    #[test]
+    fn tets_type_falure() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x08];
+
+        assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+    }
+}

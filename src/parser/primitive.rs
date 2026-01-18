@@ -106,7 +106,7 @@ pub fn string(src: &mut dyn Read) -> Result<String> {
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
-pub fn path(src: &mut impl Read) -> Result<PathBuf> {
+pub fn path(_src: &mut impl Read) -> Result<PathBuf> {
     todo!()
 }
 
