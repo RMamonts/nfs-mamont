@@ -1,10 +1,9 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-mod file;
-
 pub mod access;
 pub mod commit;
 pub mod create;
+pub mod file;
 pub mod fs_info;
 pub mod fs_stat;
 pub mod get_attr;

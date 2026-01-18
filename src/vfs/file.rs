@@ -49,9 +49,9 @@ pub struct Attr {
     /// See [`Type`].
     pub device: Option<Device>,
     /// The file system identifier for the file system.
-    pub fsid: u64,
+    pub fs_id: u64,
     /// The number which uniquely identifies the file within its file system.
-    pub fileid: u64,
+    pub file_id: u64,
     /// The time when the file data was last accessed.
     pub atime: Time,
     /// The time when the file data was last modified.

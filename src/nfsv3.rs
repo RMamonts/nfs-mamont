@@ -1,5 +1,7 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
+use num_derive::FromPrimitive;
+
 #[allow(dead_code)]
 const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
@@ -9,9 +11,13 @@ const NFS3_FHSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_COOKIEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
-const NFS3_CREATEVERFSIZE: u32 = 8;
+pub const NFS3_CREATEVERFSIZE: u32 = 8;
 #[allow(dead_code)]
 const NFS3_WRITEVERFSIZE: u32 = 8;
+#[allow(dead_code)]
+const MAX_FILENAME_SIZE: u32 = 255;
+#[allow(dead_code)]
+const MAX_PATH_SIZE: u32 = 255;
 
 #[allow(dead_code)]
 #[repr(u32)]
@@ -40,8 +46,10 @@ enum NFS_V3 {
     NFSPROC3_COMMIT(COMMIT3args) = 21,
 }
 
-type filename3 = Vec<u8>;
-type nfspath3 = Vec<u8>;
+#[allow(dead_code)]
+type filename3 = String;
+#[allow(dead_code)]
+type nfspath3 = String;
 type fileid3 = u64;
 type cookie3 = u64;
 type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE as usize];
@@ -152,7 +160,8 @@ enum nfsstat3 {
 }
 
 #[allow(dead_code)]
-enum ftype3 {
+#[derive(FromPrimitive)]
+pub enum ftype3 {
     NF3REG = 1,
     NF3DIR = 2,
     NF3BLK = 3,
@@ -163,20 +172,20 @@ enum ftype3 {
 }
 
 #[allow(dead_code)]
-struct specdata3 {
-    specdata1: u32,
-    specdata2: u32,
+pub struct specdata3 {
+    pub specdata1: u32,
+    pub specdata2: u32,
 }
 
 #[allow(dead_code)]
-struct nfs_fh3 {
-    data: [u8; NFS3_FHSIZE as usize],
+pub struct nfs_fh3 {
+    pub data: [u8; NFS3_FHSIZE as usize],
 }
 
 #[allow(dead_code)]
-struct nfstime3 {
-    seconds: u32,
-    nseconds: u32,
+pub struct nfstime3 {
+    pub seconds: u32,
+    pub nseconds: u32,
 }
 
 #[allow(dead_code)]
@@ -221,7 +230,7 @@ type set_size3 = Option<size3>;
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum set_atime {
+pub enum set_atime {
     DONT_CHANGE = 0,
     SET_TO_SERVER_TIME = 1,
     SET_TO_CLIENT_TIME(nfstime3) = 2,
@@ -229,26 +238,26 @@ enum set_atime {
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum set_mtime {
+pub enum set_mtime {
     DONT_CHANGE = 0,
     SET_TO_SERVER_TIME = 1,
     SET_TO_CLIENT_TIME(nfstime3) = 2,
 }
 
 #[allow(dead_code)]
-struct sattr3 {
-    mode: set_mode3,
-    uid: set_uid3,
-    gid: set_gid3,
-    size: set_size3,
-    atime: set_atime,
-    mtime: set_mtime,
+pub struct sattr3 {
+    pub mode: set_mode3,
+    pub uid: set_uid3,
+    pub gid: set_gid3,
+    pub size: set_size3,
+    pub atime: set_atime,
+    pub mtime: set_mtime,
 }
 
 #[allow(dead_code)]
-struct diropargs3 {
-    dir: nfs_fh3,
-    name: filename3,
+pub struct diropargs3 {
+    pub dir: nfs_fh3,
+    pub name: filename3,
 }
 
 #[allow(dead_code)]
@@ -365,7 +374,8 @@ struct READ3resfail {
 }
 
 #[allow(dead_code)]
-enum stable_how {
+#[derive(FromPrimitive)]
+pub enum stable_how {
     UNSTABLE = 0,
     DATA_SYNC = 1,
     FILE_SYNC = 2,
@@ -393,9 +403,8 @@ struct WRITE3resfail {
     file_wcc: wcc_data,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
-enum createhow3 {
+pub enum createhow3 {
     UNCHECKED(sattr3) = 0,
     GUARDED(sattr3) = 1,
     EXCLUSIVE(createverf3) = 2,
@@ -438,9 +447,9 @@ struct MKDIR3resfail {
 }
 
 #[allow(dead_code)]
-struct symlinkdata3 {
-    symlink_attributes: sattr3,
-    symlink_data: nfspath3,
+pub struct symlinkdata3 {
+    pub symlink_attributes: sattr3,
+    pub symlink_data: nfspath3,
 }
 
 #[allow(dead_code)]
@@ -462,14 +471,14 @@ struct SYMLINK3resfail {
 }
 
 #[allow(dead_code)]
-struct devicedata3 {
-    dev_attributes: sattr3,
-    spec: specdata3,
+pub struct devicedata3 {
+    pub dev_attributes: sattr3,
+    pub spec: specdata3,
 }
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum mknoddata3 {
+pub enum mknoddata3 {
     NF3REG = 1,
     NF3DIR = 2,
     NF3BLK(devicedata3) = 3,

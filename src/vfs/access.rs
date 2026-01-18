@@ -29,7 +29,7 @@ pub trait Promise {
 // TODO: implement Mask, issue #27
 /// Mask of [`Access::access`] rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Mask(u32);
+pub struct Mask(pub u32);
 
 /// [`Access::access`] arguments.
 pub struct Args {
