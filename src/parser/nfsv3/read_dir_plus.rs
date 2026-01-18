@@ -8,11 +8,11 @@ use crate::parser::Result;
 use crate::vfs::read_dir;
 use crate::vfs::read_dir_plus;
 
-pub fn cookie(src: &mut impl Read) -> Result<read_dir::Cookie> {
+pub fn cookie(_src: &mut impl Read) -> Result<read_dir::Cookie> {
     todo!()
 }
 
-pub fn cookie_verifier(src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
+pub fn cookie_verifier(_src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
     todo!()
 }
 
