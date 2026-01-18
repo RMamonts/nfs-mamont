@@ -6,6 +6,7 @@ use crate::vfs;
 
 use super::file;
 
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum StableHow {
     Unstable,
     DataSync,

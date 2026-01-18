@@ -25,3 +25,27 @@ pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {
         max_count: u64(src)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    #[test]
+    fn test_readdir_plus() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x08, 0x00,
+            0x00, 0x00, 0x10, 0x00,
+        ];
+
+        let result = super::args(&mut Cursor::new(DATA)).unwrap();
+
+        assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        // TODO(cookie and cookie_verifier)
+        assert_eq!(result.dir_count, 2048);
+        assert_eq!(result.max_count, 4096);
+    }
+}
