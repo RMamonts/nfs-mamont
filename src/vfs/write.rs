@@ -44,40 +44,37 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Write::write`] arguments.
+pub struct Args {
+    /// The file handle for the file to which data is to be written.
+    /// This must identify a file system object of type [`file::Type::Regular`].
+    pub file: file::Handle,
+    /// The position within file at which the write is to begin.
+    pub offset: u64,
+    /// If `stable` is [`StableHow::FileSync`], the server must commit the data
+    /// written plus all file system metadata to stable storage before returning results.
+    /// If `stable` is [`StableHow::DataSync`], then server must commit all of the data
+    /// to stable storage and enough of the metadata to retrieve the data before returning.
+    /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
+    /// `data` and the metadata to stable storage, including all or none, before returning a reply
+    /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
+    /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
+    pub stable: StableHow,
+    /// The data to be written to the file.
+    ///
+    /// The size of data must be less than or equal to the value of the TODO(wtmax) field.
+    /// If greater, the server may write only TODO(wtmax) bytes, resulting in a short write.
+    pub data: Vec<u8>,
+}
+
 #[async_trait]
 pub trait Write {
     /// Writes data to a file.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- The file handle for the file to which data is to be written.
-    ///   This must identify a file system object of type [`file::Type::Regular`].
-    /// * `offset` --- The position within file at which the write is to begin.
-    /// * `count` --- The number of bytes of data to be written. The size of data must be less
-    ///   than or equal to the value of the TODO(wtmax) field. If greater, the server may
-    ///   write only TODO(wtmax) bytes, resulting in a short write.
-    /// * `stable` --- If `stable` is [`StableHow::FileSync`], the server must commit the data
-    ///   written plus all file system metadata to stable storage before returning results.
-    ///   If `stable` is [`StableHow::DataSync`], then server must commit all of the data
-    ///   to stable storage and enough of the metadata to retrieve the data before returning.
-    ///   If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
-    ///   `data` and the metadata to stable storage, including all or none, before returning a reply
-    ///   the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    ///   commited to stable storage.
-    /// * `data` --- The data to be written to the file.
     ///
     /// Some implementations may return [`vfs::Error::NoSpace`] instead of
     /// [`vfs::Error::QuotaExceeded`] when a user's quota is exceeded.
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(
-        &self,
-        file: file::Handle,
-        offset: u64,
-        count: u64,
-        stable: StableHow,
-        data: Vec<u8>,
-        promise: impl Promise,
-    );
+    async fn write(&self, args: Args, promise: impl Promise);
 }

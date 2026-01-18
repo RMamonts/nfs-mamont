@@ -56,14 +56,18 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Create::create`] arguments.
+pub struct Args {
+    /// The file handle for the directory in which the file is to be created.
+    pub dir: file::Handle,
+    /// The name that is to be associated with the created file.
+    pub name: String,
+    /// The file creation mode. See [`How`] documentation.
+    pub how: How,
+}
+
 #[async_trait]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory in which the file is to be created.
-    /// * `name` --- The name that is to be associated with the created file.
-    /// * `how` --- The file creation mode. See [`How`] documentation.
-    async fn create(&self, dir: file::Handle, name: String, how: How, promise: impl Promise);
+    async fn create(&self, args: Args, promise: impl Promise);
 }

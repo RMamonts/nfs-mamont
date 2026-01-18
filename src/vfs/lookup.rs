@@ -29,17 +29,19 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Lookup::lookup`] arguments.
+pub struct Args {
+    /// File handle for the directory to search.
+    pub parent: file::Handle,
+    /// File name to be searched for.
+    pub name: String,
+}
+
 #[async_trait]
 pub trait Lookup {
     /// Searches a directory for a specific name and returns the file handle for the corresponding
     /// file system object.
     ///
-    /// # Parameters:
-    ///
-    /// * `parent` --- the file handle for the directory to search.
-    /// * `name` --- the file name to be searched for.
-    /// * `proimise` --- TODO.
-    ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, parent: file::Handle, name: String, promise: impl Promise);
+    async fn lookup(&self, args: Args, promise: impl Promise);
 }

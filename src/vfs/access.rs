@@ -31,15 +31,18 @@ pub trait Promise {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Mask(u32);
 
+/// [`Access::access`] arguments.
+pub struct Args {
+    /// File handle for the file system object to which access is to be checked
+    pub file: file::Handle,
+    /// Mask of access permissions to check
+    pub mask: Mask,
+}
+
 #[async_trait]
 pub trait Access {
     /// Determines the access rights that a user, as identified by the credentials
     /// in the request, has with respect to a file system object.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- file handle for the file system object to which access is to be checked.
-    /// * `access` --- a bit mask of access permissions to check.
     ///
     /// The results of this procedure are necessarily advisory in
     /// nature.  That is, a return status of [`Ok`] and the
@@ -47,5 +50,5 @@ pub trait Access {
     /// such access will be allowed to the file system object in
     /// the future, as access rights can be revoked by the server
     /// at any time.
-    async fn access(&self, file: file::Handle, mask: Mask, promise: impl Promise);
+    async fn access(&self, args: Args, promise: impl Promise);
 }

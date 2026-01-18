@@ -35,16 +35,21 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Symlink::symlink`] arguments.
+pub struct Args {
+    /// The file handle for the directory in which the symbolic link to be created.
+    pub dir: file::Handle,
+    /// The name that is to be associated with the created symbolic link.
+    pub name: String,
+    /// The initial attributes for the symbolic link.
+    pub attr: super::set_attr::NewAttr,
+    /// The symbolic link data.
+    pub path: PathBuf,
+}
+
 #[async_trait]
 pub trait Symlink {
-    /// Creates a new symbolic link
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory in which the symbolic link to be created.
-    /// * `name` --- The name that is to be associated with the created symbolic link.
-    /// * `attr` --- The initial attributes for the symbolic link.
-    /// * `data` --- The symbolic link data.
+    /// Creates a new symbolic link.
     ///
     /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
     ///
@@ -52,12 +57,5 @@ pub trait Symlink {
     /// created in a single atomic operation. That is, once the symbolic link is visible,
     /// there must not be a window where a [`super::read_link::Read_link::read_link`] would fail or
     /// return incorrect data.
-    async fn symlink(
-        &self,
-        dir: file::Handle,
-        name: String,
-        attr: super::set_attr::NewAttr,
-        path: PathBuf,
-        promise: impl Promise,
-    );
+    async fn symlink(&self, args: Args, promise: impl Promise);
 }

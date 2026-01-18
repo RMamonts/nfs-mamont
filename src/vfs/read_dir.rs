@@ -57,21 +57,26 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`ReadDir::read_dir`] arguments.
+pub struct Args {
+    /// The file handle for the directory to be read.
+    pub dir: file::Handle,
+    /// This should be set to 0 in the first request to read the directory.
+    /// On subsequent requests, it should be a cookie as returned by the server.
+    pub cookie: Cookie,
+    /// This should be set to 0 in the first request to read the directory.
+    /// On subsequent requests, it should be a cookie_verifier as returned by the server. The
+    /// cookie_verifier must match that returned by the [`ReadDir::read_dir`] in which the cookie
+    /// was acquired.
+    pub cookie_verifier: CookieVerifier,
+    /// The maximum size of the [`Success`] structure, in bytes. The size must include
+    /// all XDR overhead. The server is free to return less than count bytes of data.
+    pub count: u64,
+}
+
 #[async_trait]
 pub trait ReadDir {
     /// Retrieves a variable number of entries, in sequence, from a directory.
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory to be read.
-    /// * `cookie` --- This should be set to 0 in the first request to read the directory.
-    ///   On subsequent requests, it should be a cookie as returned by the server.
-    /// * `cookie_verifier` --- This should be set to 0 in the first request to read the directory.
-    ///   On subsequent requests, it should be a cookie_verifier as returned by the server. The
-    ///   cookie_verifier must match that returned by the [`ReadDir::read_dir`] in which the cookie
-    ///   was acquired.
-    /// * `count` --- The maximum size of the READDIR3resok structure, in bytes. The size must include
-    ///   all XDR overhead. The server is free to return less than count bytes of data.
     ///
     /// If the server detects that the cookie is no longer valid, the server will reject the
     /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
@@ -79,12 +84,5 @@ pub trait ReadDir {
     /// The server may return fewer than `count`` bytes of XDR-encoded entries.
     /// The `count` specified by the client in the request should be greater than or equal to
     /// TODO(FSINFO dtpref).
-    async fn read_dir(
-        &self,
-        dir: file::Handle,
-        cookie: Cookie,
-        cookie_verifier: CookieVerifier,
-        count: u64,
-        promise: impl Promise,
-    );
+    async fn read_dir(&self, args: Args, promise: impl Promise);
 }

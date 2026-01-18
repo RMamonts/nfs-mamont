@@ -32,15 +32,19 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Commit::commit`] arguments.
+pub struct Args {
+    /// The file handle for the file to which data is to be flushed.
+    pub file: file::Handle,
+    /// The position within the file at which the flush is to begin.
+    pub offset: u64,
+    /// The number of bytes of data to flush. If count is `0`, a
+    /// flush from offset to the end of file is done.
+    pub count: u64,
+}
+
 #[async_trait]
 pub trait Commit {
     /// Forces or flushes data to stable storage that was previously written.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- The file handle for the file to which data is to be flushed.
-    /// * `offset` --- The position within the file at which the flush is to begin.
-    /// * `count` --- The number of bytes of data to flush. If count is `0`, a
-    ///   flush from offset to the end of file is done.
-    async fn commit(&self, file: file::Handle, offset: u64, count: u64, promise: impl Promise);
+    async fn commit(&self, args: Args, promise: impl Promise);
 }

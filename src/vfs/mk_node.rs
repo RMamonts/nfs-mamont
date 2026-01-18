@@ -46,20 +46,24 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`MkNode::mk_node`] arguments.
+pub struct Args {
+    /// The file handle for the directory in which the special file is to be created.
+    pub dir: file::Handle,
+    /// The name that is to be associated with the created special file.
+    pub name: String,
+    /// The type of the special file to be created. See [`What`].
+    pub what: What,
+}
+
 #[async_trait]
 pub trait MkNode {
     /// Creates a new special file of the type `what`.
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory in which the special file is to be created.
-    /// * `name` --- The name that is to be associated with the created special file.
-    /// * `what` --- The type of the special file to be created. See [`What`].
     ///
     /// If the server does not support any of the defined types, the error,
     /// [`vfs::Error::NotSupported`], should be returned.
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, dir: file::Handle, name: String, what: What, promise: impl Promise);
+    async fn mk_node(&self, args: Args, promise: impl Promise);
 }

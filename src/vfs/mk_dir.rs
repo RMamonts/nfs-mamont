@@ -33,22 +33,20 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`MkDir::mk_dir`] arguments.
+pub struct Args {
+    /// The file handle for the directory in which the subdirectory is to be created.
+    pub dir: file::Handle,
+    /// The name that is to be associated with the created subdirectory.
+    pub name: String,
+    /// The initial attributes for the subdirectory.
+    pub attr: super::set_attr::NewAttr,
+}
+
 #[async_trait]
 pub trait MkDir {
     /// Creates a new subdirectory.
     ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory in which the subdirectory is to be created.
-    /// * `name` --- The name that is to be associated with the created subdirectory.
-    /// * `how` --- The initial attributes for the subdirectory.
-    ///
     /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
-    async fn mk_dir(
-        &self,
-        dir: file::Handle,
-        name: String,
-        attr: super::set_attr::NewAttr,
-        promise: impl Promise,
-    );
+    async fn mk_dir(&self, args: Args, promise: impl Promise);
 }

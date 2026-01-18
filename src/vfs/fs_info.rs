@@ -61,12 +61,14 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`FsInfo::fs_info`] arguments.
+pub struct Args {
+    /// A file handle identifying a mount point in the file system.
+    pub root: file::Handle,
+}
+
 #[async_trait]
 pub trait FsInfo {
     /// Retrieves nonvolatile file system state information and general information.
-    ///
-    /// # Parameters:
-    ///
-    /// * `root` --- A file handle identifying a mount point in the file system.
-    async fn fs_info(&self, root: file::Handle, promise: impl Promise);
+    async fn fs_info(&self, args: Args, promise: impl Promise);
 }

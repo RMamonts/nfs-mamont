@@ -29,13 +29,16 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Remove::remove`] arguments.
+pub struct Args {
+    /// The file handle for the directory from which the entry is to be removed.
+    pub dir: file::Handle,
+    /// The name of the entry to be removed.
+    pub name: String,
+}
+
 #[async_trait]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory from which the entry is to be removed.
-    /// * `name` --- The name of the entry to be removed.
-    async fn remove(&self, dir: file::Handle, name: String, promise: impl Promise);
+    async fn remove(&self, args: Args, promise: impl Promise);
 }

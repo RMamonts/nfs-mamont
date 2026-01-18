@@ -38,24 +38,29 @@ pub struct NewAttr {
     pub mtime: SetTime,
 }
 
+/// [`SetAttr::set_attr`] arguments.
+pub struct Args {
+    /// The file handle for the object.
+    pub file: file::Handle,
+    /// Structure describing the attributes to be set and the new values for those attributes.
+    pub new_attr: NewAttr,
+    /// Optionally verify that `ctime` of the object matches the client expectation.
+    pub guard: Option<Guard>,
+}
+
 #[async_trait]
 pub trait SetAttr {
     /// Changes one or more of the attributes of a file system object on the server.
     ///
-    /// # Parameters:
-    ///
-    /// * `file` --- file handle for the object.
-    /// * `attr` --- structure describing the attributes to be set and the new values for those attributes.
-    /// * `guard` --- optionally verify that `ctime` of the object matches the client expectation.
-    ///
-    /// If guard is [`Some`] and object ctime differs from the guard one then implementation must preserve
-    /// the object attributes and must return a status of [`vfs::Error::NotSync`].
+    /// If [`Args::guard`] is [`Some`] and object ctime differs from the guard one then
+    /// implementation must preserve the object attributes and must return a status of
+    /// [`vfs::Error::NotSync`].
     ///
     /// [`SetAttr::set_attr`] is not guaranteed atomic. A failed [`SetAttr::set_attr`]
     /// may partially change a file's attributes.
     ///
-    /// The `new_attr` size field is used to request changes to the size of a file.
-    /// A value of 0 causes the file to be truncated, a value less then the current size
+    /// The [`Args::new_attr`] size field is used to request changes to the size of a file.
+    /// A value of `0` causes the file to be truncated, a value less then the current size
     /// of the file causes data from new size to the end off the file to be discarded,
     /// and a size greater than the current size of the file causes logically zeroed
     /// data bytes to be added to the end of the file. Implementation are free to
@@ -70,16 +75,5 @@ pub trait SetAttr {
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than
     ///   can be represented in 32 bit.
-    ///
-    /// # Returns via [`Promise::keep`]:
-    ///
-    /// * Ok([`vfs::WccData`]) containing the old and new attributes for the object.
-    /// * Err([`vfs::Wcc`]) containing the old and new attributes for the object.
-    async fn set_attr(
-        &self,
-        file: file::Handle,
-        new_attr: NewAttr,
-        guard: Option<Guard>,
-        promise: impl Promise,
-    );
+    async fn set_attr(&self, args: Args, promise: impl Promise);
 }

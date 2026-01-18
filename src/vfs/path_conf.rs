@@ -50,12 +50,14 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`PathConf::path_conf`] arguments.
+pub struct Args {
+    /// The file handle for the file system object.
+    pub file: file::Handle,
+}
+
 #[async_trait]
 pub trait PathConf {
     /// Retrieves the pathconf information for a file or directory.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- The file handle for the file system object.
-    async fn path_conf(&self, file: file::Handle, promise: impl Promise);
+    async fn path_conf(&self, args: Args, promise: impl Promise);
 }

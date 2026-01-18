@@ -34,21 +34,25 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Read::read`] arguments.
+pub struct Args {
+    /// The file handle of the file from which data is to be read.
+    /// This must identify a file system object of type [`file::Type::Regular`],
+    /// otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.
+    pub file: file::Handle,
+    /// The position within file at which the read is to begin. If
+    /// `offset` is greater than or equal to the size of the file, the [`Success`] is
+    /// returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
+    pub offset: u64,
+    /// The number of bytes of data that are to be read. If count is `0`, the
+    /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
+    /// to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
+    /// bytes, resulting in a short read.
+    pub count: u64,
+}
+
 #[async_trait]
 pub trait Read {
     /// Reads data from a file.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- The file handle of the file from which data is to be read.
-    ///    This must identify a file system object of type [`file::Type::Regular`],
-    ///    otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.
-    /// * `offset` --- The position within file at which the read is to begin. If
-    ///    `offset` is greater than or equal to the size of the file, the [`Success`] is
-    ///    returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
-    /// * `count` --- The number of bytes of data that are to be read. If count is `0`, the
-    ///    [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
-    ///    to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
-    ///    bytes, resulting in a short read.
-    async fn read(&self, file: file::Handle, offset: u64, count: u64, promise: impl Promise);
+    async fn read(&self, args: Args, promise: impl Promise);
 }

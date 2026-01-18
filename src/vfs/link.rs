@@ -32,30 +32,28 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`Link::link`] arguments.
+pub struct Args {
+    /// The file handle for the existing file system object.
+    pub file: file::Handle,
+    /// The file handle for the directory in which the link is to be created.
+    pub dir: file::Handle,
+    /// The name that is to be associated with the created link.
+    pub name: String,
+}
+
 #[async_trait]
 pub trait Link {
-    /// Creates a hard link from `file` to `name``, in the directory, `dir`.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- The file handle for the existing file system object.
-    /// * `dir` --- The file handle for the directory in which the link is to be created.
-    /// * `name` --- The name that is to be associated with the created link.
+    /// Creates a hard link from [`Args::file`] to [`Args::name`], in the directory, [`Args::dir`].
     ///
     /// Changes to any property of the hard-linked files are reflected in all of the linked files.
     ///
-    /// `file` and `dir` must reside on the same file system and server, means
+    /// [`Args::file`] and [`Args::dir`] must reside on the same file system and server, means
     /// that the fsid fields in the attributes for the directories are the same. If they reside on different file systems,
     /// the error, [`vfs::Error::XDev`], is returned.
     ///
-    /// On some servers, the filenames, "." and "..", are illegal as either from.name or to.name.
+    /// On some servers, the filenames, "." and "..", are illegal as either from.name or to.name. // TODO(i.erin) strange comment.
     /// In addition, neither from.name nor to.name can be an alias for from.dir. These servers will
     /// return the error, [`vfs::Error::InvalidArgument`], in these cases.
-    async fn link(
-        &self,
-        file: file::Handle,
-        dir: file::Handle,
-        name: String,
-        promise: impl Promise,
-    );
+    async fn link(&self, args: Args, promise: impl Promise);
 }

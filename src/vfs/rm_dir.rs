@@ -29,19 +29,22 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`RmDir::rm_dir`] arguments.
+pub struct Args {
+    /// The file handle for the directory from which the subdirectory is to be removed.
+    pub dir: file::Handle,
+    /// The name of the subdirectory to be removed.
+    pub name: String,
+}
+
 #[async_trait]
 pub trait RmDir {
     /// Removes (deletes) a subdirectory from a directory.
-    ///
-    /// # Parameters:
-    ///
-    /// * `dir` --- The file handle for the directory from which the subdirectory is to be removed.
-    /// * `name` --- The name of the subdirectory to be removed.
     ///
     /// On some servers, the filename, ".", is illegal. These servers will return
     /// the error, [`vfs::Error::InvalidArgument`].
     ///
     /// On some servers, the filename, "..", is illegal. These servers will return
     /// the error, [`vfs::Error::Exist`].
-    async fn rm_dir(&self, dir: file::Handle, name: String, promise: impl Promise);
+    async fn rm_dir(&self, args: Args, promise: impl Promise);
 }

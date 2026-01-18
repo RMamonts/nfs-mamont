@@ -12,13 +12,14 @@ pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
+/// [`GetAttr::get_attr`] aguments.
+pub struct Args {
+    /// File handle of an object whose attributes are to be retrieved.
+    pub file: file::Handle,
+}
+
 #[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    ///
-    /// # Parameters:
-    ///
-    /// * `file` --- file handle of an object whose attributes are to be retrieved.
-    /// * `promise` --- promise to perform the required operation and return the result.
-    async fn get_attr(&self, file: file::Handle, promise: impl Promise);
+    async fn get_attr(&self, args: Args, promise: impl Promise);
 }

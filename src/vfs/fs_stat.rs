@@ -52,12 +52,14 @@ pub trait Promise {
     async fn keep(promise: Result);
 }
 
+/// [`FsStat::fs_stat`] arguments.
+pub struct Args {
+    /// A file handle identifying a mount point in the file system.
+    pub root: file::Handle,
+}
+
 #[async_trait]
 pub trait FsStat {
     /// Retrieves volatile file system state information.
-    ///
-    /// # Parameters:
-    ///
-    /// * `root` --- A file handle identifying a mount point in the file system.
-    async fn fs_stat(&self, root: file::Handle, promise: impl Promise);
+    async fn fs_stat(&self, args: Args, promise: impl Promise);
 }
