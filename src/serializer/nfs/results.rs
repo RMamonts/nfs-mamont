@@ -46,56 +46,56 @@ struct DirListPlus {
 }
 
 #[allow(dead_code)]
-struct GetAttrResOk {
+pub struct GetAttrResOk {
     pub object: FileAttr,
 }
 
 #[allow(dead_code)]
-struct SetAttrResOk {
+pub struct SetAttrResOk {
     obj_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct SetAttrResFail {
+pub struct SetAttrResFail {
     obj_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct LookUpResOk {
+pub struct LookUpResOk {
     object: nfs_fh3,
     obj_attributes: Option<FileAttr>,
     dir_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct LookUpResFail {
+pub struct LookUpResFail {
     dir_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct AccessResOk {
+pub struct AccessResOk {
     obj_attributes: Option<FileAttr>,
     access: u32,
 }
 
 #[allow(dead_code)]
-struct AccessResFail {
+pub struct AccessResFail {
     obj_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct ReadLinkResOk {
+pub struct ReadLinkResOk {
     symlink_attributes: Option<FileAttr>,
     data: FsPath,
 }
 
 #[allow(dead_code)]
-struct ReadLinkResFail {
+pub struct ReadLinkResFail {
     symlink_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct ReadResOk {
+pub struct ReadResOk {
     file_attributes: Option<FileAttr>,
     count: u32,
     eof: bool,
@@ -104,12 +104,12 @@ struct ReadResOk {
 }
 
 #[allow(dead_code)]
-struct ReadResFail {
+pub struct ReadResFail {
     file_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct WriteResOk {
+pub struct WriteResOk {
     file_wcc: WccData,
     count: u32,
     committed: WriteMode,
@@ -117,128 +117,128 @@ struct WriteResOk {
 }
 
 #[allow(dead_code)]
-struct WriteResFail {
+pub struct WriteResFail {
     file_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct CreateResOk {
+pub struct CreateResOk {
     obj: Option<FileHandle>,
     obj_attributes: Option<FileAttr>,
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct CreateResFail {
+pub struct CreateResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct MkdirResOk {
+pub struct MkdirResOk {
     obj: Option<FileHandle>,
     obj_attributes: Option<FileAttr>,
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct MkdirResFail {
+pub struct MkdirResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct SymlinkResOk {
+pub struct SymlinkResOk {
     obj: Option<FileHandle>,
     obj_attributes: Option<FileAttr>,
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct SymlinkResFail {
+pub struct SymlinkResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct MknodResOk {
+pub struct MknodResOk {
     obj: Option<FileHandle>,
     obj_attributes: Option<FileAttr>,
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct MknodResFail {
+pub struct MknodResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RemoveResOk {
+pub struct RemoveResOk {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RemoveResFail {
+pub struct RemoveResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RmdirResOk {
+pub struct RmdirResOk {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RmdirResFail {
+pub struct RmdirResFail {
     dir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RenameResOk {
+pub struct RenameResOk {
     fromdir_wcc: WccData,
     todir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct RenameResFail {
+pub struct RenameResFail {
     fromdir_wcc: WccData,
     todir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct LinkResOk {
+pub struct LinkResOk {
     file_attributes: Option<FileAttr>,
     linkdir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct LinkResFail {
+pub struct LinkResFail {
     file_attributes: Option<FileAttr>,
     linkdir_wcc: WccData,
 }
 
 #[allow(dead_code)]
-struct ReadDirResOk {
+pub struct ReadDirResOk {
     dir_attributes: Option<FileAttr>,
     cookieverf: [u8; NFS3_COOKIEVERFSIZE],
     reply: DirList,
 }
 
 #[allow(dead_code)]
-struct ReadDirResFail {
+pub struct ReadDirResFail {
     dir_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct ReadDirPlusResOk {
+pub struct ReadDirPlusResOk {
     dir_attributes: Option<FileAttr>,
     cookieverf: [u8; NFS3_COOKIEVERFSIZE],
     reply: DirListPlus,
 }
 
 #[allow(dead_code)]
-struct ReadDirPlusResFail {
+pub struct ReadDirPlusResFail {
     dir_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct FsstatResOk {
+pub struct FsstatResOk {
     obj_attributes: Option<FileAttr>,
     tbytes: Size,
     fbytes: Size,
@@ -250,12 +250,12 @@ struct FsstatResOk {
 }
 
 #[allow(dead_code)]
-struct FsstatResFail {
+pub struct FsstatResFail {
     obj_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct FsinfoResOk {
+pub struct FsinfoResOk {
     obj_attributes: Option<FileAttr>,
     rtmax: u32,
     rtpref: u32,
@@ -270,12 +270,12 @@ struct FsinfoResOk {
 }
 
 #[allow(dead_code)]
-struct FsinfoResFail {
+pub struct FsinfoResFail {
     obj_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct PathConfResOk {
+pub struct PathConfResOk {
     obj_attributes: Option<FileAttr>,
     linkmax: u32,
     name_max: u32,
@@ -286,18 +286,18 @@ struct PathConfResOk {
 }
 
 #[allow(dead_code)]
-struct PathConfResFail {
+pub struct PathConfResFail {
     obj_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-struct CommitResOk {
+pub struct CommitResOk {
     file_wcc: WccData,
     verf: [u8; WRITE_VERIFIER_SIZE],
 }
 
 #[allow(dead_code)]
-struct CommitResFail {
+pub struct CommitResFail {
     file_wcc: WccData,
 }
 

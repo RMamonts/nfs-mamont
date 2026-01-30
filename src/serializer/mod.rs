@@ -1,4 +1,6 @@
+mod mount;
 mod nfs;
+mod serialize_struct;
 #[cfg(test)]
 mod tests;
 

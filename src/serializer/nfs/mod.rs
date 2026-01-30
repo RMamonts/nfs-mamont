@@ -1,4 +1,4 @@
-mod results;
+pub mod results;
 
 use std::io::{Result, Write};
 
