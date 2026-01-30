@@ -22,6 +22,7 @@ pub const MAX_PATH_LEN: usize = 1024;
 /// NFSv3 status codes (RFC 1813 2.6).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum NfsError {
+    Ok,
     // NFS3ERR_PERM
     Perm,
     // NFS3ERR_NOENT
