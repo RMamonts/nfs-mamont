@@ -1,5 +1,5 @@
 mod mount;
-mod nfs;
+pub mod nfs;
 mod serialize_struct;
 #[cfg(test)]
 mod tests;
@@ -82,4 +82,14 @@ pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
+}
+
+#[allow(dead_code)]
+pub fn vector_u32(dest: &mut dyn Write, vec: Vec<u32>) -> io::Result<()> {
+    dest.write_u32::<BigEndian>(vec.len() as u32).and_then(|_| {
+        for v in vec {
+            dest.write_u32::<BigEndian>(v)?;
+        }
+        Ok(())
+    })
 }

@@ -10,6 +10,7 @@
 //! followed by the `ok` or `fail` arm payload described by RFC 1813.
 use std::io::{self, Write};
 
+use crate::allocator::Slice;
 use crate::nfsv3::nfstime3;
 use crate::serializer::nfs::{nfs_fh3, nfstime};
 use crate::serializer::{array, bool, option, string_max_size, u32, u64};
@@ -51,13 +52,28 @@ pub struct GetAttrResOk {
 }
 
 #[allow(dead_code)]
+pub fn get_attr_res_ok(dest: &mut impl Write, arg: GetAttrResOk) -> io::Result<()> {
+    fattr3(dest, arg.object)
+}
+
+#[allow(dead_code)]
 pub struct SetAttrResOk {
     obj_wcc: WccData,
 }
 
 #[allow(dead_code)]
+pub fn set_attr_res_ok(dest: &mut impl Write, arg: SetAttrResOk) -> io::Result<()> {
+    wcc_data(dest, arg.obj_wcc)
+}
+
+#[allow(dead_code)]
 pub struct SetAttrResFail {
     obj_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn set_attr_res_fail(dest: &mut impl Write, arg: SetAttrResFail) -> io::Result<()> {
+    wcc_data(dest, arg.obj_wcc)
 }
 
 #[allow(dead_code)]
@@ -68,8 +84,20 @@ pub struct LookUpResOk {
 }
 
 #[allow(dead_code)]
+pub fn lookup_res_ok(dest: &mut impl Write, arg: LookUpResOk) -> io::Result<()> {
+    nfs_fh3(dest, arg.object)?;
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))
+}
+
+#[allow(dead_code)]
 pub struct LookUpResFail {
     dir_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn lookup_res_fail(dest: &mut impl Write, arg: LookUpResFail) -> io::Result<()> {
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -79,8 +107,19 @@ pub struct AccessResOk {
 }
 
 #[allow(dead_code)]
+pub fn access_res_ok(dest: &mut impl Write, arg: AccessResOk) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    u32(dest, arg.access)
+}
+
+#[allow(dead_code)]
 pub struct AccessResFail {
     obj_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn access_res_fail(dest: &mut impl Write, arg: AccessResFail) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -90,8 +129,19 @@ pub struct ReadLinkResOk {
 }
 
 #[allow(dead_code)]
+pub fn read_link_res_ok(dest: &mut impl Write, arg: ReadLinkResOk) -> io::Result<()> {
+    option(dest, arg.symlink_attributes, |attr, dest| fattr3(dest, attr))?;
+    nfspath3(dest, arg.data)
+}
+
+#[allow(dead_code)]
 pub struct ReadLinkResFail {
     symlink_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn read_link_res_fail(dest: &mut impl Write, arg: ReadLinkResFail) -> io::Result<()> {
+    option(dest, arg.symlink_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -99,13 +149,25 @@ pub struct ReadResOk {
     file_attributes: Option<FileAttr>,
     count: u32,
     eof: bool,
-    //replace with Slice of allocator
-    data: Vec<u8>,
+    data: Slice,
+}
+
+// slice is read separately
+#[allow(dead_code)]
+pub fn read_res_ok_partial(dest: &mut impl Write, arg: ReadResOk) -> io::Result<()> {
+    option(dest, arg.file_attributes, |attr, dest| fattr3(dest, attr))?;
+    u32(dest, arg.count)?;
+    bool(dest, arg.eof)
 }
 
 #[allow(dead_code)]
 pub struct ReadResFail {
     file_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn read_res_fail(dest: &mut impl Write, arg: ReadResFail) -> io::Result<()> {
+    option(dest, arg.file_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -117,8 +179,21 @@ pub struct WriteResOk {
 }
 
 #[allow(dead_code)]
+pub fn write_res_ok(dest: &mut impl Write, arg: WriteResOk) -> io::Result<()> {
+    wcc_data(dest, arg.file_wcc)?;
+    u32(dest, arg.count)?;
+    stable_how(dest, arg.committed)?;
+    array(dest, arg.verf)
+}
+
+#[allow(dead_code)]
 pub struct WriteResFail {
     file_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn write_res_fail(dest: &mut impl Write, arg: WriteResFail) -> io::Result<()> {
+    wcc_data(dest, arg.file_wcc)
 }
 
 #[allow(dead_code)]
@@ -129,8 +204,20 @@ pub struct CreateResOk {
 }
 
 #[allow(dead_code)]
+pub fn create_res_ok(dest: &mut impl Write, arg: CreateResOk) -> io::Result<()> {
+    option(dest, arg.obj, |fh, dest| nfs_fh3(dest, nfs_fh3 { data: fh.0 }))?;
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct CreateResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn create_res_fail(dest: &mut impl Write, arg: CreateResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -141,8 +228,20 @@ pub struct MkdirResOk {
 }
 
 #[allow(dead_code)]
+pub fn mkdir_res_ok(dest: &mut impl Write, arg: MkdirResOk) -> io::Result<()> {
+    option(dest, arg.obj, |fh, dest| nfs_fh3(dest, nfs_fh3 { data: fh.0 }))?;
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct MkdirResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn mkdir_res_fail(dest: &mut impl Write, arg: MkdirResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -153,8 +252,20 @@ pub struct SymlinkResOk {
 }
 
 #[allow(dead_code)]
+pub fn symlink_res_ok(dest: &mut impl Write, arg: SymlinkResOk) -> io::Result<()> {
+    option(dest, arg.obj, |fh, dest| nfs_fh3(dest, nfs_fh3 { data: fh.0 }))?;
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct SymlinkResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn symlink_res_fail(dest: &mut impl Write, arg: SymlinkResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -165,8 +276,20 @@ pub struct MknodResOk {
 }
 
 #[allow(dead_code)]
+pub fn mknod_res_ok(dest: &mut impl Write, arg: MknodResOk) -> io::Result<()> {
+    option(dest, arg.obj, |fh, dest| nfs_fh3(dest, nfs_fh3 { data: fh.0 }))?;
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct MknodResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn mknod_res_fail(dest: &mut impl Write, arg: MknodResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -175,8 +298,18 @@ pub struct RemoveResOk {
 }
 
 #[allow(dead_code)]
+pub fn remove_res_ok(dest: &mut impl Write, arg: RemoveResOk) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct RemoveResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn remove_res_fail(dest: &mut impl Write, arg: RemoveResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -185,8 +318,18 @@ pub struct RmdirResOk {
 }
 
 #[allow(dead_code)]
+pub fn rmdir_res_ok(dest: &mut impl Write, arg: RmdirResOk) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct RmdirResFail {
     dir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn rmdir_res_fail(dest: &mut impl Write, arg: RmdirResFail) -> io::Result<()> {
+    wcc_data(dest, arg.dir_wcc)
 }
 
 #[allow(dead_code)]
@@ -196,9 +339,21 @@ pub struct RenameResOk {
 }
 
 #[allow(dead_code)]
+pub fn rename_res_ok(dest: &mut impl Write, arg: RenameResOk) -> io::Result<()> {
+    wcc_data(dest, arg.fromdir_wcc)?;
+    wcc_data(dest, arg.todir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct RenameResFail {
     fromdir_wcc: WccData,
     todir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn rename_res_fail(dest: &mut impl Write, arg: RenameResFail) -> io::Result<()> {
+    wcc_data(dest, arg.fromdir_wcc)?;
+    wcc_data(dest, arg.todir_wcc)
 }
 
 #[allow(dead_code)]
@@ -208,9 +363,21 @@ pub struct LinkResOk {
 }
 
 #[allow(dead_code)]
+pub fn link_res_ok(dest: &mut impl Write, arg: LinkResOk) -> io::Result<()> {
+    option(dest, arg.file_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.linkdir_wcc)
+}
+
+#[allow(dead_code)]
 pub struct LinkResFail {
     file_attributes: Option<FileAttr>,
     linkdir_wcc: WccData,
+}
+
+#[allow(dead_code)]
+pub fn link_res_fail(dest: &mut impl Write, arg: LinkResFail) -> io::Result<()> {
+    option(dest, arg.file_attributes, |attr, dest| fattr3(dest, attr))?;
+    wcc_data(dest, arg.linkdir_wcc)
 }
 
 #[allow(dead_code)]
@@ -221,8 +388,20 @@ pub struct ReadDirResOk {
 }
 
 #[allow(dead_code)]
+pub fn read_dir_res_ok(dest: &mut impl Write, arg: ReadDirResOk) -> io::Result<()> {
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))?;
+    array(dest, arg.cookieverf)?;
+    dir_list(dest, arg.reply.enrties)
+}
+
+#[allow(dead_code)]
 pub struct ReadDirResFail {
     dir_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn read_dir_res_fail(dest: &mut impl Write, arg: ReadDirResFail) -> io::Result<()> {
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -233,12 +412,24 @@ pub struct ReadDirPlusResOk {
 }
 
 #[allow(dead_code)]
+pub fn read_dir_plus_res_ok(dest: &mut impl Write, arg: ReadDirPlusResOk) -> io::Result<()> {
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))?;
+    array(dest, arg.cookieverf)?;
+    dir_list_plus(dest, arg.reply.enrties)
+}
+
+#[allow(dead_code)]
 pub struct ReadDirPlusResFail {
     dir_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-pub struct FsstatResOk {
+pub fn read_dir_plus_res_fail(dest: &mut impl Write, arg: ReadDirPlusResFail) -> io::Result<()> {
+    option(dest, arg.dir_attributes, |attr, dest| fattr3(dest, attr))
+}
+
+#[allow(dead_code)]
+pub struct FsStatResOk {
     obj_attributes: Option<FileAttr>,
     tbytes: Size,
     fbytes: Size,
@@ -250,12 +441,29 @@ pub struct FsstatResOk {
 }
 
 #[allow(dead_code)]
-pub struct FsstatResFail {
+pub fn fs_stat_res_ok(dest: &mut impl Write, arg: FsStatResOk) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    u32(dest, arg.tbytes)?;
+    u32(dest, arg.fbytes)?;
+    u32(dest, arg.abytes)?;
+    u32(dest, arg.tfiles)?;
+    u32(dest, arg.ffiles)?;
+    u32(dest, arg.afiles)?;
+    u32(dest, arg.invarsec)
+}
+
+#[allow(dead_code)]
+pub struct FsStatResFail {
     obj_attributes: Option<FileAttr>,
 }
 
 #[allow(dead_code)]
-pub struct FsinfoResOk {
+pub fn fs_stat_res_fail(dest: &mut impl Write, arg: FsStatResFail) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))
+}
+
+#[allow(dead_code)]
+pub struct FsInfoResOk {
     obj_attributes: Option<FileAttr>,
     rtmax: u32,
     rtpref: u32,
@@ -270,8 +478,28 @@ pub struct FsinfoResOk {
 }
 
 #[allow(dead_code)]
+pub fn fs_info_res_ok(dest: &mut impl Write, arg: FsInfoResOk) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    u32(dest, arg.rtmax)?;
+    u32(dest, arg.rtpref)?;
+    u32(dest, arg.rtmult)?;
+    u32(dest, arg.wtmax)?;
+    u32(dest, arg.wtpref)?;
+    u32(dest, arg.wtmult)?;
+    u32(dest, arg.dtpref)?;
+    u32(dest, arg.maxfilesize)?;
+    nfstime(dest, arg.time_delta)?;
+    u32(dest, arg.properties)
+}
+
+#[allow(dead_code)]
 pub struct FsinfoResFail {
     obj_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn fs_info_res_fail(dest: &mut impl Write, arg: FsinfoResFail) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -286,8 +514,24 @@ pub struct PathConfResOk {
 }
 
 #[allow(dead_code)]
+pub fn path_config_res_ok(dest: &mut impl Write, arg: PathConfResOk) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))?;
+    u32(dest, arg.linkmax)?;
+    u32(dest, arg.name_max)?;
+    bool(dest, arg.no_trunc)?;
+    bool(dest, arg.chown_restricted)?;
+    bool(dest, arg.case_insensitive)?;
+    bool(dest, arg.case_preserving)
+}
+
+#[allow(dead_code)]
 pub struct PathConfResFail {
     obj_attributes: Option<FileAttr>,
+}
+
+#[allow(dead_code)]
+pub fn path_config_res_fail(dest: &mut impl Write, arg: PathConfResFail) -> io::Result<()> {
+    option(dest, arg.obj_attributes, |attr, dest| fattr3(dest, attr))
 }
 
 #[allow(dead_code)]
@@ -297,12 +541,23 @@ pub struct CommitResOk {
 }
 
 #[allow(dead_code)]
+pub fn commit_res_ok(dest: &mut impl Write, arg: CommitResOk) -> io::Result<()> {
+    wcc_data(dest, arg.file_wcc)?;
+    array(dest, arg.verf)
+}
+
+#[allow(dead_code)]
 pub struct CommitResFail {
     file_wcc: WccData,
 }
 
 #[allow(dead_code)]
-fn nfsstat3(dest: &mut dyn Write, err: NfsError) -> io::Result<()> {
+pub fn commit_res_fail(dest: &mut impl Write, arg: CommitResFail) -> io::Result<()> {
+    wcc_data(dest, arg.file_wcc)
+}
+
+#[allow(dead_code)]
+pub fn nfsstat3(dest: &mut dyn Write, err: NfsError) -> io::Result<()> {
     let code = match err {
         NfsError::Ok => 0,
         NfsError::Perm => 1,
@@ -429,20 +684,16 @@ fn cookieverf3(dest: &mut dyn Write, verifier: CookieVerifier) -> io::Result<()>
     u64(dest, verifier.0)
 }
 
-fn filename3(dest: &mut dyn Write, name: FileName) -> io::Result<()> {
+pub fn filename3(dest: &mut dyn Write, name: FileName) -> io::Result<()> {
     string_max_size(dest, name.0, MAX_NAME_LEN)
 }
 
-#[allow(dead_code)]
-fn nfspath3(dest: &mut dyn Write, path: String) -> io::Result<()> {
-    string_max_size(dest, path, MAX_PATH_LEN)
+pub fn nfspath3(dest: &mut dyn Write, path: FsPath) -> io::Result<()> {
+    string_max_size(dest, path.0, MAX_PATH_LEN)
 }
 
 #[allow(dead_code)]
-// Linked-list encoding used by READDIR/READDIRPLUS:
-// entry3list = *entry3
-// entry3 = bool value_follows; if true => entry3 + next
-fn entry3list(dest: &mut dyn Write, entries: Vec<DirectoryEntry>) -> io::Result<()> {
+fn dir_list(dest: &mut dyn Write, entries: Vec<DirectoryEntry>) -> io::Result<()> {
     for entry in entries {
         bool(dest, true)?;
         u64(dest, entry.fileid)?;
@@ -453,7 +704,7 @@ fn entry3list(dest: &mut dyn Write, entries: Vec<DirectoryEntry>) -> io::Result<
 }
 
 #[allow(dead_code)]
-fn entryplus3list(dest: &mut dyn Write, entries: Vec<DirectoryPlusEntry>) -> io::Result<()> {
+fn dir_list_plus(dest: &mut dyn Write, entries: Vec<DirectoryPlusEntry>) -> io::Result<()> {
     for entry in entries {
         bool(dest, true)?;
         u64(dest, entry.fileid)?;
