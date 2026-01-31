@@ -1,9 +1,8 @@
-use crate::parser::nfsv3::procedures::FsStatArgs;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
-use crate::vfs::FileHandle;
+use crate::vfs::{file, fs_stat};
 
 #[tokio::test]
 async fn parse_two_correct() {
@@ -22,10 +21,10 @@ async fn parse_two_correct() {
     let _ = parser.parse_message().await;
     let result2 = parser.parse_message().await.unwrap();
     let expected =
-        FsStatArgs { object: FileHandle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
+        fs_stat::Args { root: file::Handle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
     match *result2 {
         Arguments::FsStat(args) => {
-            assert_eq!(args, expected);
+            assert_eq!(args.root.0, expected.root.0);
         }
         _ => panic!("Wrong result type"),
     }
@@ -49,10 +48,10 @@ async fn parse_after_error() {
     assert!(result1.is_err());
     let result2 = parser.parse_message().await.unwrap();
     let expected =
-        FsStatArgs { object: FileHandle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
+        fs_stat::Args { root: file::Handle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
     match *result2 {
         Arguments::FsStat(args) => {
-            assert_eq!(args, expected);
+            assert_eq!(args.root.0, expected.root.0);
         }
         _ => panic!("Wrong result type"),
     }

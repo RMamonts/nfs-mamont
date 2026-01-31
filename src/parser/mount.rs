@@ -1,8 +1,7 @@
-use std::io::Read;
-
 use super::Result;
-use crate::parser::primitive::string_max_size;
-use crate::vfs::{FsPath, MAX_PATH_LEN};
+use crate::parser::primitive::path;
+use std::io::Read;
+use std::path::PathBuf;
 
 #[allow(dead_code)]
 enum MountStat {
@@ -20,16 +19,16 @@ enum MountStat {
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct MountArgs(pub FsPath);
+pub struct MountArgs(pub PathBuf);
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct UnmountArgs(pub FsPath);
+pub struct UnmountArgs(pub PathBuf);
 
-pub fn mount(src: &mut dyn Read) -> Result<MountArgs> {
-    Ok(MountArgs(FsPath(string_max_size(src, MAX_PATH_LEN)?)))
+pub fn mount<S: Read>(src: &mut S) -> Result<MountArgs> {
+    Ok(MountArgs(path(src)?))
 }
 
-pub fn unmount(src: &mut dyn Read) -> Result<UnmountArgs> {
-    Ok(UnmountArgs(FsPath(string_max_size(src, MAX_PATH_LEN)?)))
+pub fn unmount<S: Read>(src: &mut S) -> Result<UnmountArgs> {
+    Ok(UnmountArgs(path(src)?))
 }

@@ -12,20 +12,16 @@
 //! The parser uses a [`CountBuffer`] to efficiently read from async streams while
 //! supporting retry logic for parsing operations that may need additional data.
 
+use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
-
 use tokio::io::AsyncRead;
 
-use crate::allocator::Allocator;
+use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::parser::mount::{mount, unmount};
-use crate::parser::nfsv3::procedures::{
-    access, commit, create, fsinfo, fsstat, get_attr, link, lookup, mkdir, mknod, pathconf, read,
-    read_in_slice_async, read_in_slice_sync, readdir, readdir_plus, readlink, remove, rename,
-    rmdir, set_attr, symlink, write, WriteArgs,
-};
+use crate::parser::nfsv3::{access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write};
 use crate::parser::primitive::{u32, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, AuthFlavor, AuthStat, RpcMessage};
@@ -33,6 +29,7 @@ use crate::parser::{
     proc_nested_errors, Arguments, Error, ProgramVersionMismatch, RPCVersionMismatch, Result,
 };
 use crate::rpc::{rpc_message_type, RPC_VERSION};
+use crate::vfs;
 
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 2500;
@@ -206,31 +203,31 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             NFS_PROGRAM => match head.version {
                 NFS_VERSION => Ok(Box::new(match head.procedure {
                     0 => Arguments::Null,
-                    1 => Arguments::GetAttr(self.buffer.parse_with_retry(get_attr).await?),
-                    2 => Arguments::SetAttr(self.buffer.parse_with_retry(set_attr).await?),
-                    3 => Arguments::LookUp(self.buffer.parse_with_retry(lookup).await?),
-                    4 => Arguments::Access(self.buffer.parse_with_retry(access).await?),
-                    5 => Arguments::ReadLink(self.buffer.parse_with_retry(readlink).await?),
-                    6 => Arguments::Read(self.buffer.parse_with_retry(read).await?),
+                    1 => Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?),
+                    2 => Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?),
+                    3 => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
+                    4 => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
+                    5 => Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?),
+                    6 => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
 
                     7 => Arguments::Write(
                         adapter_for_write(&mut self.allocator, &mut self.buffer).await?,
                     ),
 
-                    8 => Arguments::Create(self.buffer.parse_with_retry(create).await?),
-                    9 => Arguments::MkDir(self.buffer.parse_with_retry(mkdir).await?),
-                    10 => Arguments::SymLink(self.buffer.parse_with_retry(symlink).await?),
-                    11 => Arguments::MkNod(self.buffer.parse_with_retry(mknod).await?),
-                    12 => Arguments::Remove(self.buffer.parse_with_retry(remove).await?),
-                    13 => Arguments::RmDir(self.buffer.parse_with_retry(rmdir).await?),
-                    14 => Arguments::Rename(self.buffer.parse_with_retry(rename).await?),
-                    15 => Arguments::Link(self.buffer.parse_with_retry(link).await?),
-                    16 => Arguments::ReadDir(self.buffer.parse_with_retry(readdir).await?),
-                    17 => Arguments::ReadDirPlus(self.buffer.parse_with_retry(readdir_plus).await?),
-                    18 => Arguments::FsStat(self.buffer.parse_with_retry(fsstat).await?),
-                    19 => Arguments::FsInfo(self.buffer.parse_with_retry(fsinfo).await?),
-                    20 => Arguments::PathConf(self.buffer.parse_with_retry(pathconf).await?),
-                    21 => Arguments::Commit(self.buffer.parse_with_retry(commit).await?),
+                    8 => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
+                    9 => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
+                    10 => Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?),
+                    11 => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
+                    12 => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
+                    13 => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
+                    14 => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
+                    15 => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
+                    16 => Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?),
+                    17 => Arguments::ReadDirPlus(self.buffer.parse_with_retry(read_dir_plus::args).await?),
+                    18 => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
+                    19 => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
+                    20 => Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?),
+                    21 => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
                     _ => return Err(Error::ProcedureMismatch),
                 })),
                 _ => Err(Error::ProgramVersionMismatch(ProgramVersionMismatch(
@@ -383,15 +380,73 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
-) -> Result<WriteArgs> {
-    let (object, offset, count, mode, size) = buffer.parse_with_retry(write).await?;
+) -> Result<vfs::write::Args> {
+    let part_arg = buffer.parse_with_retry(write::args).await?;
     let mut slice = alloc
-        .allocate(NonZeroUsize::new(size).unwrap())
+        .allocate(NonZeroUsize::new(part_arg.size as usize).unwrap())
         .await
         .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-    let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
-    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
-    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
+    let padding = (ALIGNMENT - part_arg.size as usize % ALIGNMENT) % ALIGNMENT;
+    let from_sync = read_in_slice_sync(buffer, &mut slice, part_arg.size as usize)?;
+    read_in_slice_async(buffer, &mut slice, from_sync, part_arg.size as usize - from_sync).await?;
     buffer.discard_bytes(padding).await.map_err(Error::IO)?;
-    Ok(WriteArgs { object, offset, count, mode, data: slice })
+    Ok(vfs::write::Args { file: part_arg.file, offset: part_arg.offset, size: part_arg.size, stable: part_arg.stable, data: slice, })
+}
+
+// here comes slice of exact number of bytes we expect to write
+// but current variant knows how to do it if we change fh to var size
+pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+    src: &mut CountBuffer<S>,
+    slice: &mut Slice,
+    to_skip: usize,
+    to_write: usize,
+) -> Result<usize> {
+    let mut left_skip = to_skip;
+    let mut left_write = to_write;
+    for buf in slice.iter_mut() {
+        let in_cur = min(left_skip, buf.len());
+        if left_skip > 0 && in_cur == buf.len() {
+            left_skip = left_skip
+                .checked_sub(in_cur)
+                .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
+            continue;
+        }
+        let cur_write = min(left_skip + left_write, buf.len() - left_skip);
+        src.read_from_async(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
+        left_write = left_write
+            .checked_sub(cur_write)
+            .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
+        left_skip = 0;
+    }
+    Ok(to_write - left_write)
+}
+
+pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+    src: &mut CountBuffer<S>,
+    slice: &mut Slice,
+    left_size: usize,
+) -> Result<usize> {
+    let mut real_size = 0;
+    for buf in slice.iter_mut() {
+        let block_size = min(buf.len(), left_size - real_size);
+        let mut read_count = 0;
+        // for my further notice:
+        // this is done in maner of cyclic read, because we don't know, when we would fail
+        while read_count < block_size {
+            let n = match src.read_from_inner(&mut buf[read_count..block_size]) {
+                Ok(0) => return Ok(real_size),
+                Ok(n) => n,
+                Err(e) => return Err(Error::IO(e)),
+            };
+            read_count += n;
+            real_size += n;
+        }
+    }
+    if real_size != left_size {
+        return Err(Error::IO(io::Error::new(
+            ErrorKind::InvalidInput,
+            "invalid amount of data read",
+        )));
+    }
+    Ok(real_size)
 }

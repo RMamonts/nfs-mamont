@@ -3,12 +3,8 @@ use std::io;
 use std::string::FromUtf8Error;
 
 use crate::parser::mount::{MountArgs, UnmountArgs};
-use crate::parser::nfsv3::procedures::{
-    AccessArgs, CommitArgs, CreateArgs, FsInfoArgs, FsStatArgs, GetAttrArgs, LinkArgs, LookUpArgs,
-    MkDirArgs, MkNodArgs, PathConfArgs, ReadArgs, ReadDirArgs, ReadDirPlusArgs, ReadLinkArgs,
-    RemoveArgs, RenameArgs, RmDirArgs, SetAttrArgs, SymLinkArgs, WriteArgs,
-};
 use crate::parser::rpc::AuthStat;
+use crate::vfs::{access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write};
 
 pub mod mount;
 pub mod nfsv3;
@@ -39,27 +35,27 @@ pub struct RPCVersionMismatch(u32, u32);
 pub enum Arguments {
     // NFSv3
     Null,
-    GetAttr(GetAttrArgs),
-    SetAttr(SetAttrArgs),
-    LookUp(LookUpArgs),
-    Access(AccessArgs),
-    ReadLink(ReadLinkArgs),
-    Read(ReadArgs),
-    Write(WriteArgs),
-    Create(CreateArgs),
-    MkDir(MkDirArgs),
-    SymLink(SymLinkArgs),
-    MkNod(MkNodArgs),
-    Remove(RemoveArgs),
-    RmDir(RmDirArgs),
-    Rename(RenameArgs),
-    Link(LinkArgs),
-    ReadDir(ReadDirArgs),
-    ReadDirPlus(ReadDirPlusArgs),
-    FsStat(FsStatArgs),
-    FsInfo(FsInfoArgs),
-    PathConf(PathConfArgs),
-    Commit(CommitArgs),
+    GetAttr(get_attr::Args),
+    SetAttr(set_attr::Args),
+    LookUp(lookup::Args),
+    Access(access::Args),
+    ReadLink(read_link::Args),
+    Read(read::Args),
+    Write(write::Args),
+    Create(create::Args),
+    MkDir(mk_dir::Args),
+    SymLink(symlink::Args),
+    MkNod(mk_node::Args),
+    Remove(remove::Args),
+    RmDir(rm_dir::Args),
+    Rename(rename::Args),
+    Link(link::Args),
+    ReadDir(read_dir::Args),
+    ReadDirPlus(read_dir_plus::Args),
+    FsStat(fs_stat::Args),
+    FsInfo(fs_info::Args),
+    PathConf(path_conf::Args),
+    Commit(commit::Args),
     // MOUNT
     Mount(MountArgs),
     Unmount(UnmountArgs),
