@@ -144,17 +144,20 @@ pub fn read_link_res_fail(dest: &mut impl Write, arg: ReadLinkResFail) -> io::Re
     option(dest, arg.symlink_attributes, |attr, dest| fattr3(dest, attr))
 }
 
-#[allow(dead_code)]
 pub struct ReadResOk {
+    pub head: ReadResOkPArt,
+    pub data: Slice,
+}
+
+pub struct ReadResOkPArt {
     file_attributes: Option<FileAttr>,
     count: u32,
     eof: bool,
-    data: Slice,
 }
 
 // slice is read separately
 #[allow(dead_code)]
-pub fn read_res_ok_partial(dest: &mut impl Write, arg: ReadResOk) -> io::Result<()> {
+pub fn read_res_ok_partial(dest: &mut impl Write, arg: ReadResOkPArt) -> io::Result<()> {
     option(dest, arg.file_attributes, |attr, dest| fattr3(dest, attr))?;
     u32(dest, arg.count)?;
     bool(dest, arg.eof)

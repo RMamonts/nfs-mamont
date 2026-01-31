@@ -1,4 +1,5 @@
-#![allow(non_camel_case_types, clippy::upper_case_acronyms)]
+use std::io;
+use std::string::FromUtf8Error;
 
 use num_derive::ToPrimitive;
 
@@ -38,6 +39,7 @@ pub enum AuthStat {
     RpcSecCtsCredProblem = 14,
 }
 
+#[allow(dead_code)]
 #[repr(u32)]
 pub enum RpcBody {
     Call = 0,
@@ -54,7 +56,7 @@ pub enum ReplyBody {
 #[allow(dead_code)]
 #[derive(ToPrimitive)]
 #[repr(u32)]
-enum AuthFlavour {
+pub enum AuthFlavour {
     None = 0,
     Sys = 1,
     Short = 2,
@@ -71,8 +73,8 @@ pub struct OpaqueAuth {
 #[allow(dead_code)]
 #[repr(u32)]
 pub enum RejectedReply {
-    RPC_MISMATCH = 0,
-    AUTH_ERROR = 1,
+    RpcMismatch = 0,
+    AuthError = 1,
 }
 
 #[allow(dead_code)]
@@ -83,17 +85,23 @@ pub struct ProgramVersionMismatch {
 }
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct RPCVersionMismatch {
+pub struct RPCVersMismatch {
     pub low: u32,
     pub high: u32,
 }
+
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum Error {
+    MaxELemLimit,
+    IO(io::Error),
+    EnumDiscMismatch,
+    IncorrectString(FromUtf8Error),
     IncorrectPadding,
     ImpossibleTypeCast,
     BadFileHandle,
     MessageTypeMismatch,
-    RpcVersionMismatch(RPCVersionMismatch),
+    RpcVersionMismatch(RPCVersMismatch),
     AuthError(AuthStat),
     ProgramMismatch,
     ProcedureMismatch,

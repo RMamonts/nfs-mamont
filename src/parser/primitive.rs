@@ -4,7 +4,9 @@ use std::mem::MaybeUninit;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use super::{Error, Result};
+use crate::rpc::Error;
+
+use super::Result;
 
 #[allow(dead_code)]
 pub const ALIGNMENT: usize = 4;
