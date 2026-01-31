@@ -20,8 +20,7 @@ use crate::serializer::nfs::results::{
 use crate::serializer::{option, u32};
 use crate::vfs::NfsError;
 
-use crate::parser::Error;
-use crate::rpc::{opaque_auth, AcceptStat, RejectedReply, ReplyBody, RpcBody};
+use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 use crate::serializer::rpc::auth_opaque;
 use std::io;
 use std::io::Cursor;
@@ -75,7 +74,7 @@ pub enum ProcResult {
 
 struct ReplyFromVfs {
     xid: u32,
-    verf: opaque_auth,
+    verf: OpaqueAuth,
     // maybe move this Error from parser?
     proc_result: Result<ProcResult, Error>,
 }

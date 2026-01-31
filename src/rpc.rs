@@ -38,45 +38,17 @@ pub enum AuthStat {
     RpcSecCtsCredProblem = 14,
 }
 
-#[allow(dead_code)]
-struct RpcMsg {
-    xid: u32,
-    body: RpcBody,
-}
-
 #[repr(u32)]
 pub enum RpcBody {
-    Call(CallBody) = 0,
-    Reply(ReplyBody) = 1,
-}
-
-#[allow(dead_code)]
-struct CallBody {
-    rpcvers: u32,
-    prog: u32,
-    vers: u32,
-    proc: u32,
-    cred: opaque_auth,
-    verf: opaque_auth,
+    Call = 0,
+    Reply = 1,
 }
 
 #[allow(dead_code)]
 #[repr(u32)]
 pub enum ReplyBody {
-    MsgAccepted(AcceptedReply) = 0,
-    MsgDenied(RejectedReply) = 1,
-}
-
-#[allow(dead_code)]
-struct mismatch_info {
-    low: u32,
-    high: u32,
-}
-
-#[allow(dead_code)]
-struct AcceptedReply {
-    verf: opaque_auth,
-    reply_data: AcceptStat,
+    MsgAccepted = 0,
+    MsgDenied = 1,
 }
 
 #[allow(dead_code)]
@@ -91,7 +63,7 @@ enum AuthFlavour {
 }
 
 #[allow(dead_code)]
-pub struct opaque_auth {
+pub struct OpaqueAuth {
     pub flavor: AuthFlavour,
     pub body: Vec<u8>,
 }
@@ -99,6 +71,31 @@ pub struct opaque_auth {
 #[allow(dead_code)]
 #[repr(u32)]
 pub enum RejectedReply {
-    RPC_MISMATCH(mismatch_info) = 0,
-    AUTH_ERROR(AuthStat) = 1,
+    RPC_MISMATCH = 0,
+    AUTH_ERROR = 1,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ProgramVersionMismatch {
+    pub low: u32,
+    pub high: u32,
+}
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct RPCVersionMismatch {
+    pub low: u32,
+    pub high: u32,
+}
+#[derive(Debug)]
+pub enum Error {
+    IncorrectPadding,
+    ImpossibleTypeCast,
+    BadFileHandle,
+    MessageTypeMismatch,
+    RpcVersionMismatch(RPCVersionMismatch),
+    AuthError(AuthStat),
+    ProgramMismatch,
+    ProcedureMismatch,
+    ProgramVersionMismatch(ProgramVersionMismatch),
 }
