@@ -17,13 +17,18 @@ use crate::serializer::nfs::results::{
     ReadResOk, RemoveResFail, RemoveResOk, RenameResFail, RenameResOk, RmdirResFail, RmdirResOk,
     SetAttrResFail, SetAttrResOk, SymlinkResFail, SymlinkResOk, WriteResFail, WriteResOk,
 };
-use crate::serializer::option;
+use crate::serializer::{option, u32};
 use crate::vfs::NfsError;
+
+use crate::parser::Error;
+use crate::rpc::{opaque_auth, AcceptStat, RejectedReply, ReplyBody, RpcBody};
+use crate::serializer::rpc::auth_opaque;
 use std::io;
 use std::io::Cursor;
 use tokio::io::AsyncWrite;
 
 #[allow(dead_code)]
+// check actual max size
 const DEFAUT_SIZE: usize = 4096;
 
 #[allow(dead_code)]
@@ -68,6 +73,14 @@ pub enum ProcResult {
     Mount { status: MountStat, data: MountRes },
 }
 
+struct ReplyFromVfs {
+    xid: u32,
+    verf: opaque_auth,
+    // maybe move this Error from parser?
+    proc_result: Result<ProcResult, Error>,
+}
+
+// maybe split underlying buffer?
 #[allow(dead_code)]
 pub struct Serializer<T: AsyncWrite + Unpin> {
     writer: T,
@@ -311,6 +324,60 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 }
                 MountRes::Dump(body) => {
                     option(&mut self.buffer, body, |arg, dest| mount_body(dest, arg))
+                }
+            },
+        }
+    }
+
+    fn form_reply(&mut self, reply: ReplyFromVfs) -> io::Result<()> {
+        u32(&mut self.buffer, reply.xid)?;
+        u32(&mut self.buffer, RpcBody::Reply as u32)?;
+        match reply.proc_result {
+            Ok(proc) => {
+                u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                auth_opaque(&mut self.buffer, reply.verf)?;
+                u32(&mut self.buffer, AcceptStat::Success as u32)?;
+                self.process_result(proc)
+            }
+            Err(err) => match err {
+                Error::IncorrectPadding
+                | Error::ImpossibleTypeCast
+                | Error::BadFileHandle
+                | Error::MessageTypeMismatch => {
+                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    // or maybe system error?
+                    u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)
+                }
+                Error::RpcVersionMismatch(vers) => {
+                    u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    u32(&mut self.buffer, RejectedReply::RPC_MISMATCH as u32)?;
+                    u32(&mut self.buffer, vers.low)?;
+                    u32(&mut self.buffer, vers.high)
+                }
+                Error::AuthError(stat) => {
+                    u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    u32(&mut self.buffer, RejectedReply::AUTH_ERROR as u32)?;
+                    u32(&mut self.buffer, stat as u32)
+                }
+                Error::ProgramMismatch => {
+                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)
+                }
+                Error::ProcedureMismatch => {
+                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)
+                }
+                Error::ProgramVersionMismatch(info) => {
+                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                    auth_opaque(&mut self.buffer, reply.verf)?;
+                    u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
+                    u32(&mut self.buffer, info.low)?;
+                    u32(&mut self.buffer, info.high)
                 }
             },
         }

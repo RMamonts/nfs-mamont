@@ -1,55 +1,57 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
+use num_derive::ToPrimitive;
+
 #[allow(dead_code)]
 const RPC_VERSION: u32 = 2;
 #[allow(dead_code)]
-const MAX_AUTH_OPAQUE_LEN: u32 = 400;
+pub const MAX_AUTH_OPAQUE_LEN: usize = 400;
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum accept_stat {
-    SUCCESS = 0,
-    PROG_UNAVAIL = 1,
-    PROG_MISMATCH(mismatch_info) = 2,
-    PROC_UNAVAIL = 3,
-    GARBAGE_ARGS = 4,
-    SYSTEM_ERR = 5,
+pub enum AcceptStat {
+    Success = 0,
+    ProgUnavail = 1,
+    ProgMismatch = 2,
+    ProcUnavail = 3,
+    GarbageArgs = 4,
+    SystemErr = 5,
 }
 
 #[allow(dead_code)]
-enum auth_stat {
-    AUTH_OK = 0,
-    AUTH_BADCRED = 1,
-    AUTH_REJECTEDCRED = 2,
-    AUTH_BADVERF = 3,
-    AUTH_REJECTEDVERF = 4,
-    AUTH_TOOWEAK = 5,
-    AUTH_INVALIDRESP = 6,
-    AUTH_FAILED = 7,
-    AUTH_KERB_GENERIC = 8,
-    AUTH_TIMEEXPIRE = 9,
-    AUTH_TKT_FILE = 10,
-    AUTH_DECODE = 11,
-    AUTH_NET_ADDR = 12,
-    RPCSEC_GSS_CREDPROBLEM = 13,
-    RPCSEC_GSS_CTXPROBLEM = 14,
+#[derive(Debug, PartialEq, PartialOrd)]
+pub enum AuthStat {
+    Ok = 0,
+    BadCred = 1,
+    RejectedCred = 2,
+    BadVerf = 3,
+    RejectedVerf = 4,
+    TooWeak = 5,
+    InvalidResp = 6,
+    Failed = 7,
+    KerbGeneric = 8,
+    TimeExpire = 9,
+    TktFile = 10,
+    Decode = 11,
+    NetAddr = 12,
+    RpcSecGssCredProblem = 13,
+    RpcSecCtsCredProblem = 14,
 }
 
 #[allow(dead_code)]
-struct rpc_msg {
+struct RpcMsg {
     xid: u32,
-    body: rpc_body,
+    body: RpcBody,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
-enum rpc_body {
-    CALL(call_body) = 0,
-    REPLY(reply_body) = 1,
+pub enum RpcBody {
+    Call(CallBody) = 0,
+    Reply(ReplyBody) = 1,
 }
 
 #[allow(dead_code)]
-struct call_body {
+struct CallBody {
     rpcvers: u32,
     prog: u32,
     vers: u32,
@@ -60,9 +62,9 @@ struct call_body {
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum reply_body {
-    MSG_ACCEPTED(accepted_reply) = 0,
-    MSG_DENIED(rejected_reply) = 1,
+pub enum ReplyBody {
+    MsgAccepted(AcceptedReply) = 0,
+    MsgDenied(RejectedReply) = 1,
 }
 
 #[allow(dead_code)]
@@ -72,30 +74,31 @@ struct mismatch_info {
 }
 
 #[allow(dead_code)]
-struct accepted_reply {
+struct AcceptedReply {
     verf: opaque_auth,
-    reply_data: accept_stat,
+    reply_data: AcceptStat,
+}
+
+#[allow(dead_code)]
+#[derive(ToPrimitive)]
+#[repr(u32)]
+enum AuthFlavour {
+    None = 0,
+    Sys = 1,
+    Short = 2,
+    Dh = 3,
+    RpcSecGss = 6,
+}
+
+#[allow(dead_code)]
+pub struct opaque_auth {
+    pub flavor: AuthFlavour,
+    pub body: Vec<u8>,
 }
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum auth_flavor {
-    AUTH_NONE = 0,
-    AUTH_SYS = 1,
-    AUTH_SHORT = 2,
-    AUTH_DH = 3,
-    RPCSEC_GSS = 6,
-}
-
-#[allow(dead_code)]
-struct opaque_auth {
-    flavor: auth_flavor,
-    body: Vec<u8>,
-}
-
-#[allow(dead_code)]
-#[repr(u32)]
-enum rejected_reply {
+pub enum RejectedReply {
     RPC_MISMATCH(mismatch_info) = 0,
-    AUTH_ERROR(auth_stat) = 1,
+    AUTH_ERROR(AuthStat) = 1,
 }
