@@ -21,8 +21,11 @@ use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::parser::mount::{mount, unmount};
-use crate::parser::nfsv3::{access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write};
-use crate::parser::primitive::{u32, ALIGNMENT};
+use crate::parser::nfsv3::{
+    access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
+    read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
+};
+use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, AuthFlavor, AuthStat, RpcMessage};
 use crate::parser::{
@@ -223,7 +226,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     14 => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
                     15 => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
                     16 => Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?),
-                    17 => Arguments::ReadDirPlus(self.buffer.parse_with_retry(read_dir_plus::args).await?),
+                    17 => Arguments::ReadDirPlus(
+                        self.buffer.parse_with_retry(read_dir_plus::args).await?,
+                    ),
                     18 => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
                     19 => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
                     20 => Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?),
@@ -382,15 +387,22 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     let part_arg = buffer.parse_with_retry(write::args).await?;
+    let size = buffer.parse_with_retry(u32_as_usize).await?;
     let mut slice = alloc
-        .allocate(NonZeroUsize::new(part_arg.size as usize).unwrap())
+        .allocate(NonZeroUsize::new(size).unwrap())
         .await
         .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-    let padding = (ALIGNMENT - part_arg.size as usize % ALIGNMENT) % ALIGNMENT;
-    let from_sync = read_in_slice_sync(buffer, &mut slice, part_arg.size as usize)?;
-    read_in_slice_async(buffer, &mut slice, from_sync, part_arg.size as usize - from_sync).await?;
+    let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
+    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
     buffer.discard_bytes(padding).await.map_err(Error::IO)?;
-    Ok(vfs::write::Args { file: part_arg.file, offset: part_arg.offset, size: part_arg.size, stable: part_arg.stable, data: slice, })
+    Ok(vfs::write::Args {
+        file: part_arg.file,
+        offset: part_arg.offset,
+        size: part_arg.size,
+        stable: part_arg.stable,
+        data: slice,
+    })
 }
 
 // here comes slice of exact number of bytes we expect to write

@@ -1,37 +1,39 @@
 use std::io::Read;
-
-use byteorder::{BigEndian, ReadBytesExt};
-use num_traits::{FromPrimitive, ToPrimitive};
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use super::{Error, Result};
+use crate::vfs::MAX_PATH_LEN;
+use byteorder::{BigEndian, ReadBytesExt};
+use num_traits::{FromPrimitive, ToPrimitive};
 
 #[allow(dead_code)]
 pub const ALIGNMENT: usize = 4;
 
 #[allow(dead_code)]
-pub fn padding(src: &mut dyn Read, n: usize) -> Result<()> {
+pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
 }
 
 #[allow(dead_code)]
-pub fn u8(src: &mut dyn Read) -> Result<u8> {
+pub fn u8(src: &mut impl Read) -> Result<u8> {
     src.read_u8().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn u32(src: &mut dyn Read) -> Result<u32> {
+pub fn u32(src: &mut impl Read) -> Result<u32> {
     src.read_u32::<BigEndian>().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn u64(src: &mut dyn Read) -> Result<u64> {
+pub fn u64(src: &mut impl Read) -> Result<u64> {
     src.read_u64::<BigEndian>().map_err(Error::IO)
 }
 
 #[allow(dead_code)]
-pub fn bool(src: &mut dyn Read) -> Result<bool> {
+pub fn bool(src: &mut impl Read) -> Result<bool> {
     match u32(src)? {
         0 => Ok(false),
         1 => Ok(true),
@@ -40,9 +42,9 @@ pub fn bool(src: &mut dyn Read) -> Result<bool> {
 }
 
 #[allow(dead_code)]
-pub fn option<T>(
-    src: &mut dyn Read,
-    cont: impl FnOnce(&mut dyn Read) -> Result<T>,
+pub fn option<T, S: Read>(
+    src: &mut S,
+    cont: impl FnOnce(&mut S) -> Result<T>,
 ) -> Result<Option<T>> {
     match bool(src)? {
         true => Ok(Some(cont(src)?)),
@@ -51,7 +53,7 @@ pub fn option<T>(
 }
 
 #[allow(dead_code)]
-pub fn array<const N: usize>(src: &mut dyn Read) -> Result<[u8; N]> {
+pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
     let mut buf = [0u8; N];
     src.read_exact(&mut buf).map_err(Error::IO)?;
     padding(src, N)?;
@@ -59,7 +61,7 @@ pub fn array<const N: usize>(src: &mut dyn Read) -> Result<[u8; N]> {
 }
 
 #[allow(dead_code)]
-pub fn vector(src: &mut dyn Read) -> Result<Vec<u8>> {
+pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     let mut vec = vec![0u8; size];
     src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
@@ -68,7 +70,7 @@ pub fn vector(src: &mut dyn Read) -> Result<Vec<u8>> {
 }
 
 #[allow(dead_code)]
-pub fn vec_max_size(src: &mut dyn Read, max_size: usize) -> Result<Vec<u8>> {
+pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     if size > max_size {
         return Err(Error::MaxELemLimit);
@@ -80,23 +82,27 @@ pub fn vec_max_size(src: &mut dyn Read, max_size: usize) -> Result<Vec<u8>> {
 }
 
 #[allow(dead_code)]
-pub fn string_max_size(src: &mut dyn Read, max_size: usize) -> Result<String> {
+pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
     let vec = vec_max_size(src, max_size)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
 #[allow(dead_code)]
-pub fn string(src: &mut dyn Read) -> Result<String> {
+pub fn string(src: &mut impl Read) -> Result<String> {
     let vec = vector(src)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
+pub fn path(src: &mut impl Read) -> Result<PathBuf> {
+    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxELemLimit)
+}
+
 #[allow(dead_code)]
-pub fn variant<T: FromPrimitive>(src: &mut dyn Read) -> Result<T> {
+pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
     FromPrimitive::from_u32(u32(src)?).ok_or(Error::EnumDiscMismatch)
 }
 
 #[allow(dead_code)]
-pub fn u32_as_usize(src: &mut dyn Read) -> Result<usize> {
+pub fn u32_as_usize(src: &mut impl Read) -> Result<usize> {
     u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
 }

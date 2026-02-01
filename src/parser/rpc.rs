@@ -47,9 +47,9 @@ pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub opaque: Vec<u8>,
 }
-pub fn auth<S: Read>(src: &mut S) -> Result<OpaqueAuth> {
+pub fn auth(src: &mut impl Read) -> Result<OpaqueAuth> {
     Ok(OpaqueAuth {
-        flavor: variant::<AuthFlavor, S>(src)?,
+        flavor: variant::<AuthFlavor>(src)?,
         opaque: vec_max_size(src, MAX_AUTH_SAZE)?,
     })
 }

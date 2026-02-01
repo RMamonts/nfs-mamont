@@ -2,17 +2,18 @@
 
 use std::io::Read;
 
+use crate::parser::nfsv3::create::new_attr;
 use crate::parser::nfsv3::{file, MAX_FILENAME};
 use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::mk_dir;
 
-fn new_attr(_src: &mut impl Read) -> Result<crate::vfs::set_attr::NewAttr> {
-    todo!()
-}
-
 pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
-    Ok(mk_dir::Args { dir: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)?, attr: new_attr(src)? })
+    Ok(mk_dir::Args {
+        dir: file::handle(src)?,
+        name: string_max_size(src, MAX_FILENAME)?,
+        attr: new_attr(src)?,
+    })
 }
 
 #[cfg(test)]
@@ -40,7 +41,7 @@ mod tests {
         assert!(matches!(
             result.attr,
             set_attr::NewAttr {
-                mode: None,
+                mode: Some(0x25),
                 uid: None,
                 gid: None,
                 size: None,

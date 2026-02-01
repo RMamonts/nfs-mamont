@@ -25,10 +25,10 @@ pub struct MountArgs(pub PathBuf);
 #[derive(Debug)]
 pub struct UnmountArgs(pub PathBuf);
 
-pub fn mount<S: Read>(src: &mut S) -> Result<MountArgs> {
+pub fn mount(src: &mut impl Read) -> Result<MountArgs> {
     Ok(MountArgs(path(src)?))
 }
 
-pub fn unmount<S: Read>(src: &mut S) -> Result<UnmountArgs> {
+pub fn unmount(src: &mut impl Read) -> Result<UnmountArgs> {
     Ok(UnmountArgs(path(src)?))
 }

@@ -48,7 +48,7 @@ pub struct Args {
     /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
     /// to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
     /// bytes, resulting in a short read.
-    pub count: u64,
+    pub count: u32,
 }
 
 #[async_trait]

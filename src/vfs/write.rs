@@ -6,7 +6,7 @@ use crate::vfs;
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive)]
+#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
@@ -67,7 +67,7 @@ pub struct Args {
     ///
     /// The size of data must be less than or equal to the value of the TODO(wtmax) field.
     /// If greater, the server may write only TODO(wtmax) bytes, resulting in a short write.
-    /// 
+    ///
     pub data: Slice,
 }
 
@@ -90,7 +90,6 @@ pub struct ArgsPartial {
     /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
     pub stable: StableHow,
 }
-
 
 #[async_trait]
 pub trait Write {

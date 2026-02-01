@@ -9,7 +9,7 @@ use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
 use std::io::Read;
 
-pub fn new_attr<S: Read>(src: &mut S) -> Result<NewAttr> {
+pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
     Ok(NewAttr {
         mode: option(src, |s| u32(s))?,
         uid: option(src, |s| u32(s))?,
@@ -21,7 +21,7 @@ pub fn new_attr<S: Read>(src: &mut S) -> Result<NewAttr> {
 }
 
 #[allow(dead_code)]
-pub fn set_time<S: Read>(src: &mut S) -> Result<SetTime> {
+pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
     match u32(src)? {
         0 => Ok(SetTime::DontChange),
         1 => Ok(SetTime::ToServer),
@@ -30,21 +30,25 @@ pub fn set_time<S: Read>(src: &mut S) -> Result<SetTime> {
     }
 }
 
-pub fn nfs_time<S: Read>(src: &mut S) -> Result<Time> {
-    Ok(Time { seconds: u32(src)?, nanos: u32(src)?})
+pub fn nfs_time(src: &mut impl Read) -> Result<Time> {
+    Ok(Time { seconds: u32(src)?, nanos: u32(src)? })
 }
 
-pub fn how<S: Read>(src: &mut S) -> Result<create::How> {
+pub fn how(src: &mut impl Read) -> Result<create::How> {
     match u32(src)? {
         0 => Ok(create::How::Unchecked(new_attr(src)?)),
         1 => Ok(create::How::Guarded(new_attr(src)?)),
-        2 => Ok(create::How::Exclusive(Verifier(array::<S, { VERIFY_LEN },>(src)?))),
+        2 => Ok(create::How::Exclusive(Verifier(array::<{ VERIFY_LEN }>(src)?))),
         _ => Err(Error::EnumDiscMismatch),
     }
 }
 
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
-    Ok(create::Args { dir: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)?, how: how(src)? })
+    Ok(create::Args {
+        dir: file::handle(src)?,
+        name: string_max_size(src, MAX_FILENAME)?,
+        how: how(src)?,
+    })
 }
 
 #[cfg(test)]

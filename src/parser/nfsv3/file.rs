@@ -6,15 +6,15 @@ use crate::parser::primitive::{array, option, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::file;
 
-pub fn handle<S: Read>(src: &mut S) -> Result<file::Handle> {
+pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
     if u32_as_usize(src)? != file::HANDLE_SIZE {
         return Err(Error::BadFileHandle);
     }
-    let array = array::<S, { file::HANDLE_SIZE } >(src)?;
+    let array = array::<{ file::HANDLE_SIZE }>(src)?;
     Ok(file::Handle(array))
 }
 
-pub fn r#type<S: Read>(src: &mut S) -> Result<file::Type> {
+pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
     use file::Type::*;
 
     Ok(match u32(src)? {

@@ -23,7 +23,11 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
 }
 
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
-    Ok(mk_node::Args { dir: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)?, what: what(src)? })
+    Ok(mk_node::Args {
+        dir: file::handle(src)?,
+        name: string_max_size(src, MAX_FILENAME)?,
+        what: what(src)?,
+    })
 }
 
 #[cfg(test)]

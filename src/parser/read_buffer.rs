@@ -108,13 +108,10 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// # Returns
     ///
     /// Returns the parsed value, or an error if parsing fails or I/O errors occur.
-    pub async fn parse_with_retry<T, F>(
+    pub async fn parse_with_retry<T>(
         &mut self,
-        caller: F,
-    ) -> Result<T>
-    where
-        F: Fn(&mut Self) -> Result<T>,
-    {
+        caller: impl Fn(&mut Self) -> Result<T>,
+    ) -> Result<T> {
         let retry_start_read = self.bufs[self.read].bytes_read();
         let retry_start_write = self.bufs[self.write].bytes_read();
         let retry_total = self.total_bytes;
@@ -133,7 +130,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                         self.bufs[self.read].reset_read(retry_start_read);
                         self.bufs[self.write].reset_read(retry_start_write);
                         self.total_bytes = retry_total;
-                        caller(self)
+                        Box::pin(self.parse_with_retry(caller)).await
                     }
                     Err(e) => Err(Error::IO(e)),
                 }
