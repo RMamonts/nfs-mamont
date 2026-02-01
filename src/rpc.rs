@@ -1,7 +1,7 @@
 use std::io;
 use std::string::FromUtf8Error;
 
-use num_derive::ToPrimitive;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 #[allow(dead_code)]
 pub const RPC_VERSION: u32 = 2;
@@ -54,7 +54,7 @@ pub enum ReplyBody {
 }
 
 #[allow(dead_code)]
-#[derive(ToPrimitive)]
+#[derive(ToPrimitive, FromPrimitive)]
 #[repr(u32)]
 pub enum AuthFlavour {
     None = 0,

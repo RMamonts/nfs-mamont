@@ -1,11 +1,8 @@
 use crate::rpc::Error;
 
 use std::future::Future;
-use std::io;
-use std::string::FromUtf8Error;
 
 use crate::parser::mount::{MountArgs, UnmountArgs};
-use crate::parser::rpc::AuthStat;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -22,20 +19,12 @@ mod tests;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-
 pub async fn proc_nested_errors<T>(error: Error, fun: impl Future<Output = Result<T>>) -> Error {
     match fun.await {
         Ok(_) => error,
         Err(err) => err,
     }
 }
-
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct ProgramVersionMismatch(u32, u32);
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct RPCVersionMismatch(u32, u32);
 
 #[allow(dead_code)]
 pub enum Arguments {
@@ -69,22 +58,3 @@ pub enum Arguments {
     Dump,
     UnmountAll,
 }
-
-#[derive(Debug)]
-#[allow(unused)]
-pub enum Error {
-    MaxELemLimit,
-    IO(io::Error),
-    EnumDiscMismatch,
-    IncorrectString(FromUtf8Error),
-    IncorrectPadding,
-    ImpossibleTypeCast,
-    BadFileHandle,
-    MessageTypeMismatch,
-    RpcVersionMismatch(RPCVersionMismatch),
-    AuthError(AuthStat),
-    ProgramMismatch,
-    ProcedureMismatch,
-    ProgramVersionMismatch(ProgramVersionMismatch),
-}
->>>>>>> svmk17/alt_parser

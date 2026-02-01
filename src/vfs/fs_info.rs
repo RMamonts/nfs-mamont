@@ -47,13 +47,11 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// The attributes of the file system root.
     pub root_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`FsInfo::fs_info`] result into.
 #[async_trait]

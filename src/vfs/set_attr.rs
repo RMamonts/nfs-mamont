@@ -6,7 +6,7 @@ use crate::vfs;
 
 use super::file;
 
-type Result = std::result::Result<vfs::WccData, (vfs::Error, vfs::WccData)>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Copy, Clone)]
@@ -46,6 +46,14 @@ pub struct Args {
     pub new_attr: NewAttr,
     /// Optionally verify that `ctime` of the object matches the client expectation.
     pub guard: Option<Guard>,
+}
+
+pub struct Success {
+    pub wcc_data: vfs::WccData,
+}
+
+pub struct Fail {
+    pub wcc_data: vfs::WccData,
 }
 
 #[async_trait]

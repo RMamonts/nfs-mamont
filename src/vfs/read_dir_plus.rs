@@ -2,12 +2,12 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
 use crate::vfs::read_dir::Cookie;
 use crate::vfs::read_dir::CookieVerifier;
 
 use super::file;
 
+// also keep in mind, that it should have some pointer to next item in list
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -28,24 +28,15 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries.
     pub entries: Vec<Entry>,
-    /// `true` if the last member of [`Self::entries`] is the last
-    /// entry in the directory or the list [`Self::entries`] is
-    /// empty and the cookie corresponded to the end of the
-    /// directory.
-    ///
-    /// If `false`, there may be more entries to read.
-    pub eof: bool,
 }
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDir::read_dir`] result into.
 #[async_trait]

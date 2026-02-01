@@ -4,27 +4,23 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 
-use crate::vfs;
-
 use super::file;
 
 /// Success result.
 pub struct Success {
-    /// The data associated with the symbolic link.
-    pub data: PathBuf,
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
+    /// The data associated with the symbolic link.
+    pub data: PathBuf,
 }
 
 /// Fail result.
 pub struct Fail {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
-    /// Error on failure.
-    pub error: vfs::Error,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadLink::read_link`] result into.
 #[async_trait]

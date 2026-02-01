@@ -20,14 +20,12 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// Weak cache consistency data for the directory, where.dir.
     /// TODO(use Args structure).
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Symlink::symlink`] result into.
 #[async_trait]

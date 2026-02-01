@@ -7,28 +7,38 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Slice;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 use crate::serializer::mount::{
-    export_node, mount_body, mount_stat, ExportNode, MountBody, MountStat,
+    export_node, mount_body, mount_res_ok, mount_stat, ExportNode, MountBody, MountResOk, MountStat,
 };
-use crate::serializer::nfs::results::{
-    access_res_fail, access_res_ok, commit_res_fail, commit_res_ok, create_res_fail, create_res_ok,
-    fs_info_res_fail, fs_info_res_ok, fs_stat_res_fail, fs_stat_res_ok, get_attr_res_ok,
-    link_res_fail, link_res_ok, lookup_res_fail, lookup_res_ok, mkdir_res_fail, mkdir_res_ok,
-    mknod_res_fail, mknod_res_ok, nfsstat3, path_config_res_fail, path_config_res_ok,
-    read_dir_plus_res_fail, read_dir_plus_res_ok, read_dir_res_fail, read_dir_res_ok,
-    read_link_res_fail, read_link_res_ok, read_res_fail, read_res_ok_partial, remove_res_fail,
-    remove_res_ok, rename_res_fail, rename_res_ok, rmdir_res_fail, rmdir_res_ok, set_attr_res_fail,
-    set_attr_res_ok, symlink_res_fail, symlink_res_ok, write_res_fail, write_res_ok, AccessResFail,
-    AccessResOk, CommitResFail, CommitResOk, CreateResFail, CreateResOk, FsInfoResOk,
-    FsStatResFail, FsStatResOk, FsinfoResFail, GetAttrResOk, LinkResFail, LinkResOk, LookUpResFail,
-    LookUpResOk, MkdirResFail, MkdirResOk, MknodResFail, MknodResOk, PathConfResFail,
-    PathConfResOk, ReadDirPlusResFail, ReadDirPlusResOk, ReadDirResFail, ReadDirResOk,
-    ReadLinkResFail, ReadLinkResOk, ReadResFail, ReadResOk, RemoveResFail, RemoveResOk,
-    RenameResFail, RenameResOk, RmdirResFail, RmdirResOk, SetAttrResFail, SetAttrResOk,
-    SymlinkResFail, SymlinkResOk, WriteResFail, WriteResOk,
-};
+
+use crate::serializer::nfs::access::{access_res_fail, access_res_ok};
+use crate::serializer::nfs::commit::{commit_res_fail, commit_res_ok};
+use crate::serializer::nfs::create::{create_res_fail, create_res_ok};
+use crate::serializer::nfs::error;
+use crate::serializer::nfs::fs_info::{fs_info_res_fail, fs_info_res_ok};
+use crate::serializer::nfs::fs_stat::{fs_stat_res_fail, fs_stat_res_ok};
+use crate::serializer::nfs::get_attr::get_attr_res_ok;
+use crate::serializer::nfs::link::{link_res_fail, link_res_ok};
+use crate::serializer::nfs::lookup::{lookup_res_fail, lookup_res_ok};
+use crate::serializer::nfs::mk_dir::{mkdir_res_fail, mkdir_res_ok};
+use crate::serializer::nfs::mk_node::{mknod_res_fail, mknod_res_ok};
+use crate::serializer::nfs::path_conf::{path_config_res_fail, path_config_res_ok};
+use crate::serializer::nfs::read::{read_res_fail, read_res_ok_partial};
+use crate::serializer::nfs::read_dir::{read_dir_res_fail, read_dir_res_ok};
+use crate::serializer::nfs::read_dir_plus::{read_dir_plus_res_fail, read_dir_plus_res_ok};
+use crate::serializer::nfs::read_link::{read_link_res_fail, read_link_res_ok};
+use crate::serializer::nfs::remove::{remove_res_fail, remove_res_ok};
+use crate::serializer::nfs::rename::{rename_res_fail, rename_res_ok};
+use crate::serializer::nfs::rm_dir::{rmdir_res_fail, rmdir_res_ok};
+use crate::serializer::nfs::set_attr::{set_attr_res_fail, set_attr_res_ok};
+use crate::serializer::nfs::symlink::{symlink_res_fail, symlink_res_ok};
+use crate::serializer::nfs::write::{write_res_fail, write_res_ok};
 use crate::serializer::rpc::auth_opaque;
 use crate::serializer::{option, u32};
-use crate::vfs::NfsError;
+use crate::vfs;
+use crate::vfs::{
+    access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
+    read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
+};
 
 #[allow(dead_code)]
 // check actual max size
@@ -37,33 +47,33 @@ const DEFAUT_SIZE: usize = 4096;
 #[allow(dead_code)]
 pub enum NfsRes {
     Null,
-    GetAttr(Result<GetAttrResOk, ()>),
-    SetAttr(Result<SetAttrResOk, SetAttrResFail>),
-    LookUp(Result<LookUpResOk, LookUpResFail>),
-    Access(Result<AccessResOk, AccessResFail>),
-    ReadLink(Result<ReadLinkResOk, ReadLinkResFail>),
-    Read(Result<ReadResOk, ReadResFail>),
-    Write(Result<WriteResOk, WriteResFail>),
-    Create(Result<CreateResOk, CreateResFail>),
-    MkDir(Result<MkdirResOk, MkdirResFail>),
-    SymLink(Result<SymlinkResOk, SymlinkResFail>),
-    MkNod(Result<MknodResOk, MknodResFail>),
-    Remove(Result<RemoveResOk, RemoveResFail>),
-    RmDir(Result<RmdirResOk, RmdirResFail>),
-    Rename(Result<RenameResOk, RenameResFail>),
-    Link(Result<LinkResOk, LinkResFail>),
-    ReadDir(Result<ReadDirResOk, ReadDirResFail>),
-    ReadDirPlus(Result<ReadDirPlusResOk, ReadDirPlusResFail>),
-    FsStat(Result<FsStatResOk, FsStatResFail>),
-    FsInfo(Result<FsInfoResOk, FsinfoResFail>),
-    PathConf(Result<PathConfResOk, PathConfResFail>),
-    Commit(Result<CommitResOk, CommitResFail>),
+    GetAttr(get_attr::Result),
+    SetAttr(set_attr::Result),
+    LookUp(lookup::Result),
+    Access(access::Result),
+    ReadLink(read_link::Result),
+    Read(read::Result),
+    Write(write::Result),
+    Create(create::Result),
+    MkDir(mk_dir::Result),
+    SymLink(symlink::Result),
+    MkNod(mk_node::Result),
+    Remove(remove::Result),
+    RmDir(rm_dir::Result),
+    Rename(rename::Result),
+    Link(link::Result),
+    ReadDir(read_dir::Result),
+    ReadDirPlus(read_dir_plus::Result),
+    FsStat(fs_stat::Result),
+    FsInfo(fs_info::Result),
+    PathConf(path_conf::Result),
+    Commit(commit::Result),
 }
 
 #[allow(dead_code)]
 pub enum MountRes {
     Null,
-    Mount(Result<MknodResOk, ()>),
+    Mount(Result<MountResOk, ()>),
     Unmount,
     Export(Option<ExportNode>),
     Dump(Option<MountBody>),
@@ -72,7 +82,7 @@ pub enum MountRes {
 
 #[allow(dead_code)]
 pub enum ProcResult {
-    Nfs3 { status: NfsError, data: NfsRes },
+    Nfs3 { status: vfs::Error, data: NfsRes },
     Mount { status: MountStat, data: MountRes },
 }
 
@@ -105,251 +115,251 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 NfsRes::Null => self.buffer.send_inner_buffer().await,
                 NfsRes::GetAttr(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         get_attr_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(_) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::SetAttr(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         set_attr_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         set_attr_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::LookUp(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         lookup_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         lookup_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Access(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         access_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         access_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::ReadLink(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_link_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_link_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Read(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_res_ok_partial(&mut self.buffer, ok.head)?;
                         self.buffer.send_inner_with_slice(ok.data).await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Write(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         write_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         write_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Create(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         create_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         create_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::MkDir(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         mkdir_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         mkdir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::SymLink(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         symlink_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         symlink_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::MkNod(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         mknod_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         mknod_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Remove(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         remove_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         remove_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::RmDir(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         rmdir_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         rmdir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Rename(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         rename_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         rename_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Link(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         link_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         link_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::ReadDir(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_dir_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_dir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::ReadDirPlus(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_dir_plus_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         read_dir_plus_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::FsStat(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         fs_stat_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         fs_stat_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::FsInfo(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         fs_info_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         fs_info_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::PathConf(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         path_config_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         path_config_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 NfsRes::Commit(res) => match res {
                     Ok(ok) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         commit_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        nfsstat3(&mut self.buffer, status)?;
+                        error(&mut self.buffer, status)?;
                         commit_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -360,7 +370,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 MountRes::Mount(res) => match res {
                     Ok(ok) => {
                         mount_stat(&mut self.buffer, status)?;
-                        mknod_res_ok(&mut self.buffer, ok)?;
+                        mount_res_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Err(_) => {

@@ -1,7 +1,6 @@
 //! Defines NFSv3 [`Read`] interface.
 
 use crate::allocator::Slice;
-use crate::vfs;
 use async_trait::async_trait;
 
 use super::file;
@@ -9,24 +8,27 @@ use super::file;
 /// Success result.
 pub struct Success {
     /// The attributes of the file on completion of the read.
+    pub head: SuccessPartial,
+    /// The counted data read from the file.
+    pub data: Slice,
+}
+
+pub struct SuccessPartial {
+    /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
     /// The number of bytes of data returned by the read.
     pub count: u64,
     /// If the read ended at the end-of-file.
     pub eof: bool,
-    /// The counted data read from the file.
-    pub data: Slice,
 }
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Read::read`] result into.
 #[async_trait]

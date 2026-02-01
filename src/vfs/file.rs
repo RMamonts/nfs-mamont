@@ -1,3 +1,5 @@
+use num_derive::{FromPrimitive, ToPrimitive};
+
 pub const HANDLE_SIZE: usize = 8;
 
 /// Unique file identifier.
@@ -8,7 +10,7 @@ pub const HANDLE_SIZE: usize = 8;
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 /// Type of file.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, ToPrimitive, FromPrimitive)]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -26,7 +28,7 @@ pub enum Type {
     Fifo = 7,
 }
 
-/// File attributes.
+/// File attributes, also known as `fattr3` in RFC
 #[derive(Clone)]
 pub struct Attr {
     /// Type of the file, see [`Type`].
@@ -47,7 +49,7 @@ pub struct Attr {
     /// or [`Type::CharacterDevice`].
     ///
     /// See [`Type`].
-    pub device: Option<Device>,
+    pub device: Device,
     /// The file system identifier for the file system.
     pub fs_id: u64,
     /// The number which uniquely identifies the file within its file system.

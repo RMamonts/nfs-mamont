@@ -33,10 +33,10 @@ pub fn bool(dest: &mut dyn Write, b: bool) -> io::Result<()> {
     }
 }
 
-pub fn option<T>(
-    dest: &mut dyn Write,
+pub fn option<T, S: Write>(
+    dest: &mut S,
     opt: Option<T>,
-    cont: impl FnOnce(T, &mut dyn Write) -> io::Result<()>,
+    cont: impl FnOnce(T, &mut S) -> io::Result<()>,
 ) -> io::Result<()> {
     match opt {
         Some(val) => bool(dest, true).and_then(|_| cont(val, dest)),
@@ -71,7 +71,7 @@ pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
 }
 
 #[allow(dead_code)]
-pub fn variant<T: ToPrimitive>(dest: &mut dyn Write, val: T) -> io::Result<()> {
+pub fn variant<T: ToPrimitive, S: Write + ?Sized>(dest: &mut S, val: T) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         ToPrimitive::to_u32(&val)
             .ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,

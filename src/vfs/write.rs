@@ -31,13 +31,11 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub wcc_data: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Read::read`] result into.
 #[async_trait]

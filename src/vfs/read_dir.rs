@@ -2,18 +2,19 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
-
 use super::file;
 
-// TODO
+pub const COOKIE_VERF_SIZE: usize = 8;
+
+// as in RFC, but probably can change to [u8; 8]
 /// Identifies a point in the directory.
-pub struct Cookie {}
+pub(crate) type Cookie = u64;
 
-// TODO
+// as in RFC
 /// Verifies that point identified by [`Cookie`] is still valid.
-pub struct CookieVerifier {}
+pub struct CookieVerifier(pub [u8; COOKIE_VERF_SIZE]);
 
+// not exactly as in RFC, but possible
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -30,26 +31,17 @@ pub struct Success {
     pub dir_attr: Option<file::Attr>,
     /// The cookie verifier.
     pub cookie_verifier: CookieVerifier,
-    /// Zero or more directory [`Entry`] entries.
+    /// Zero or more directory [`Entry`] entries. Represent linked list of [`Entry`]
     pub entries: Vec<Entry>,
-    /// `true` if the last member of [`Self::entries`] is the last
-    /// entry in the directory or the list [`Self::entries`] is
-    /// empty and the cookie corresponded to the end of the
-    /// directory.
-    ///
-    /// If `false`, there may be more entries to read.
-    pub eof: bool,
 }
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDir::read_dir`] result into.
 #[async_trait]

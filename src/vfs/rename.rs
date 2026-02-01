@@ -16,15 +16,13 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// Weak cache consistency data for the directory, `from_dir`.
     pub from_dir_wcc: vfs::WccData,
     /// Weak cache consistency data for the directory, `to_dir`.
     pub to_dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Rename::rename`] result into.
 #[async_trait]

@@ -18,13 +18,11 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on fauler.
-    pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Commit::commit`] result into.
 #[async_trait]

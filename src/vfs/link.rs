@@ -16,15 +16,13 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
     /// The post-operation attributes of the file system object identified by `file`.
     pub file_attr: Option<file::Attr>,
     /// Weak cache consistency data for the directory, `dir`.
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Link::link`] result into.
 #[async_trait]
