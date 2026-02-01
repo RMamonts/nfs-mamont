@@ -3,9 +3,9 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 #[allow(dead_code)]
-const NFS_PROGRAM: u32 = 100003;
+pub(crate) const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
-const NFS_VERSION: u32 = 3;
+pub(crate) const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
 const NFS3_FHSIZE: u32 = 8;
 #[allow(dead_code)]

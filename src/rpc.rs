@@ -4,7 +4,7 @@ use std::string::FromUtf8Error;
 use num_derive::ToPrimitive;
 
 #[allow(dead_code)]
-const RPC_VERSION: u32 = 2;
+pub const RPC_VERSION: u32 = 2;
 #[allow(dead_code)]
 pub const MAX_AUTH_OPAQUE_LEN: usize = 400;
 
