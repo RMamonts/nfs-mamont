@@ -44,7 +44,7 @@ pub struct Fail {
 
 type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`FsInfo::fs_info`] result into.
+/// Defines callback to pass [`PathConf::path_conf`] result into.
 #[async_trait]
 pub trait Promise {
     async fn keep(promise: Result);

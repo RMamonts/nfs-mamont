@@ -66,9 +66,9 @@ pub enum Error {
     /// non-directory operation.
     IsDir,
     /// Invalid argument or unsupported argument for an
-    /// operation. Two examples are attempting a [`Vfs::read_link`] on an
+    /// operation. Two examples are attempting a [`read_link`] on an
     /// object other than a symbolic link or attempting to
-    /// [`Vfs::set_attr`] a time field on a server that does not support
+    /// [`set_attr`] a time field on a server that does not support
     /// this operation.
     InvalidArgument,
     /// File too large. The operation would have caused a file to
@@ -103,9 +103,9 @@ pub enum Error {
     /// consistency checks.
     BadFileHandle,
     /// Update synchronization mismatch was detected during a
-    /// [`Vfs::set_attr`] operation.
+    /// [`set_attr`] operation.
     NotSync,
-    /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
+    /// [`read_dir`] or [`read_dir_plus`] cookie is stale.
     BadCookie,
     /// Operation is not supported.
     NotSupported,
