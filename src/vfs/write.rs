@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use super::file;
+use super::{file, Error};
 use crate::allocator::Slice;
 use crate::vfs;
 use async_trait::async_trait;
@@ -31,6 +31,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// Weak cache consistency data for the file.
     pub wcc_data: vfs::WccData,
 }

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::file;
+use super::{file, Error};
 
 /// TODO: implement Properties: issue #28
 pub struct Properties(pub u32);
@@ -47,6 +47,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// The attributes of the file system root.
     pub root_attr: Option<file::Attr>,
 }

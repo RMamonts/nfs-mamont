@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::file;
+use super::{file, Error};
 
 pub const VERIFY_LEN: usize = 8;
 pub struct Verifier(pub [u8; VERIFY_LEN]);
@@ -42,6 +42,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// Weak cache consistency data for the directory.
     pub wcc_data: vfs::WccData,
 }

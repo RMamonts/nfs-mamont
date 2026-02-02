@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::file;
+use super::{file, Error};
 
 pub type Result = std::result::Result<Success, Fail>;
 
@@ -53,6 +53,7 @@ pub struct Success {
 }
 
 pub struct Fail {
+    pub status: Error,
     pub wcc_data: vfs::WccData,
 }
 

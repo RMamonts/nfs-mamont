@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -16,6 +16,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// The post-operation attributes of the file system object identified by `file`.
     pub file_attr: Option<file::Attr>,
     /// Weak cache consistency data for the directory, `dir`.

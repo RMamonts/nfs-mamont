@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use super::file;
+use super::{file, Error};
 
 pub const COOKIE_VERF_SIZE: usize = 8;
 
@@ -37,6 +37,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }

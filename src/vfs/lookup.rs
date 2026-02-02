@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -13,6 +13,7 @@ pub struct Success {
 
 /// Failed result.
 pub struct Fail {
+    pub status: Error,
     /// The post-operation attributes of the directory
     pub dir_attr: Option<file::Attr>,
 }

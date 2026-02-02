@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::vfs;
 
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -20,6 +20,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// Weak cache consistency data for the directory, where.dir.
     /// TODO(use Args structure).
     pub dir_wcc: vfs::WccData,

@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -34,6 +34,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// The attributes of the object specified by `file`.
     pub file_attr: Option<file::Attr>,
 }

@@ -3,7 +3,7 @@
 use crate::allocator::Slice;
 use async_trait::async_trait;
 
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -24,6 +24,7 @@ pub struct SuccessPartial {
 
 /// Fail result.
 pub struct Fail {
+    pub status: Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }

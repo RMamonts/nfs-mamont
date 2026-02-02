@@ -2,13 +2,17 @@
 
 use async_trait::async_trait;
 
-use super::file;
+use super::{file, Error};
 use crate::vfs;
 
-pub type Result = std::result::Result<Success, ()>;
+pub type Result = std::result::Result<Success, Fail>;
 
 pub struct Success {
     pub object: file::Handle,
+}
+
+pub struct Fail {
+    pub status: Error,
 }
 
 /// Defines callback to pass [`GetAttr::get_attr`] result into.
