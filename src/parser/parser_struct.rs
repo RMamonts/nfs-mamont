@@ -378,7 +378,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 ///
 /// # Returns
 ///
-/// Returns the parsed [`WriteArgs`] with allocated data, or an error if:
+/// Returns the parsed [`vfs::write::Args`] with allocated data, or an error if:
 /// - Parsing fails
 /// - Memory allocation fails
 /// - Reading the data fails
