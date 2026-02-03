@@ -1,0 +1,39 @@
+use std::io::{Result, Write};
+
+use crate::serializer::nfs::file_handle;
+use crate::serializer::nfs::files::file_name;
+use crate::serializer::u32;
+use crate::vfs::file::{Device, Type};
+use crate::vfs::mk_node::{Args, What};
+
+use super::set_attr::serialize_new_attr;
+
+fn serialize_device(dest: &mut impl Write, arg: Device) -> Result<()> {
+    u32(dest, arg.major).and_then(|_| u32(dest, arg.minor))
+}
+
+fn serialize_how(dest: &mut impl Write, what: What) -> Result<()> {
+    match what {
+        What::Char(attr, fh) => u32(dest, Type::CharacterDevice as u32)
+            .and_then(|_| serialize_new_attr(dest, attr))
+            .and_then(|_| serialize_device(dest, fh)),
+        What::Block(attr, fh) => u32(dest, Type::BlockDevice as u32)
+            .and_then(|_| serialize_new_attr(dest, attr))
+            .and_then(|_| serialize_device(dest, fh)),
+        What::Socket(attr) => {
+            u32(dest, Type::Socket as u32).and_then(|_| serialize_new_attr(dest, attr))
+        }
+        What::Fifo(attr) => {
+            u32(dest, Type::Fifo as u32).and_then(|_| serialize_new_attr(dest, attr))
+        }
+        What::Regular => u32(dest, Type::Regular as u32),
+        What::Directory => u32(dest, Type::Directory as u32),
+        What::SymbolicLink => u32(dest, Type::Symlink as u32),
+    }
+}
+
+pub fn mk_node_args(dest: &mut impl Write, arg: Args) -> Result<()> {
+    file_handle(dest, arg.dir)
+        .and_then(|_| file_name(dest, arg.name))
+        .and_then(|_| serialize_how(dest, arg.what))
+}
