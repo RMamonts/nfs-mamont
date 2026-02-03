@@ -46,6 +46,8 @@ pub trait Promise {
 }
 
 /// [`ReadDirPlus::read_dir_plus`] arguments
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// The file handle for the directory to be read.
     pub dir: file::Handle,

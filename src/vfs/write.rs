@@ -6,7 +6,8 @@ use crate::vfs;
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
@@ -45,6 +46,8 @@ pub trait Promise {
 }
 
 /// [`Write::write`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].

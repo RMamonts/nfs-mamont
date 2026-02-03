@@ -21,7 +21,9 @@ pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
-/// [`GetAttr::get_attr`] aguments.
+/// [`GetAttr::get_attr`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// File handle of an object whose attributes are to be retrieved.
     pub file: file::Handle,

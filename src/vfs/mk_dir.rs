@@ -32,6 +32,8 @@ pub trait Promise {
 }
 
 /// [`MkDir::mk_dir`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// The file handle for the directory in which the subdirectory is to be created.
     pub dir: file::Handle,

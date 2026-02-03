@@ -27,6 +27,8 @@ pub async fn proc_nested_errors<T>(error: Error, fun: impl Future<Output = Resul
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Arguments {
     // NFSv3
     Null,

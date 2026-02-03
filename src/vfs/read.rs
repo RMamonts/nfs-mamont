@@ -38,6 +38,8 @@ pub trait Promise {
 }
 
 /// [`Read::read`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// The file handle of the file from which data is to be read.
     /// This must identify a file system object of type [`file::Type::Regular`],

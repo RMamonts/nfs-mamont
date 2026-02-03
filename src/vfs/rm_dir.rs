@@ -29,6 +29,8 @@ pub trait Promise {
 }
 
 /// [`RmDir::rm_dir`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// The file handle for the directory from which the subdirectory is to be removed.
     pub dir: file::Handle,

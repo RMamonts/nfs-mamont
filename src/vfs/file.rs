@@ -5,12 +5,13 @@ pub const HANDLE_SIZE: usize = 8;
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Clone, PartialEq)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 /// Type of file.
-#[derive(Clone, Copy, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Clone, Copy, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -29,7 +30,8 @@ pub enum Type {
 }
 
 /// File attributes, also known as `fattr3` in RFC
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Attr {
     /// Type of the file, see [`Type`].
     pub file_type: Type,
@@ -70,7 +72,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::Vfs::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -79,7 +82,8 @@ pub struct Time {
 /// Major and minor device pair.
 ///
 /// Used only for [`Type::BlockDevice`] and [`Type::CharacterDevice`] file types.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Device {
     pub major: u32,
     pub minor: u32,

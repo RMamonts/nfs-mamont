@@ -19,10 +19,12 @@ enum MountStat {
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct MountArgs(pub PathBuf);
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct UnmountArgs(pub PathBuf);
 
 pub fn mount(src: &mut impl Read) -> Result<MountArgs> {

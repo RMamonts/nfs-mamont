@@ -27,9 +27,12 @@ pub trait Promise {
 // TODO: implement Mask, issue #27
 /// Mask of [`Access::access`] rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Mask(pub u32);
 
 /// [`Access::access`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Args {
     /// File handle for the file system object to which access is to be checked
     pub file: file::Handle,

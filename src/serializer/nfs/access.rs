@@ -1,9 +1,8 @@
-use std::io;
-use std::io::Write;
-
 use crate::serializer::nfs::files::file_attr;
 use crate::serializer::{option, u32};
 use crate::vfs::access;
+use std::io;
+use std::io::Write;
 
 #[allow(dead_code)]
 pub fn access_res_ok(dest: &mut impl Write, arg: access::Success) -> io::Result<()> {

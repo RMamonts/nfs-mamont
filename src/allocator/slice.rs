@@ -1,6 +1,10 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+use arbitrary::{Arbitrary, Unstructured};
+use tokio::sync::mpsc;
+
 /// Represents bounded by custome range list of buffers.
+#[derive(Debug)]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -150,5 +154,20 @@ impl<'a> IntoIterator for &'a mut Slice {
 
     fn into_iter(self) -> Self::IntoIter {
         IterMut { slice_iter: self.buffers.iter_mut(), range: self.range.clone() }
+    }
+}
+
+impl<'a> Arbitrary<'a> for Slice {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let (sender, _) = mpsc::unbounded_channel();
+        let length = u.int_in_range(1..=100000)?;
+        let mut size = 0;
+        let mut bufs = Vec::new();
+        while size < length {
+            let n = u.int_in_range(1..=(length - size))?;
+            bufs.push(vec![8u8; n].into_boxed_slice());
+            size += n;
+        }
+        Ok(Self::new(bufs, 0..length, sender))
     }
 }
