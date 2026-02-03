@@ -32,7 +32,7 @@ pub struct Mask(pub u32);
 
 /// [`Access::access`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// File handle for the file system object to which access is to be checked
     pub file: file::Handle,

@@ -73,7 +73,7 @@ pub struct Attr {
 /// times except in the case of a [`super::Vfs::set_attr`] operation where the client can
 /// explicitly set the file time.
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -83,7 +83,7 @@ pub struct Time {
 ///
 /// Used only for [`Type::BlockDevice`] and [`Type::CharacterDevice`] file types.
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Device {
     pub major: u32,
     pub minor: u32,

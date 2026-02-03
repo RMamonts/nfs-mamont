@@ -47,7 +47,7 @@ pub trait Promise {
 
 /// [`Write::write`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].

@@ -51,7 +51,7 @@ pub trait Promise {
 
 /// [`FsStat::fs_stat`] arguments.
 #[derive(Debug, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     /// A file handle identifying a mount point in the file system.
     pub root: file::Handle,

@@ -3,17 +3,18 @@
 use std::io::Read;
 
 use crate::parser::nfsv3::file;
-use crate::parser::primitive::u32;
+use crate::parser::primitive::{array, u32, u64};
 use crate::parser::Result;
 use crate::vfs::read_dir;
+use crate::vfs::read_dir::CookieVerifier;
 use crate::vfs::read_dir_plus;
 
-pub fn cookie(_src: &mut impl Read) -> Result<read_dir::Cookie> {
-    todo!()
+pub fn cookie(src: &mut impl Read) -> Result<read_dir::Cookie> {
+    u64(src)
 }
 
-pub fn cookie_verifier(_src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
-    todo!()
+pub fn cookie_verifier(src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
+    Ok(CookieVerifier(array(src)?))
 }
 
 pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {

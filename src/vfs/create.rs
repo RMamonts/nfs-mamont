@@ -8,12 +8,12 @@ use super::{file, Error};
 
 pub const VERIFY_LEN: usize = 8;
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Verifier(pub [u8; VERIFY_LEN]);
 
 /// Describes how the server is to handle the file creation.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum How {
     /// Means that the file should be created without checking
     /// for the existence of a duplicate file in the same
@@ -61,7 +61,7 @@ pub trait Promise {
 
 /// [`Create::create`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory in which the file is to be created.
     pub dir: file::Handle,

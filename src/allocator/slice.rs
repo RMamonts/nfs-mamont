@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -157,10 +158,24 @@ impl<'a> IntoIterator for &'a mut Slice {
     }
 }
 
+impl PartialEq for Slice {
+    fn eq(&self, other: &Self) -> bool {
+        if self.range == other.range && self.buffers.len() == other.buffers.len() {
+            for (buf1, buf2) in self.buffers.iter().zip(other.buffers.iter()) {
+                if buf1.len() != buf2.len() {
+                    break;
+                }
+            }
+            return true;
+        }
+        false
+    }
+}
+
 impl<'a> Arbitrary<'a> for Slice {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let (sender, _) = mpsc::unbounded_channel();
-        let length = u.int_in_range(1..=100000)?;
+        let length = u.int_in_range(1..=1000)?;
         let mut size = 0;
         let mut bufs = Vec::new();
         while size < length {

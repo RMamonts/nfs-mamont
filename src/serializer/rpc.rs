@@ -4,7 +4,7 @@ use num_traits::ToPrimitive;
 use std::io;
 use std::io::Write;
 
-pub fn auth_opaque(dest: &mut dyn Write, data: OpaqueAuth) -> io::Result<()> {
+pub fn auth_opaque(dest: &mut impl Write, data: OpaqueAuth) -> io::Result<()> {
     let n = data
         .flavor
         .to_u32()

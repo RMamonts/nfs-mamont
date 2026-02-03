@@ -8,11 +8,11 @@ pub const COOKIE_VERF_SIZE: usize = 8;
 
 // as in RFC, but probably can change to [u8; 8]
 /// Identifies a point in the directory.
-pub(crate) type Cookie = u64;
+pub type Cookie = u64;
 
 // as in RFC
 /// Verifies that point identified by [`Cookie`] is still valid.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone, Debug))]
 pub struct CookieVerifier(pub [u8; COOKIE_VERF_SIZE]);
 
 // not exactly as in RFC, but possible
@@ -53,7 +53,7 @@ pub trait Promise {
 
 /// [`ReadDir::read_dir`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory to be read.
     pub dir: file::Handle,

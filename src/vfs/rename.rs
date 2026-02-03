@@ -33,7 +33,7 @@ pub trait Promise {
 
 /// [`Rename::rename`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory from which the entry is to be renamed.
     pub from_dir: file::Handle,

@@ -12,16 +12,11 @@ fn serialize_verifier(dest: &mut impl Write, verf: Verifier) -> Result<()> {
 }
 
 fn serialize_how(dest: &mut impl Write, how: How) -> Result<()> {
+    //TODO(change bare numbers to some enum)
     match how {
-        How::Unchecked(new_attr) => {
-            u32(dest, How::Unchecked as u32).and_then(|_| serialize_new_attr(dest, new_attr))
-        }
-        How::Guarded(new_attr) => {
-            u32(dest, How::Guarded as u32).and_then(|_| serialize_new_attr(dest, new_attr))
-        }
-        How::Exclusive(verifier) => {
-            u32(dest, How::Exclusive as u32).and_then(|_| serialize_verifier(dest, verifier))
-        }
+        How::Unchecked(new_attr) => u32(dest, 0).and_then(|_| serialize_new_attr(dest, new_attr)),
+        How::Guarded(new_attr) => u32(dest, 1).and_then(|_| serialize_new_attr(dest, new_attr)),
+        How::Exclusive(verifier) => u32(dest, 2).and_then(|_| serialize_verifier(dest, verifier)),
     }
 }
 

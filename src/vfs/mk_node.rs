@@ -9,7 +9,7 @@ use super::set_attr::NewAttr;
 
 /// A discriminated union identifying the type of the special file to be created.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum What {
     /// Create character special file with specified initial attributes and device numbers.
     Char(NewAttr, file::Device),
@@ -52,7 +52,7 @@ pub trait Promise {
 
 /// [`MkNode::mk_node`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory in which the special file is to be created.
     pub dir: file::Handle,

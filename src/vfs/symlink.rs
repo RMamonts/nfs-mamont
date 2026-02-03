@@ -36,7 +36,7 @@ pub trait Promise {
 
 /// [`Symlink::symlink`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory in which the symbolic link to be created.
     pub dir: file::Handle,

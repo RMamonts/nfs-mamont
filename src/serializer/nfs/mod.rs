@@ -27,13 +27,11 @@ use super::{array, u32, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::file;
 
-const MAX_FILEHANDLE: usize = 8;
-
-pub fn nfs_time(dest: &mut dyn Write, arg: file::Time) -> Result<()> {
+pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {
     u32(dest, arg.seconds).and_then(|_| u32(dest, arg.nanos))
 }
-pub fn file_handle(dest: &mut dyn Write, fh: file::Handle) -> Result<()> {
-    usize_as_u32(dest, MAX_FILEHANDLE).and_then(|_| array::<MAX_FILEHANDLE>(dest, fh.0))
+pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> Result<()> {
+    usize_as_u32(dest, file::HANDLE_SIZE).and_then(|_| array(dest, fh.0))
 }
 
 pub fn error(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {

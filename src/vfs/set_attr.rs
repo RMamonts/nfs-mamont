@@ -1,8 +1,7 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
+use async_trait::async_trait;
 
 use super::{file, Error};
 
@@ -10,7 +9,7 @@ pub type Result = std::result::Result<Success, Fail>;
 
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Guard {
     pub ctime: file::Time,
 }
@@ -23,7 +22,7 @@ pub trait Promise {
 
 /// Strategy for updating timestamps in [`SetAttr`].
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub enum SetTime {
     DontChange,
     ToServer,
@@ -32,7 +31,7 @@ pub enum SetTime {
 
 /// Specifies which attribute to update via [`SetAttr::set_attr`].
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct NewAttr {
     pub mode: Option<u32>,
     pub uid: Option<u32>,
@@ -44,7 +43,7 @@ pub struct NewAttr {
 
 /// [`SetAttr::set_attr`] arguments.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the object.
     pub file: file::Handle,
