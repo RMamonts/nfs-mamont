@@ -97,7 +97,7 @@ pub struct Attr {
 ///
 /// Gives the number of seconds and nanoseconds since midnight January 1, 1970 Greenwich Mean Time.
 /// It is used to pass time and date information. The times associated with files are all server
-/// times except in the case of a [`super::Vfs::set_attr`] operation where the client can
+/// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
 #[derive(Copy, Clone)]
 pub struct Time {

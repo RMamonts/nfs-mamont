@@ -52,7 +52,7 @@ pub trait Symlink {
     ///
     /// For symbolic links, the actual file system node and its contents are expected to be
     /// created in a single atomic operation. That is, once the symbolic link is visible,
-    /// there must not be a window where a [`super::read_link::Read_link::read_link`] would fail or
+    /// there must not be a window where a [`super::read_link::ReadLink::read_link`] would fail or
     /// return incorrect data.
     async fn symlink(&self, args: Args, promise: impl Promise);
 }

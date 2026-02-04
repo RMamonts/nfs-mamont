@@ -38,7 +38,7 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Read::read`] result into.
+/// Defines callback to pass [`Write::write`] result into.
 #[async_trait]
 pub trait Promise {
     async fn keep(promise: Result);

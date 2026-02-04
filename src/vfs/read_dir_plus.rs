@@ -39,7 +39,7 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`ReadDir::read_dir`] result into.
+/// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
 #[async_trait]
 pub trait Promise {
     async fn keep(promise: Result);
@@ -54,7 +54,7 @@ pub struct Args {
     pub cookie: Cookie,
     /// This should be set to 0 in the first request to read the directory.
     /// On subsequent requests, it should be a cookie_verifier as returned by the server. The
-    /// cookie_verifier must match that returned by the [`ReadDir::read_dir`] in which the cookie
+    /// cookie_verifier must match that returned by the [`ReadDirPlus::read_dir_plus`] in which the cookie
     /// was acquired.
     pub cookie_verifier: CookieVerifier,
     /// The maximum number of bytes of directory information returned. This number should not
