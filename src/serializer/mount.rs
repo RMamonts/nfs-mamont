@@ -1,10 +1,10 @@
+use std::io;
+use std::io::Write;
+
 use crate::serializer::nfs::file_handle;
 use crate::serializer::nfs::files::{file_name, file_path};
 use crate::serializer::{bool, option, u32, vector_u32};
 use crate::vfs::file;
-use std::io;
-use std::io::Write;
-use std::path::PathBuf;
 
 #[allow(dead_code)]
 pub enum MountStat {
@@ -51,8 +51,8 @@ pub fn mount_res_ok(dest: &mut impl Write, arg: MountResOk) -> io::Result<()> {
 }
 
 pub struct MountBody {
-    ml_hostname: String,
-    ml_directory: PathBuf,
+    ml_hostname: file::FileName,
+    ml_directory: file::FilePath,
     ml_next: Option<Box<MountBody>>,
 }
 
@@ -68,7 +68,7 @@ pub fn mount_body(dest: &mut impl Write, arg: MountBody) -> io::Result<()> {
 
 #[allow(dead_code)]
 pub struct GroupNode {
-    gr_name: String,
+    gr_name: file::FileName,
     groups: Option<Box<GroupNode>>,
 }
 
@@ -83,7 +83,7 @@ pub fn group_node(dest: &mut impl Write, arg: GroupNode) -> io::Result<()> {
 
 #[allow(dead_code)]
 pub struct ExportNode {
-    ex_dir: PathBuf,
+    ex_dir: file::FilePath,
     groups: Option<GroupNode>,
     exports: Option<Box<ExportNode>>,
 }

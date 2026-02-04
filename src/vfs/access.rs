@@ -18,7 +18,7 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Lookup::lookup`] result into.
+/// Defines callback to pass [`Access::access`] result into.
 #[async_trait]
 pub trait Promise {
     async fn keep(promise: Result);

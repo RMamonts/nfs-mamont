@@ -1,4 +1,7 @@
+use crate::vfs::MAX_NAME_LEN;
 use num_derive::{FromPrimitive, ToPrimitive};
+use std::io;
+use std::path::PathBuf;
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -8,6 +11,34 @@ pub const HANDLE_SIZE: usize = 8;
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
+
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+pub struct FileName(pub String);
+
+#[allow(dead_code)]
+impl FileName {
+    fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(FileName(name))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct FilePath(pub PathBuf);
+
+#[allow(dead_code)]
+impl FilePath {
+    fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(FilePath(PathBuf::from(name)))
+    }
+}
 
 /// Type of file.
 #[derive(Debug, Clone, Copy, ToPrimitive, FromPrimitive)]
@@ -70,7 +101,7 @@ pub struct Attr {
 ///
 /// Gives the number of seconds and nanoseconds since midnight January 1, 1970 Greenwich Mean Time.
 /// It is used to pass time and date information. The times associated with files are all server
-/// times except in the case of a [`super::Vfs::set_attr`] operation where the client can
+/// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]

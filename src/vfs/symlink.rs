@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 
-use std::path::PathBuf;
-
 use crate::vfs;
 
 use super::{file, Error};
@@ -41,11 +39,11 @@ pub struct Args {
     /// The file handle for the directory in which the symbolic link to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created symbolic link.
-    pub name: String,
+    pub name: file::FileName,
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
-    pub path: PathBuf,
+    pub path: file::FilePath,
 }
 
 #[async_trait]
@@ -56,7 +54,7 @@ pub trait Symlink {
     ///
     /// For symbolic links, the actual file system node and its contents are expected to be
     /// created in a single atomic operation. That is, once the symbolic link is visible,
-    /// there must not be a window where a [`super::read_link::Read_link::read_link`] would fail or
+    /// there must not be a window where a [`super::read_link::ReadLink::read_link`] would fail or
     /// return incorrect data.
     async fn symlink(&self, args: Args, promise: impl Promise);
 }
