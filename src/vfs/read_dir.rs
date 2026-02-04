@@ -12,7 +12,8 @@ pub type Cookie = u64;
 
 // as in RFC
 /// Verifies that point identified by [`Cookie`] is still valid.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
+#[derive(Debug)]
 pub struct CookieVerifier(pub [u8; COOKIE_VERF_SIZE]);
 
 // not exactly as in RFC, but possible

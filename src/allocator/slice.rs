@@ -1,5 +1,5 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
-
+#[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
 use tokio::sync::mpsc;
 
@@ -172,6 +172,7 @@ impl PartialEq for Slice {
     }
 }
 
+#[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for Slice {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let (sender, _) = mpsc::unbounded_channel();

@@ -1,4 +1,8 @@
 use crate::vfs::MAX_NAME_LEN;
+
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
+
 use num_derive::{FromPrimitive, ToPrimitive};
 use std::io;
 use std::path::PathBuf;
@@ -14,7 +18,18 @@ pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
+#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct FileName(pub String);
+
+#[cfg(feature = "arbitrary")]
+impl<'a> Arbitrary<'a> for FileName {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let len = u.int_in_range(5..=50)?;
+        let bytes = u.bytes(len)?;
+        let name = String::from_utf8_lossy(bytes).to_string();
+        Ok(FileName(name))
+    }
+}
 
 #[allow(dead_code)]
 impl FileName {
@@ -27,6 +42,7 @@ impl FileName {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(Clone))]
 #[allow(dead_code)]
 pub struct FilePath(pub PathBuf);
 
@@ -36,6 +52,16 @@ impl FilePath {
         if name.len() > MAX_NAME_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
+        Ok(FilePath(PathBuf::from(name)))
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> Arbitrary<'a> for FilePath {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let len = u.int_in_range(5..=50)?;
+        let bytes = u.bytes(len)?;
+        let name = String::from_utf8_lossy(bytes).to_string();
         Ok(FilePath(PathBuf::from(name)))
     }
 }
