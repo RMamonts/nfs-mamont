@@ -1,9 +1,6 @@
 use std::io::Read;
-use std::path::PathBuf;
-use std::str::FromStr;
 
 use super::{Error, Result};
-use crate::vfs::MAX_PATH_LEN;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -91,10 +88,6 @@ pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
 pub fn string(src: &mut impl Read) -> Result<String> {
     let vec = vector(src)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
-}
-
-pub fn path(src: &mut impl Read) -> Result<PathBuf> {
-    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxELemLimit)
 }
 
 #[allow(dead_code)]

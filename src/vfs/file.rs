@@ -16,23 +16,25 @@ pub struct Handle(pub [u8; HANDLE_SIZE]);
 #[allow(dead_code)]
 pub struct FileName(pub String);
 
+#[allow(dead_code)]
 impl FileName {
     fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
-            return Err(io::Error::new(io::ErrorKind::InvalidFilename, "name too long"));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
         Ok(FileName(name))
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 #[allow(dead_code)]
 pub struct FilePath(pub PathBuf);
 
+#[allow(dead_code)]
 impl FilePath {
     fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
-            return Err(io::Error::new(io::ErrorKind::InvalidFilename, "name too long"));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
         Ok(FilePath(PathBuf::from(name)))
     }

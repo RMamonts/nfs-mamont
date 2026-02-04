@@ -1,10 +1,12 @@
 //! Implements [`crate::vfs::file`] structures parsing
 
-use std::io::Read;
-
-use crate::parser::primitive::{array, u32, u32_as_usize, u64};
+use crate::parser::nfsv3::MAX_FILENAME;
+use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
-use crate::vfs::file;
+use crate::vfs::file::{FileName, FilePath};
+use crate::vfs::{file, MAX_PATH_LEN};
+use std::io::Read;
+use std::path::PathBuf;
 
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
     if u32_as_usize(src)? != file::HANDLE_SIZE {
@@ -57,6 +59,14 @@ pub fn device(src: &mut impl Read) -> Result<file::Device> {
 
 pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
+}
+
+pub fn file_name(src: &mut impl Read) -> Result<file::FileName> {
+    Ok(FileName(string_max_size(src, MAX_FILENAME)?))
+}
+
+pub fn file_path(src: &mut impl Read) -> Result<file::FilePath> {
+    Ok(FilePath(PathBuf::from(string_max_size(src, MAX_PATH_LEN)?)))
 }
 
 #[cfg(test)]

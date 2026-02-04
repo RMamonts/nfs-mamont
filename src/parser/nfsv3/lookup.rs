@@ -2,13 +2,13 @@
 
 use std::io::Read;
 
-use crate::parser::nfsv3::{file, MAX_FILENAME};
-use crate::parser::primitive::string_max_size;
+use crate::parser::nfsv3::file;
+use crate::parser::nfsv3::file::file_name;
 use crate::parser::Result;
 use crate::vfs::lookup;
 
 pub fn args(src: &mut impl Read) -> Result<lookup::Args> {
-    Ok(lookup::Args { parent: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)? })
+    Ok(lookup::Args { parent: file::handle(src)?, name: file_name(src)? })
 }
 
 #[cfg(test)]
@@ -29,7 +29,7 @@ mod tests {
         let args = args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(args.parent.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(args.name, "test");
+        assert_eq!(args.name.0, "test");
     }
 
     #[test]

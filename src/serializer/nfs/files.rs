@@ -2,10 +2,10 @@ use crate::parser::nfsv3::MAX_FILENAME;
 use crate::serializer::nfs::nfs_time;
 use crate::serializer::{option, string_max_size, u32, u64, variant};
 use crate::vfs;
+use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
 use std::io;
 use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
 
 pub fn file_type<S: Write>(dest: &mut S, file_type: file::Type) -> io::Result<()> {
     variant::<file::Type, S>(dest, file_type)
@@ -39,14 +39,15 @@ pub fn wcc_data<S: Write>(dest: &mut S, wcc: vfs::WccData) -> io::Result<()> {
     option(dest, wcc.after, |attr, dest| file_attr(dest, attr))
 }
 
-pub fn file_name(dest: &mut impl Write, file_name: String) -> io::Result<()> {
-    string_max_size(dest, file_name, MAX_FILENAME)
+pub fn file_name(dest: &mut impl Write, file_name: FileName) -> io::Result<()> {
+    string_max_size(dest, file_name.0, MAX_FILENAME)
 }
 
-pub fn file_path(dest: &mut impl Write, file_name: PathBuf) -> io::Result<()> {
+pub fn file_path(dest: &mut impl Write, file_name: FilePath) -> io::Result<()> {
     string_max_size(
         dest,
         file_name
+            .0
             .into_os_string()
             .into_string()
             .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?,

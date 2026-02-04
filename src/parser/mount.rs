@@ -1,7 +1,8 @@
-use super::Result;
-use crate::parser::primitive::path;
 use std::io::Read;
-use std::path::PathBuf;
+
+use super::Result;
+use crate::parser::nfsv3::file::file_path;
+use crate::vfs::file::FilePath;
 
 #[allow(dead_code)]
 enum MountStat {
@@ -19,16 +20,16 @@ enum MountStat {
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct MountArgs(pub PathBuf);
+pub struct MountArgs(pub FilePath);
 
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct UnmountArgs(pub PathBuf);
+pub struct UnmountArgs(pub FilePath);
 
 pub fn mount(src: &mut impl Read) -> Result<MountArgs> {
-    Ok(MountArgs(path(src)?))
+    Ok(MountArgs(file_path(src)?))
 }
 
 pub fn unmount(src: &mut impl Read) -> Result<UnmountArgs> {
-    Ok(UnmountArgs(path(src)?))
+    Ok(UnmountArgs(file_path(src)?))
 }
