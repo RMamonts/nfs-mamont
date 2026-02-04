@@ -8,7 +8,7 @@ pub const COOKIE_VERF_SIZE: usize = 8;
 
 // as in RFC, but probably can change to [u8; 8]
 /// Identifies a point in the directory.
-pub(crate) type Cookie = u64;
+pub type Cookie = u64;
 
 // as in RFC
 /// Verifies that point identified by [`Cookie`] is still valid.
@@ -21,7 +21,7 @@ pub struct Entry {
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::FileName,
     pub cookie: Cookie,
 }
 

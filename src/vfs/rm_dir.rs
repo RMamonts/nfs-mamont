@@ -33,7 +33,7 @@ pub struct Args {
     /// The file handle for the directory from which the subdirectory is to be removed.
     pub dir: file::Handle,
     /// The name of the subdirectory to be removed.
-    pub name: String,
+    pub name: file::FileName,
 }
 
 #[async_trait]

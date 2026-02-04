@@ -36,11 +36,11 @@ pub struct Args {
     /// The file handle for the directory from which the entry is to be renamed.
     pub from_dir: file::Handle,
     /// The name of the entry that identifies the object to be renamed.
-    pub from_name: String,
+    pub from_name: file::FileName,
     /// The file handle for the directory to which the object is to be renamed.
     pub to_dir: file::Handle,
     /// The new name for the object.
-    pub to_name: String,
+    pub to_name: file::FileName,
 }
 
 #[async_trait]

@@ -1,4 +1,7 @@
+use crate::vfs::MAX_NAME_LEN;
 use num_derive::{FromPrimitive, ToPrimitive};
+use std::io;
+use std::path::PathBuf;
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -8,6 +11,32 @@ pub const HANDLE_SIZE: usize = 8;
 #[derive(Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
+
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+pub struct FileName(pub String);
+
+impl FileName {
+    fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidFilename, "name too long"));
+        }
+        Ok(FileName(name))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+pub struct FilePath(pub PathBuf);
+
+impl FilePath {
+    fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidFilename, "name too long"));
+        }
+        Ok(FilePath(PathBuf::from(name)))
+    }
+}
 
 /// Type of file.
 #[derive(Clone, Copy, ToPrimitive, FromPrimitive)]
