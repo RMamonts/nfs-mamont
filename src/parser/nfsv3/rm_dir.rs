@@ -7,6 +7,7 @@ use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::rm_dir;
 
+/// Parses the arguments for an NFSv3 `RMDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<rm_dir::Args> {
     Ok(rm_dir::Args { dir: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)? })
 }

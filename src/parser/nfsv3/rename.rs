@@ -7,6 +7,7 @@ use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::rename;
 
+/// Parses the arguments for an NFSv3 `RENAME` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<rename::Args> {
     Ok(rename::Args {
         from_dir: file::handle(src)?,

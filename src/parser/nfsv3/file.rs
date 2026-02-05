@@ -6,6 +6,7 @@ use crate::parser::primitive::{array, option, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::file;
 
+/// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
     if u32_as_usize(src)? != file::HANDLE_SIZE {
         return Err(Error::BadFileHandle);
@@ -14,6 +15,7 @@ pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
     Ok(file::Handle(array))
 }
 
+/// Parses a [`file::Type`] from the provided `Read` source.
 pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
     use file::Type::*;
 
@@ -29,6 +31,7 @@ pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
     })
 }
 
+/// Parses a [`file::Attr`] structure from the provided `Read` source.
 pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
     Ok(file::Attr {
         file_type: r#type(src)?,
@@ -47,14 +50,17 @@ pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
     })
 }
 
+/// Parses a [`file::Time`] structure from the provided `Read` source.
 pub fn time(src: &mut impl Read) -> Result<file::Time> {
     Ok(file::Time { seconds: u32(src)?, nanos: u32(src)? })
 }
 
+/// Parses a [`file::Device`] structure from the provided `Read` source.
 pub fn device(src: &mut impl Read) -> Result<file::Device> {
     Ok(file::Device { major: u32(src)?, minor: u32(src)? })
 }
 
+/// Parses a [`file::WccAttr`] structure from the provided `Read` source.
 pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
 }

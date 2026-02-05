@@ -8,6 +8,7 @@ use crate::parser::primitive::{path, string_max_size};
 use crate::parser::Result;
 use crate::vfs::symlink;
 
+/// Parses the arguments for an NFSv3 `SYMLINK` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<symlink::Args> {
     Ok(symlink::Args {
         dir: file::handle(src)?,

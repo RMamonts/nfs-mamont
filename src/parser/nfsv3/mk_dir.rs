@@ -8,6 +8,7 @@ use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::mk_dir;
 
+/// Parses the arguments for an NFSv3 `MKDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
     Ok(mk_dir::Args {
         dir: file::handle(src)?,

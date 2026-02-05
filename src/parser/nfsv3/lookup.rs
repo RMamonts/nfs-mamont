@@ -7,6 +7,7 @@ use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::lookup;
 
+/// Parses the arguments for an NFSv3 `LOOKUP` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<lookup::Args> {
     Ok(lookup::Args { parent: file::handle(src)?, name: string_max_size(src, MAX_FILENAME)? })
 }

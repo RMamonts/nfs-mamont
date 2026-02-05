@@ -9,6 +9,7 @@ use crate::parser::primitive::u32;
 use crate::parser::Result;
 use crate::vfs::read_dir;
 
+/// Parses the arguments for an NFSv3 `READDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<read_dir::Args> {
     Ok(read_dir::Args {
         dir: file::handle(src)?,

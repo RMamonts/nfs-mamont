@@ -7,6 +7,7 @@ use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::link;
 
+/// Parses the arguments for an NFSv3 `LINK` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<link::Args> {
     Ok(link::Args {
         file: file::handle(src)?,
