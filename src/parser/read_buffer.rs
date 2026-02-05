@@ -11,8 +11,7 @@
 
 use std::cmp::min;
 use std::io;
-use std::io::{ErrorKind, Read};
-
+use std::io::{ErrorKind, Read, Write};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
@@ -253,6 +252,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         // probably useless, since we have guarantees from Take
         if actual != from_socket {
+            println!("actual: {} != {}", actual, from_socket);
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 "Discarded not valid amount of bytes",
@@ -269,6 +269,17 @@ impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
         let n2 = self.bufs[self.write].read(&mut buf[n1..])?;
         self.total_bytes += n1 + n2;
         Ok(n1 + n2)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<S: AsyncRead + Write + Unpin> Write for CountBuffer<S> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.socket.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 

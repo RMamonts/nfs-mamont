@@ -10,10 +10,18 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = { version = "0.4.10", features = ["arbitrary-derive"] }
 nfs-mamont = { path = "..", features = ["arbitrary"] }
+tokio = "1.49.0"
 
 [[bin]]
 name = "parser_fuzz"
 path = "fuzz_targets/parser_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "round"
+path = "fuzz_targets/round.rs"
 test = false
 doc = false
 bench = false

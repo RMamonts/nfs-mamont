@@ -2,6 +2,7 @@
 
 pub mod allocator;
 pub mod client;
+pub mod mocks;
 mod mount;
 pub mod nfsv3;
 pub mod parser;

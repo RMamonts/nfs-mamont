@@ -1,5 +1,5 @@
+use crate::mocks::alloc::MockAllocator;
 use crate::parser::parser_struct::RpcParser;
-use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
 use crate::vfs::{file, fs_stat};

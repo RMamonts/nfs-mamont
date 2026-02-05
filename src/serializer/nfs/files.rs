@@ -44,13 +44,11 @@ pub fn file_name(dest: &mut impl Write, file_name: FileName) -> io::Result<()> {
 }
 
 pub fn file_path(dest: &mut impl Write, file_name: FilePath) -> io::Result<()> {
-    string_max_size(
-        dest,
-        file_name
-            .0
-            .into_os_string()
-            .into_string()
-            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?,
-        MAX_PATH_LEN,
-    )
+    let s = file_name
+        .0
+        .into_os_string()
+        .into_string()
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?;
+    println!("{}", s.len());
+    string_max_size(dest, s, MAX_PATH_LEN)
 }

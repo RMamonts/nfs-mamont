@@ -160,12 +160,11 @@ impl<'a> IntoIterator for &'a mut Slice {
 
 impl PartialEq for Slice {
     fn eq(&self, other: &Self) -> bool {
-        if self.range == other.range && self.buffers.len() == other.buffers.len() {
-            for (buf1, buf2) in self.buffers.iter().zip(other.buffers.iter()) {
-                if buf1.len() != buf2.len() {
-                    break;
-                }
-            }
+        if self.range == other.range
+            && self.buffers.iter().map(|buf| buf.len()).sum::<usize>()
+                == other.buffers.iter().map(|buf| buf.len()).sum()
+        {
+            //yet we can't compare Slices
             return true;
         }
         false

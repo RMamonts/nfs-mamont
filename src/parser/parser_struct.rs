@@ -13,8 +13,9 @@
 //! supporting retry logic for parsing operations that may need additional data.
 
 use std::cmp::min;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write};
 use std::num::NonZeroUsize;
+
 use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
@@ -35,7 +36,7 @@ use crate::rpc::{
 use crate::vfs;
 
 #[allow(dead_code)]
-const MAX_MESSAGE_LEN: usize = 2500;
+pub const MAX_MESSAGE_LEN: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -464,4 +465,15 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
         )));
     }
     Ok(real_size)
+}
+
+#[cfg(feature = "arbitrary")]
+impl<A: Allocator, S: AsyncRead + Write + Unpin> Write for RpcParser<A, S> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }

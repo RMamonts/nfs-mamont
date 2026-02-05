@@ -1,5 +1,7 @@
 #![no_main]
 
+mod round;
+
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::client::arguments;
 use nfs_mamont::parser::{mount, nfsv3, Arguments};
