@@ -7,6 +7,8 @@ use crate::vfs;
 use super::file;
 
 pub const VERIFY_LEN: usize = 8;
+
+/// Opaque byte array of `VERIFY_LEN` size used in `How`
 pub struct Verifier(pub [u8; VERIFY_LEN]);
 
 /// Describes how the server is to handle the file creation.

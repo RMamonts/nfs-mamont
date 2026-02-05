@@ -17,8 +17,11 @@ pub enum What {
     Socket(NewAttr),
     /// Create fifo special file with specified initial attributes.
     Fifo(NewAttr),
+    /// Create regular file with no additional data.
     Regular,
+    /// Create directory with no additional data.
     Directory,
+    /// Create symbolic link with no additional data.
     SymbolicLink,
 }
 
