@@ -1,4 +1,5 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
+#![allow(rustdoc::broken_intra_doc_links)]
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
