@@ -1,6 +1,6 @@
 use crate::mocks::alloc::MockAllocator;
+use crate::mocks::fuzz_socket::FuzzMockSocket;
 use crate::parser::parser_struct::RpcParser;
-use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
 use crate::vfs::{file, fs_stat};
 
@@ -15,9 +15,10 @@ async fn parse_two_correct() {
         0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02,
         0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let (socket, mut handle) = FuzzMockSocket::new();
     let alloc = MockAllocator::new(0);
     let mut parser = RpcParser::new(socket, alloc, 0x35);
+    handle.send_data(buf);
     let _ = parser.parse_message().await;
     let result2 = parser.parse_message().await.unwrap();
     let expected =
@@ -41,9 +42,10 @@ async fn parse_after_error() {
         0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02,
         0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let (socket, mut handle) = FuzzMockSocket::new();
     let alloc = MockAllocator::new(0);
     let mut parser = RpcParser::new(socket, alloc, 0x50);
+    handle.send_data(buf);
     let result1 = parser.parse_message().await;
     assert!(result1.is_err());
     let result2 = parser.parse_message().await.unwrap();
@@ -94,9 +96,11 @@ async fn parse_write() {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03,
         0x04, 0x01, 0x02, 0x03, 0x04,
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let (socket, mut handle) = FuzzMockSocket::new();
+    //let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
     let mut parser = RpcParser::new(socket, alloc, 72);
+    handle.send_data(buf);
     let result1 = parser.parse_message().await;
     assert!(result1.is_ok());
     let result1 = parser.parse_message().await;
@@ -138,9 +142,11 @@ async fn parse_write_after_error() {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03,
         0x04, 0x01, 0x02, 0x03, 0x04,
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let (socket, mut handle) = FuzzMockSocket::new();
+    //let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
     let mut parser = RpcParser::new(socket, alloc, 80);
+    handle.send_data(buf);
     let result1 = parser.parse_message().await;
     assert!(result1.is_err());
     let result1 = parser.parse_message().await;

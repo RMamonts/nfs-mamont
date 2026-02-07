@@ -97,7 +97,6 @@ pub enum Error {
     IO(io::Error),
     EnumDiscMismatch,
     IncorrectString(FromUtf8Error),
-    IncorrectPadding,
     ImpossibleTypeCast,
     BadFileHandle,
     MessageTypeMismatch,

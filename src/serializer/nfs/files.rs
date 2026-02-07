@@ -1,11 +1,12 @@
+use std::io;
+use std::io::{ErrorKind, Write};
+
 use crate::parser::nfsv3::MAX_FILENAME;
 use crate::serializer::nfs::nfs_time;
 use crate::serializer::{option, string_max_size, u32, u64, variant};
 use crate::vfs;
 use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
-use std::io;
-use std::io::{ErrorKind, Write};
 
 pub fn file_type<S: Write>(dest: &mut S, file_type: file::Type) -> io::Result<()> {
     variant::<file::Type, S>(dest, file_type)
@@ -49,6 +50,20 @@ pub fn file_path(dest: &mut impl Write, file_name: FilePath) -> io::Result<()> {
         .into_os_string()
         .into_string()
         .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?;
-    println!("{}", s.len());
     string_max_size(dest, s, MAX_PATH_LEN)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::serializer::nfs::files::file_name;
+    use crate::vfs::file::FileName;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_filename_padding() {
+        let mut cursor = Cursor::new(vec![1u8; 9]);
+        let name = FileName("    ".to_string());
+        file_name(&mut cursor, name).unwrap();
+        assert_eq!(cursor.into_inner(), vec![0, 0, 0, 4, b' ', b' ', b' ', b' ', 1])
+    }
 }

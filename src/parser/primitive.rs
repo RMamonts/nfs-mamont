@@ -7,11 +7,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 #[allow(dead_code)]
 pub const ALIGNMENT: usize = 4;
 
-#[allow(dead_code)]
 pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
-    src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
+    src.read_exact(&mut buf[..padding]).map_err(Error::IO)
 }
 
 #[allow(dead_code)]

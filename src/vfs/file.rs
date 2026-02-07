@@ -1,11 +1,12 @@
-use crate::vfs::MAX_NAME_LEN;
+use std::io;
+use std::path::PathBuf;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
 
 use num_derive::{FromPrimitive, ToPrimitive};
-use std::io;
-use std::path::PathBuf;
+
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -24,9 +25,12 @@ pub struct FileName(pub String);
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for FileName {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let len = u.int_in_range(5..=50)?;
-        let bytes = u.bytes(len)?;
-        let name = String::from_utf8_lossy(bytes).to_string();
+        let name = loop {
+            let str = String::arbitrary(u)?;
+            if str.len() <= MAX_NAME_LEN {
+                break str;
+            }
+        };
         Ok(FileName(name))
     }
 }
@@ -59,9 +63,12 @@ impl FilePath {
 #[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for FilePath {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let len = u.int_in_range(5..=50)?;
-        let bytes = u.bytes(len)?;
-        let name = String::from_utf8_lossy(bytes).to_string();
+        let name = loop {
+            let str = String::arbitrary(u)?;
+            if str.len() <= MAX_PATH_LEN {
+                break str;
+            }
+        };
         Ok(FilePath(PathBuf::from(name)))
     }
 }

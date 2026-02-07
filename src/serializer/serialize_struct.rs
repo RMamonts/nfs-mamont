@@ -401,8 +401,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 self.process_result(proc).await
             }
             Err(err) => match err {
-                Error::IncorrectPadding
-                | Error::ImpossibleTypeCast
+                Error::ImpossibleTypeCast
                 | Error::BadFileHandle
                 | Error::MessageTypeMismatch
                 | Error::EnumDiscMismatch
@@ -463,6 +462,7 @@ struct WriteBuffer<T: AsyncWrite + Unpin> {
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let size = min(self.buf.len() + buf.len(), self.buf.len());
+        assert!(size > 0);
         self.buf[self.position..self.position + size].copy_from_slice(&buf[..size]);
         self.position += size;
         Ok(size)

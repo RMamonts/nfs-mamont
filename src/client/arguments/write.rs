@@ -2,17 +2,16 @@ use std::io::{Result, Write};
 
 use crate::allocator::Slice;
 use crate::serializer::nfs::file_handle;
-use crate::serializer::{u32, u64, usize_as_u32, variant};
+use crate::serializer::{padding, u32, u64, usize_as_u32, variant};
 use crate::vfs::write::Args;
 
 pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
     let size: usize = arg.iter().map(|buf| buf.len()).sum();
-    let padding = (4 - size % 4) % 4;
     usize_as_u32(dest, size)?;
     for buf in arg.iter() {
         dest.write_all(buf)?;
     }
-    dest.write_all(&vec![0u8; padding])?;
+    padding(dest, size)?;
     Ok(())
 }
 

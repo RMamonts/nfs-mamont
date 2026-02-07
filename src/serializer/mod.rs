@@ -12,7 +12,7 @@ use num_traits::ToPrimitive;
 
 pub const ALIGNMENT: usize = 4;
 
-fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
+pub fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])

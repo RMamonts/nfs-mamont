@@ -13,7 +13,7 @@
 //! supporting retry logic for parsing operations that may need additional data.
 
 use std::cmp::min;
-use std::io::{self, ErrorKind, Write};
+use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 
 use tokio::io::AsyncRead;
@@ -465,15 +465,4 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
         )));
     }
     Ok(real_size)
-}
-
-#[cfg(feature = "arbitrary")]
-impl<A: Allocator, S: AsyncRead + Write + Unpin> Write for RpcParser<A, S> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.buffer.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
 }
