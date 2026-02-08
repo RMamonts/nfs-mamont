@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn tets_type_falure() {
+    fn test_type_failure() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x08];
 
         assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
