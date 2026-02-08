@@ -1,7 +1,8 @@
-//! Defines Mount version 4 [`Umntall`] interface (Procedure 4).
+//! Defines Mount version 3 [`Umntall`] interface (Procedure 4).
 //!
 //! as defined in RFC 1813 section 5.2.4.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
+
 use async_trait::async_trait;
 
 /// Defines callback to pass [`Umntall::umntall`] result into.
@@ -12,7 +13,7 @@ pub trait Promise {
 
 #[async_trait]
 pub trait Umntall {
-    /// Removes all of the mount entries for this client previously.
+    /// Removes all of the mount entries for this client previously
     /// recorded by calls to MNT.
     ///
     /// AUTH_UNIX authentication or better is required.

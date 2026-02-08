@@ -13,15 +13,13 @@ pub struct Success {
     /// Contains one entry for each client host name and directory pair.
     /// The list is derived from a list maintained on the server
     /// of clients that have requested file handles with the MNT procedure.
-    mount_list: Vec<MountEntry>,
+    pub mount_list: Vec<MountEntry>,
 }
-
-pub type Result = std::result::Result<Success, ()>;
 
 /// Defines callback to pass [`Dump::dump`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result);
+    async fn keep(result: Success);
 }
 
 #[async_trait]

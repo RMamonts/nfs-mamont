@@ -2,16 +2,15 @@
 //!
 //! as defined in RFC 1813 section 5.2.3.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
+
 use async_trait::async_trait;
 
-use crate::vfs::{FileName, NfsError};
-
-pub type Result = std::result::Result<(), NfsError>;
+use crate::vfs::FileName;
 
 /// Defines callback to pass [`Umnt::umnt`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result);
+    async fn keep();
 }
 
 #[async_trait]

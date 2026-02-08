@@ -7,8 +7,6 @@ use async_trait::async_trait;
 
 use super::ExportEntry;
 
-use crate::vfs::NfsError;
-
 /// Success result.
 pub struct Success {
     /// Vector of export entries, each containing an exported
@@ -17,12 +15,10 @@ pub struct Success {
     pub exports: Vec<ExportEntry>,
 }
 
-pub type Result = std::result::Result<Success, NfsError>;
-
 /// Defines callback to pass [`Export::export`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(result: Result);
+    async fn keep(result: Success);
 }
 
 #[async_trait]

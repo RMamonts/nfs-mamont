@@ -38,7 +38,11 @@ pub struct ExportEntry {
     pub directory: FileName,
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
-    pub name: Vec<HostName>,
+    pub names: Vec<HostName>,
 }
 
-pub trait Mount {}
+/// MOUNT v3 procedures trait.
+pub trait Mount:
+    null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
+{
+}
