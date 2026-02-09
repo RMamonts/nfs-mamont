@@ -73,9 +73,9 @@ pub enum Error {
     /// non-directory operation.
     IsDir = 21,
     /// Invalid argument or unsupported argument for an
-    /// operation. Two examples are attempting a [`Vfs::read_link`] on an
+    /// operation. Two examples are attempting a [`read_link`] on an
     /// object other than a symbolic link or attempting to
-    /// [`Vfs::set_attr`] a time field on a server that does not support
+    /// [`set_attr`] a time field on a server that does not support
     /// this operation.
     InvalidArgument = 22,
     /// File too large. The operation would have caused a file to
@@ -110,9 +110,9 @@ pub enum Error {
     /// consistency checks.
     BadFileHandle = 10001,
     /// Update synchronization mismatch was detected during a
-    /// [`Vfs::set_attr`] operation.
+    /// [`set_attr`] operation.
     NotSync = 10002,
-    /// [`Vfs::read_dir`] or [`Vfs::read_dir_plus`] cookie is stale.
+    /// [`read_dir`] or [`read_dir_plus`] cookie is stale.
     BadCookie = 10003,
     /// Operation is not supported.
     NotSupported = 10004,
@@ -124,7 +124,7 @@ pub enum Error {
     /// UNIX clients may choose to translate this to EIO.
     ServerFault = 10006,
     /// An attempt was made to create an object of a type not
-    /// supported by the [`Vfs`] implementation.
+    /// supported by the [`vfs`] implementation.
     BadType = 10007,
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait
