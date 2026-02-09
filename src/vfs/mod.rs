@@ -37,7 +37,7 @@ pub const MAX_PATH_LEN: usize = 1024;
 /// Represents `OK` variant in enum `nfsstat3`, that indicates of successful operation
 pub const STATUS_OK: usize = 0;
 
-/// [`Vfs`] errors.
+/// [`crate::vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Error {
     /// Everything is fine
@@ -124,7 +124,7 @@ pub enum Error {
     /// UNIX clients may choose to translate this to EIO.
     ServerFault = 10006,
     /// An attempt was made to create an object of a type not
-    /// supported by the [`vfs`] implementation.
+    /// supported by the [`crate::vfs`] implementation.
     BadType = 10007,
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait
