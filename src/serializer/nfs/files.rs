@@ -1,11 +1,12 @@
+use std::io;
+use std::io::{ErrorKind, Write};
+
 use crate::parser::nfsv3::MAX_FILENAME;
 use crate::serializer::nfs::nfs_time;
 use crate::serializer::{option, string_max_size, u32, u64, variant};
 use crate::vfs;
 use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
-use std::io;
-use std::io::{ErrorKind, Write};
 
 pub fn file_type<S: Write>(dest: &mut S, file_type: file::Type) -> io::Result<()> {
     variant::<file::Type, S>(dest, file_type)
@@ -19,8 +20,8 @@ pub fn file_attr<S: Write>(dest: &mut S, attr: file::Attr) -> io::Result<()> {
     u32(dest, attr.gid)?;
     u64(dest, attr.size)?;
     u64(dest, attr.used)?;
-    u32(dest, attr.device.minor)?;
     u32(dest, attr.device.major)?;
+    u32(dest, attr.device.minor)?;
     u64(dest, attr.fs_id)?;
     u64(dest, attr.file_id)?;
     nfs_time(dest, attr.atime)?;

@@ -6,8 +6,7 @@ use crate::serializer::nfs::nfs_time;
 use crate::serializer::{option, u32, u64};
 use crate::vfs::fs_info;
 
-#[allow(dead_code)]
-pub fn fs_info_res_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Result<()> {
+pub fn result_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Result<()> {
     option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))?;
     u32(dest, arg.read_max)?;
     u32(dest, arg.read_pref)?;
@@ -21,7 +20,6 @@ pub fn fs_info_res_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Resul
     u32(dest, arg.properties.0)
 }
 
-#[allow(dead_code)]
-pub fn fs_info_res_fail(dest: &mut impl Write, arg: fs_info::Fail) -> io::Result<()> {
+pub fn result_fail(dest: &mut impl Write, arg: fs_info::Fail) -> io::Result<()> {
     option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))
 }
