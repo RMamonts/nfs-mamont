@@ -3,9 +3,9 @@
 //! as defined in RFC 1813 section 5.2.3.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
 
-use async_trait::async_trait;
+use std::path;
 
-use crate::vfs::FileName;
+use async_trait::async_trait;
 
 /// Defines callback to pass [`Umnt::umnt`] result into.
 #[async_trait]
@@ -23,5 +23,5 @@ pub trait Umnt {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umnt(&self, dirpath: FileName, promise: impl Promise);
+    async fn umnt(&self, dirpath: path::PathBuf, promise: impl Promise);
 }

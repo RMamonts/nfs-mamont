@@ -1,7 +1,8 @@
-use crate::allocator::{Allocator, Slice};
 use std::num::NonZeroUsize;
+
 use tokio::sync::mpsc;
 
+use crate::allocator::{Allocator, Slice};
 pub struct MockAllocator {
     max_size: usize,
 }
