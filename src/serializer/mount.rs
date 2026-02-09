@@ -1,3 +1,8 @@
+//! MOUNT protocol (mountd) XDR serializers.
+//!
+//! This module serializes mountd reply bodies and helper structures (exports,
+//! mount lists, groups) using the XDR rules shared by NFS/RPC.
+
 use std::io;
 use std::io::Write;
 
@@ -6,7 +11,7 @@ use crate::serializer::nfs::files::{file_name, file_path};
 use crate::serializer::{bool, option, u32, vector_u32};
 use crate::vfs::file;
 
-#[allow(dead_code)]
+#[allow(unused)]
 pub enum MountStat {
     OK = 0,              /* no error */
     Perm = 1,            /* Not owner */
@@ -20,7 +25,7 @@ pub enum MountStat {
     ServerFault = 10006, /* A failure on the server */
 }
 
-#[allow(dead_code)]
+/// Serializes `MountStat` as the XDR `mountstat3` enum discriminant.
 pub fn mount_stat(dest: &mut impl Write, status: MountStat) -> io::Result<()> {
     let numb = match status {
         MountStat::OK => 0,
@@ -37,26 +42,26 @@ pub fn mount_stat(dest: &mut impl Write, status: MountStat) -> io::Result<()> {
     u32(dest, numb)
 }
 
-#[allow(dead_code)]
 pub struct MountResOk {
-    fhandle: file::Handle,
+    handle: file::Handle,
     // maybe there should be something else? not u32 i mean
     auth_flavors: Vec<u32>,
 }
 
-#[allow(dead_code)]
+/// Serializes `MountResOk` as the XDR `mountres3_ok` body.
 pub fn mount_res_ok(dest: &mut impl Write, arg: MountResOk) -> io::Result<()> {
-    file_handle(dest, arg.fhandle)?;
+    file_handle(dest, arg.handle)?;
     vector_u32(dest, arg.auth_flavors)
 }
 
+/// Linked-list node for the XDR `mountlist`.
 pub struct MountBody {
     ml_hostname: file::FileName,
     ml_directory: file::FilePath,
     ml_next: Option<Box<MountBody>>,
 }
 
-#[allow(dead_code)]
+/// Serializes `MountBody` as an XDR `mountbody` linked list node.
 pub fn mount_body(dest: &mut impl Write, arg: MountBody) -> io::Result<()> {
     file_name(dest, arg.ml_hostname)?;
     file_path(dest, arg.ml_directory)?;
@@ -66,13 +71,13 @@ pub fn mount_body(dest: &mut impl Write, arg: MountBody) -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
+/// Linked-list node for the XDR `groups` list.
 pub struct GroupNode {
     gr_name: file::FileName,
     groups: Option<Box<GroupNode>>,
 }
 
-#[allow(dead_code)]
+/// Serializes `GroupNode` as an XDR `groupnode` linked list node.
 pub fn group_node(dest: &mut impl Write, arg: GroupNode) -> io::Result<()> {
     file_name(dest, arg.gr_name)?;
     match arg.groups {
@@ -81,14 +86,14 @@ pub fn group_node(dest: &mut impl Write, arg: GroupNode) -> io::Result<()> {
     }
 }
 
-#[allow(dead_code)]
+/// Linked-list node for the XDR `exports` list.
 pub struct ExportNode {
     ex_dir: file::FilePath,
     groups: Option<GroupNode>,
     exports: Option<Box<ExportNode>>,
 }
 
-#[allow(dead_code)]
+/// Serializes `ExportNode` as an XDR `exportnode` linked list node.
 pub fn export_node(dest: &mut impl Write, arg: ExportNode) -> io::Result<()> {
     file_path(dest, arg.ex_dir)?;
     option(dest, arg.groups, |arg, dest| group_node(dest, arg))?;

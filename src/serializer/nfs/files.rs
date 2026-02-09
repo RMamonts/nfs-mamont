@@ -1,3 +1,5 @@
+//! Shared XDR serializers for common NFSv3 data structures.
+
 use std::io;
 use std::io::{ErrorKind, Write};
 
@@ -8,11 +10,13 @@ use crate::vfs;
 use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
 
+/// Serializes [file::Type] as the XDR `ftype3` enum discriminant.
 pub fn file_type<S: Write>(dest: &mut S, file_type: file::Type) -> io::Result<()> {
     variant::<file::Type, S>(dest, file_type)
 }
 
-pub fn file_attr<S: Write>(dest: &mut S, attr: file::Attr) -> io::Result<()> {
+/// Serializes [`file::Attr`] as XDR `fattr3` (file attributes).
+pub fn file_attr(dest: &mut impl Write, attr: file::Attr) -> io::Result<()> {
     file_type(dest, attr.file_type)?;
     u32(dest, attr.mode)?;
     u32(dest, attr.nlink)?;
@@ -29,21 +33,25 @@ pub fn file_attr<S: Write>(dest: &mut S, attr: file::Attr) -> io::Result<()> {
     nfs_time(dest, attr.ctime)
 }
 
+/// Serializes [`file::WccAttr`] as XDR `wcc_attr` (weak cache consistency).
 pub fn wcc_attr(dest: &mut dyn Write, wcc: file::WccAttr) -> io::Result<()> {
     u64(dest, wcc.size)?;
     nfs_time(dest, wcc.mtime)?;
     nfs_time(dest, wcc.ctime)
 }
 
-pub fn wcc_data<S: Write>(dest: &mut S, wcc: vfs::WccData) -> io::Result<()> {
+/// Serializes [`vfs::WccData`] as XDR `wcc_data` (before/after attributes).
+pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
     option(dest, wcc.before, |attr, dest| wcc_attr(dest, attr))?;
     option(dest, wcc.after, |attr, dest| file_attr(dest, attr))
 }
 
+/// Serializes [`FileName`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: FileName) -> io::Result<()> {
     string_max_size(dest, file_name.0, MAX_FILENAME)
 }
 
+/// Serializes [`FilePath`] as XDR `path` (bounded string).
 pub fn file_path(dest: &mut impl Write, file_name: FilePath) -> io::Result<()> {
     string_max_size(
         dest,

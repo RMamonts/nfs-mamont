@@ -1,3 +1,10 @@
+//! High-level XDR serializer for complete RPC/NFS replies.
+//!
+//! This module bridges `crate::vfs` results to the wire format by selecting the
+//! appropriate per-procedure serializer from `crate::serializer::nfs` (and
+//! mount serializers from `crate::serializer::mount`), then emitting a complete
+//! RPC reply to an async writer.
+
 use std::cmp::min;
 use std::io;
 use std::io::Write;
@@ -19,11 +26,11 @@ use crate::serializer::{option, u32, usize_as_u32};
 use crate::vfs;
 use crate::vfs::STATUS_OK;
 
-#[allow(dead_code)]
 // check actual max size
 const DEFAULT_SIZE: usize = 4096;
 
-#[allow(dead_code)]
+/// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
+#[allow(unused)]
 pub enum NfsRes {
     Null,
     GetAttr(vfs::get_attr::Result),
@@ -49,7 +56,8 @@ pub enum NfsRes {
     Commit(vfs::commit::Result),
 }
 
-#[allow(dead_code)]
+/// Wrapper for mount procedure result bodies.
+#[allow(unused)]
 pub enum MountRes {
     Null,
     Mount(Result<MountResOk, ()>),
@@ -59,34 +67,38 @@ pub enum MountRes {
     UnmountAll,
 }
 
-#[allow(dead_code)]
+/// Tagged union of top-level RPC program results supported by this server.
+#[allow(unused)]
 pub enum ProcResult {
     Nfs3(NfsRes),
     Mount { status: MountStat, data: MountRes },
 }
 
+/// RPC reply metadata plus a typed result to be serialized.
 pub struct ReplyFromVfs {
     xid: u32,
     verf: OpaqueAuth,
     proc_result: Result<ProcResult, Error>,
 }
 
-// maybe split underlying buffer?
-#[allow(dead_code)]
+/// Async writer wrapper used to emit XDR-encoded RPC replies.
 pub struct Serializer<T: AsyncWrite + Unpin> {
     buffer: WriteBuffer<T>,
 }
 
 #[allow(dead_code)]
 impl<T: AsyncWrite + Unpin> Serializer<T> {
+    /// Creates a reply serializer writing XDR bytes to the provided async writer.
     fn new(writer: T) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
     }
 
+    /// Creates a reply serializer with an explicit internal buffer capacity.
     fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
+    /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
     async fn process_result(&mut self, result: ProcResult) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => match data {
@@ -368,6 +380,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         }
     }
 
+    /// Serializes [`ReplyFromVfs`] into a complete XDR RPC reply and writes it to the underlying writer.
     pub async fn form_reply(&mut self, reply: ReplyFromVfs) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
@@ -432,6 +445,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 }
 
+/// Buffered async writer used by the high-level reply serializer.
 struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
@@ -439,6 +453,7 @@ struct WriteBuffer<T: AsyncWrite + Unpin> {
 }
 
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
+    /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let size = min(self.buf.len() + buf.len(), self.buf.len());
         self.buf[self.position..self.position + size].copy_from_slice(&buf[..size]);
@@ -446,32 +461,38 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
         Ok(size)
     }
 
+    /// No-op flush (the buffer is flushed explicitly by `send_inner_*`).
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
+    /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
         WriteBuffer { socket, buf: vec![0u8; capacity], position: 0 }
     }
 
+    /// Resets the internal write cursor to the start of the buffer.
     fn clean(&mut self) {
         self.position = 0;
     }
 
+    /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
         self.socket.write_all(&self.buf[0..self.position]).await?;
         self.clean();
         Ok(())
     }
 
+    /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
         self.socket.write_all(&self.buf[0..self.position]).await?;
         // later change to explicit cursor (when one implemented)
         for buf in slice.iter() {
             self.socket.write_all(buf).await?;
         }
+        // add padding
         self.clean();
         Ok(())
     }

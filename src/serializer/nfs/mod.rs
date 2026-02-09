@@ -1,3 +1,8 @@
+//! NFSv3-specific XDR serializers.
+//!
+//! Each submodule corresponds to an NFSv3 procedure and provides helpers that
+//! serialize the associated `crate::vfs::*` result types into XDR.
+
 pub mod access;
 pub mod commit;
 pub mod create;
@@ -29,13 +34,17 @@ use crate::vfs::file;
 
 const MAX_FILEHANDLE: usize = 8;
 
+/// Serializes `vfs::file::Time` into XDR `nfstime3`.
 pub fn nfs_time(dest: &mut dyn Write, arg: file::Time) -> Result<()> {
     u32(dest, arg.seconds).and_then(|_| u32(dest, arg.nanos))
 }
+
+/// Serializes `vfs::file::Handle` into XDR `nfs_fh3`.
 pub fn file_handle(dest: &mut dyn Write, fh: file::Handle) -> Result<()> {
     usize_as_u32(dest, MAX_FILEHANDLE).and_then(|_| array::<MAX_FILEHANDLE>(dest, fh.0))
 }
 
+/// Serializes `vfs::Error` as an XDR enum discriminant (NFS status).
 pub fn error(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {
     variant(dest, stat)
 }
