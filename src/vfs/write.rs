@@ -1,11 +1,16 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use super::{file, Error};
-use crate::allocator::Slice;
-use crate::vfs;
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use super::file;
+use crate::allocator::Slice;
+use crate::vfs;
+
+/// Enum describing servers behaviour after performing write:
+/// * `FileSync` indicates that all data and metadata should be commited to stable storage.
+/// * `DataSync` indicates that all data should be commited to stable storage.
+/// * `Unstable` indicates that the server is free to commit any part of the data and the metadata to stable storage, including all or none
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
@@ -15,6 +20,7 @@ pub enum StableHow {
 
 pub const VERIFIER_LEN: usize = 8;
 
+/// Opaque byte array of [`VERIFIER_LEN`] used in [`Success`]
 pub struct Verifier(pub [u8; VERIFIER_LEN]);
 
 /// Success result.
@@ -31,7 +37,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub wcc_data: vfs::WccData,
 }

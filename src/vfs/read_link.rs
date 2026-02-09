@@ -2,7 +2,9 @@
 
 use async_trait::async_trait;
 
-use super::{file, Error};
+use crate::vfs;
+
+use super::file;
 
 /// Success result.
 pub struct Success {
@@ -14,9 +16,10 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
+    /// Error on failure.
+    pub error: vfs::Error,
 }
 
 pub type Result = std::result::Result<Success, Fail>;

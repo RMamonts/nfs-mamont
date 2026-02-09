@@ -2,7 +2,9 @@
 
 use async_trait::async_trait;
 
-use super::{file, Error};
+use crate::vfs;
+
+use super::file;
 
 /// Success result.
 pub struct Success {
@@ -34,7 +36,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The attributes of the object specified by `file`.
     pub file_attr: Option<file::Attr>,
 }

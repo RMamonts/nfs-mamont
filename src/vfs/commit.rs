@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::{file, Error};
+use super::file;
 
 /// Success result.
 pub struct Success {
@@ -18,7 +18,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on fauler.
+    pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
 }

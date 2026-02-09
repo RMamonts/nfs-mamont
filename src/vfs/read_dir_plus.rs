@@ -2,10 +2,11 @@
 
 use async_trait::async_trait;
 
+use crate::vfs;
 use crate::vfs::read_dir::Cookie;
 use crate::vfs::read_dir::CookieVerifier;
 
-use super::{file, Error};
+use super::file;
 
 // also keep in mind, that it should have some pointer to next item in list
 pub struct Entry {
@@ -32,7 +33,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }

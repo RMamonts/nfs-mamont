@@ -9,6 +9,7 @@ use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
 use std::io::Read;
 
+/// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
     Ok(NewAttr {
         mode: option(src, |s| u32(s))?,
@@ -20,6 +21,7 @@ pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
     })
 }
 
+/// Parses a [`SetTime`] enum from the provided `Read` source.
 #[allow(dead_code)]
 pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
     match u32(src)? {
@@ -30,10 +32,12 @@ pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
     }
 }
 
+/// Parses an NFS time structure from the provided `Read` source.
 pub fn nfs_time(src: &mut impl Read) -> Result<Time> {
     Ok(Time { seconds: u32(src)?, nanos: u32(src)? })
 }
 
+/// Parses a [`create::How`] enum from the provided `Read` source.
 pub fn how(src: &mut impl Read) -> Result<create::How> {
     match u32(src)? {
         0 => Ok(create::How::Unchecked(new_attr(src)?)),
@@ -43,6 +47,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
     }
 }
 
+/// Parses the arguments for an NFSv3 `CREATE` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
     Ok(create::Args {
         dir: file::handle(src)?,

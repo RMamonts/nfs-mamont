@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self, Error};
+use crate::vfs::{self};
 
 use super::file;
 use super::set_attr::NewAttr;
@@ -17,8 +17,11 @@ pub enum What {
     Socket(NewAttr),
     /// Create fifo special file with specified initial attributes.
     Fifo(NewAttr),
+    /// Create regular file with no additional data.
     Regular,
+    /// Create directory with no additional data.
     Directory,
+    /// Create symbolic link with no additional data.
     SymbolicLink,
 }
 
@@ -34,7 +37,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// Weak cache consistency data for the directory, where.dir.
     /// TODO(use Args structure).
     pub dir_wcc: vfs::WccData,

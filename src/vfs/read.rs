@@ -1,9 +1,10 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use crate::allocator::Slice;
 use async_trait::async_trait;
 
-use super::{file, Error};
+use super::file;
+use crate::allocator::Slice;
+use crate::vfs;
 
 /// Success result.
 pub struct Success {
@@ -24,7 +25,8 @@ pub struct SuccessPartial {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }

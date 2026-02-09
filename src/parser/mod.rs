@@ -1,8 +1,11 @@
-use crate::rpc::Error;
+//! Defines NFSv3 and MOUNT protocol parsing functionality.
 
 use std::future::Future;
+use std::io;
+use std::string::FromUtf8Error;
 
 use crate::parser::mount::{MountArgs, UnmountArgs};
+use crate::rpc::AuthStat;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -17,44 +20,120 @@ mod rpc;
 #[cfg(test)]
 mod tests;
 
+/// Result of parsing operations with errors type [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub async fn proc_nested_errors<T>(error: Error, fun: impl Future<Output = Result<T>>) -> Error {
-    match fun.await {
+/// Helper function to process nested errors.
+/// Function takes `future` to call. If result is `OK`, discards it, and returns `error`.
+/// If `future` returns error - returns new one, rather than `error`
+pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Result<T>>) -> Error {
+    match future.await {
         Ok(_) => error,
         Err(err) => err,
     }
 }
 
+/// Represents a mismatch in program versions.
+/// Returns highest and lowest versions of available versions of requested program
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ProgramVersionMismatch(u32, u32);
+
+/// Represents a mismatch in RPC versions.
+/// Returns highest and lowest versions of available versions of RPC
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct RPCVersionMismatch(u32, u32);
+
+/// Enumerates the different types of arguments that can be parsed.
 #[allow(dead_code)]
 pub enum Arguments {
     // NFSv3
+    /// Null operation arguments.
     Null,
+    /// Arguments for the [`get_attr`] operation.
     GetAttr(get_attr::Args),
+    /// Arguments for the [`set_attr`] operation.
     SetAttr(set_attr::Args),
+    /// Arguments for the [`lookup`] operation.
     LookUp(lookup::Args),
+    /// Arguments for the [`access`] operation.
     Access(access::Args),
+    /// Arguments for the [`read_link`] operation.
     ReadLink(read_link::Args),
+    /// Arguments for the [`read`] operation.
     Read(read::Args),
+    /// Arguments for the [`mod@write`] operation.
     Write(write::Args),
+    /// Arguments for the [`create`] operation.
     Create(create::Args),
+    /// Arguments for the [`mk_dir`] operation.
     MkDir(mk_dir::Args),
+    /// Arguments for the [`symlink`] operation.
     SymLink(symlink::Args),
+    /// Arguments for the [`mk_node`] operation.
     MkNod(mk_node::Args),
+    /// Arguments for the [`remove`] operation.
     Remove(remove::Args),
+    /// Arguments for the [`rm_dir`] operation.
     RmDir(rm_dir::Args),
+    /// Arguments for the [`rename`] operation.
     Rename(rename::Args),
+    /// Arguments for the [`link`] operation.
     Link(link::Args),
+    /// Arguments for the [`read_dir`] operation.
     ReadDir(read_dir::Args),
+    /// Arguments for the [`read_dir_plus`] operation.
     ReadDirPlus(read_dir_plus::Args),
+    /// Arguments for the [`fs_stat`] operation.
     FsStat(fs_stat::Args),
+    /// Arguments for the [`fs_info`] operation.
     FsInfo(fs_info::Args),
+    /// Arguments for the [`path_conf`] operation.
     PathConf(path_conf::Args),
+    /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
     // MOUNT
+    /// Arguments for the Mount operation.
     Mount(MountArgs),
+    /// Arguments for the Unmount operation.
     Unmount(UnmountArgs),
+    /// Arguments for the Export operation.
     Export,
+    /// Arguments for the Dump operation.
     Dump,
+    /// Arguments for the UnmountAll operation.
     UnmountAll,
+}
+
+/// Errors that can occur during parsing.
+#[derive(Debug)]
+#[allow(unused)]
+pub enum Error {
+    /// The maximum element limit was exceeded.
+    MaxELemLimit,
+    /// An I/O error occurred.
+    IO(io::Error),
+    /// An enum discriminant mismatch occurred.
+    EnumDiscMismatch,
+    /// An incorrect string was encountered during UTF-8 conversion.
+    IncorrectString(FromUtf8Error),
+    /// Incorrect padding was found.
+    IncorrectPadding,
+    /// An impossible type cast was attempted.
+    ImpossibleTypeCast,
+    /// A bad file handle was encountered.
+    BadFileHandle,
+    /// A message type mismatch occurred.
+    MessageTypeMismatch,
+    /// An RPC version mismatch occurred.
+    RpcVersionMismatch(RPCVersionMismatch),
+    /// An authentication error occurred.
+    AuthError(AuthStat),
+    /// A program mismatch occurred.
+    ProgramMismatch,
+    /// A procedure mismatch occurred.
+    ProcedureMismatch,
+    /// A program version mismatch occurred.
+    ProgramVersionMismatch(ProgramVersionMismatch),
 }

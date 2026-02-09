@@ -8,14 +8,17 @@ use crate::parser::Result;
 use crate::vfs::read_dir;
 use crate::vfs::read_dir_plus;
 
+/// Parses a [`read_dir::Cookie`] from the provided `Read` source.
 pub fn cookie(_src: &mut impl Read) -> Result<read_dir::Cookie> {
     todo!()
 }
 
+/// Parses a [`read_dir::CookieVerifier`] from the provided `Read` source.
 pub fn cookie_verifier(_src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
     todo!()
 }
 
+/// Parses the arguments for an NFSv3 `READDIRPLUS` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {
     Ok(read_dir_plus::Args {
         dir: file::handle(src)?,

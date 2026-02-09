@@ -2,7 +2,9 @@
 
 use async_trait::async_trait;
 
-use super::{file, Error};
+use crate::vfs;
+
+use super::file;
 
 /// Success result.
 pub struct Success {
@@ -13,7 +15,8 @@ pub struct Success {
 
 /// Failed result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The post-operation attributes of the directory
     pub dir_attr: Option<file::Attr>,
 }
