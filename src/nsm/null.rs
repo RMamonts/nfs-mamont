@@ -8,7 +8,7 @@ use async_trait::async_trait;
 /// Defines callback to pass [`Null::null`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep();
+    async fn keep();
 }
 
 #[async_trait]

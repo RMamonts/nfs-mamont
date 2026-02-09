@@ -21,7 +21,7 @@ pub struct StatusMessage {
 /// Defines callback to pass [`Notify::notify`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep();
+    async fn keep();
 }
 
 #[async_trait]

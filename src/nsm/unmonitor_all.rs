@@ -24,7 +24,7 @@ pub type Result = std::result::Result<Success, Fail>;
 /// Defines callback to pass [`UnmonitorAll::unmonitor_all`] result into.
 #[async_trait]
 pub trait Promise {
-    fn keep(promise: Result);
+    async fn keep(promise: Result);
 }
 
 #[async_trait]
