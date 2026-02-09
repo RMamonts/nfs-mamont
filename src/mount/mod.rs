@@ -1,7 +1,8 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 #![allow(dead_code)]
-use std::path;
+use crate::vfs::file;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod dump;
 pub mod export;
@@ -26,10 +27,13 @@ pub type HostName = String;
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: String,
+    pub hostname: file::FileName,
     /// Server pathname of a directory.
-    pub directory: String,
+    pub directory: file::FilePath,
 }
+
+/// Status of result of `mount` procedure, that represents correct result
+pub const MNT_OK: usize = 0;
 
 /// Possible MOUNT errors
 ///
@@ -38,6 +42,7 @@ pub struct MountEntry {
 /// There are no MOUNT protocol errors which can be returned
 /// from this procedure. However, RPC errors may be returned
 /// for authentication or other RPC failures.
+#[derive(ToPrimitive, FromPrimitive)]
 pub enum MntError {
     /// Not owner
     Perm = 1,
@@ -64,7 +69,7 @@ pub enum MntError {
 #[derive(Clone)]
 pub struct ExportEntry {
     /// Exported directory.
-    pub directory: path::PathBuf,
+    pub directory: file::FilePath,
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,

@@ -12,19 +12,18 @@ use std::io::Write;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
+use crate::mount::{dump, export};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
-use crate::serializer::mount::{
-    export_node, mount_body, mount_res_ok, mount_stat, ExportNode, MountBody, MountResOk, MountStat,
-};
+use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
     path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
     write,
 };
 use crate::serializer::rpc::auth_opaque;
-use crate::serializer::{option, u32, usize_as_u32};
-use crate::vfs;
+use crate::serializer::{u32, usize_as_u32};
 use crate::vfs::STATUS_OK;
+use crate::{mount, serializer, vfs};
 
 // check actual max size
 const DEFAULT_SIZE: usize = 4096;
@@ -60,18 +59,18 @@ pub enum NfsRes {
 #[allow(unused)]
 pub enum MountRes {
     Null,
-    Mount(Result<MountResOk, ()>),
+    Mount(mount::mnt::Result),
     Unmount,
-    Export(Option<ExportNode>),
-    Dump(Option<MountBody>),
+    Export(export::Success),
+    Dump(dump::Success),
     UnmountAll,
 }
 
 /// Tagged union of top-level RPC program results supported by this server.
-#[allow(unused)]
+#[allow(dead_code, clippy::large_enum_variant)]
 pub enum ProcResult {
     Nfs3(NfsRes),
-    Mount { status: MountStat, data: MountRes },
+    Mount(MountRes),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
@@ -355,25 +354,25 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     }
                 },
             },
-            ProcResult::Mount { status, data } => match data {
+            ProcResult::Mount(data) => match data {
                 MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => Ok(()),
                 MountRes::Mount(res) => match res {
                     Ok(ok) => {
-                        mount_stat(&mut self.buffer, status)?;
-                        mount_res_ok(&mut self.buffer, ok)?;
+                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
+                        mnt::result_ok(&mut self.buffer, ok)?;
                         self.buffer.send_inner_buffer().await
                     }
-                    Err(_) => {
-                        mount_stat(&mut self.buffer, status)?;
+                    Err(stat) => {
+                        serializer::mount::mount_stat(&mut self.buffer, stat)?;
                         self.buffer.send_inner_buffer().await
                     }
                 },
                 MountRes::Export(node) => {
-                    option(&mut self.buffer, node, |arg, dest| export_node(dest, arg))?;
+                    serializer::mount::export::result_ok(&mut self.buffer, node)?;
                     self.buffer.send_inner_buffer().await
                 }
                 MountRes::Dump(body) => {
-                    option(&mut self.buffer, body, |arg, dest| mount_body(dest, arg))?;
+                    serializer::mount::dump::result_ok(&mut self.buffer, body)?;
                     self.buffer.send_inner_buffer().await
                 }
             },

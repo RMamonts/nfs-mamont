@@ -14,6 +14,7 @@ pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct FileName(pub String);
 
 #[allow(dead_code)]
@@ -26,7 +27,7 @@ impl FileName {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(dead_code)]
 pub struct FilePath(pub PathBuf);
 

@@ -5,14 +5,15 @@
 
 use std::path;
 
-use async_trait::async_trait;
-
 use crate::vfs::file::Handle;
+use async_trait::async_trait;
 
 use super::MntError;
 
 /// Authentication flavors.
+/// TODO(somehow that has to be serialized)
 #[derive(Debug)]
+#[repr(u32)]
 pub enum AuthFlavor {
     None,
     Unix,
