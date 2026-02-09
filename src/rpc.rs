@@ -1,7 +1,7 @@
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 #[allow(dead_code)]
-const RPC_VERSION: u32 = 2;
+pub const RPC_VERSION: u32 = 2;
 #[allow(dead_code)]
 const MAX_AUTH_OPAQUE_LEN: u32 = 400;
 
@@ -17,7 +17,7 @@ enum accept_stat {
 }
 
 #[allow(dead_code)]
-enum auth_stat {
+pub enum auth_stat {
     AUTH_OK = 0,
     AUTH_BADCRED = 1,
     AUTH_REJECTEDCRED = 2,
@@ -43,13 +43,20 @@ struct rpc_msg {
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum rpc_body {
+pub enum rpc_message_type {
+    CALL = 0,
+    REPLY = 1,
+}
+
+#[allow(dead_code)]
+#[repr(u32)]
+pub enum rpc_body {
     CALL(call_body) = 0,
     REPLY(reply_body) = 1,
 }
 
 #[allow(dead_code)]
-struct call_body {
+pub struct call_body {
     rpcvers: u32,
     prog: u32,
     vers: u32,
@@ -60,19 +67,19 @@ struct call_body {
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum reply_body {
+pub enum reply_body {
     MSG_ACCEPTED(accepted_reply) = 0,
     MSG_DENIED(rejected_reply) = 1,
 }
 
 #[allow(dead_code)]
-struct mismatch_info {
+pub struct mismatch_info {
     low: u32,
     high: u32,
 }
 
 #[allow(dead_code)]
-struct accepted_reply {
+pub struct accepted_reply {
     verf: opaque_auth,
     reply_data: accept_stat,
 }
@@ -95,7 +102,7 @@ struct opaque_auth {
 
 #[allow(dead_code)]
 #[repr(u32)]
-enum rejected_reply {
+pub enum rejected_reply {
     RPC_MISMATCH(mismatch_info) = 0,
     AUTH_ERROR(auth_stat) = 1,
 }
