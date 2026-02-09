@@ -143,7 +143,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         lookup_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -167,7 +167,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         read_link_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -179,7 +179,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_with_slice(ok.data).await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         read_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -191,7 +191,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         write_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -203,7 +203,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         create_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -215,7 +215,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         mkdir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -227,7 +227,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         symlink_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -239,7 +239,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         mknod_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -251,7 +251,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         remove_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -263,7 +263,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         rmdir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -275,7 +275,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         rename_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -287,7 +287,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         link_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -299,7 +299,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         read_dir_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -311,7 +311,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         read_dir_plus_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -323,7 +323,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         fs_stat_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -335,7 +335,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         fs_info_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -347,7 +347,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         path_config_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -359,7 +359,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                     Err(err) => {
-                        error(&mut self.buffer, err.status)?;
+                        error(&mut self.buffer, err.error)?;
                         commit_res_fail(&mut self.buffer, err)?;
                         self.buffer.send_inner_buffer().await
                     }

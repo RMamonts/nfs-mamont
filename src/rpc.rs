@@ -77,33 +77,52 @@ pub enum RejectedReply {
     AuthError = 1,
 }
 
+/// Represents a mismatch in program versions.
+/// Returns highest and lowest versions of available versions of requested program
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ProgramVersionMismatch {
     pub low: u32,
     pub high: u32,
 }
+
+/// Represents a mismatch in RPC versions.
+/// Returns highest and lowest versions of available versions of RPC
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct RPCVersMismatch {
+pub struct RPCVersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
+/// Errors that can occur during parsing.
 pub enum Error {
+    /// The maximum element limit was exceeded.
     MaxELemLimit,
+    /// An I/O error occurred.
     IO(io::Error),
+    /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
+    /// An incorrect string was encountered during UTF-8 conversion.
     IncorrectString(FromUtf8Error),
+    /// Incorrect padding was found.
     IncorrectPadding,
+    /// An impossible type cast was attempted.
     ImpossibleTypeCast,
+    /// A bad file handle was encountered.
     BadFileHandle,
+    /// A message type mismatch occurred.
     MessageTypeMismatch,
-    RpcVersionMismatch(RPCVersMismatch),
+    /// An RPC version mismatch occurred.
+    RpcVersionMismatch(RPCVersionMismatch),
+    /// An authentication error occurred.
     AuthError(AuthStat),
+    /// A program mismatch occurred.
     ProgramMismatch,
+    /// A procedure mismatch occurred.
     ProcedureMismatch,
+    /// A program version mismatch occurred.
     ProgramVersionMismatch(ProgramVersionMismatch),
 }

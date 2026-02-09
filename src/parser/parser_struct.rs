@@ -28,9 +28,9 @@ use crate::parser::nfsv3::{
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
-use crate::parser::{proc_nested_errors, Arguments, Error, Result};
+use crate::parser::{proc_nested_errors, Arguments, Result};
 use crate::rpc::{
-    AuthFlavour, AuthStat, ProgramVersionMismatch, RPCVersMismatch, RpcBody, RPC_VERSION,
+    AuthFlavour, AuthStat, Error, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
 };
 use crate::vfs;
 
@@ -148,7 +148,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RPCVersMismatch {
+            return Err(Error::RpcVersionMismatch(RPCVersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
