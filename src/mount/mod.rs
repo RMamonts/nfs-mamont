@@ -30,6 +30,34 @@ pub struct MountEntry {
     pub directory: FileName,
 }
 
+/// Possible MOUNT errors
+///
+/// Used only in [`mnt::Mnt`] because other procedures say
+///
+/// There are no MOUNT protocol errors which can be returned
+/// from this procedure. However, RPC errors may be returned
+/// for authentication or other RPC failures.
+pub enum MntError {
+    /// Not owner
+    Mnt3ErrPerm = 1,
+    /// No such file or directory
+    Mnt3ErrNoEnt = 2,
+    /// I/O error
+    Mnt3ErrIo = 5,
+    /// Permission denied
+    Mnt3ErrAccess = 13,
+    /// Not a directory
+    Mnt3ErrNoDir = 20,
+    /// Invalid argument
+    Mnt3ErrInval = 22,
+    /// Filename too long
+    Mnt3ErrNameTooLong = 63,
+    /// Operation not supported
+    Mnt3ErrNotSupp = 10004,
+    /// A failure on the server
+    Mnt3ErrServerFault = 10006,
+}
+
 /// Export entry, containing list of clients, allowed to
 /// mount the specified directory.
 #[derive(Clone)]

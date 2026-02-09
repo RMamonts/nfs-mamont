@@ -5,7 +5,9 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{FileHandle, FileName, NfsError};
+use crate::vfs::{FileHandle, FileName};
+
+use super::MntError;
 
 /// Authentication flavors.
 #[derive(Debug)]
@@ -27,7 +29,7 @@ pub struct Success {
     pub auth_flavors: Vec<AuthFlavor>,
 }
 
-pub type Result = std::result::Result<Success, NfsError>;
+pub type Result = std::result::Result<Success, MntError>;
 
 /// Defines callback to pass [`Mnt::mnt`] result into.
 #[async_trait]
