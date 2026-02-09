@@ -21,7 +21,7 @@ use crate::serializer::nfs::{
     write,
 };
 use crate::serializer::rpc::auth_opaque;
-use crate::serializer::{u32, usize_as_u32};
+use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::vfs::STATUS_OK;
 use crate::{mount, serializer, vfs};
 
@@ -491,7 +491,12 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         for buf in slice.iter() {
             self.socket.write_all(buf).await?;
         }
-        // add padding
+        // write padding directly to socket
+        let size = slice.iter().map(|b| b.len()).sum::<usize>();
+        let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
+        let slice = [0u8; ALIGNMENT];
+        self.socket.write_all(&slice[..padding]).await?;
+
         self.clean();
         Ok(())
     }
