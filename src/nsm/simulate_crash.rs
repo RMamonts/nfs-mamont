@@ -19,5 +19,10 @@ pub trait SimulateCrash {
     /// incrementing its state variable. It reads through its notify list (see `monitor`)
     /// and informs the NSM on all hosts on the list that the state of this host
     /// has changed, via the `notify` procedure.
+    ///
+    /// # Security
+    ///
+    /// This procedure should only be accessible to privileged local users,
+    /// as it disrupts all active monitoring state.
     async fn simulate_crash(&self, promise: impl Promise);
 }

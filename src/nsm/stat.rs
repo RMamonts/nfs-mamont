@@ -8,12 +8,14 @@ use async_trait::async_trait;
 use super::{HostName, HostState};
 
 /// Success result, meaning the NSM AGREED to monitor the specified host.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Success {
     /// State number of the local NSM host.
     pub nsm_state: HostState,
 }
 
 /// Fail result, meaning the NSM is NOT ABLE to monitor the specified host.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fail {
     /// State number of the local NSM host.
     pub host_state: HostState,

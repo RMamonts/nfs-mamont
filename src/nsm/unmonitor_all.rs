@@ -8,12 +8,14 @@ use async_trait::async_trait;
 use super::{HostState, WatcherId};
 
 /// Success result.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Success {
     /// State number of the local NSM host.
     pub nsm_state: HostState,
 }
 
 /// Fail result.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fail {
     /// State number of the local NSM host.
     pub host_state: HostState,
@@ -29,7 +31,7 @@ pub trait Promise {
 
 #[async_trait]
 pub trait UnmonitorAll {
-    /// Stops monitoring all host for which monitoring was requested the specified watcher.
+    /// Stops monitoring all hosts for which monitoring was requested by the specified watcher.
     ///
     /// # Parameters:
     /// * `watcher_id` --- identifier of watcher. It must exactly match the information

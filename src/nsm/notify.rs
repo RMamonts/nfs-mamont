@@ -9,10 +9,11 @@ use super::{Cookie, HostName, HostState};
 
 /// Status message, that is sent to clients by the NSM, local to the host
 /// that had the status change.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusMessage {
-    /// Name of the host that had the state change (copied from parameters)
+    /// Name of the host that had the state change (copied from parameters).
     pub host_name: HostName,
-    /// The new state number of the rebooted host (copied from parameters)
+    /// The new state number of the rebooted host (copied from parameters).
     pub state: HostState,
     /// The opaque cookie provided by watcher in arguments to `monitor` call.
     pub cookie: Cookie,
