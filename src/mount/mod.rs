@@ -39,23 +39,23 @@ pub struct MountEntry {
 /// for authentication or other RPC failures.
 pub enum MntError {
     /// Not owner
-    Mnt3ErrPerm = 1,
+    Perm = 1,
     /// No such file or directory
-    Mnt3ErrNoEnt = 2,
+    NoEnt = 2,
     /// I/O error
-    Mnt3ErrIo = 5,
+    Io = 5,
     /// Permission denied
-    Mnt3ErrAccess = 13,
+    Access = 13,
     /// Not a directory
-    Mnt3ErrNoDir = 20,
+    NoDir = 20,
     /// Invalid argument
-    Mnt3ErrInval = 22,
+    Inval = 22,
     /// Filename too long
-    Mnt3ErrNameTooLong = 63,
+    NameTooLong = 63,
     /// Operation not supported
-    Mnt3ErrNotSupp = 10004,
+    NotSupp = 10004,
     /// A failure on the server
-    Mnt3ErrServerFault = 10006,
+    ServerFault = 10006,
 }
 
 /// Export entry, containing list of clients, allowed to
