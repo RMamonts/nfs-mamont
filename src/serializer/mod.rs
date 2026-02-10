@@ -28,7 +28,7 @@ pub const ALIGNMENT: usize = 4;
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
 /// XDR requires 4-byte alignment; this emits zero bytes until the next multiple of [`ALIGNMENT`].
-fn padding(dest: &mut dyn Write, n: usize) -> io::Result<()> {
+pub fn padding(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])
@@ -89,6 +89,7 @@ pub fn string_max_size(dest: &mut dyn Write, string: String, max_size: usize) ->
     vec_max_size(dest, string.into_bytes(), max_size)
 }
 
+#[allow(dead_code)]
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
 pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
     vector(dest, string.into_bytes())
@@ -107,14 +108,4 @@ pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
-}
-
-/// Serializes a variable-length XDR array of `u32`: element count + big-endian values.
-pub fn vector_u32(dest: &mut dyn Write, vec: Vec<u32>) -> io::Result<()> {
-    dest.write_u32::<BigEndian>(vec.len() as u32).and_then(|_| {
-        for v in vec {
-            dest.write_u32::<BigEndian>(v)?;
-        }
-        Ok(())
-    })
 }

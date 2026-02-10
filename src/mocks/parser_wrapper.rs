@@ -144,15 +144,15 @@ impl<A: Allocator> ParserWrapper<A> {
         let pos = self.tmp_buffer.position() as usize;
         let size = ((self.tmp_buffer.position() as u32) | 0x8000_0000).to_be_bytes();
         self.tmp_buffer.set_position(0);
-        self.tmp_buffer.write(&size).unwrap();
+        self.tmp_buffer.write_all(&size).unwrap();
         self.tmp_buffer
-            .write(&[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02])
+            .write_all(&[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02])
             .unwrap();
-        self.tmp_buffer.write(&prog.to_be_bytes()).unwrap();
-        self.tmp_buffer.write(&[0, 0, 0, 3]).unwrap();
-        self.tmp_buffer.write(&proc.to_be_bytes()).unwrap();
+        self.tmp_buffer.write_all(&prog.to_be_bytes()).unwrap();
+        self.tmp_buffer.write_all(&[0, 0, 0, 3]).unwrap();
+        self.tmp_buffer.write_all(&proc.to_be_bytes()).unwrap();
         // now we can do only Auth::None
-        self.tmp_buffer.write(&[0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+        self.tmp_buffer.write_all(&[0, 0, 0, 0, 0, 0, 0, 0]).unwrap();
         assert_eq!(self.tmp_buffer.position(), 36);
         self.tmp_buffer.set_position(0);
         // there should be sending to mpsc

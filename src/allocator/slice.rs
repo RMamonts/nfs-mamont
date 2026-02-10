@@ -1,8 +1,7 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
+
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-use tokio::sync::mpsc;
-
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(Clone))]
