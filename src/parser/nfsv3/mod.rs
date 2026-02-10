@@ -23,8 +23,10 @@ pub mod set_attr;
 pub mod symlink;
 pub mod write;
 
+/// Maximum length of a filename.
 #[allow(dead_code)]
 pub const MAX_FILENAME: usize = 255;
 
+/// Maximum length of a file path.
 #[allow(dead_code)]
 const MAX_FILEPATH: usize = 1024;

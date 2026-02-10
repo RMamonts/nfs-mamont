@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 
-use super::{file, Error};
 use crate::vfs;
+
+use super::{file, Error};
 
 pub type Result = std::result::Result<Success, Fail>;
 

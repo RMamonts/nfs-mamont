@@ -23,6 +23,7 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
     }
 }
 
+/// Parses the arguments for an NFSv3 `MKNOD` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
     Ok(mk_node::Args { dir: file::handle(src)?, name: file_name(src)?, what: what(src)? })
 }

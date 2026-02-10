@@ -1,22 +1,25 @@
-use crate::serializer::nfs::files::file_attr;
-use crate::serializer::{option, u32};
-use crate::vfs::fs_stat;
+//! XDR serializers for the NFSv3 `FSSTAT` procedure.
+
 use std::io;
 use std::io::Write;
 
-#[allow(dead_code)]
-pub fn fs_stat_res_ok<S: Write>(dest: &mut S, arg: fs_stat::Success) -> io::Result<()> {
+use crate::serializer::nfs::files::file_attr;
+use crate::serializer::{option, u32, u64};
+use crate::vfs::fs_stat;
+
+/// Serializes [`fs_stat::Success`] (FSSTAT3resok body) into XDR.
+pub fn result_ok(dest: &mut impl Write, arg: fs_stat::Success) -> io::Result<()> {
     option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))?;
-    u32(dest, arg.total_bytes)?;
-    u32(dest, arg.free_bytes)?;
-    u32(dest, arg.available_bytes)?;
-    u32(dest, arg.total_files)?;
-    u32(dest, arg.free_files)?;
-    u32(dest, arg.available_files)?;
+    u64(dest, arg.total_bytes)?;
+    u64(dest, arg.free_bytes)?;
+    u64(dest, arg.available_bytes)?;
+    u64(dest, arg.total_files)?;
+    u64(dest, arg.free_files)?;
+    u64(dest, arg.available_files)?;
     u32(dest, arg.invarsec)
 }
 
-#[allow(dead_code)]
-pub fn fs_stat_res_fail(dest: &mut impl Write, arg: fs_stat::Fail) -> io::Result<()> {
+/// Serializes [`fs_stat::Fail`] (FSSTAT3resfail body) into XDR.
+pub fn result_fail(dest: &mut impl Write, arg: fs_stat::Fail) -> io::Result<()> {
     option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))
 }

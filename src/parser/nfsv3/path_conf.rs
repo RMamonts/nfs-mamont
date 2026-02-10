@@ -6,6 +6,7 @@ use crate::parser::nfsv3::file;
 use crate::parser::Result;
 use crate::vfs::path_conf;
 
+/// Parses the arguments for an NFSv3 `PATHCONF` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<path_conf::Args> {
     Ok(path_conf::Args { file: file::handle(src)? })
 }

@@ -3,11 +3,11 @@
 pub mod allocator;
 pub mod client;
 pub mod mocks;
-mod mount;
+pub mod mount;
 pub mod nfsv3;
 pub mod parser;
 mod read_task;
-mod rpc;
+pub mod rpc;
 mod serializer;
 pub mod vfs;
 mod vfs_task;

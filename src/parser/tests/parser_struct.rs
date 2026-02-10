@@ -20,10 +20,10 @@ async fn parse_two_correct() {
     let mut parser = RpcParser::new(socket, alloc, 0x35);
     handle.send_data(buf);
     let _ = parser.parse_message().await;
-    let result2 = parser.parse_message().await.unwrap();
+    let result = parser.parse_message().await.unwrap();
     let expected =
         fs_stat::Args { root: file::Handle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
-    match *result2 {
+    match *result {
         Arguments::FsStat(args) => {
             assert_eq!(args.root.0, expected.root.0);
         }
@@ -45,13 +45,12 @@ async fn parse_after_error() {
     let (socket, mut handle) = FuzzMockSocket::new();
     let alloc = MockAllocator::new(0);
     let mut parser = RpcParser::new(socket, alloc, 0x50);
-    handle.send_data(buf);
-    let result1 = parser.parse_message().await;
-    assert!(result1.is_err());
-    let result2 = parser.parse_message().await.unwrap();
+    let result = parser.parse_message().await;
+    assert!(result.is_err());
+    let result = parser.parse_message().await.unwrap();
     let expected =
         fs_stat::Args { root: file::Handle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) };
-    match *result2 {
+    match *result {
         Arguments::FsStat(args) => {
             assert_eq!(args.root.0, expected.root.0);
         }
@@ -100,9 +99,8 @@ async fn parse_write() {
     //let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
     let mut parser = RpcParser::new(socket, alloc, 72);
-    handle.send_data(buf);
-    let result1 = parser.parse_message().await;
-    assert!(result1.is_ok());
+    let result = parser.parse_message().await;
+    assert!(result.is_ok());
     let result1 = parser.parse_message().await;
     assert!(result1.is_ok());
 }
@@ -146,9 +144,8 @@ async fn parse_write_after_error() {
     //let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
     let mut parser = RpcParser::new(socket, alloc, 80);
-    handle.send_data(buf);
-    let result1 = parser.parse_message().await;
-    assert!(result1.is_err());
-    let result1 = parser.parse_message().await;
-    assert!(result1.is_ok())
+    let result = parser.parse_message().await;
+    assert!(result.is_err());
+    let result = parser.parse_message().await;
+    assert!(result.is_ok())
 }

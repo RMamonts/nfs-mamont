@@ -1,9 +1,10 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use crate::allocator::Slice;
 use async_trait::async_trait;
 
-use super::{file, Error};
+use super::file;
+use crate::allocator::Slice;
+use crate::vfs;
 
 /// Success result.
 pub struct Success {
@@ -24,7 +25,8 @@ pub struct SuccessPartial {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }
@@ -47,7 +49,7 @@ pub struct Args {
     pub file: file::Handle,
     /// The position within file at which the read is to begin. If
     /// `offset` is greater than or equal to the size of the file, the [`Success`] is
-    /// returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
+    /// returned with `count` set to 0
     pub offset: u64,
     /// The number of bytes of data that are to be read. If count is `0`, the
     /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal

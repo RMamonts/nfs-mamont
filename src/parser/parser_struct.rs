@@ -29,9 +29,9 @@ use crate::parser::nfsv3::{
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
-use crate::parser::{proc_nested_errors, Arguments, Error, Result};
+use crate::parser::{proc_nested_errors, Arguments, Result};
 use crate::rpc::{
-    AuthFlavour, AuthStat, ProgramVersionMismatch, RPCVersMismatch, RpcBody, RPC_VERSION,
+    AuthFlavour, AuthStat, Error, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
 };
 use crate::vfs;
 
@@ -149,7 +149,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RPCVersMismatch {
+            return Err(Error::RpcVersionMismatch(RPCVersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
@@ -173,7 +173,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns [`AuthStat::AuthOk`] if authentication succeeds, or an error
+    /// Returns [`AuthStat::Ok`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
         match self.buffer.parse_with_retry(auth).await?.flavor {
@@ -409,8 +409,24 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     })
 }
 
-// here comes slice of exact number of bytes we expect to write
-// but current variant knows how to do it if we change fh to var size
+/// Reads data into a slice asynchronously from the `CountBuffer`.
+///
+/// This function attempts to fill the provided `slice` with `to_write` bytes
+/// from the `src` buffer, skipping `to_skip` bytes at the beginning of the slice.
+/// It handles situations where data might be split across multiple internal buffers
+/// of the `CountBuffer`.
+///
+/// # Arguments
+///
+/// * `src` - The `CountBuffer` to read data from.
+/// * `slice` - The [`Slice`] to write the read data into.
+/// * `to_skip` - The number of bytes to skip in the `slice` before writing.
+/// * `to_write` - The number of bytes to write into the `slice`.
+///
+/// # Returns
+///
+/// Returns `Ok(usize)` indicating the number of bytes successfully written,
+/// or an error if an I/O error occurs or buffer sizes are invalid.
 pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
@@ -437,6 +453,22 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     Ok(to_write - left_write)
 }
 
+/// Reads data into a slice synchronously from the `CountBuffer`.
+///
+/// This function attempts to fill the provided `slice` with `left_size` bytes
+/// from the `src` buffer. It reads synchronously until `left_size` bytes are read
+/// or an I/O error occurs.
+///
+/// # Arguments
+///
+/// * `src` - The `CountBuffer` to read data from.
+/// * `slice` - The [`Slice`] to write the read data into.
+/// * `left_size` - The number of bytes expected to be read into the slice.
+///
+/// # Returns
+///
+/// Returns `Ok(usize)` indicating the number of bytes successfully read,
+/// or an error if an I/O error occurs or the amount of data read is not as expected.
 pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,

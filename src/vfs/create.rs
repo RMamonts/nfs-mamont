@@ -4,11 +4,13 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::{file, Error};
+use super::file;
 
 pub const VERIFY_LEN: usize = 8;
+
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
+/// Opaque byte array of `VERIFY_LEN` size used in `How`
 pub struct Verifier(pub [u8; VERIFY_LEN]);
 
 /// Describes how the server is to handle the file creation.
@@ -46,7 +48,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// Weak cache consistency data for the directory.
     pub wcc_data: vfs::WccData,
 }

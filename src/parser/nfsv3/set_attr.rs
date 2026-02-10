@@ -8,6 +8,7 @@ use crate::vfs::set_attr;
 use crate::vfs::set_attr::Guard;
 use std::io::Read;
 
+/// Parses an optional [`set_attr::Guard`] structure from the provided `Read` source.
 pub fn guard(src: &mut impl Read) -> Result<Option<set_attr::Guard>> {
     match bool(src)? {
         true => Ok(Some(Guard { ctime: nfs_time(src)? })),
@@ -15,6 +16,7 @@ pub fn guard(src: &mut impl Read) -> Result<Option<set_attr::Guard>> {
     }
 }
 
+/// Parses the arguments for an NFSv3 `SETATTR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<set_attr::Args> {
     Ok(set_attr::Args { file: file::handle(src)?, new_attr: new_attr(src)?, guard: guard(src)? })
 }

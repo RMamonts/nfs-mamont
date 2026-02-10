@@ -8,10 +8,15 @@ use crate::vfs::write::StableHow;
 
 use std::io::Read;
 
+/// Parses `write::StableHow`
 fn stable_how(src: &mut impl Read) -> Result<write::StableHow> {
     variant::<StableHow>(src)
 }
 
+/// Parses the arguments for an NFSv3 `WRITE` operation from the provided `Read` source.
+/// Function returns either `parser::Error` or `write::ArgPartial`.
+/// Later one is not a complete structure of NFSv3 `WRITE` procedure.
+/// Opaque data must be parsed separately
 pub fn args(src: &mut impl Read) -> Result<write::ArgsPartial> {
     Ok(write::ArgsPartial {
         file: file::handle(src)?,

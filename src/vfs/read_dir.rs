@@ -2,7 +2,8 @@
 
 use async_trait::async_trait;
 
-use super::{file, Error};
+use super::file;
+use crate::vfs;
 
 pub const COOKIE_VERF_SIZE: usize = 8;
 
@@ -39,7 +40,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }
