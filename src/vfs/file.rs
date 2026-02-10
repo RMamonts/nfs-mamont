@@ -6,7 +6,7 @@ use arbitrary::{Arbitrary, Unstructured};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::vfs::MAX_NAME_LEN;
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -18,7 +18,6 @@ pub const HANDLE_SIZE: usize = 8;
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 #[derive(Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct FileName(pub String);
 
 #[cfg(feature = "arbitrary")]
@@ -45,7 +44,6 @@ impl FileName {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(Clone))]
 #[allow(dead_code)]
 pub struct FilePath(pub PathBuf);
 

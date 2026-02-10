@@ -1,11 +1,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
+use nfs_mamont::client::results::RpcRequest;
 use nfs_mamont::mocks::alloc::MockAllocator;
 use nfs_mamont::mocks::fuzz_socket::FuzzMockSocket;
 use nfs_mamont::mocks::parser_wrapper::ParserWrapper;
 use nfs_mamont::parser::parser_struct::{RpcParser, MAX_MESSAGE_LEN};
-use nfs_mamont::parser::Arguments;
+use nfs_mamont::rpc::Error;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -28,14 +29,27 @@ fn get_parser() -> &'static Mutex<ParserWrapper<MockAllocator>> {
     })
 }
 
-fuzz_target!(|data: Arguments| {
+fuzz_target!(|data: RpcRequest| {
     // fuzzed code goes here
     let runtime = get_runtime();
 
-    let res = runtime.block_on(async {
+    runtime.block_on(async {
         let mut parser = get_parser().lock().await;
         parser.write_new_message(data.clone());
-        parser.parse_message().await
+        match parser.parse_message().await {
+            Ok(res) => {
+                assert_eq!(*res, data.args);
+            }
+            Err(error) => match error {
+                Error::RpcVersionMismatch(_)
+                | Error::AuthError(_)
+                | Error::ProgramMismatch
+                | Error::ProcedureMismatch
+                | Error::ProgramVersionMismatch(_) => {}
+                _ => {
+                    panic!("{:?}", error);
+                }
+            },
+        }
     });
-    assert_eq!(*res, data);
 });

@@ -13,7 +13,6 @@ use super::MntError;
 /// Authentication flavors.
 /// TODO(somehow that has to be serialized)
 #[derive(Debug)]
-#[repr(u32)]
 pub enum AuthFlavor {
     None,
     Unix,

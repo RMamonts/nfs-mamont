@@ -2,6 +2,9 @@
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
+#[cfg(feature = "arbitrary")]
+use tokio::sync::mpsc;
+
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(Clone))]
