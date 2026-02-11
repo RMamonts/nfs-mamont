@@ -18,3 +18,5 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 arbitrary = { version = "1", optional = true, features = ["derive"] }
 
+[features]
+arbitrary = ["dep:arbitrary"]
