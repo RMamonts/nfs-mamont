@@ -11,12 +11,12 @@ use crate::vfs::read;
 ///
 /// The actual read data bytes are sent separately.
 pub fn result_ok_part(dest: &mut impl Write, arg: read::SuccessPartial) -> io::Result<()> {
-    option(dest, arg.file_attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, arg.file_attr, |attr, dest| file_attr(dest, &attr))?;
     u64(dest, arg.count)?;
     bool(dest, arg.eof)
 }
 
 /// Serializes [`read::Fail`] (READ3resfail body) into XDR.
 pub fn result_fail(dest: &mut impl Write, arg: read::Fail) -> io::Result<()> {
-    option(dest, arg.file_attr, |attr, dest| file_attr(dest, attr))
+    option(dest, arg.file_attr, |attr, dest| file_attr(dest, &attr))
 }

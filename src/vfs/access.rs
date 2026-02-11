@@ -12,7 +12,8 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: Error,
     pub object_attr: Option<file::Attr>,
 }
 

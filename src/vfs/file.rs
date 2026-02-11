@@ -35,11 +35,15 @@ impl<'a> Arbitrary<'a> for FileName {
 
 #[allow(dead_code)]
 impl FileName {
-    fn new(name: String) -> io::Result<Self> {
+    pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
         Ok(FileName(name))
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
     }
 }
 
@@ -49,11 +53,14 @@ pub struct FilePath(pub PathBuf);
 
 #[allow(dead_code)]
 impl FilePath {
-    fn new(name: String) -> io::Result<Self> {
-        if name.len() > MAX_NAME_LEN {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_PATH_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
         Ok(FilePath(PathBuf::from(name)))
+    }
+    pub fn into_inner(self) -> PathBuf {
+        self.0
     }
 }
 

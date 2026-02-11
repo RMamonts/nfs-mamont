@@ -40,8 +40,6 @@ pub const STATUS_OK: usize = 0;
 /// [`crate::vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Error {
-    /// Everything is fine
-    Ok = 0,
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
     /// owner of the target of the operation.

@@ -96,7 +96,7 @@ pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
 }
 
 /// Serializes an XDR enum discriminant / union tag as a 32-bit integer.
-pub fn variant<T: ToPrimitive, S: Write + ?Sized>(dest: &mut S, val: T) -> io::Result<()> {
+pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         ToPrimitive::to_u32(&val)
             .ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,

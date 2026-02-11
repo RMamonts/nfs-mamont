@@ -14,6 +14,6 @@ pub mod export;
 pub mod mnt;
 
 /// Serializes [`MntError`] as the XDR `mountstat3` enum discriminant.
-pub fn mount_stat<S: Write>(dest: &mut S, status: MntError) -> io::Result<()> {
-    variant::<MntError, S>(dest, status)
+pub fn mount_stat(dest: &mut impl Write, status: MntError) -> io::Result<()> {
+    variant::<MntError>(dest, status)
 }

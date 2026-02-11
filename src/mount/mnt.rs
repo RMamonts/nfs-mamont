@@ -5,21 +5,12 @@
 
 use std::path;
 
-use crate::vfs::file::Handle;
 use async_trait::async_trait;
 
-use super::MntError;
+use crate::rpc::AuthFlavor;
+use crate::vfs::file::Handle;
 
-/// Authentication flavors.
-/// TODO(somehow that has to be serialized)
-#[derive(Debug)]
-pub enum AuthFlavor {
-    None,
-    Unix,
-    Short,
-    Des,
-    Kerb,
-}
+use super::MntError;
 
 /// Success result.
 pub struct Success {
