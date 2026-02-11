@@ -7,6 +7,12 @@ use std::path;
 
 use async_trait::async_trait;
 
+/// Defines callback to pass [`Umnt::umnt`] result into.
+#[async_trait]
+pub trait Promise {
+    async fn keep();
+}
+
 #[async_trait]
 pub trait Umnt {
     /// Removes the mount list entry for the directory that was

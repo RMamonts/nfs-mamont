@@ -5,6 +5,12 @@
 
 use async_trait::async_trait;
 
+/// Defines callback to pass [`Umntall::umntall`] result into.
+#[async_trait]
+pub trait Promise {
+    async fn keep();
+}
+
 #[async_trait]
 pub trait Umntall {
     /// Removes all of the mount entries for this client previously
