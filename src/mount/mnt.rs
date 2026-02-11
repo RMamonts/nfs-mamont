@@ -10,12 +10,6 @@ use async_trait::async_trait;
 use crate::vfs::file::Handle;
 
 /// Possible MOUNT errors
-///
-/// Used only in [`mnt::Mnt`] because other procedures say
-///
-/// There are no MOUNT protocol errors which can be returned
-/// from this procedure. However, RPC errors may be returned
-/// for authentication or other RPC failures.
 pub enum MntError {
     /// Not owner
     Perm = 1,
