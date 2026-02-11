@@ -10,7 +10,7 @@ use crate::vfs::fs_info;
 
 /// Serializes [`fs_info::Success`] (FSINFO3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Result<()> {
-    option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, arg.root_attr, |attr, dest| file_attr(dest, &attr))?;
     u32(dest, arg.read_max)?;
     u32(dest, arg.read_pref)?;
     u32(dest, arg.read_mult)?;
@@ -25,5 +25,5 @@ pub fn result_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Result<()>
 
 /// Serializes [`fs_info::Fail`] (FSINFO3resfail body) into XDR.
 pub fn result_fail(dest: &mut impl Write, arg: fs_info::Fail) -> io::Result<()> {
-    option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))
+    option(dest, arg.root_attr, |attr, dest| file_attr(dest, &attr))
 }

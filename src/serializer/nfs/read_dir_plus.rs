@@ -15,7 +15,7 @@ fn entry(dest: &mut impl Write, entry: Entry) -> io::Result<()> {
     u64(dest, entry.file_id)?;
     file_name(dest, entry.file_name)?;
     u64(dest, entry.cookie)?;
-    option(dest, entry.file_attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, entry.file_attr, |attr, dest| file_attr(dest, &attr))?;
     option(dest, entry.file_handle, |handle, dest| file_handle(dest, handle))
 }
 
@@ -30,12 +30,12 @@ fn dir_list_plus(dest: &mut impl Write, list: Vec<Entry>) -> io::Result<()> {
 
 /// Serializes [`read_dir_plus::Success`] (READDIRPLUS3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: read_dir_plus::Success) -> io::Result<()> {
-    option(dest, arg.dir_attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, arg.dir_attr, |attr, dest| file_attr(dest, &attr))?;
     array(dest, arg.cookie_verifier.0)?;
     dir_list_plus(dest, arg.entries)
 }
 
 /// Serializes [`read_dir_plus::Fail`] (READDIRPLUS3resfail body) into XDR.
 pub fn result_fail(dest: &mut impl Write, arg: read_dir_plus::Fail) -> io::Result<()> {
-    option(dest, arg.dir_attr, |attr, dest| file_attr(dest, attr))
+    option(dest, arg.dir_attr, |attr, dest| file_attr(dest, &attr))
 }

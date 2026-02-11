@@ -10,7 +10,7 @@ use std::io::Write;
 /// Serializes [`symlink::Success`] (SYMLINK3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: symlink::Success) -> io::Result<()> {
     option(dest, arg.file, |fh, dest| file_handle(dest, fh))?;
-    option(dest, arg.attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, arg.attr, |attr, dest| file_attr(dest, &attr))?;
     wcc_data(dest, arg.wcc_data)
 }
 

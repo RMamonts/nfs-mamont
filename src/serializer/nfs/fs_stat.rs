@@ -9,7 +9,7 @@ use crate::vfs::fs_stat;
 
 /// Serializes [`fs_stat::Success`] (FSSTAT3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: fs_stat::Success) -> io::Result<()> {
-    option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))?;
+    option(dest, arg.root_attr, |attr, dest| file_attr(dest, &attr))?;
     u64(dest, arg.total_bytes)?;
     u64(dest, arg.free_bytes)?;
     u64(dest, arg.available_bytes)?;
@@ -21,5 +21,5 @@ pub fn result_ok(dest: &mut impl Write, arg: fs_stat::Success) -> io::Result<()>
 
 /// Serializes [`fs_stat::Fail`] (FSSTAT3resfail body) into XDR.
 pub fn result_fail(dest: &mut impl Write, arg: fs_stat::Fail) -> io::Result<()> {
-    option(dest, arg.root_attr, |attr, dest| file_attr(dest, attr))
+    option(dest, arg.root_attr, |attr, dest| file_attr(dest, &attr))
 }

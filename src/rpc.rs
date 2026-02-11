@@ -5,8 +5,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 #[allow(dead_code)]
 pub const RPC_VERSION: u32 = 2;
-#[allow(dead_code)]
-pub const MAX_AUTH_OPAQUE_LEN: usize = 400;
+
+pub const MAX_AUTH_SIZE: usize = 400;
 
 #[allow(dead_code)]
 #[repr(u32)]
@@ -36,7 +36,7 @@ pub enum AuthStat {
     Decode = 11,
     NetAddr = 12,
     RpcSecGssCredProblem = 13,
-    RpcSecCtsCredProblem = 14,
+    RpcSecGssCtxProblem = 14,
 }
 
 #[allow(dead_code)]
@@ -53,10 +53,12 @@ pub enum ReplyBody {
     MsgDenied = 1,
 }
 
+/// Authentication flavors.
+/// TODO(somehow that has to be serialized)
 #[allow(dead_code)]
 #[derive(ToPrimitive, FromPrimitive)]
 #[repr(u32)]
-pub enum AuthFlavour {
+pub enum AuthFlavor {
     None = 0,
     Sys = 1,
     Short = 2,
@@ -66,7 +68,7 @@ pub enum AuthFlavour {
 
 #[allow(dead_code)]
 pub struct OpaqueAuth {
-    pub flavor: AuthFlavour,
+    pub flavor: AuthFlavor,
     pub body: Vec<u8>,
 }
 

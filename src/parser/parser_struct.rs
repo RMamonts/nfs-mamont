@@ -30,7 +30,7 @@ use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Result};
 use crate::rpc::{
-    AuthFlavour, AuthStat, Error, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
+    AuthFlavor, AuthStat, Error, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
 };
 use crate::vfs;
 
@@ -176,7 +176,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
         match self.buffer.parse_with_retry(auth).await?.flavor {
-            AuthFlavour::None => Ok(AuthStat::Ok),
+            AuthFlavor::None => Ok(AuthStat::Ok),
             _ => {
                 unimplemented!()
             }

@@ -8,8 +8,8 @@ use crate::serializer::{array, u64, variant};
 use crate::vfs::write;
 
 /// Serializes [`write::StableHow`] as the XDR `stable_how` enum discriminant.
-fn stable_how<S: Write>(dest: &mut S, how: write::StableHow) -> io::Result<()> {
-    variant::<write::StableHow, S>(dest, how)
+fn stable_how(dest: &mut impl Write, how: write::StableHow) -> io::Result<()> {
+    variant::<write::StableHow>(dest, how)
 }
 
 /// Serializes [`write::Success`] (WRITE3resok body) into XDR.

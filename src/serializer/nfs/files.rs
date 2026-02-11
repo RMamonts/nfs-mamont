@@ -11,12 +11,12 @@ use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
 
 /// Serializes [file::Type] as the XDR `ftype3` enum discriminant.
-pub fn file_type<S: Write>(dest: &mut S, file_type: file::Type) -> io::Result<()> {
-    variant::<file::Type, S>(dest, file_type)
+pub fn file_type(dest: &mut impl Write, file_type: file::Type) -> io::Result<()> {
+    variant::<file::Type>(dest, file_type)
 }
 
 /// Serializes [`file::Attr`] as XDR `fattr3` (file attributes).
-pub fn file_attr(dest: &mut impl Write, attr: file::Attr) -> io::Result<()> {
+pub fn file_attr(dest: &mut impl Write, attr: &file::Attr) -> io::Result<()> {
     file_type(dest, attr.file_type)?;
     u32(dest, attr.mode)?;
     u32(dest, attr.nlink)?;
@@ -43,7 +43,7 @@ pub fn wcc_attr(dest: &mut dyn Write, wcc: file::WccAttr) -> io::Result<()> {
 /// Serializes [`vfs::WccData`] as XDR `wcc_data` (before/after attributes).
 pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
     option(dest, wcc.before, |attr, dest| wcc_attr(dest, attr))?;
-    option(dest, wcc.after, |attr, dest| file_attr(dest, attr))
+    option(dest, wcc.after, |attr, dest| file_attr(dest, &attr))
 }
 
 /// Serializes [`FileName`] as XDR `filename3` (bounded string).

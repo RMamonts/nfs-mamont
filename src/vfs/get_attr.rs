@@ -9,7 +9,7 @@ use super::{file, Error};
 pub type Result = std::result::Result<Success, Fail>;
 
 pub struct Success {
-    pub object: file::Handle,
+    pub object: file::Attr,
 }
 
 pub struct Fail {

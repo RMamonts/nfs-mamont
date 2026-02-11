@@ -454,8 +454,8 @@ struct WriteBuffer<T: AsyncWrite + Unpin> {
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let size = min(self.buf.len() + buf.len(), self.buf.len());
-        self.buf[self.position..self.position + size].copy_from_slice(&buf[..size]);
+        let size = min(self.position + buf.len(), self.buf.len());
+        self.buf[self.position..size].copy_from_slice(&buf[..size - self.position]);
         self.position += size;
         Ok(size)
     }
