@@ -54,7 +54,6 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-/// TODO(somehow that has to be serialized)
 #[allow(dead_code)]
 #[derive(ToPrimitive, FromPrimitive)]
 #[repr(u32)]

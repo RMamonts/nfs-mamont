@@ -28,6 +28,23 @@ use crate::{mount, serializer, vfs};
 // check actual max size
 const DEFAULT_SIZE: usize = 4096;
 
+macro_rules! nfs_result {
+    ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {
+        match $res {
+            Ok(ok) => {
+                usize_as_u32(&mut $self.buffer, STATUS_OK)?;
+                $ok_fn(&mut $self.buffer, ok)?;
+                $self.buffer.send_inner_buffer().await
+            }
+            Err(err) => {
+                error(&mut $self.buffer, err.error)?;
+                $fail_fn(&mut $self.buffer, err)?;
+                $self.buffer.send_inner_buffer().await
+            }
+        }
+    };
+}
+
 /// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
 #[allow(unused)]
 pub enum NfsRes {
@@ -102,65 +119,22 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         match result {
             ProcResult::Nfs3(data) => match data {
                 NfsRes::Null => self.buffer.send_inner_buffer().await,
-                NfsRes::GetAttr(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        get_attr::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.status)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::SetAttr(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        set_attr::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.status)?;
-                        set_attr::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::LookUp(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        lookup::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        lookup::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Access(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        access::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.status)?;
-                        access::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::ReadLink(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        read_link::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        read_link::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
+                NfsRes::GetAttr(res) => {
+                    nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
+                }
+                NfsRes::SetAttr(res) => {
+                    nfs_result!(self, res, set_attr::result_ok, set_attr::result_fail)
+                }
+                NfsRes::LookUp(res) => {
+                    nfs_result!(self, res, lookup::result_ok, lookup::result_fail)
+                }
+                NfsRes::Access(res) => {
+                    nfs_result!(self, res, access::result_ok, access::result_fail)
+                }
+                NfsRes::ReadLink(res) => {
+                    nfs_result!(self, res, read_link::result_ok, read_link::result_fail)
+                }
+                //special case because of Slice
                 NfsRes::Read(res) => match res {
                     Ok(ok) => {
                         usize_as_u32(&mut self.buffer, STATUS_OK)?;
@@ -173,186 +147,51 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         self.buffer.send_inner_buffer().await
                     }
                 },
-                NfsRes::Write(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        write::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        write::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Create(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        create::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        create::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::MkDir(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        mk_dir::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        mk_dir::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::SymLink(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        symlink::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        symlink::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::MkNod(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        mk_node::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        mk_node::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Remove(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        remove::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        remove::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::RmDir(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        rm_dir::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        rm_dir::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Rename(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        rename::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        rename::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Link(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        link::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        link::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::ReadDir(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        read_dir::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        read_dir::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::ReadDirPlus(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        read_dir_plus::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        read_dir_plus::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::FsStat(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        fs_stat::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        fs_stat::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::FsInfo(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        fs_info::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        fs_info::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::PathConf(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        path_conf::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        path_conf::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Commit(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        commit::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        commit::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
+                NfsRes::Write(res) => {
+                    nfs_result!(self, res, write::result_ok, write::result_fail)
+                }
+                NfsRes::Create(res) => {
+                    nfs_result!(self, res, create::result_ok, create::result_fail)
+                }
+                NfsRes::MkDir(res) => {
+                    nfs_result!(self, res, mk_dir::result_ok, mk_dir::result_fail)
+                }
+                NfsRes::SymLink(res) => {
+                    nfs_result!(self, res, symlink::result_ok, symlink::result_fail)
+                }
+                NfsRes::MkNod(res) => {
+                    nfs_result!(self, res, mk_node::result_ok, mk_node::result_fail)
+                }
+                NfsRes::Remove(res) => {
+                    nfs_result!(self, res, remove::result_ok, remove::result_fail)
+                }
+                NfsRes::RmDir(res) => {
+                    nfs_result!(self, res, rm_dir::result_ok, rm_dir::result_fail)
+                }
+                NfsRes::Rename(res) => {
+                    nfs_result!(self, res, rename::result_ok, rename::result_fail)
+                }
+                NfsRes::Link(res) => {
+                    nfs_result!(self, res, link::result_ok, link::result_fail)
+                }
+                NfsRes::ReadDir(res) => {
+                    nfs_result!(self, res, read_dir::result_ok, read_dir::result_fail)
+                }
+                NfsRes::ReadDirPlus(res) => {
+                    nfs_result!(self, res, read_dir_plus::result_ok, read_dir_plus::result_fail)
+                }
+                NfsRes::FsStat(res) => {
+                    nfs_result!(self, res, fs_stat::result_ok, fs_stat::result_fail)
+                }
+                NfsRes::FsInfo(res) => {
+                    nfs_result!(self, res, fs_info::result_ok, fs_info::result_fail)
+                }
+                NfsRes::PathConf(res) => {
+                    nfs_result!(self, res, path_conf::result_ok, path_conf::result_fail)
+                }
+                NfsRes::Commit(res) => {
+                    nfs_result!(self, res, commit::result_ok, commit::result_fail)
+                }
             },
             ProcResult::Mount(data) => match data {
                 MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => Ok(()),
@@ -405,14 +244,12 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 }
                 Error::RpcVersionMismatch(vers) => {
                     u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
-                    auth_opaque(&mut self.buffer, reply.verf)?;
                     u32(&mut self.buffer, RejectedReply::RpcMismatch as u32)?;
                     u32(&mut self.buffer, vers.low)?;
                     u32(&mut self.buffer, vers.high)
                 }
                 Error::AuthError(stat) => {
                     u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
-                    auth_opaque(&mut self.buffer, reply.verf)?;
                     u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
                     u32(&mut self.buffer, stat as u32)
                 }

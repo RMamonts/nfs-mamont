@@ -4,16 +4,19 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::{file, Error};
+use super::file;
 
 pub type Result = std::result::Result<Success, Fail>;
 
+/// Success result.
 pub struct Success {
     pub object: file::Attr,
 }
 
+/// Fail result.
 pub struct Fail {
-    pub status: Error,
+    /// Error on failure.
+    pub error: vfs::Error,
 }
 
 /// Defines callback to pass [`GetAttr::get_attr`] result into.
