@@ -31,34 +31,6 @@ pub struct MountEntry {
     pub directory: String,
 }
 
-/// Possible MOUNT errors
-///
-/// Used only in [`mnt::Mnt`] because other procedures say
-///
-/// There are no MOUNT protocol errors which can be returned
-/// from this procedure. However, RPC errors may be returned
-/// for authentication or other RPC failures.
-pub enum MntError {
-    /// Not owner
-    Perm = 1,
-    /// No such file or directory
-    NoEnt = 2,
-    /// I/O error
-    Io = 5,
-    /// Permission denied
-    Access = 13,
-    /// Not a directory
-    NoDir = 20,
-    /// Invalid argument
-    Inval = 22,
-    /// Filename too long
-    NameTooLong = 63,
-    /// Operation not supported
-    NotSupp = 10004,
-    /// A failure on the server
-    ServerFault = 10006,
-}
-
 /// Export entry, containing list of clients, allowed to
 /// mount the specified directory.
 #[derive(Clone)]
