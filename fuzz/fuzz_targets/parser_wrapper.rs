@@ -1,31 +1,20 @@
-#[cfg(feature = "arbitrary")]
 use std::io::{Cursor, Write};
 
-#[cfg(feature = "arbitrary")]
-use crate::allocator::Allocator;
-#[cfg(feature = "arbitrary")]
-use crate::client::arguments::{
+use arbitrary::{Arbitrary, Unstructured};
+use nfs_mamont::allocator::Allocator;
+use nfs_mamont::client::arguments::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, mount,
     path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
     write,
 };
-#[cfg(feature = "arbitrary")]
-use crate::mocks::fuzz_socket::{FuzzMockSocket, FuzzSocketHandler};
-#[cfg(feature = "arbitrary")]
-use crate::mount::MOUNT_PROGRAM;
-#[cfg(feature = "arbitrary")]
-use crate::nfsv3::NFS_PROGRAM;
-#[cfg(feature = "arbitrary")]
-use crate::parser::parser_struct::RpcParser;
-#[cfg(feature = "arbitrary")]
-use crate::parser::parser_struct::MAX_MESSAGE_LEN;
-#[cfg(feature = "arbitrary")]
-use crate::parser::{Arguments, Result};
-#[cfg(feature = "arbitrary")]
-use arbitrary::{Arbitrary, Unstructured};
+use nfs_mamont::mocks::fuzz_socket::{FuzzMockSocket, FuzzSocketHandler};
+use nfs_mamont::mount::MOUNT_PROGRAM;
+use nfs_mamont::nfsv3::NFS_PROGRAM;
+use nfs_mamont::parser::parser_struct::RpcParser;
+use nfs_mamont::parser::parser_struct::MAX_MESSAGE_LEN;
+use nfs_mamont::parser::{Arguments, Result};
 
-#[cfg(feature = "arbitrary")]
-#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
+#[derive(Clone, Debug)]
 pub struct RpcRequest {
     // calculated
     pub size: u32,
@@ -45,7 +34,6 @@ pub struct RpcRequest {
     pub args: Arguments,
 }
 
-#[cfg(feature = "arbitrary")]
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let prog = u.int_in_range(NFS_PROGRAM..=MOUNT_PROGRAM)?;
@@ -100,14 +88,12 @@ impl<'a> Arbitrary<'a> for RpcRequest {
     }
 }
 
-#[cfg(feature = "arbitrary")]
 pub struct ParserWrapper<A: Allocator> {
     parser: RpcParser<A, FuzzMockSocket>,
     sender: FuzzSocketHandler,
     tmp_buffer: Cursor<Vec<u8>>,
 }
 
-#[cfg(feature = "arbitrary")]
 impl<A: Allocator> ParserWrapper<A> {
     pub fn new(parser: RpcParser<A, FuzzMockSocket>, sender: FuzzSocketHandler) -> Self {
         // inner buffer size + max amount of bytes can be generated for Slice

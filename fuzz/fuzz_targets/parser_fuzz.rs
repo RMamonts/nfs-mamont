@@ -1,14 +1,19 @@
 #![no_main]
+
+mod parser_wrapper;
+
 use std::sync::OnceLock;
 
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::mocks::alloc::MockAllocator;
 use nfs_mamont::mocks::fuzz_socket::FuzzMockSocket;
-use nfs_mamont::mocks::parser_wrapper::{ParserWrapper, RpcRequest};
 use nfs_mamont::parser::parser_struct::{RpcParser, MAX_MESSAGE_LEN};
 use nfs_mamont::rpc::Error;
+use parser_wrapper::ParserWrapper;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+
+use crate::parser_wrapper::RpcRequest;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PARSER: OnceLock<Mutex<ParserWrapper<MockAllocator>>> = OnceLock::new();

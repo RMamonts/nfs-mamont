@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = { version = "0.4.10", features = ["arbitrary-derive"] }
 nfs-mamont = { path = "..", features = ["arbitrary"] }
 tokio = "1.49.0"
+arbitrary = "1.4.2"
 
 [[bin]]
 name = "parser_fuzz"
