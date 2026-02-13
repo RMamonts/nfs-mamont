@@ -2,9 +2,11 @@
 
 use std::io::Read;
 
-use crate::parser::primitive::{array, option, u32, u32_as_usize, u64};
+use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
-use crate::vfs::file;
+use crate::vfs;
+use crate::vfs::file::{FileName, FilePath};
+use crate::vfs::{file, MAX_PATH_LEN};
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
@@ -41,7 +43,7 @@ pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
         gid: u32(src)?,
         size: u64(src)?,
         used: u64(src)?,
-        device: option(src, |s| device(s))?,
+        device: device(src)?,
         fs_id: u64(src)?,
         file_id: u64(src)?,
         atime: time(src)?,
@@ -63,6 +65,14 @@ pub fn device(src: &mut impl Read) -> Result<file::Device> {
 /// Parses a [`file::WccAttr`] structure from the provided `Read` source.
 pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
+}
+
+pub fn file_name(src: &mut impl Read) -> Result<file::FileName> {
+    FileName::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::MaxELemLimit)
+}
+
+pub fn file_path(src: &mut impl Read) -> Result<file::FilePath> {
+    FilePath::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::MaxELemLimit)
 }
 
 #[cfg(test)]

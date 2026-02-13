@@ -53,7 +53,7 @@ pub struct Fail {
     pub root_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`FsInfo::fs_info`] result into.
 #[async_trait]

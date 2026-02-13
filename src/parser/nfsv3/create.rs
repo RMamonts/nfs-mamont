@@ -1,13 +1,15 @@
 //! Implements parsing for [`create::Args`] structure.
 
-use crate::parser::nfsv3::{file, MAX_FILENAME};
+use std::io::Read;
+
+use crate::parser::nfsv3::file;
 use crate::parser::primitive::{array, option, string_max_size, u32, u64};
 use crate::parser::{Error, Result};
+use crate::vfs;
 use crate::vfs::create;
 use crate::vfs::create::{Verifier, VERIFY_LEN};
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
-use std::io::Read;
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
@@ -51,7 +53,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
     Ok(create::Args {
         dir: file::handle(src)?,
-        name: string_max_size(src, MAX_FILENAME)?,
+        name: string_max_size(src, vfs::MAX_NAME_LEN)?,
         how: how(src)?,
     })
 }

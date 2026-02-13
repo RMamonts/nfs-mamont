@@ -8,13 +8,14 @@ use crate::vfs::read_dir::CookieVerifier;
 
 use super::file;
 
+// also keep in mind, that it should have some pointer to next item in list
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::FileName,
     pub cookie: Cookie,
     pub file_attr: Option<file::Attr>,
     pub file_handle: Option<file::Handle>,
@@ -28,13 +29,6 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries.
     pub entries: Vec<Entry>,
-    /// `true` if the last member of [`Self::entries`] is the last
-    /// entry in the directory or the list [`Self::entries`] is
-    /// empty and the cookie corresponded to the end of the
-    /// directory.
-    ///
-    /// If `false`, there may be more entries to read.
-    pub eof: bool,
 }
 
 /// Fail result.
@@ -45,7 +39,7 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
 #[async_trait]

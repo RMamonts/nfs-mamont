@@ -1,10 +1,11 @@
 //! Defines NFSv3 [`Write`] interface.
 
+use async_trait::async_trait;
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use super::file;
 use crate::allocator::Slice;
 use crate::vfs;
-use async_trait::async_trait;
-use num_derive::{FromPrimitive, ToPrimitive};
 
 /// Enum describing servers behaviour after performing write:
 /// * `FileSync` indicates that all data and metadata should be commited to stable storage.
@@ -42,7 +43,7 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Write::write`] result into.
 #[async_trait]

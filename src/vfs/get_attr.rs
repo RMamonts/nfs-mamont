@@ -6,6 +6,19 @@ use crate::vfs;
 
 use super::file;
 
+pub type Result = std::result::Result<Success, Fail>;
+
+/// Success result.
+pub struct Success {
+    pub object: file::Attr,
+}
+
+/// Fail result.
+pub struct Fail {
+    /// Error on failure.
+    pub error: vfs::Error,
+}
+
 /// Defines callback to pass [`GetAttr::get_attr`] result into.
 #[async_trait]
 pub trait Promise {
