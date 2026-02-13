@@ -30,7 +30,7 @@ mod tests {
         let args = args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(args.parent.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(args.name.0, "test");
+        assert_eq!(args.name.into_inner(), "test");
     }
 
     #[test]

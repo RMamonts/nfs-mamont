@@ -3,7 +3,6 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
-use crate::parser::nfsv3::MAX_FILENAME;
 use crate::serializer::nfs::nfs_time;
 use crate::serializer::{option, string_max_size, u32, u64, variant};
 use crate::vfs;
@@ -48,7 +47,7 @@ pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
 
 /// Serializes [`FileName`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: FileName) -> io::Result<()> {
-    string_max_size(dest, file_name.0, MAX_FILENAME)
+    string_max_size(dest, file_name.into_inner(), vfs::MAX_NAME_LEN)
 }
 
 /// Serializes [`FilePath`] as XDR `path` (bounded string).
@@ -56,7 +55,7 @@ pub fn file_path(dest: &mut impl Write, file_name: FilePath) -> io::Result<()> {
     string_max_size(
         dest,
         file_name
-            .0
+            .into_inner()
             .into_os_string()
             .into_string()
             .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?,

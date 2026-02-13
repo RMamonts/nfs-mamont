@@ -1,13 +1,15 @@
 //! Implements parsing for [`mk_node::Args`] structure.
 
+use std::io::Read;
+
 use crate::parser::nfsv3::create::new_attr;
-use crate::parser::nfsv3::{file, MAX_FILENAME};
+use crate::parser::nfsv3::file;
 use crate::parser::primitive::{string_max_size, u32};
 use crate::parser::{Error, Result};
+use crate::vfs;
 use crate::vfs::file::Device;
 use crate::vfs::mk_node;
 use crate::vfs::mk_node::What;
-use std::io::Read;
 
 fn what(src: &mut impl Read) -> Result<mk_node::What> {
     match u32(src)? {
@@ -26,7 +28,7 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
     Ok(mk_node::Args {
         dir: file::handle(src)?,
-        name: string_max_size(src, MAX_FILENAME)?,
+        name: string_max_size(src, vfs::MAX_NAME_LEN)?,
         what: what(src)?,
     })
 }

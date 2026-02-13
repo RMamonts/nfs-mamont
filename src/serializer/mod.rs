@@ -95,7 +95,6 @@ pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
     vector(dest, string.into_bytes())
 }
 
-#[allow(dead_code)]
 /// Serializes an XDR enum discriminant / union tag as a 32-bit integer.
 pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
@@ -104,21 +103,9 @@ pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> 
     )
 }
 
-#[allow(dead_code)]
 /// Serializes a Rust `usize` as an XDR `unsigned int` (32-bit), failing on overflow.
 pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
-}
-
-#[allow(dead_code)]
-/// Serializes a variable-length XDR array of `u32`: element count + big-endian values.
-pub fn vector_u32(dest: &mut dyn Write, vec: Vec<u32>) -> io::Result<()> {
-    dest.write_u32::<BigEndian>(vec.len() as u32).and_then(|_| {
-        for v in vec {
-            dest.write_u32::<BigEndian>(v)?;
-        }
-        Ok(())
-    })
 }

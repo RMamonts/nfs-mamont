@@ -3,12 +3,10 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-#[allow(dead_code)]
 pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
 
-#[allow(dead_code)]
 #[repr(u32)]
 pub enum AcceptStat {
     Success = 0,
@@ -19,7 +17,6 @@ pub enum AcceptStat {
     SystemErr = 5,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum AuthStat {
     Ok = 0,
@@ -39,14 +36,12 @@ pub enum AuthStat {
     RpcSecGssCtxProblem = 14,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
 pub enum ReplyBody {
     MsgAccepted = 0,
@@ -54,7 +49,6 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-#[allow(dead_code)]
 #[derive(ToPrimitive, FromPrimitive)]
 #[repr(u32)]
 pub enum AuthFlavor {
@@ -65,13 +59,11 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-#[allow(dead_code)]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
 }
 
-#[allow(dead_code)]
 #[repr(u32)]
 pub enum RejectedReply {
     RpcMismatch = 0,
@@ -80,7 +72,6 @@ pub enum RejectedReply {
 
 /// Represents a mismatch in program versions.
 /// Returns highest and lowest versions of available versions of requested program
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ProgramVersionMismatch {
     pub low: u32,
@@ -89,14 +80,12 @@ pub struct ProgramVersionMismatch {
 
 /// Represents a mismatch in RPC versions.
 /// Returns highest and lowest versions of available versions of RPC
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct RPCVersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 /// Errors that can occur during parsing.
 pub enum Error {

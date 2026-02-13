@@ -3,11 +3,10 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
-use std::path;
-
 use async_trait::async_trait;
 
 use crate::rpc::AuthFlavor;
+use crate::vfs::file;
 use crate::vfs::file::Handle;
 
 use super::MntError;
@@ -39,5 +38,5 @@ pub trait Mnt {
     ///
     /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&self, dirpath: path::PathBuf, promise: impl Promise);
+    async fn mnt(&self, dirpath: file::FilePath, promise: impl Promise);
 }

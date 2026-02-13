@@ -1,7 +1,9 @@
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
-use num_derive::{FromPrimitive, ToPrimitive};
 use std::io;
 use std::path::PathBuf;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -9,15 +11,11 @@ pub const HANDLE_SIZE: usize = 8;
 ///
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
-#[derive(Clone)]
-pub struct FileName(pub String);
+#[derive(Debug, PartialEq, Clone)]
+pub struct FileName(String);
 
-#[allow(dead_code)]
 impl FileName {
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
@@ -32,10 +30,8 @@ impl FileName {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[allow(dead_code)]
-pub struct FilePath(pub PathBuf);
+pub struct FilePath(PathBuf);
 
-#[allow(dead_code)]
 impl FilePath {
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_PATH_LEN {

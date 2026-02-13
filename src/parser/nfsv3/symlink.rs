@@ -40,7 +40,7 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name.0, "link");
+        assert_eq!(result.name.into_inner(), "link");
         assert!(matches!(
             result.attr,
             set_attr::NewAttr {
@@ -52,7 +52,7 @@ mod tests {
                 mtime: set_attr::SetTime::DontChange,
             }
         ));
-        assert_eq!(result.path.0.as_os_str(), "/path/");
+        assert_eq!(result.path.into_inner().as_os_str(), "/path/");
     }
 
     #[test]

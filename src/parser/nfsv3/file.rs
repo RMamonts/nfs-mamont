@@ -1,11 +1,10 @@
 //! Implements [`crate::vfs::file`] structures parsing
 
 use std::io::Read;
-use std::path::PathBuf;
 
-use crate::parser::nfsv3::MAX_FILENAME;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
+use crate::vfs;
 use crate::vfs::file::{FileName, FilePath};
 use crate::vfs::{file, MAX_PATH_LEN};
 
@@ -69,11 +68,11 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 }
 
 pub fn file_name(src: &mut impl Read) -> Result<file::FileName> {
-    Ok(FileName(string_max_size(src, MAX_FILENAME)?))
+    FileName::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::MaxELemLimit)
 }
 
 pub fn file_path(src: &mut impl Read) -> Result<file::FilePath> {
-    Ok(FilePath(PathBuf::from(string_max_size(src, MAX_PATH_LEN)?)))
+    FilePath::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::MaxELemLimit)
 }
 
 #[cfg(test)]

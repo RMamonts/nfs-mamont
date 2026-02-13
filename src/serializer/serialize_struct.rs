@@ -291,8 +291,9 @@ struct WriteBuffer<T: AsyncWrite + Unpin> {
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let size = min(self.position + buf.len(), self.buf.len());
-        self.buf[self.position..size].copy_from_slice(&buf[..size - self.position]);
+        let end = min(self.position + buf.len(), self.buf.len());
+        let size = end - self.position;
+        self.buf[self.position..end].copy_from_slice(&buf[..size]);
         self.position += size;
         Ok(size)
     }
@@ -323,13 +324,14 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
+        let size = slice.iter().map(|b| b.len()).sum::<usize>();
+        self.socket.write_all(&(size as u32).to_be_bytes()).await?;
         self.socket.write_all(&self.buf[0..self.position]).await?;
         // later change to explicit cursor (when one implemented)
         for buf in slice.iter() {
             self.socket.write_all(buf).await?;
         }
         // write padding directly to socket
-        let size = slice.iter().map(|b| b.len()).sum::<usize>();
         let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
         let slice = [0u8; ALIGNMENT];
         self.socket.write_all(&slice[..padding]).await?;
