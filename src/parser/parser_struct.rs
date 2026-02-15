@@ -355,8 +355,17 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
     async fn discard_current_message(&mut self) -> Result<()> {
-        let remaining = self.current_frame_size - self.buffer.total_bytes();
-        self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
+        let already_consumed = self.buffer.total_bytes();
+        if already_consumed > self.current_frame_size {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed more bytes than current frame size",
+            )));
+        }
+        let remaining = self.current_frame_size - already_consumed;
+        if remaining > 0 {
+            self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
+        }
         self.finalize_parsing()?;
         Ok(())
     }
