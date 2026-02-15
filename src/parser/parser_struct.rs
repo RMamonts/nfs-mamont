@@ -363,9 +363,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             )));
         }
         let remaining = self.current_frame_size - already_consumed;
-        if remaining > 0 {
-            self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
-        }
+        self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
     }
