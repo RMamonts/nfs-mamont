@@ -111,6 +111,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
 
+        if self.current_frame_size < std::mem::size_of::<u32>() {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame size must include XID",
+            )));
+        }
+        if self.current_frame_size > MAX_MESSAGE_LEN {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame exceeds maximum supported length",
+            )));
+        }
+
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
             return Err(Error::IO(io::Error::new(
