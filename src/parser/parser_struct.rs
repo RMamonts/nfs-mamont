@@ -15,6 +15,7 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
+
 use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
@@ -305,7 +306,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if validation passes, or an error if unparsed data
     /// remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
-        if self.buffer.total_bytes() != self.current_frame_size {
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        if (self.buffer.total_bytes() - size_of::<u32>()) != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
@@ -355,7 +359,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
     async fn discard_current_message(&mut self) -> Result<()> {
-        let remaining = self.current_frame_size - self.buffer.total_bytes();
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        let remaining = self.current_frame_size - self.buffer.total_bytes() + size_of::<u32>();
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
