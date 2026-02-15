@@ -15,6 +15,7 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
+
 use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
@@ -34,8 +35,10 @@ use crate::parser::{
 use crate::rpc::{rpc_message_type, RPC_VERSION};
 use crate::vfs;
 
-#[allow(dead_code)]
-const MAX_MESSAGE_LEN: usize = 2500;
+/// Minimum buffer size, that could hold complete RPC message
+/// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -72,6 +75,25 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+    /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket` - The async stream to read RPC messages from
+    /// * `allocator` - The allocator to use for dynamic memory allocation
+    ///
+    /// # Returns
+    ///
+    /// A new `RpcParser` instance ready to parse messages.
+    pub fn new(socket: S, allocator: A) -> Self {
+        Self {
+            allocator,
+            buffer: CountBuffer::new(DEFAULT_SIZE, socket),
+            last: false,
+            current_frame_size: 0,
+        }
+    }
+
     /// Creates a new `RpcParser` with the specified buffer size.
     ///
     /// # Arguments
@@ -83,7 +105,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: A, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
