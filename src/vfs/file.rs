@@ -1,3 +1,7 @@
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+use std::io;
+use std::path::PathBuf;
+
 pub const HANDLE_SIZE: usize = 8;
 
 /// Unique file identifier.
@@ -6,6 +10,37 @@ pub const HANDLE_SIZE: usize = 8;
 #[derive(Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FileName(String);
+
+impl FileName {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(FileName(name))
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FilePath(PathBuf);
+
+impl FilePath {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_PATH_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(FilePath(PathBuf::from(name)))
+    }
+    pub fn into_inner(self) -> PathBuf {
+        self.0
+    }
+}
 
 /// Type of file.
 #[derive(Clone, Copy)]

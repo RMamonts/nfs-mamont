@@ -20,7 +20,7 @@ pub struct Entry {
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::FileName,
     pub cookie: Cookie,
 }
 
