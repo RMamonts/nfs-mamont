@@ -1,7 +1,7 @@
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::Arguments;
+use crate::parser::{Arguments, Error};
 use crate::vfs::{file, fs_stat};
 
 #[tokio::test]
@@ -145,4 +145,22 @@ async fn parse_write_after_error() {
     assert!(result.is_err());
     let result = parser.parse_message().await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn parse_error_when_consumed_exceeds_frame_size() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x04, // head with too small frame size
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request
+        0x00, 0x00, 0x00, 0x05, // invalid rpc version (must be 2)
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc, 0x20);
+
+    let result = parser.parse_message().await;
+    let error = result.err().unwrap();
+    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
 }
