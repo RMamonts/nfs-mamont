@@ -1,7 +1,7 @@
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::Arguments;
+use crate::parser::{Arguments, Error};
 use crate::vfs::{file, fs_stat};
 
 #[tokio::test]
@@ -145,4 +145,28 @@ async fn parse_write_after_error() {
     assert!(result.is_err());
     let result = parser.parse_message().await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn parse_rejects_any_non_call_message_type() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x30, // head
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x02, // invalid msg type (must be CALL = 0)
+        0x00, 0x00, 0x00, 0x02, // rpc version
+        0x00, 0x01, 0x86, 0xA3, // program
+        0x00, 0x00, 0x00, 0x03, // prog vers
+        0x00, 0x00, 0x00, 0x12, // proc
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x08, // nfs_fh3
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc, 0x35);
+
+    let result = parser.parse_message().await;
+    assert!(matches!(result, Err(Error::MessageTypeMismatch)));
 }
