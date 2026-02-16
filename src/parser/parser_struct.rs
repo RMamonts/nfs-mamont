@@ -406,10 +406,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     }
 
     // Discard any trailing padding bytes after the data.
-    if padding > 0 {
-        buffer.discard_bytes(padding).await.map_err(Error::IO)?;
-    }
-
+    buffer.discard_bytes(padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
