@@ -39,7 +39,7 @@ pub struct Args {
     /// The file handle for the directory in which the link is to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created link.
-    pub name: file::FileName,
+    pub name: file::Name,
 }
 
 #[async_trait]

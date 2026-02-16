@@ -5,7 +5,7 @@ use std::io::Read;
 use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
-use crate::vfs::file::{FileName, FilePath};
+use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
@@ -67,14 +67,14 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
 }
 
-/// Parses a [`file::FileName`] structure from the provided `Read` source.
-pub fn file_name(src: &mut impl Read) -> Result<file::FileName> {
-    FileName::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::MaxELemLimit)
+/// Parses a [`file::Name`] structure from the provided `Read` source.
+pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::MaxELemLimit)
 }
 
-/// Parses a [`file::FilePath`] structure from the provided `Read` source.
-pub fn file_path(src: &mut impl Read) -> Result<file::FilePath> {
-    FilePath::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::MaxELemLimit)
+/// Parses a [`file::Path`] structure from the provided `Read` source.
+pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::MaxELemLimit)
 }
 
 #[cfg(test)]
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_file_path_success() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
-        let file = file::FilePath::new("file".to_string()).unwrap();
+        let file = file::Path::new("file".to_string()).unwrap();
         assert_eq!(super::file_path(&mut Cursor::new(DATA)).unwrap(), file);
     }
 
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_file_name_success() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
-        let file = file::FileName::new("file".to_string()).unwrap();
+        let file = file::Name::new("file".to_string()).unwrap();
         assert_eq!(super::file_name(&mut Cursor::new(DATA)).unwrap(), file);
     }
 }
