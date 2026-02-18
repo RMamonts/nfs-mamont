@@ -3,8 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::files::file_attr;
-use crate::serializer::nfs::file_handle;
+use crate::serializer::files::{file_attr, file_handle};
 use crate::serializer::option;
 use crate::vfs::lookup;
 

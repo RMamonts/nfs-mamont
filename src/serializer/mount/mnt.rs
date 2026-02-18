@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::mount::mnt;
 use crate::rpc::AuthFlavor;
-use crate::serializer::nfs::file_handle;
+use crate::serializer::files::file_handle;
 use crate::serializer::{usize_as_u32, variant};
 
 /// Serializes [`AuthFlavor`] as the XDR `mountres3_ok` body.
