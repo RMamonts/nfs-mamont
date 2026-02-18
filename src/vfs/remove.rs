@@ -21,7 +21,7 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Remove::remove`] result into.
 #[async_trait]

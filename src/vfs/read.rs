@@ -31,7 +31,7 @@ pub struct Fail {
     pub file_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Read::read`] result into.
 #[async_trait]

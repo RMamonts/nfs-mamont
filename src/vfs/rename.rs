@@ -24,7 +24,7 @@ pub struct Fail {
     pub to_dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Rename::rename`] result into.
 #[async_trait]
