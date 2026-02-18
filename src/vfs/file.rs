@@ -1,3 +1,8 @@
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+use num_derive::{FromPrimitive, ToPrimitive};
+use std::io;
+use std::path::PathBuf;
+
 pub const HANDLE_SIZE: usize = 8;
 
 /// Unique file identifier.
@@ -7,8 +12,39 @@ pub const HANDLE_SIZE: usize = 8;
 #[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Name(String);
+
+impl Name {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(Name(name))
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Path(PathBuf);
+
+impl Path {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_PATH_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        Ok(Path(PathBuf::from(name)))
+    }
+    pub fn into_inner(self) -> PathBuf {
+        self.0
+    }
+}
+
 /// Type of file.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -26,7 +62,7 @@ pub enum Type {
     Fifo = 7,
 }
 
-/// File attributes.
+/// File attributes, also known as `fattr3` in RFC
 #[derive(Clone)]
 pub struct Attr {
     /// Type of the file, see [`Type`].
@@ -47,7 +83,7 @@ pub struct Attr {
     /// or [`Type::CharacterDevice`].
     ///
     /// See [`Type`].
-    pub device: Option<Device>,
+    pub device: Device,
     /// The file system identifier for the file system.
     pub fs_id: u64,
     /// The number which uniquely identifies the file within its file system.
@@ -68,7 +104,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -84,7 +121,8 @@ pub struct Device {
 }
 
 /// Weak cache consistency attributes.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct WccAttr {
     /// The file size in bytes of the object before the operation.
     pub size: u64,

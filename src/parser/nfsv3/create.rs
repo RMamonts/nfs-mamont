@@ -1,13 +1,14 @@
 //! Implements parsing for [`create::Args`] structure.
+use std::io::Read;
 
-use crate::parser::nfsv3::{file, MAX_FILENAME};
-use crate::parser::primitive::{array, option, string_max_size, u32, u64};
+use crate::parser::nfsv3::file;
+use crate::parser::nfsv3::file::file_name;
+use crate::parser::primitive::{array, option, u32, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::create;
 use crate::vfs::create::{Verifier, VERIFY_LEN};
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
-use std::io::Read;
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
@@ -49,11 +50,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
 
 /// Parses the arguments for an NFSv3 `CREATE` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
-    Ok(create::Args {
-        dir: file::handle(src)?,
-        name: string_max_size(src, MAX_FILENAME)?,
-        how: how(src)?,
-    })
+    Ok(create::Args { dir: file::handle(src)?, name: file_name(src)?, how: how(src)? })
 }
 
 #[cfg(test)]
@@ -80,7 +77,7 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name, "file");
+        assert_eq!(result.name.into_inner(), "file");
         assert!(matches!(
             result.how,
             create::How::Unchecked(set_attr::NewAttr {

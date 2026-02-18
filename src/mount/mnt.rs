@@ -3,12 +3,13 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
-use std::path;
-
-use async_trait::async_trait;
-
+use crate::rpc::AuthFlavor;
+use crate::vfs::file;
 use crate::vfs::file::Handle;
+use async_trait::async_trait;
+use num_derive::{FromPrimitive, ToPrimitive};
 
+#[derive(ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
 pub enum MntError {
     /// Not owner
@@ -29,16 +30,6 @@ pub enum MntError {
     NotSupp = 10004,
     /// A failure on the server
     ServerFault = 10006,
-}
-
-/// Authentication flavors.
-#[derive(Debug)]
-pub enum AuthFlavor {
-    None,
-    Unix,
-    Short,
-    Des,
-    Kerb,
 }
 
 /// Success result.
@@ -68,5 +59,5 @@ pub trait Mnt {
     ///
     /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&self, dirpath: path::PathBuf, promise: impl Promise);
+    async fn mnt(&self, dirpath: file::Path, promise: impl Promise);
 }

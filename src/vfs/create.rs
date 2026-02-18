@@ -50,7 +50,7 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Create::create`] result into.
 #[async_trait]
@@ -63,7 +63,7 @@ pub struct Args {
     /// The file handle for the directory in which the file is to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created file.
-    pub name: String,
+    pub name: file::Name,
     /// The file creation mode. See [`How`] documentation.
     pub how: How,
 }

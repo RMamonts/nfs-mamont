@@ -9,13 +9,18 @@ use super::file;
 /// Success result.
 pub struct Success {
     /// The attributes of the file on completion of the read.
-    pub file_attr: Option<file::Attr>,
-    /// The number of bytes of data returned by the read.
-    pub count: u64,
-    /// If the read ended at the end-of-file.
-    pub eof: bool,
+    pub head: SuccessPartial,
     /// The counted data read from the file.
     pub data: Slice,
+}
+
+pub struct SuccessPartial {
+    /// The attributes of the file on completion of the read.
+    pub file_attr: Option<file::Attr>,
+    /// The number of bytes of data returned by the read.
+    pub count: u32,
+    /// If the read ended at the end-of-file.
+    pub eof: bool,
 }
 
 /// Fail result.
@@ -26,7 +31,7 @@ pub struct Fail {
     pub file_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Read::read`] result into.
 #[async_trait]
@@ -42,7 +47,7 @@ pub struct Args {
     pub file: file::Handle,
     /// The position within file at which the read is to begin. If
     /// `offset` is greater than or equal to the size of the file, the [`Success`] is
-    /// returned with [`Success::count`] set to 0 and [`Success::eof`] set to `true`.
+    /// returned with `count` set to 0
     pub offset: u64,
     /// The number of bytes of data that are to be read. If count is `0`, the
     /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
