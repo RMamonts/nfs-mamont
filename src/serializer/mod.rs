@@ -99,3 +99,10 @@ pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> 
             .ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
 }
+
+/// Serializes a Rust `usize` as an XDR `unsigned int` (32-bit), failing on overflow.
+pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
+    dest.write_u32::<BigEndian>(
+        n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
+    )
+}

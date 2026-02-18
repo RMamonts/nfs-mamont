@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-use crate::parser::primitive::{array, option, string_max_size, u32, u32_as_usize, u64};
+use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
@@ -43,7 +43,7 @@ pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
         gid: u32(src)?,
         size: u64(src)?,
         used: u64(src)?,
-        device: option(src, |s| device(s))?,
+        device: device(src)?,
         fs_id: u64(src)?,
         file_id: u64(src)?,
         atime: time(src)?,

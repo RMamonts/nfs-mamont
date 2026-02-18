@@ -1,7 +1,7 @@
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+use num_derive::{FromPrimitive, ToPrimitive};
 use std::io;
 use std::path::PathBuf;
-
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -44,7 +44,7 @@ impl Path {
 }
 
 /// Type of file.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -83,7 +83,7 @@ pub struct Attr {
     /// or [`Type::CharacterDevice`].
     ///
     /// See [`Type`].
-    pub device: Option<Device>,
+    pub device: Device,
     /// The file system identifier for the file system.
     pub fs_id: u64,
     /// The number which uniquely identifies the file within its file system.
