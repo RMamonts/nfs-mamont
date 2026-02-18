@@ -42,7 +42,7 @@ fn test_array() {
 #[test]
 fn test_vector() {
     let mut init = Cursor::new([1u8; 13]);
-    vector(&mut init, vec![7u8, 255, 64, 0, 64, 78, 12]).unwrap();
+    vector(&mut init, vec![7u8, 255, 64, 0, 64, 78, 12].as_slice()).unwrap();
     assert_eq!(init.into_inner(), [0, 0, 0, 7, 7, 255, 64, 0, 64, 78, 12, 0, 1])
 }
 
