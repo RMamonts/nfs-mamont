@@ -3,8 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::files::{file_attr, file_name};
-use crate::serializer::nfs::file_handle;
+use crate::serializer::files::{file_attr, file_handle, file_name};
 use crate::serializer::{array, bool, option, u64};
 use crate::vfs::read_dir_plus;
 use crate::vfs::read_dir_plus::Entry;
