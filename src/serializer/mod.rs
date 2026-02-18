@@ -73,14 +73,18 @@ pub fn array<const N: usize>(dest: &mut dyn Write, slice: [u8; N]) -> io::Result
 }
 
 /// Serializes a variable-length XDR opaque value (`opaque<>`): length + bytes + padding.
-pub fn vector(dest: &mut dyn Write, vec: Vec<u8>) -> io::Result<()> {
-    dest.write_u32::<BigEndian>(vec.len() as u32)
+pub fn vector(dest: &mut dyn Write, vec: &[u8]) -> io::Result<()> {
+    let len = vec
+        .len()
+        .try_into()
+        .map_err(|_| Error::new(ErrorKind::InvalidInput, "vector length exceeds u32"))?;
+    dest.write_u32::<BigEndian>(len)
         .and_then(|_| dest.write_all(&vec))
         .and_then(|_| padding(dest, vec.len()))
 }
 
 /// Serializes a variable-length XDR opaque value with an explicit maximum length check.
-pub fn vec_max_size(dest: &mut dyn Write, vec: Vec<u8>, max_size: usize) -> io::Result<()> {
+pub fn vec_max_size(dest: &mut dyn Write, vec: &[u8], max_size: usize) -> io::Result<()> {
     if vec.len() > max_size {
         return Err(Error::new(ErrorKind::InvalidInput, "vector out of bounds"));
     }
@@ -89,13 +93,13 @@ pub fn vec_max_size(dest: &mut dyn Write, vec: Vec<u8>, max_size: usize) -> io::
 
 /// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
 pub fn string_max_size(dest: &mut dyn Write, string: String, max_size: usize) -> io::Result<()> {
-    vec_max_size(dest, string.into_bytes(), max_size)
+    vec_max_size(dest, &string.into_bytes(), max_size)
 }
 
 #[allow(dead_code)]
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
 pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
-    vector(dest, string.into_bytes())
+    vector(dest, &string.into_bytes())
 }
 
 /// Serializes an XDR enum discriminant / union tag as a 32-bit integer.
