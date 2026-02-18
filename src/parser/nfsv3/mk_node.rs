@@ -1,13 +1,14 @@
 //! Implements parsing for [`mk_node::Args`] structure.
+use std::io::Read;
 
 use crate::parser::nfsv3::create::new_attr;
-use crate::parser::nfsv3::{file, MAX_FILENAME};
-use crate::parser::primitive::{string_max_size, u32};
+use crate::parser::nfsv3::file;
+use crate::parser::nfsv3::file::file_name;
+use crate::parser::primitive::u32;
 use crate::parser::{Error, Result};
 use crate::vfs::file::Device;
 use crate::vfs::mk_node;
 use crate::vfs::mk_node::What;
-use std::io::Read;
 
 fn what(src: &mut impl Read) -> Result<mk_node::What> {
     match u32(src)? {
@@ -24,11 +25,7 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
 
 /// Parses the arguments for an NFSv3 `MKNOD` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
-    Ok(mk_node::Args {
-        dir: file::handle(src)?,
-        name: string_max_size(src, MAX_FILENAME)?,
-        what: what(src)?,
-    })
+    Ok(mk_node::Args { dir: file::handle(src)?, name: file_name(src)?, what: what(src)? })
 }
 
 #[cfg(test)]
@@ -47,7 +44,7 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name, "node");
+        assert_eq!(result.name.into_inner(), "node");
 
         // TODO()
         // assert!(matches!(result.what, mk_node::What::Block(todo!(), todo!())));

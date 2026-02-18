@@ -57,7 +57,7 @@ pub struct Args {
     /// The file handle for the directory in which the special file is to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created special file.
-    pub name: String,
+    pub name: file::Name,
     /// The type of the special file to be created. See [`What`].
     pub what: What,
 }

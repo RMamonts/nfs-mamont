@@ -2,8 +2,8 @@
 
 use std::io::Read;
 
-use crate::parser::nfsv3::{file, MAX_FILENAME};
-use crate::parser::primitive::string_max_size;
+use crate::parser::nfsv3::file;
+use crate::parser::nfsv3::file::file_name;
 use crate::parser::Result;
 use crate::vfs::rename;
 
@@ -11,9 +11,9 @@ use crate::vfs::rename;
 pub fn args(src: &mut impl Read) -> Result<rename::Args> {
     Ok(rename::Args {
         from_dir: file::handle(src)?,
-        from_name: string_max_size(src, MAX_FILENAME)?,
+        from_name: file_name(src)?,
         to_dir: file::handle(src)?,
-        to_name: string_max_size(src, MAX_FILENAME)?,
+        to_name: file_name(src)?,
     })
 }
 
@@ -35,8 +35,8 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.from_dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.from_name, "oldn");
+        assert_eq!(result.from_name.into_inner(), "oldn");
         assert_eq!(result.to_dir.0, [0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10]);
-        assert_eq!(result.to_name, "newn");
+        assert_eq!(result.to_name.into_inner(), "newn");
     }
 }
