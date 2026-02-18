@@ -6,7 +6,7 @@
 //! RPC reply to an async writer.
 
 use std::io;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -26,6 +26,12 @@ use crate::{mount, serializer, vfs};
 
 // check actual max size
 const DEFAULT_SIZE: usize = 4096;
+
+const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
+
+const HEADER_MASK: usize = 0x8000_0000;
+
+const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {
@@ -308,10 +314,30 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Resets the internal write cursor to the start of the buffer.
     fn clean(&mut self) {
         self.buf.clear();
+        // reserve first 4 bytes to write header by RMS
+        // https://datatracker.ietf.org/doc/html/rfc5531#autoid-19
+        self.buf.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
+    fn append_fragment_size(&mut self, size: usize) -> io::Result<()> {
+        // now only single RMS fragment is allowed
+        // TODO(do we need any bounds in vfs?)
+        if size > MAX_FRAGMENT_SIZE {
+            return Err(io::Error::new(
+                ErrorKind::Unsupported,
+                "Fragmented messages not supported",
+            ));
+        }
+        // there is no need for check, since we initialize vector in new()
+        // and we append 4 bytes after clean()
+        // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
+        self.buf[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
+        Ok(())
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
+        self.append_fragment_size(self.buf.len())?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
@@ -319,15 +345,18 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
-        let size = slice.iter().map(|b| b.len()).sum::<usize>();
-        self.socket.write_all(&(size as u32).to_be_bytes()).await?;
+        let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
+        // buffer size + slice size + 4 to write size of slice
+        self.append_fragment_size(self.buf.len() + slice_size + 4)?;
         self.socket.write_all(&self.buf).await?;
+
         // later change to explicit cursor (when one implemented)
         for buf in slice.iter() {
             self.socket.write_all(buf).await?;
         }
+
         // write padding directly to socket
-        let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
+        let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
         let slice = [0u8; ALIGNMENT];
         self.socket.write_all(&slice[..padding]).await?;
 
