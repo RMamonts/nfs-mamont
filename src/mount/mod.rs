@@ -25,7 +25,7 @@ pub type HostName = String;
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: file::Name,
+    pub hostname: HostName,
     /// Server pathname of a directory.
     pub directory: file::Path,
 }
