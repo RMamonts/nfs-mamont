@@ -5,7 +5,6 @@
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
 
-use std::cmp::min;
 use std::io;
 use std::io::Write;
 
@@ -285,17 +284,13 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
-    position: usize,
 }
 
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let end = min(self.position + buf.len(), self.buf.len());
-        let size = end - self.position;
-        self.buf[self.position..end].copy_from_slice(&buf[..size]);
-        self.position += size;
-        Ok(size)
+        self.buf.extend_from_slice(buf);
+        Ok(buf.len())
     }
 
     /// No-op flush (the buffer is flushed explicitly by `send_inner_*`).
@@ -307,17 +302,17 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
 impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
-        WriteBuffer { socket, buf: vec![0u8; capacity], position: 0 }
+        WriteBuffer { socket, buf: vec![0u8; capacity] }
     }
 
     /// Resets the internal write cursor to the start of the buffer.
     fn clean(&mut self) {
-        self.position = 0;
+        self.buf.clear();
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.socket.write_all(&self.buf[0..self.position]).await?;
+        self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
     }
@@ -326,7 +321,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
         let size = slice.iter().map(|b| b.len()).sum::<usize>();
         self.socket.write_all(&(size as u32).to_be_bytes()).await?;
-        self.socket.write_all(&self.buf[0..self.position]).await?;
+        self.socket.write_all(&self.buf).await?;
         // later change to explicit cursor (when one implemented)
         for buf in slice.iter() {
             self.socket.write_all(buf).await?;
