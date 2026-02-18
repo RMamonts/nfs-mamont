@@ -48,6 +48,18 @@ pub struct Args {
     pub guard: Option<Guard>,
 }
 
+/// Success result.
+pub struct Success {
+    pub wcc_data: vfs::WccData,
+}
+
+/// Fail result.
+pub struct Fail {
+    /// Error on failure.
+    pub error: vfs::Error,
+    pub wcc_data: vfs::WccData,
+}
+
 #[async_trait]
 pub trait SetAttr {
     /// Changes one or more of the attributes of a file system object on the server.
