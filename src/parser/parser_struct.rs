@@ -340,6 +340,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
         | Error::AuthError(_)
+        | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
             proc_nested_errors(error, self.discard_current_message()).await
