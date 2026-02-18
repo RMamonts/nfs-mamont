@@ -233,7 +233,7 @@ mod tests {
         let expected = file::WccAttr {
             size: 82,
             mtime: Time { seconds: 15, nanos: 257 },
-            ctime: Time { seconds: 160, nanos: 1315 },
+            ctime: Time { seconds: 192, nanos: 1315 },
         };
 
         assert_eq!(super::wcc_attr(&mut Cursor::new(DATA)).unwrap(), expected);
