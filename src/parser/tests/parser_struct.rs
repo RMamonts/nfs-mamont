@@ -1,7 +1,8 @@
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{Arguments, Error};
+use crate::parser::Arguments;
+use crate::rpc::Error;
 use crate::vfs::{file, fs_stat};
 
 #[tokio::test]
@@ -168,5 +169,6 @@ async fn parse_rejects_any_non_call_message_type() {
     let mut parser = RpcParser::new(socket, alloc, 0x35);
 
     let result = parser.parse_message().await;
+
     assert!(matches!(result, Err(Error::MessageTypeMismatch)));
 }

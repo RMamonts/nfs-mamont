@@ -1,4 +1,5 @@
 //! Shared XDR serializers for common NFSv3 data structures.
+#![allow(dead_code)]
 
 use std::io;
 use std::io::{ErrorKind, Result, Write};
@@ -60,12 +61,12 @@ pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
     option(dest, wcc.after, |attr, dest| file_attr(dest, &attr))
 }
 
-/// Serializes [`FileName`] as XDR `filename3` (bounded string).
+/// Serializes [`file::Name`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: file::Name) -> io::Result<()> {
     string_max_size(dest, file_name.into_inner(), vfs::MAX_NAME_LEN)
 }
 
-/// Serializes [`FilePath`] as XDR `path` (bounded string).
+/// Serializes [`file::Path`] as XDR `path` (bounded string).
 pub fn file_path(dest: &mut impl Write, file_name: file::Path) -> io::Result<()> {
     string_max_size(
         dest,
