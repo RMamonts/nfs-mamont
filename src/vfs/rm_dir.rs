@@ -21,7 +21,7 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`RmDir::rm_dir`] result into.
 #[async_trait]
@@ -34,7 +34,7 @@ pub struct Args {
     /// The file handle for the directory from which the subdirectory is to be removed.
     pub dir: file::Handle,
     /// The name of the subdirectory to be removed.
-    pub name: String,
+    pub name: file::Name,
 }
 
 #[async_trait]

@@ -24,7 +24,7 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Link::link`] result into.
 #[async_trait]
@@ -39,7 +39,7 @@ pub struct Args {
     /// The file handle for the directory in which the link is to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created link.
-    pub name: String,
+    pub name: file::Name,
 }
 
 #[async_trait]
