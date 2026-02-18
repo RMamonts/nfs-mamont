@@ -10,12 +10,12 @@ use crate::vfs::{file, MAX_PATH_LEN};
 const MAX_FILEHANDLE: usize = 8;
 
 /// Serializes `vfs::file::Time` into XDR `nfstime3`.
-pub fn nfs_time(dest: &mut dyn Write, arg: file::Time) -> Result<()> {
+pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {
     u32(dest, arg.seconds).and_then(|_| u32(dest, arg.nanos))
 }
 
 /// Serializes `vfs::file::Handle` into XDR `nfs_fh3`.
-pub fn file_handle(dest: &mut dyn Write, fh: file::Handle) -> Result<()> {
+pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> Result<()> {
     usize_as_u32(dest, MAX_FILEHANDLE).and_then(|_| array::<MAX_FILEHANDLE>(dest, fh.0))
 }
 
