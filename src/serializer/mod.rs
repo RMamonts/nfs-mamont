@@ -10,6 +10,8 @@
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
 
+#![allow(dead_code)]
+
 mod files;
 #[cfg(test)]
 mod tests;
@@ -73,7 +75,7 @@ pub fn vector(dest: &mut dyn Write, vec: &[u8]) -> io::Result<()> {
         .try_into()
         .map_err(|_| Error::new(ErrorKind::InvalidInput, "vector length exceeds u32"))?;
     dest.write_u32::<BigEndian>(len)
-        .and_then(|_| dest.write_all(&vec))
+        .and_then(|_| dest.write_all(vec))
         .and_then(|_| padding(dest, vec.len()))
 }
 
