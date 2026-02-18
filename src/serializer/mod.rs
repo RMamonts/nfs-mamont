@@ -27,24 +27,24 @@ pub const ALIGNMENT: usize = 4;
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
 /// XDR requires 4-byte alignment; this emits zero bytes until the next multiple of [`ALIGNMENT`].
-fn padding(dest: &mut dyn Write, n: usize) -> io::Result<()> {
+fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])
 }
 
 /// Serializes an XDR `unsigned int` (32-bit) in big-endian order.
-pub fn u32(dest: &mut dyn Write, n: u32) -> io::Result<()> {
+pub fn u32(dest: &mut impl Write, n: u32) -> io::Result<()> {
     dest.write_u32::<BigEndian>(n)
 }
 
 /// Serializes an XDR `unsigned hyper` (64-bit) in big-endian order.
-pub fn u64(dest: &mut dyn Write, n: u64) -> io::Result<()> {
+pub fn u64(dest: &mut impl Write, n: u64) -> io::Result<()> {
     dest.write_u64::<BigEndian>(n)
 }
 
 /// Serializes an XDR `bool` as `0`/`1` (encoded as a 32-bit integer).
-pub fn bool(dest: &mut dyn Write, b: bool) -> io::Result<()> {
+pub fn bool(dest: &mut impl Write, b: bool) -> io::Result<()> {
     match b {
         true => dest.write_u32::<BigEndian>(1),
         false => dest.write_u32::<BigEndian>(0),
@@ -64,12 +64,12 @@ pub fn option<T, S: Write>(
 }
 
 /// Serializes a fixed-length XDR opaque value (`opaque[N]`) and adds alignment padding.
-pub fn array<const N: usize>(dest: &mut dyn Write, slice: [u8; N]) -> io::Result<()> {
+pub fn array<const N: usize>(dest: &mut impl Write, slice: [u8; N]) -> io::Result<()> {
     dest.write_all(&slice).and_then(|_| padding(dest, N))
 }
 
 /// Serializes a variable-length XDR opaque value (`opaque<>`): length + bytes + padding.
-pub fn vector(dest: &mut dyn Write, vec: &[u8]) -> io::Result<()> {
+pub fn vector(dest: &mut impl Write, vec: &[u8]) -> io::Result<()> {
     let len = vec
         .len()
         .try_into()
@@ -80,7 +80,7 @@ pub fn vector(dest: &mut dyn Write, vec: &[u8]) -> io::Result<()> {
 }
 
 /// Serializes a variable-length XDR opaque value with an explicit maximum length check.
-pub fn vec_max_size(dest: &mut dyn Write, vec: &[u8], max_size: usize) -> io::Result<()> {
+pub fn vec_max_size(dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::Result<()> {
     if vec.len() > max_size {
         return Err(Error::new(ErrorKind::InvalidInput, "vector out of bounds"));
     }
@@ -88,13 +88,13 @@ pub fn vec_max_size(dest: &mut dyn Write, vec: &[u8], max_size: usize) -> io::Re
 }
 
 /// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
-pub fn string_max_size(dest: &mut dyn Write, string: String, max_size: usize) -> io::Result<()> {
+pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -> io::Result<()> {
     vec_max_size(dest, &string.into_bytes(), max_size)
 }
 
 #[allow(dead_code)]
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
-pub fn string(dest: &mut dyn Write, string: String) -> io::Result<()> {
+pub fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
     vector(dest, &string.into_bytes())
 }
 
@@ -107,7 +107,7 @@ pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> 
 }
 
 /// Serializes a Rust `usize` as an XDR `unsigned int` (32-bit), failing on overflow.
-pub fn usize_as_u32(dest: &mut dyn Write, n: usize) -> io::Result<()> {
+pub fn usize_as_u32(dest: &mut impl Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
