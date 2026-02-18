@@ -17,7 +17,7 @@ pub struct Fail {
     pub object_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Access::access`] result into.
 #[async_trait]

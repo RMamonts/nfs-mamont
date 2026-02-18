@@ -44,7 +44,7 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDir::read_dir`] result into.
 #[async_trait]

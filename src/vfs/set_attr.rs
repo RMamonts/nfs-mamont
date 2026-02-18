@@ -6,7 +6,7 @@ use crate::vfs;
 
 use super::file;
 
-type Result = std::result::Result<vfs::WccData, (vfs::Error, vfs::WccData)>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Copy, Clone)]

@@ -34,6 +34,9 @@ pub const MAX_NAME_LEN: usize = 255;
 /// Maximum length of file path passed into [`Vfs`] methods.
 pub const MAX_PATH_LEN: usize = 1024;
 
+/// Represents `OK` variant in enum `nfsstat3`, that indicates of successful operation
+pub const STATUS_OK: usize = 0;
+
 /// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Error {

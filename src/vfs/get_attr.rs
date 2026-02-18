@@ -12,8 +12,7 @@ pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
-#[allow(dead_code)]
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Success result.
 pub struct Success {

@@ -25,7 +25,7 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Symlink::symlink`] result into.
 #[async_trait]

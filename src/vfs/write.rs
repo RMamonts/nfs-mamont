@@ -42,7 +42,7 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Write::write`] result into.
 #[async_trait]
