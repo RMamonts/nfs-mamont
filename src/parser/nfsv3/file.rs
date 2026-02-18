@@ -81,10 +81,10 @@ pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
 mod tests {
     use std::io::Cursor;
 
+    use super::device;
     use crate::parser::Error;
     use crate::vfs::file;
-
-    use super::device;
+    use crate::vfs::file::Time;
 
     #[test]
     fn test_parse_device_success() {
@@ -219,5 +219,23 @@ mod tests {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
         let file = file::Name::new("file".to_string()).unwrap();
         assert_eq!(super::file_name(&mut Cursor::new(DATA)).unwrap(), file);
+    }
+
+    #[test]
+    fn test_wcc_attr_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52,
+            0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0xA0, 0x00, 0x00, 0x05, 0x23,
+        ];
+
+        let expected = file::WccAttr {
+            size: 82,
+            mtime: Time { seconds: 15, nanos: 257 },
+            ctime: Time { seconds: 192, nanos: 1315 },
+        };
+
+        assert_eq!(super::wcc_attr(&mut Cursor::new(DATA)).unwrap(), expected);
     }
 }

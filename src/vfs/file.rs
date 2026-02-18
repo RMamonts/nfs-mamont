@@ -104,7 +104,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -120,7 +121,8 @@ pub struct Device {
 }
 
 /// Weak cache consistency attributes.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct WccAttr {
     /// The file size in bytes of the object before the operation.
     pub size: u64,
