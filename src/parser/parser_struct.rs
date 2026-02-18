@@ -31,7 +31,7 @@ use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{
-    AuthFlavor, AuthStat, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
+    AuthFlavor, AuthStat, ProgramVersionMismatch, RpcBody, RpcVersionMismatch, RPC_VERSION,
 };
 use crate::vfs;
 
@@ -149,7 +149,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RPCVersionMismatch {
+            return Err(Error::RpcVersionMismatch(RpcVersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));

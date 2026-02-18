@@ -7,7 +7,6 @@ pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
 
-#[repr(u32)]
 #[allow(dead_code)]
 pub enum AcceptStat {
     Success = 0,
@@ -37,14 +36,12 @@ pub enum AuthStat {
     RpcSecGssCtxProblem = 14,
 }
 
-#[repr(u32)]
 #[allow(dead_code)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
 
-#[repr(u32)]
 #[allow(dead_code)]
 pub enum ReplyBody {
     MsgAccepted = 0,
@@ -53,7 +50,6 @@ pub enum ReplyBody {
 
 /// Authentication flavors.
 #[derive(ToPrimitive, FromPrimitive)]
-#[repr(u32)]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,
@@ -68,7 +64,6 @@ pub struct OpaqueAuth {
     pub body: Vec<u8>,
 }
 
-#[repr(u32)]
 #[allow(dead_code)]
 pub enum RejectedReply {
     RpcMismatch = 0,
@@ -86,12 +81,11 @@ pub struct ProgramVersionMismatch {
 /// Represents a mismatch in RPC versions.
 /// Returns highest and lowest versions of available versions of RPC
 #[derive(Debug)]
-pub struct RPCVersionMismatch {
+pub struct RpcVersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 /// Errors that can occur during parsing.
 pub enum Error {
@@ -112,7 +106,7 @@ pub enum Error {
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.
-    RpcVersionMismatch(RPCVersionMismatch),
+    RpcVersionMismatch(RpcVersionMismatch),
     /// An authentication error occurred.
     AuthError(AuthStat),
     /// A program mismatch occurred.
