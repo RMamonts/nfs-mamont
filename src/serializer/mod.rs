@@ -10,7 +10,11 @@
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
 
+#![allow(dead_code)]
+
 mod files;
+mod mount;
+mod nfs;
 #[cfg(test)]
 mod tests;
 

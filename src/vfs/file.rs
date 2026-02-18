@@ -62,7 +62,7 @@ pub enum Type {
     Fifo = 7,
 }
 
-/// File attributes.
+/// File attributes, also known as `fattr3` in RFC
 #[derive(Clone)]
 pub struct Attr {
     /// Type of the file, see [`Type`].
