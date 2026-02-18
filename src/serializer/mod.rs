@@ -16,7 +16,6 @@ mod files;
 mod mount;
 mod nfs;
 pub mod rpc;
-pub mod serialize_struct;
 #[cfg(test)]
 mod tests;
 
@@ -79,7 +78,7 @@ pub fn vector(dest: &mut dyn Write, vec: &[u8]) -> io::Result<()> {
         .try_into()
         .map_err(|_| Error::new(ErrorKind::InvalidInput, "vector length exceeds u32"))?;
     dest.write_u32::<BigEndian>(len)
-        .and_then(|_| dest.write_all(&vec))
+        .and_then(|_| dest.write_all(vec))
         .and_then(|_| padding(dest, vec.len()))
 }
 
