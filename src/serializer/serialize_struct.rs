@@ -30,15 +30,15 @@ use crate::{mount, serializer, vfs};
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data
-/// (https://datatracker.ietf.org/doc/html/rfc5531#autoid-19)
+/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
 
 /// Header mask of RMS
-/// (https://datatracker.ietf.org/doc/html/rfc5531#autoid-19)
+/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_MASK: usize = 0x8000_0000;
 
 /// Size of RMS header
-/// (https://datatracker.ietf.org/doc/html/rfc5531#autoid-19)
+/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
