@@ -207,7 +207,9 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 }
             },
             ProcResult::Mount(data) => match data {
-                MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => Ok(()),
+                MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
+                    self.buffer.send_inner_buffer().await
+                }
                 MountRes::Mount(res) => match res {
                     Ok(ok) => {
                         usize_as_u32(&mut self.buffer, STATUS_OK)?;
