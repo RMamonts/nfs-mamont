@@ -34,7 +34,7 @@ pub struct Args {
     /// The file handle for the directory from which the entry is to be removed.
     pub dir: file::Handle,
     /// The name of the entry to be removed.
-    pub name: file::FileName,
+    pub name: file::Name,
 }
 
 #[async_trait]

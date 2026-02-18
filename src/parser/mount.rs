@@ -34,12 +34,12 @@ enum MountStat {
 /// Arguments for the Mount operation, containing the path to be mounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct MountArgs(pub file::FilePath);
+pub struct MountArgs(pub file::Path);
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct UnmountArgs(pub file::FilePath);
+pub struct UnmountArgs(pub file::Path);
 
 /// Parses the arguments for a Mount operation.
 pub fn mount(src: &mut impl Read) -> Result<MountArgs> {

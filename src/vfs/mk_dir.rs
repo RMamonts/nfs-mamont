@@ -37,7 +37,7 @@ pub struct Args {
     /// The file handle for the directory in which the subdirectory is to be created.
     pub dir: file::Handle,
     /// The name that is to be associated with the created subdirectory.
-    pub name: file::FileName,
+    pub name: file::Name,
     /// The initial attributes for the subdirectory.
     pub attr: super::set_attr::NewAttr,
 }

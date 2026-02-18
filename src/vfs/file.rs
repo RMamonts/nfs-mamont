@@ -1,6 +1,7 @@
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 use std::io;
 use std::path::PathBuf;
+
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
 
@@ -12,14 +13,14 @@ pub const HANDLE_SIZE: usize = 8;
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct FileName(String);
+pub struct Name(String);
 
-impl FileName {
+impl Name {
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
-        Ok(FileName(name))
+        Ok(Name(name))
     }
 
     pub fn into_inner(self) -> String {
@@ -28,14 +29,14 @@ impl FileName {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FilePath(PathBuf);
+pub struct Path(PathBuf);
 
-impl FilePath {
+impl Path {
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_PATH_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
-        Ok(FilePath(PathBuf::from(name)))
+        Ok(Path(PathBuf::from(name)))
     }
     pub fn into_inner(self) -> PathBuf {
         self.0

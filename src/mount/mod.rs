@@ -1,6 +1,5 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-#![allow(dead_code)]
 use crate::vfs::file;
 
 pub mod dump;
@@ -26,9 +25,9 @@ pub type HostName = String;
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: file::FileName,
+    pub hostname: file::Name,
     /// Server pathname of a directory.
-    pub directory: file::FilePath,
+    pub directory: file::Path,
 }
 
 /// Export entry, containing list of clients, allowed to
@@ -36,7 +35,7 @@ pub struct MountEntry {
 #[derive(Clone)]
 pub struct ExportEntry {
     /// Exported directory.
-    pub directory: file::FilePath,
+    pub directory: file::Path,
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
