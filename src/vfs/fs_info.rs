@@ -6,8 +6,28 @@ use crate::vfs;
 
 use super::file;
 
-/// TODO: implement Properties: issue #28
 pub struct Properties(pub u32);
+
+impl Properties {
+    pub const LINK: u32 = 0x0001;
+    pub const SYMLINK: u32 = 0x0002;
+    pub const HOMOGENEOUS: u32 = 0x0008;
+    pub const CANSETTIME: u32 = 0x0010;
+
+    pub const ALL: u32 = Self::LINK | Self::SYMLINK | Self::HOMOGENEOUS | Self::CANSETTIME;
+
+    pub fn from_wire(raw: u32) -> Self {
+        Self(raw & Self::ALL)
+    }
+
+    pub fn bits(self) -> u32 {
+        self.0
+    }
+
+    pub fn contains(self, flag: u32) -> bool {
+        self.0 & flag == flag
+    }
+}
 
 /// Success result.
 pub struct Success {
