@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mknod_regular() {
+    fn test_mknod_fifo() {
         let data = wrap_what_with_args(&[[0, 0, 0, 7].as_slice(), EMPTY_NEW_ATTR].concat());
         let result = super::args(&mut Cursor::new(data)).unwrap();
 
