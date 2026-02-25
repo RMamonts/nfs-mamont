@@ -213,7 +213,7 @@ async fn parse_write_with_empty_payload() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(1);
-    let mut parser = RpcParser::new(socket, alloc, 68);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 68);
     let result = parser.parse_message().await;
     assert!(result.is_ok());
 }
