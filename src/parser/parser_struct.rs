@@ -62,7 +62,7 @@ const DEFAULT_SIZE: usize = 2500;
 /// use crate::allocator::Allocator;
 ///
 /// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
-/// let mut parser = RpcParser::new(socket, alloc, 4096);
+/// let mut parser = RpcParser::new(socket, alloc);
 /// let args = parser.parse_message().await?;
 /// # }
 /// ```
