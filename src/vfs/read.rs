@@ -11,7 +11,7 @@ pub struct Success {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
     /// The number of bytes of data returned by the read.
-    pub count: u64,
+    pub count: u32,
     /// If the read ended at the end-of-file.
     pub eof: bool,
     /// The counted data read from the file.
