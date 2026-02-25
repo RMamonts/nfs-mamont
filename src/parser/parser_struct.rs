@@ -15,7 +15,7 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
-
+use num_traits::CheckedSub;
 use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
@@ -35,6 +35,7 @@ use crate::parser::{
 use crate::rpc::{rpc_message_type, RPC_VERSION};
 use crate::vfs;
 
+const RMS_HEADER_SIZE: usize = size_of::<u32>();
 #[allow(dead_code)]
 const MAX_MESSAGE_LEN: usize = 2500;
 
@@ -309,7 +310,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // CountBuffer keep count of bytes, read from it,
         // but first u32 of message - header that shouldn't be counted
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
-        if (self.buffer.total_bytes() - size_of::<u32>()) != self.current_frame_size {
+        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "Consumed bytes are less than RMS header size",
+        )))?;
+        if bytes_consumed != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
@@ -362,7 +367,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // CountBuffer keep count of bytes, read from it,
         // but first u32 of message - header that shouldn't be counted
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
-        let remaining = self.current_frame_size - self.buffer.total_bytes() + size_of::<u32>();
+        let remaining = (self.current_frame_size + RMS_HEADER_SIZE).checked_sub(self.buffer.total_bytes()).ok_or(Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "Consumed more bytes than RMS header suggests",
+        )))?;
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
