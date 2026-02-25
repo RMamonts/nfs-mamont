@@ -268,6 +268,38 @@ async fn parse_rejects_any_non_call_message_type() {
     assert!(matches!(result, Err(Error::MessageTypeMismatch)));
 }
 
+/// Ensures parser rejects fragments with size below XID width.
+#[tokio::test]
+async fn parse_rejects_frame_smaller_than_xid() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x03, // head with invalid frame size (less than 4)
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
+
+    let result = parser.parse_message().await;
+    let error = result.err().unwrap();
+    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+}
+
+/// Ensures parser rejects fragments above configured maximum size.
+#[tokio::test]
+async fn parse_rejects_too_large_frame() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x09, 0xC5, // head with invalid frame size (MAX_MESSAGE_LEN + 1)
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
+
+    let result = parser.parse_message().await;
+    let error = result.err().unwrap();
+    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+}
+
 /// Verifies parser handles WRITE with zero opaque payload.
 #[tokio::test]
 async fn parse_write_with_empty_payload() {
