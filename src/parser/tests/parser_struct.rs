@@ -148,6 +148,24 @@ async fn parse_write_after_error() {
 }
 
 #[tokio::test]
+async fn parse_error_when_consumed_exceeds_frame_size() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x04, // head with too small frame size
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request
+        0x00, 0x00, 0x00, 0x05, // invalid rpc version (must be 2)
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc, 0x20);
+
+    let result = parser.parse_message().await;
+    let error = result.err().unwrap();
+    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
+}
+
+#[tokio::test]
 async fn parse_rejects_any_non_call_message_type() {
     #[rustfmt::skip]
     let buf = vec![
@@ -201,4 +219,33 @@ async fn parse_rejects_too_large_frame() {
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
     assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+}
+
+/// Verifies parser handles WRITE with zero opaque payload.
+#[tokio::test]
+async fn parse_write_with_empty_payload() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 68, // head
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request
+        0x00, 0x00, 0x00, 0x02, // rpc version
+        0x00, 0x01, 0x86, 0xA3, // program
+        0x00, 0x00, 0x00, 0x03, // prog vers
+        0x00, 0x00, 0x00, 7, // proc
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x00, //auth
+        0x00, 0x00, 0x00, 0x08, // nfs_fh3
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00, 0x00, 0x00, 0x00, // offset
+        0x00, 0x00, 0x80, 0x00, // offset
+        0x00, 0x00, 0x00, 0xFF, // count
+        0x00, 0x00, 0x00, 0x00, // mode
+        0x00, 0x00, 0x00, 0x00, // opaque length
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(1);
+    let mut parser = RpcParser::new(socket, alloc, 68);
+    let result = parser.parse_message().await;
+    assert!(result.is_ok());
 }
