@@ -149,7 +149,7 @@ async fn parse_two_correct() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
     let _ = parser.parse_message().await;
     let result = parser.parse_message().await.unwrap();
     assert_fsstat_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
@@ -169,7 +169,7 @@ async fn parse_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x50);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
     let result = parser.parse_message().await;
     assert!(result.is_err());
     let result = parser.parse_message().await.unwrap();
@@ -194,7 +194,7 @@ async fn parse_write() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
-    let mut parser = RpcParser::new(socket, alloc, 72);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     let result = parser.parse_message().await;
     assert!(result.is_ok());
     let result1 = parser.parse_message().await;
@@ -219,7 +219,7 @@ async fn parse_write_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0x24);
-    let mut parser = RpcParser::new(socket, alloc, 80);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 80);
     let result = parser.parse_message().await;
     assert!(result.is_err());
     let result = parser.parse_message().await;
@@ -237,7 +237,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x20);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
@@ -262,7 +262,7 @@ async fn parse_rejects_any_non_call_message_type() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.parse_message().await;
     assert!(matches!(result, Err(Error::MessageTypeMismatch)));
@@ -292,7 +292,7 @@ async fn parse_write_with_empty_payload() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(1);
-    let mut parser = RpcParser::new(socket, alloc, 68);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 68);
     let result = parser.parse_message().await;
     assert!(result.is_ok());
 }
