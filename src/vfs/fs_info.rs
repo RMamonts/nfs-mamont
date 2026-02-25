@@ -6,7 +6,7 @@ use crate::vfs;
 
 use super::file;
 
-pub struct Properties(pub u32);
+pub struct Properties(u32);
 
 impl Properties {
     pub const LINK: u32 = 0x0001;
