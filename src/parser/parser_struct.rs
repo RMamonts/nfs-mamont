@@ -15,7 +15,7 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
-use num_traits::CheckedSub;
+
 use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
@@ -144,7 +144,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - An I/O error occurs
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
-        if msg_type == rpc_message_type::REPLY as u32 {
+        if msg_type != rpc_message_type::CALL as u32 {
             return Err(Error::MessageTypeMismatch);
         }
 
@@ -310,10 +310,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // CountBuffer keep count of bytes, read from it,
         // but first u32 of message - header that shouldn't be counted
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
-        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "Consumed bytes are less than RMS header size",
-        )))?;
+        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(
+            Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed bytes are less than RMS header size",
+            )),
+        )?;
         if bytes_consumed != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
@@ -345,6 +347,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
         | Error::AuthError(_)
+        | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
             proc_nested_errors(error, self.discard_current_message()).await
@@ -367,10 +370,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // CountBuffer keep count of bytes, read from it,
         // but first u32 of message - header that shouldn't be counted
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
-        let remaining = (self.current_frame_size + RMS_HEADER_SIZE).checked_sub(self.buffer.total_bytes()).ok_or(Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "Consumed more bytes than RMS header suggests",
-        )))?;
+        let remaining = (self.current_frame_size + RMS_HEADER_SIZE)
+            .checked_sub(self.buffer.total_bytes())
+            .ok_or(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed more bytes than RMS header suggests",
+            )))?;
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
