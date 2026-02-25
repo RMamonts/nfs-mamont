@@ -28,7 +28,7 @@ pub trait Promise {
 
 /// Mask of [`Access::access`] rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Mask(pub u32);
+pub struct Mask(u32);
 
 impl Mask {
     pub const READ: u32 = 0x0001;
