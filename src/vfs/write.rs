@@ -27,7 +27,7 @@ pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
     /// The number of bytes of data written to the file.
-    pub count: u64,
+    pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub commited: StableHow,
     /// TODO(what is it?)
