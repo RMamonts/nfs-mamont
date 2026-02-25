@@ -89,11 +89,11 @@ fn nfs_call_frame(
     // Append procedure-specific arguments
     args_builder(&mut payload);
 
-    let mut frame = Vec::with_capacity(payload.len() + 4);
+    let mut frame = Vec::with_capacity(payload.len());
 
     // Construct fragment header: set last fragment flag and include header size
     let payload_len: u32 = payload.len().try_into().unwrap();
-    let fragment_header = FRAGMENT_HEADER_MASK | (payload_len + 4);
+    let fragment_header = FRAGMENT_HEADER_MASK | (payload_len);
 
     push_u32(&mut frame, fragment_header);
     frame.extend_from_slice(&payload);
@@ -179,9 +179,11 @@ async fn parse_after_error() {
 /// Test: Parses two correct NFS WRITE frames with data.
 #[tokio::test]
 async fn parse_write() {
+    #[rustfmt::skip]
     let data = [
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03,
-        0x04, 0x01, 0x02,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
+        0x01, 0x02,
     ];
     let first = nfs_call_frame(MSG_CALL, RPC_VERSION, AUTH_NONE, PROC_WRITE, |buf| {
         buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
@@ -197,16 +199,18 @@ async fn parse_write() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     let result = parser.parse_message().await;
     assert!(result.is_ok());
-    let result1 = parser.parse_message().await;
-    assert!(result1.is_ok());
+    let result = parser.parse_message().await;
+    assert!(result.is_ok());
 }
 
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.
 #[tokio::test]
 async fn parse_write_after_error() {
+    #[rustfmt::skip]
     let data = [
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03,
-        0x04, 0x01, 0x02,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
+        0x01, 0x02,
     ];
     let first = nfs_call_frame(MSG_CALL, 5, AUTH_NONE, PROC_WRITE, |buf| {
         buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
@@ -245,10 +249,28 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 }
 
 #[tokio::test]
+async fn parse_error_with_too_small_frame_size_returns_error() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x00, // head: frame size is 0 bytes
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request (CALL)
+        0x00, 0x00, 0x00, 0x05, // invalid rpc version to trigger discard path
+    ];
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 32);
+
+    let result = parser.parse_message().await;
+    assert!(matches!(result, Err(Error::IO(_))));
+}
+
+#[tokio::test]
 async fn parse_rejects_any_non_call_message_type() {
     #[rustfmt::skip]
     let buf = vec![
-        0x80, 0x00, 0x00, 0x30, // head
+        0x80, 0x00, 0x00, 0x28, // head
         0x00, 0x00, 0x00, 0x01, // xid
         0x00, 0x00, 0x00, 0x02, // invalid msg type (must be CALL = 0)
         0x00, 0x00, 0x00, 0x02, // rpc version
@@ -305,7 +327,7 @@ async fn parse_rejects_too_large_frame() {
 async fn parse_write_with_empty_payload() {
     #[rustfmt::skip]
     let buf = vec![
-        0x80, 0x00, 0x00, 68, // head
+        0x80, 0x00, 0x00, 64, // head
         0x00, 0x00, 0x00, 0x01, // xid
         0x00, 0x00, 0x00, 0x00, // request
         0x00, 0x00, 0x00, 0x02, // rpc version
