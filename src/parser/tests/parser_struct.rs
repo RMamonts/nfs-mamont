@@ -277,7 +277,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x10);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
@@ -293,7 +293,7 @@ async fn parse_rejects_too_large_frame() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = MockAllocator::new(0);
-    let mut parser = RpcParser::new(socket, alloc, 0x10);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
