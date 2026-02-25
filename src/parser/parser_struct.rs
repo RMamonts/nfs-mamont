@@ -36,8 +36,10 @@ use crate::rpc::{rpc_message_type, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
-#[allow(dead_code)]
-const MAX_MESSAGE_LEN: usize = 2500;
+/// Minimum buffer size, that could hold complete RPC message
+/// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -61,7 +63,7 @@ const MAX_MESSAGE_LEN: usize = 2500;
 /// use crate::allocator::Allocator;
 ///
 /// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
-/// let mut parser = RpcParser::new(socket, alloc, 4096);
+/// let mut parser = RpcParser::new(socket, alloc);
 /// let args = parser.parse_message().await?;
 /// # }
 /// ```
@@ -74,6 +76,25 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+    /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket` - The async stream to read RPC messages from
+    /// * `allocator` - The allocator to use for dynamic memory allocation
+    ///
+    /// # Returns
+    ///
+    /// A new `RpcParser` instance ready to parse messages.
+    pub fn new(socket: S, allocator: A) -> Self {
+        Self {
+            allocator,
+            buffer: CountBuffer::new(DEFAULT_SIZE, socket),
+            last: false,
+            current_frame_size: 0,
+        }
+    }
+
     /// Creates a new `RpcParser` with the specified buffer size.
     ///
     /// # Arguments
@@ -85,7 +106,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: A, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -112,6 +133,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
+
+        if self.current_frame_size < std::mem::size_of::<u32>() {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame size must include XID",
+            )));
+        }
+        if self.current_frame_size > DEFAULT_SIZE {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame exceeds maximum supported length",
+            )));
+        }
 
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
@@ -406,15 +440,26 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
+    // Parse arguments for WRITE procedure.
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
-    let mut slice = alloc
-        .allocate(NonZeroUsize::new(size).unwrap())
-        .await
-        .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-    let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
-    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
-    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
+
+    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
+    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
+    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
+        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+    })?;
+
+    // Calculate necessary padding to maintain ALIGNMENT
+    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
+
+    // Read synchronously what is available, then finish asynchronously if needed.
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    if bytes_read_sync < size {
+        read_in_slice_async(buffer, &mut slice, bytes_read_sync, size - bytes_read_sync).await?;
+    }
+
+    // Discard any trailing padding bytes after the data.
     buffer.discard_bytes(padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
