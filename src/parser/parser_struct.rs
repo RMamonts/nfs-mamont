@@ -164,7 +164,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - An I/O error occurs
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
-        if msg_type == rpc_message_type::REPLY as u32 {
+        if msg_type != rpc_message_type::CALL as u32 {
             return Err(Error::MessageTypeMismatch);
         }
 
@@ -358,6 +358,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
         | Error::AuthError(_)
+        | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
             proc_nested_errors(error, self.discard_current_message()).await
