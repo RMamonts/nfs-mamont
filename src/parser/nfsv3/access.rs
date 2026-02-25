@@ -9,7 +9,7 @@ use crate::vfs::access;
 
 /// Parses the arguments for an NFSv3 `ACCESS` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<access::Args> {
-    Ok(access::Args { file: file::handle(src)?, mask: access::Mask(u32(src)?) })
+    Ok(access::Args { file: file::handle(src)?, mask: access::Mask::from_wire(u32(src)?) })
 }
 
 #[cfg(test)]
@@ -29,6 +29,6 @@ mod tests {
         let args = args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(args.file.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(args.mask.0, 0x1F);
+        assert_eq!(args.mask.bits(), 0x1F);
     }
 }
