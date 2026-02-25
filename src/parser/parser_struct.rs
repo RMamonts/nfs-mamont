@@ -30,9 +30,7 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
-use crate::rpc::{
-    AuthFlavor, AuthStat, ProgramVersionMismatch, RpcBody, RpcVersionMismatch, RPC_VERSION,
-};
+use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 #[allow(dead_code)]
@@ -149,7 +147,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RpcVersionMismatch {
+            return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
@@ -239,7 +237,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     21 => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
                     _ => return Err(Error::ProcedureMismatch),
                 })),
-                _ => Err(Error::ProgramVersionMismatch(ProgramVersionMismatch {
+                _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
                     low: NFS_VERSION,
                     high: NFS_VERSION,
                 })),
@@ -247,7 +245,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
             MOUNT_PROGRAM => {
                 if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch(ProgramVersionMismatch {
+                    return Err(Error::ProgramVersionMismatch(VersionMismatch {
                         low: MOUNT_VERSION,
                         high: MOUNT_VERSION,
                     }));

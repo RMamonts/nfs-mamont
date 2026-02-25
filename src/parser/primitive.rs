@@ -86,7 +86,7 @@ pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
 pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     if size > max_size {
-        return Err(Error::MaxELemLimit);
+        return Err(Error::MaxElemLimit);
     }
     let mut vec = vec![0u8; size];
     src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
@@ -110,7 +110,7 @@ pub fn string(src: &mut impl Read) -> Result<String> {
 
 /// Parses an XDR-encoded path from the `Read` source.
 pub fn path(src: &mut impl Read) -> Result<PathBuf> {
-    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxELemLimit)
+    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxElemLimit)
 }
 
 /// Parses an XDR enum variant from the `Read` source.

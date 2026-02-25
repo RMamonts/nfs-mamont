@@ -8,6 +8,7 @@ pub const RPC_VERSION: u32 = 2;
 pub const MAX_AUTH_SIZE: usize = 400;
 
 #[allow(dead_code)]
+#[derive(ToPrimitive, FromPrimitive)]
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -17,7 +18,7 @@ pub enum AcceptStat {
     SystemErr = 5,
 }
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
 pub enum AuthStat {
     Ok = 0,
     BadCred = 1,
@@ -37,6 +38,7 @@ pub enum AuthStat {
 }
 
 #[allow(dead_code)]
+#[derive(ToPrimitive, FromPrimitive)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
@@ -70,27 +72,19 @@ pub enum RejectedReply {
     AuthError = 1,
 }
 
-/// Represents a mismatch in program versions.
+/// Represents a mismatch in program/protocol versions.
 /// Returns highest and lowest versions of available versions of requested program
 #[derive(Debug)]
-pub struct ProgramVersionMismatch {
+pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
-/// Represents a mismatch in RPC versions.
-/// Returns highest and lowest versions of available versions of RPC
-#[derive(Debug)]
-pub struct RpcVersionMismatch {
-    pub low: u32,
-    pub high: u32,
-}
-
-#[derive(Debug)]
 /// Errors that can occur during parsing.
+#[derive(Debug)]
 pub enum Error {
     /// The maximum element limit was exceeded.
-    MaxELemLimit,
+    MaxElemLimit,
     /// An I/O error occurred.
     IO(io::Error),
     /// An enum discriminant mismatch occurred.
@@ -106,7 +100,7 @@ pub enum Error {
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.
-    RpcVersionMismatch(RpcVersionMismatch),
+    RpcVersionMismatch(VersionMismatch),
     /// An authentication error occurred.
     AuthError(AuthStat),
     /// A program mismatch occurred.
@@ -114,5 +108,5 @@ pub enum Error {
     /// A procedure mismatch occurred.
     ProcedureMismatch,
     /// A program version mismatch occurred.
-    ProgramVersionMismatch(ProgramVersionMismatch),
+    ProgramVersionMismatch(VersionMismatch),
 }
