@@ -387,15 +387,26 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
+    // Parse arguments for WRITE procedure.
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
-    let mut slice = alloc
-        .allocate(NonZeroUsize::new(size).unwrap())
-        .await
-        .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-    let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
-    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
-    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
+
+    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
+    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
+    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
+        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+    })?;
+
+    // Calculate necessary padding to maintain ALIGNMENT
+    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
+
+    // Read synchronously what is available, then finish asynchronously if needed.
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    if bytes_read_sync < size {
+        read_in_slice_async(buffer, &mut slice, bytes_read_sync, size - bytes_read_sync).await?;
+    }
+
+    // Discard any trailing padding bytes after the data.
     buffer.discard_bytes(padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
