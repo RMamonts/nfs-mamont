@@ -2,6 +2,7 @@ use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
+use crate::parser::Error;
 
 /// Constants for mock RPC/NFS test input construction.
 const XID: u32 = 1;
@@ -221,6 +222,77 @@ async fn parse_write_after_error() {
     let mut parser = RpcParser::new(socket, alloc, 80);
     let result = parser.parse_message().await;
     assert!(result.is_err());
+    let result = parser.parse_message().await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn parse_error_when_consumed_exceeds_frame_size() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x04, // head with too small frame size
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request
+        0x00, 0x00, 0x00, 0x05, // invalid rpc version (must be 2)
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc, 0x20);
+
+    let result = parser.parse_message().await;
+    let error = result.err().unwrap();
+    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
+}
+
+#[tokio::test]
+async fn parse_rejects_any_non_call_message_type() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 0x30, // head
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x02, // invalid msg type (must be CALL = 0)
+        0x00, 0x00, 0x00, 0x02, // rpc version
+        0x00, 0x01, 0x86, 0xA3, // program
+        0x00, 0x00, 0x00, 0x03, // prog vers
+        0x00, 0x00, 0x00, 0x12, // proc
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x08, // nfs_fh3
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::new(socket, alloc, 0x35);
+
+    let result = parser.parse_message().await;
+    assert!(matches!(result, Err(Error::MessageTypeMismatch)));
+}
+
+/// Verifies parser handles WRITE with zero opaque payload.
+#[tokio::test]
+async fn parse_write_with_empty_payload() {
+    #[rustfmt::skip]
+    let buf = vec![
+        0x80, 0x00, 0x00, 68, // head
+        0x00, 0x00, 0x00, 0x01, // xid
+        0x00, 0x00, 0x00, 0x00, // request
+        0x00, 0x00, 0x00, 0x02, // rpc version
+        0x00, 0x01, 0x86, 0xA3, // program
+        0x00, 0x00, 0x00, 0x03, // prog vers
+        0x00, 0x00, 0x00, 7, // proc
+        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x00, //auth
+        0x00, 0x00, 0x00, 0x08, // nfs_fh3
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x00, 0x00, 0x00, 0x00, // offset
+        0x00, 0x00, 0x80, 0x00, // offset
+        0x00, 0x00, 0x00, 0xFF, // count
+        0x00, 0x00, 0x00, 0x00, // mode
+        0x00, 0x00, 0x00, 0x00, // opaque length
+    ];
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = MockAllocator::new(1);
+    let mut parser = RpcParser::new(socket, alloc, 68);
     let result = parser.parse_message().await;
     assert!(result.is_ok());
 }
