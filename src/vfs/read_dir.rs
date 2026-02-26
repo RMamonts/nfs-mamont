@@ -26,7 +26,7 @@ impl Cookie {
 
 /// Verifies that point identified by [`Cookie`] is still valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CookieVerifier(pub [u8; 8]);
+pub struct CookieVerifier([u8; 8]);
 
 impl CookieVerifier {
     pub fn new(val: [u8; 8]) -> Self {
