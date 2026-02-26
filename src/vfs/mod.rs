@@ -137,4 +137,14 @@ pub struct WccData {
     pub after: Option<file::Attr>,
 }
 
+/// This struct represents diropargs3 from NFS3
+///
+/// Can be foud in NFS3 RFC 1813, <https://datatracker.ietf.org/doc/html/rfc1813#autoid-15>
+pub struct DirOpArgs {
+    /// The file handle for the directory from which the subdirectory is to be removed.
+    pub dir: file::Handle,
+    /// The name of the subdirectory to be removed.
+    pub name: String,
+}
+
 pub trait Vfs {}
