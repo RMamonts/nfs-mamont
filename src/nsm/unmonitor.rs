@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{State, MonitorPair};
+use super::{MonitorPair, State};
 
 /// Result status, corresponds to XDR `sm_stat`.
 #[derive(Debug, Clone, PartialEq, Eq)]

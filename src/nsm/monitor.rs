@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{Cookie, State, MonitorPair};
+use super::{Cookie, MonitorPair, State};
 
 /// Success result.
 #[derive(Debug, Clone, PartialEq, Eq)]
