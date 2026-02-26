@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use super::{Cookie, HostName, HostState};
+use super::{Cookie, HostName, State};
 
 /// Status message, that is sent to clients by the NSM, local to the host
 /// that had the status change.
@@ -14,7 +14,7 @@ pub struct StatusMessage {
     /// Name of the host that had the state change (copied from parameters).
     pub host_name: HostName,
     /// The new state number of the rebooted host (copied from parameters).
-    pub state: HostState,
+    pub state: State,
     /// The opaque cookie provided by watcher in arguments to `monitor` call.
     pub cookie: Cookie,
 }
@@ -40,5 +40,5 @@ pub trait Notify {
     /// NSM saves the name of the host to monitor in a notify list on stable storage.
     /// If the host running the NSM crashes, on reboot it must send out a notify call
     /// to each host in the notify list.
-    async fn notify(&self, host_name: HostName, state: HostState, promise: impl Promise);
+    async fn notify(&self, host_name: HostName, state: State, promise: impl Promise);
 }

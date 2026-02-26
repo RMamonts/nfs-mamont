@@ -5,20 +5,20 @@
 
 use async_trait::async_trait;
 
-use super::{Cookie, HostState, MonitorPair};
+use super::{Cookie, State, MonitorPair};
 
 /// Success result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Success {
-    /// State number of the remote NSM host.
-    pub nsm_state: HostState,
+    /// Current state number associated with the monitored host.
+    pub state: State,
 }
 
 /// Fail result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fail {
-    /// State number of the remote NSM host.
-    pub host_state: HostState,
+    /// Current state number associated with the monitored host.
+    pub state: State,
 }
 
 pub type Result = std::result::Result<Success, Fail>;

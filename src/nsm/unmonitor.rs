@@ -5,28 +5,19 @@
 
 use async_trait::async_trait;
 
-use super::{HostState, MonitorPair};
+use super::{State, MonitorPair};
 
-/// Success result.
+/// Result status, corresponds to XDR `sm_stat`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Success {
+pub struct Status {
     /// State number of the local NSM host.
-    pub nsm_state: HostState,
+    pub state: State,
 }
-
-/// Fail result.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fail {
-    /// State number of the local NSM host.
-    pub host_state: HostState,
-}
-
-pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Unmonitor::unmonitor`] result into.
 #[async_trait]
 pub trait Promise {
-    async fn keep(promise: Result);
+    async fn keep(promise: Status);
 }
 
 #[async_trait]

@@ -20,6 +20,9 @@ pub const SM_VERS: u32 = 1;
 /// Length of the private data.
 pub const PRIVATE_LEN: usize = 16;
 
+/// Maximum host name length in bytes for NSM `sm_name`.
+pub const SM_MAXSTRLEN: usize = 1024;
+
 /// Opaque private data provided by the watcher in [`monitor::Monitor::monitor`]
 /// and returned in [`notify::StatusMessage`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +38,7 @@ pub struct HostName(pub String);
 /// that should be incremented on reboot.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HostState(pub u32);
+pub struct State(pub u32);
 
 /// RPC identity of the local process (e.g., NLM) asking for monitoring.
 /// Corresponds to XDR `my_id`
