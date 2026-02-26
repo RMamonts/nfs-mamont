@@ -11,11 +11,8 @@ use std::io::Read;
 
 fn what(src: &mut impl Read) -> Result<mk_node::What> {
     match u32(src)? {
-        1 => Err(Error::EnumDiscMismatch),
-        2 => Err(Error::EnumDiscMismatch),
         3 => Ok(What::Block(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
         4 => Ok(What::Char(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
-        5 => Err(Error::EnumDiscMismatch),
         6 => Ok(What::Socket(new_attr(src)?)),
         7 => Ok(What::Fifo(new_attr(src)?)),
         _ => Err(Error::EnumDiscMismatch),
