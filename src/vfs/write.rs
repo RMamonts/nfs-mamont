@@ -7,9 +7,15 @@ use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 /// Enum describing servers behaviour after performing write:
-/// * `FileSync` indicates that all data and metadata should be commited to stable storage.
-/// * `DataSync` indicates that all data should be commited to stable storage.
-/// * `Unstable` indicates that the server is free to commit any part of the data and the metadata to stable storage, including all or none
+///
+/// If `stable` is [`StableHow::FileSync`], the server must commit the data
+/// written plus all file system metadata to stable storage before returning results.
+/// If `stable` is [`StableHow::DataSync`], then server must commit all of the data
+/// to stable storage and enough of the metadata to retrieve the data before returning.
+/// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
+/// `data` and the metadata to stable storage, including all or none, before returning a reply
+/// the client. There is no guarantee whether or when any uncommitted data will subsequently be
+/// commited to stable storage.
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
@@ -30,7 +36,7 @@ pub struct Success {
     pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub commited: StableHow,
-    /// TODO(what is it?)
+    /// Cookie used by client to detect server reboot between unstable writes and COMMIT.
     pub verifier: Verifier,
 }
 
@@ -59,19 +65,13 @@ pub struct Args {
     pub offset: u64,
     /// Size of data in `Slice`
     pub size: u32,
-    /// If `stable` is [`StableHow::FileSync`], the server must commit the data
-    /// written plus all file system metadata to stable storage before returning results.
-    /// If `stable` is [`StableHow::DataSync`], then server must commit all of the data
-    /// to stable storage and enough of the metadata to retrieve the data before returning.
-    /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
-    /// `data` and the metadata to stable storage, including all or none, before returning a reply
-    /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
+    /// Server's behaviour after performing write
     pub stable: StableHow,
     /// The data to be written to the file.
     ///
-    /// The size of data must be less than or equal to the value of the TODO(wtmax) field.
-    /// If greater, the server may write only TODO(wtmax) bytes, resulting in a short write.
+    /// The size of data must be less than or equal to the value of the server's
+    /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
+    /// resulting in a short write.
     ///
     pub data: Slice,
 }
@@ -92,7 +92,7 @@ pub struct ArgsPartial {
     /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
     /// `data` and the metadata to stable storage, including all or none, before returning a reply
     /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
+    /// commited to stable storage.
     pub stable: StableHow,
 }
 

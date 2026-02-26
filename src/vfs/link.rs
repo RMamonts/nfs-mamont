@@ -52,8 +52,8 @@ pub trait Link {
     /// that the fsid fields in the attributes for the directories are the same. If they reside on different file systems,
     /// the error, [`vfs::Error::XDev`], is returned.
     ///
-    /// On some servers, the filenames, "." and "..", are illegal as either from.name or to.name. // TODO(i.erin) strange comment.
-    /// In addition, neither from.name nor to.name can be an alias for from.dir. These servers will
+    /// On some servers, the filenames, "." and "..", are illegal for link names.
+    /// In addition, the link name cannot be an alias for the target directory. These servers will
     /// return the error, [`vfs::Error::InvalidArgument`], in these cases.
     async fn link(&self, args: Args, promise: impl Promise);
 }

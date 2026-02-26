@@ -46,8 +46,8 @@ pub struct Args {
     pub offset: u64,
     /// The number of bytes of data that are to be read. If count is `0`, the
     /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
-    /// to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
-    /// bytes, resulting in a short read.
+    /// to the value of the server's [`super::fs_info::Success::read_max`] field. If greater,
+    /// the server may return fewer bytes, resulting in a short read.
     pub count: u32,
 }
 

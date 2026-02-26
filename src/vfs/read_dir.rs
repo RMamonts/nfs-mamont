@@ -83,6 +83,7 @@ pub trait ReadDir {
     ///
     /// The server may return fewer than `count`` bytes of XDR-encoded entries.
     /// The `count` specified by the client in the request should be greater than or equal to
-    /// TODO(FSINFO dtpref).
+    /// the server's preferred READDIR transfer size from
+    /// [`super::fs_info::Success::read_dir_pref`].
     async fn read_dir(&self, args: Args, promise: impl Promise);
 }
