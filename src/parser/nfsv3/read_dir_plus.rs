@@ -3,19 +3,21 @@
 use std::io::Read;
 
 use crate::parser::nfsv3::file;
+use crate::parser::primitive::array;
 use crate::parser::primitive::u32;
+use crate::parser::primitive::u64;
 use crate::parser::Result;
 use crate::vfs::read_dir;
 use crate::vfs::read_dir_plus;
 
 /// Parses a [`read_dir::Cookie`] from the provided `Read` source.
-pub fn cookie(_src: &mut impl Read) -> Result<read_dir::Cookie> {
-    todo!()
+pub fn cookie(src: &mut impl Read) -> Result<read_dir::Cookie> {
+    Ok(read_dir::Cookie::new(u64(src)?))
 }
 
 /// Parses a [`read_dir::CookieVerifier`] from the provided `Read` source.
-pub fn cookie_verifier(_src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
-    todo!()
+pub fn cookie_verifier(src: &mut impl Read) -> Result<read_dir::CookieVerifier> {
+    Ok(read_dir::CookieVerifier::new(array(src)?))
 }
 
 /// Parses the arguments for an NFSv3 `READDIRPLUS` operation from the provided `Read` source.
@@ -31,10 +33,10 @@ pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {
 
 #[cfg(test)]
 mod tests {
+    use crate::vfs::read_dir;
     use std::io::Cursor;
 
-    // not ready to run yet - no cookies
-    #[allow(dead_code)]
+    #[test]
     fn test_readdir_plus() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
@@ -48,7 +50,11 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        // TODO(cookie and cookie_verifier)
+        assert_eq!(result.cookie, read_dir::Cookie::new(4096));
+        assert_eq!(
+            result.cookie_verifier,
+            read_dir::CookieVerifier::new([0, 0, 0, 0, 0, 0, 0x20, 0])
+        );
         assert_eq!(result.dir_count, 2048);
         assert_eq!(result.max_count, 4096);
     }

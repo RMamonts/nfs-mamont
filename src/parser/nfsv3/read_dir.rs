@@ -21,10 +21,10 @@ pub fn args(src: &mut impl Read) -> Result<read_dir::Args> {
 
 #[cfg(test)]
 mod tests {
+    use crate::vfs::read_dir;
     use std::io::Cursor;
 
-    // not ready to run yet - no cookies
-    #[allow(dead_code)]
+    #[test]
     fn test_readdir() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
@@ -37,8 +37,11 @@ mod tests {
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
         assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        // assert_eq!(result.cookie, ) TODO()
-        // assert_eq!(result.cookie_verifier, ) TODO()
+        assert_eq!(result.cookie, read_dir::Cookie::new(4096));
+        assert_eq!(
+            result.cookie_verifier,
+            read_dir::CookieVerifier::new([0, 0, 0, 0, 0, 0, 0x20, 0])
+        );
         assert_eq!(result.count, 2048);
     }
 
