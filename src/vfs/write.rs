@@ -72,7 +72,6 @@ pub struct Args {
     /// The size of data must be less than or equal to the value of the server's
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
-    ///
     pub data: Slice,
 }
 
