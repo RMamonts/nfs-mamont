@@ -26,7 +26,7 @@ type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Rename::rename`] result into.
 #[async_trait]
-pub trait Promise {
+pub trait Promise: Send {
     async fn keep(promise: Result);
 }
 
