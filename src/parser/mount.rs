@@ -1,9 +1,10 @@
 //! Parses MOUNT protocol operations.
 
-use super::Result;
-use crate::parser::primitive::path;
 use std::io::Read;
 use std::path::PathBuf;
+
+use super::Result;
+use crate::parser::primitive::path;
 
 /// Represents the status codes returned by MOUNT operations.
 #[allow(dead_code)]

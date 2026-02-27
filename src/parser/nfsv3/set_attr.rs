@@ -1,12 +1,13 @@
 //! Implements parsing for [`set_attr::Args`] structure.
 
+use std::io::Read;
+
 pub(crate) use crate::parser::nfsv3::create::{new_attr, nfs_time};
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::bool;
 use crate::parser::Result;
 use crate::vfs::set_attr;
 use crate::vfs::set_attr::Guard;
-use std::io::Read;
 
 /// Parses an optional [`set_attr::Guard`] structure from the provided `Read` source.
 pub fn guard(src: &mut impl Read) -> Result<Option<set_attr::Guard>> {

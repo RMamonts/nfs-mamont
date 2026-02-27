@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 use super::set_attr::NewAttr;

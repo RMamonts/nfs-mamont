@@ -1,8 +1,9 @@
 //! Defines NFSv3 [`Read`] interface.
 
+use async_trait::async_trait;
+
 use crate::allocator::Slice;
 use crate::vfs;
-use async_trait::async_trait;
 
 use super::file;
 
