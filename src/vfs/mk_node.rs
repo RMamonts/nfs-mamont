@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 use super::set_attr::NewAttr;
@@ -54,10 +54,8 @@ pub trait Promise {
 
 /// [`MkNode::mk_node`] arguments.
 pub struct Args {
-    /// The file handle for the directory in which the special file is to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created special file.
-    pub name: String,
+    /// The location of the special file to be created
+    pub object: vfs::DirOpArgs,
     /// The type of the special file to be created. See [`What`].
     pub what: What,
 }
