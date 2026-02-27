@@ -1,108 +1,112 @@
-#![allow(non_camel_case_types, clippy::upper_case_acronyms)]
+use std::io;
+use std::string::FromUtf8Error;
 
-#[allow(dead_code)]
+use num_derive::{FromPrimitive, ToPrimitive};
+
 pub const RPC_VERSION: u32 = 2;
-#[allow(dead_code)]
-const MAX_AUTH_OPAQUE_LEN: u32 = 400;
+
+pub const MAX_AUTH_SIZE: usize = 400;
 
 #[allow(dead_code)]
-#[repr(u32)]
-enum accept_stat {
-    SUCCESS = 0,
-    PROG_UNAVAIL = 1,
-    PROG_MISMATCH(mismatch_info) = 2,
-    PROC_UNAVAIL = 3,
-    GARBAGE_ARGS = 4,
-    SYSTEM_ERR = 5,
+#[derive(ToPrimitive, FromPrimitive)]
+pub enum AcceptStat {
+    Success = 0,
+    ProgUnavail = 1,
+    ProgMismatch = 2,
+    ProcUnavail = 3,
+    GarbageArgs = 4,
+    SystemErr = 5,
+}
+
+#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
+pub enum AuthStat {
+    Ok = 0,
+    BadCred = 1,
+    RejectedCred = 2,
+    BadVerf = 3,
+    RejectedVerf = 4,
+    TooWeak = 5,
+    InvalidResp = 6,
+    Failed = 7,
+    KerbGeneric = 8,
+    TimeExpire = 9,
+    TktFile = 10,
+    Decode = 11,
+    NetAddr = 12,
+    RpcSecGssCredProblem = 13,
+    RpcSecGssCtxProblem = 14,
 }
 
 #[allow(dead_code)]
-pub enum auth_stat {
-    AUTH_OK = 0,
-    AUTH_BADCRED = 1,
-    AUTH_REJECTEDCRED = 2,
-    AUTH_BADVERF = 3,
-    AUTH_REJECTEDVERF = 4,
-    AUTH_TOOWEAK = 5,
-    AUTH_INVALIDRESP = 6,
-    AUTH_FAILED = 7,
-    AUTH_KERB_GENERIC = 8,
-    AUTH_TIMEEXPIRE = 9,
-    AUTH_TKT_FILE = 10,
-    AUTH_DECODE = 11,
-    AUTH_NET_ADDR = 12,
-    RPCSEC_GSS_CREDPROBLEM = 13,
-    RPCSEC_GSS_CTXPROBLEM = 14,
+#[derive(ToPrimitive, FromPrimitive)]
+pub enum RpcBody {
+    Call = 0,
+    Reply = 1,
 }
 
 #[allow(dead_code)]
-struct rpc_msg {
-    xid: u32,
-    body: rpc_body,
+pub enum ReplyBody {
+    MsgAccepted = 0,
+    MsgDenied = 1,
+}
+
+/// Authentication flavors.
+#[derive(ToPrimitive, FromPrimitive)]
+pub enum AuthFlavor {
+    None = 0,
+    Sys = 1,
+    Short = 2,
+    Dh = 3,
+    RpcSecGss = 6,
 }
 
 #[allow(dead_code)]
-#[repr(u32)]
-pub enum rpc_message_type {
-    CALL = 0,
-    REPLY = 1,
+pub struct OpaqueAuth {
+    pub flavor: AuthFlavor,
+    pub body: Vec<u8>,
 }
 
 #[allow(dead_code)]
-#[repr(u32)]
-pub enum rpc_body {
-    CALL(call_body) = 0,
-    REPLY(reply_body) = 1,
+pub enum RejectedReply {
+    RpcMismatch = 0,
+    AuthError = 1,
 }
 
-#[allow(dead_code)]
-pub struct call_body {
-    rpcvers: u32,
-    prog: u32,
-    vers: u32,
-    proc: u32,
-    cred: opaque_auth,
-    verf: opaque_auth,
+/// Represents a mismatch in program/protocol versions.
+/// Returns highest and lowest versions of available versions of requested program
+#[derive(Debug)]
+pub struct VersionMismatch {
+    pub low: u32,
+    pub high: u32,
 }
 
-#[allow(dead_code)]
-#[repr(u32)]
-pub enum reply_body {
-    MSG_ACCEPTED(accepted_reply) = 0,
-    MSG_DENIED(rejected_reply) = 1,
-}
-
-#[allow(dead_code)]
-pub struct mismatch_info {
-    low: u32,
-    high: u32,
-}
-
-#[allow(dead_code)]
-pub struct accepted_reply {
-    verf: opaque_auth,
-    reply_data: accept_stat,
-}
-
-#[allow(dead_code)]
-#[repr(u32)]
-enum auth_flavor {
-    AUTH_NONE = 0,
-    AUTH_SYS = 1,
-    AUTH_SHORT = 2,
-    AUTH_DH = 3,
-    RPCSEC_GSS = 6,
-}
-
-#[allow(dead_code)]
-struct opaque_auth {
-    flavor: auth_flavor,
-    body: Vec<u8>,
-}
-
-#[allow(dead_code)]
-#[repr(u32)]
-pub enum rejected_reply {
-    RPC_MISMATCH(mismatch_info) = 0,
-    AUTH_ERROR(auth_stat) = 1,
+/// Errors that can occur during parsing.
+#[derive(Debug)]
+pub enum Error {
+    /// The maximum element limit was exceeded.
+    MaxElemLimit,
+    /// An I/O error occurred.
+    IO(io::Error),
+    /// An enum discriminant mismatch occurred.
+    EnumDiscMismatch,
+    /// An incorrect string was encountered during UTF-8 conversion.
+    IncorrectString(FromUtf8Error),
+    /// Incorrect padding was found.
+    IncorrectPadding,
+    /// An impossible type cast was attempted.
+    ImpossibleTypeCast,
+    /// A bad file handle was encountered.
+    BadFileHandle,
+    /// A message type mismatch occurred.
+    MessageTypeMismatch,
+    /// An RPC version mismatch occurred.
+    RpcVersionMismatch(VersionMismatch),
+    /// An authentication error occurred.
+    AuthError(AuthStat),
+    /// A program mismatch occurred.
+    ProgramMismatch,
+    /// A procedure mismatch occurred.
+    ProcedureMismatch,
+    /// A program version mismatch occurred.
+    ProgramVersionMismatch(VersionMismatch),
 }

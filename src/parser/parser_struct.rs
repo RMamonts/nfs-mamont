@@ -28,11 +28,9 @@ use crate::parser::nfsv3::{
 };
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
-use crate::parser::rpc::{auth, AuthFlavor, AuthStat, RpcMessage};
-use crate::parser::{
-    proc_nested_errors, Arguments, Error, ProgramVersionMismatch, RPCVersionMismatch, Result,
-};
-use crate::rpc::{rpc_message_type, RPC_VERSION};
+use crate::parser::rpc::{auth, RpcMessage};
+use crate::parser::{proc_nested_errors, Arguments, Error, Result};
+use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -179,13 +177,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - An I/O error occurs
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
-        if msg_type != rpc_message_type::CALL as u32 {
+        if msg_type != RpcBody::Call as u32 {
             return Err(Error::MessageTypeMismatch);
         }
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RPCVersionMismatch(RPC_VERSION, RPC_VERSION)));
+            return Err(Error::RpcVersionMismatch(VersionMismatch {
+                low: RPC_VERSION,
+                high: RPC_VERSION,
+            }));
         }
 
         let program = self.buffer.parse_with_retry(u32).await?;
@@ -193,7 +194,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
         let auth_status = self.parse_authentication().await?;
-        if auth_status != AuthStat::AuthOk {
+        if auth_status != AuthStat::Ok {
             return Err(Error::AuthError(auth_status));
         }
 
@@ -206,11 +207,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns [`AuthStat::AuthOk`] if authentication succeeds, or an error
+    /// Returns [`AuthStat::Ok`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<AuthStat> {
         match self.buffer.parse_with_retry(auth).await?.flavor {
-            AuthFlavor::AuthNone => Ok(AuthStat::AuthOk),
+            AuthFlavor::None => Ok(AuthStat::Ok),
             _ => {
                 unimplemented!()
             }
@@ -272,18 +273,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     21 => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
                     _ => return Err(Error::ProcedureMismatch),
                 })),
-                _ => Err(Error::ProgramVersionMismatch(ProgramVersionMismatch(
-                    NFS_VERSION,
-                    NFS_VERSION,
-                ))),
+                _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
+                    low: NFS_VERSION,
+                    high: NFS_VERSION,
+                })),
             },
 
             MOUNT_PROGRAM => {
                 if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch(ProgramVersionMismatch(
-                        MOUNT_VERSION,
-                        MOUNT_VERSION,
-                    )));
+                    return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                        low: MOUNT_VERSION,
+                        high: MOUNT_VERSION,
+                    }));
                 }
                 Ok(Box::new(match head.procedure {
                     0 => Arguments::Null,
