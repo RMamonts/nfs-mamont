@@ -37,10 +37,8 @@ pub trait Promise {
 
 /// [`Symlink::symlink`] arguments.
 pub struct Args {
-    /// The file handle for the directory in which the symbolic link to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created symbolic link.
-    pub name: String,
+    /// The location of the symbolic link to be created.
+    pub object: vfs::DirOpArgs,
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
