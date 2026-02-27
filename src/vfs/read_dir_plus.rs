@@ -49,7 +49,7 @@ type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
 #[async_trait]
-pub trait Promise {
+pub trait Promise: Send {
     async fn keep(promise: Result);
 }
 
