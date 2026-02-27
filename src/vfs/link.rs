@@ -36,19 +36,17 @@ pub trait Promise {
 pub struct Args {
     /// The file handle for the existing file system object.
     pub file: file::Handle,
-    /// The file handle for the directory in which the link is to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created link.
-    pub name: String,
+    /// The location of the link to be created
+    pub link: vfs::DirOpArgs,
 }
 
 #[async_trait]
 pub trait Link {
-    /// Creates a hard link from [`Args::file`] to [`Args::name`], in the directory, [`Args::dir`].
+    /// Creates a hard link from [`Args::file`] to [`Args::link`], in the directory.
     ///
     /// Changes to any property of the hard-linked files are reflected in all of the linked files.
     ///
-    /// [`Args::file`] and [`Args::dir`] must reside on the same file system and server, means
+    /// [`Args::file`] and [`Args::link`] must reside on the same file system and server, means
     /// that the fsid fields in the attributes for the directories are the same. If they reside on different file systems,
     /// the error, [`vfs::Error::XDev`], is returned.
     ///

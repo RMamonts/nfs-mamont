@@ -136,4 +136,16 @@ pub struct WccData {
     pub after: Option<file::Attr>,
 }
 
+/// This struct represents the generic `diropargs3` structure from NFSv3.
+///
+/// It is used by several directory operations (for example, create, mkdir, rmdir,
+/// remove, symlink, mknod, link, and rename). See NFSv3 RFC 1813:
+/// <https://datatracker.ietf.org/doc/html/rfc1813#autoid-15>
+pub struct DirOpArgs {
+    /// The file handle for the directory.
+    pub dir: file::Handle,
+    /// The name of the entry within the directory.
+    pub name: String,
+}
+
 pub trait Vfs {}
