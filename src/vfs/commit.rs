@@ -18,7 +18,7 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
-    /// Error on fauler.
+    /// Error on failure.
     pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,

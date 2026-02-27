@@ -15,7 +15,6 @@ pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
     /// Weak cache consistency data for the directory, [`Args::object`] dir.
-    /// TODO(use Args structure).
     pub dir_wcc: vfs::WccData,
 }
 

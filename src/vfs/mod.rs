@@ -130,7 +130,6 @@ pub enum Error {
     JUKEBOX,
 }
 
-/// TODO(i.erin)
 #[derive(Clone)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
