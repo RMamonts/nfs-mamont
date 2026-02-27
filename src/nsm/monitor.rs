@@ -37,9 +37,9 @@ pub trait Monitor {
     ///
     /// * `monitor_pair` --- Name of the host to monitor and watcher id.
     /// * `cookie` --- Watcher private information, opaque to the server.
-    /// The NSM server sends it in the notify call.
+    ///    The NSM server sends it in the notify call.
     ///
-    /// NSM saves the name of the host to monitor in a notify list on stable storage.
+    /// [`Monitor::monitor`] saves the name of the host to monitor in a notify list on stable storage.
     /// If the host running the NSM crashes, on reboot it must send out a notify call
     /// to each host in the notify list.
     async fn monitor(&self, monitor_pair: MonitorPair, cookie: Cookie, promise: impl Promise);

@@ -1,8 +1,6 @@
 //! `NSM` protocol description as specified in XNFS, Version 3W (Open Group Technical Standard).
 //! <https://pubs.opengroup.org/onlinepubs/9629799/chap11.htm>.
 
-use async_trait::async_trait;
-
 pub mod monitor;
 pub mod notify;
 pub mod null;
@@ -10,6 +8,8 @@ pub mod simulate_crash;
 pub mod stat;
 pub mod unmonitor;
 pub mod unmonitor_all;
+
+use async_trait::async_trait;
 
 /// NSM program number.
 pub const SM_PROG: u32 = 100024;

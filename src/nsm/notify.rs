@@ -37,7 +37,7 @@ pub trait Notify {
     ///
     /// The status message that is sent to watchers by NSM host is described in [`StatusMessage`].
     ///
-    /// NSM saves the name of the host to monitor in a notify list on stable storage.
+    /// [`Notify::notify`] saves the name of the host to monitor in a notify list on stable storage.
     /// If the host running the NSM crashes, on reboot it must send out a notify call
     /// to each host in the notify list.
     async fn notify(&self, host_name: HostName, state: State, promise: impl Promise);
