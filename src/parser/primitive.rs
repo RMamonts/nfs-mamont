@@ -4,10 +4,12 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use super::{Error, Result};
-use crate::vfs::MAX_PATH_LEN;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
+
+use crate::vfs::MAX_PATH_LEN;
+
+use super::{Error, Result};
 
 /// The XDR alignment in bytes.
 #[allow(dead_code)]

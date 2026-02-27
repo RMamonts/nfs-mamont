@@ -60,10 +60,8 @@ pub trait Promise {
 
 /// [`Create::create`] arguments.
 pub struct Args {
-    /// The file handle for the directory in which the file is to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created file.
-    pub name: String,
+    /// The location of the file to be created.
+    pub object: vfs::DirOpArgs,
     /// The file creation mode. See [`How`] documentation.
     pub how: How,
 }

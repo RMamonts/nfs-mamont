@@ -33,6 +33,8 @@ use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
+const RMS_HEADER_SIZE: usize = size_of::<u32>();
+
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
@@ -341,7 +343,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if validation passes, or an error if unparsed data
     /// remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
-        if self.buffer.total_bytes() != self.current_frame_size {
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(
+            Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed bytes are less than RMS header size",
+            )),
+        )?;
+        if bytes_consumed != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
@@ -392,14 +403,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
     async fn discard_current_message(&mut self) -> Result<()> {
-        let already_consumed = self.buffer.total_bytes();
-        if already_consumed > self.current_frame_size {
-            return Err(Error::IO(io::Error::new(
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        let remaining = (self.current_frame_size + RMS_HEADER_SIZE)
+            .checked_sub(self.buffer.total_bytes())
+            .ok_or(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
-                "Consumed more bytes than current frame size",
-            )));
-        }
-        let remaining = self.current_frame_size - already_consumed;
+                "Consumed more bytes than RMS header suggests",
+            )))?;
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
