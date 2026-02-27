@@ -21,8 +21,9 @@ pub fn args(src: &mut impl Read) -> Result<read_dir::Args> {
 
 #[cfg(test)]
 mod tests {
-    use crate::vfs::read_dir;
     use std::io::Cursor;
+
+    use crate::vfs::read_dir;
 
     #[test]
     fn test_readdir() {

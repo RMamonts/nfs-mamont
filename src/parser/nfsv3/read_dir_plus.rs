@@ -30,8 +30,9 @@ pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {
 
 #[cfg(test)]
 mod tests {
-    use crate::vfs::read_dir;
     use std::io::Cursor;
+
+    use crate::vfs::read_dir;
 
     #[test]
     fn test_readdir_plus() {
