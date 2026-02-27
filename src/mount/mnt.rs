@@ -5,9 +5,9 @@
 
 use std::path;
 
-use async_trait::async_trait;
-
+use crate::rpc::AuthFlavor;
 use crate::vfs::file::Handle;
+use async_trait::async_trait;
 
 /// Possible MOUNT errors
 pub enum MntError {
@@ -29,16 +29,6 @@ pub enum MntError {
     NotSupp = 10004,
     /// A failure on the server
     ServerFault = 10006,
-}
-
-/// Authentication flavors.
-#[derive(Debug)]
-pub enum AuthFlavor {
-    None,
-    Unix,
-    Short,
-    Des,
-    Kerb,
 }
 
 /// Success result.
