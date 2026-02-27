@@ -12,6 +12,8 @@ pub mod umntall;
 
 use std::path;
 
+use super::nsm::HostName;
+
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
 /// Maximum bytes in a name.
@@ -20,15 +22,12 @@ pub const MOUNT_HOST_NAME_LEN: usize = 255;
 pub const MOUNT_PROGRAM: u32 = 100005;
 pub const MOUNT_VERSION: u32 = 3;
 
-/// Client host name.
-pub type HostName = String;
-
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: String,
+    pub hostname: HostName,
     /// Server pathname of a directory.
     pub directory: String,
 }
