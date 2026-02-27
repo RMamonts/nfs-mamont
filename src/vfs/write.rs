@@ -1,10 +1,12 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use super::file;
-use crate::allocator::Slice;
-use crate::vfs;
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::allocator::Slice;
+use crate::vfs;
+
+use super::file;
 
 /// Enum describing servers behaviour after performing write:
 /// * `FileSync` indicates that all data and metadata should be commited to stable storage.

@@ -36,6 +36,7 @@ use crate::rpc::{rpc_message_type, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
+
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])

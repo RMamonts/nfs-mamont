@@ -1,5 +1,7 @@
 //! Implements parsing for [`create::Args`] structure.
 
+use std::io::Read;
+
 use crate::parser::nfsv3::{file, MAX_FILENAME};
 use crate::parser::primitive::{array, option, string_max_size, u32, u64};
 use crate::parser::{Error, Result};
@@ -7,7 +9,6 @@ use crate::vfs::create;
 use crate::vfs::create::{Verifier, VERIFY_LEN};
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
-use std::io::Read;
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {

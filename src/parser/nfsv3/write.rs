@@ -1,12 +1,12 @@
 //! Implements parsing for [`write::Args`] structure.
 
+use std::io::Read;
+
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{u32, u64, variant};
 use crate::parser::Result;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
-
-use std::io::Read;
 
 /// Parses `write::StableHow`
 fn stable_how(src: &mut impl Read) -> Result<write::StableHow> {
