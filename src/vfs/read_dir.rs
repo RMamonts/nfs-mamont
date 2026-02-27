@@ -81,9 +81,9 @@ pub trait ReadDir {
     /// If the server detects that the cookie is no longer valid, the server will reject the
     /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
     ///
-    /// The server may return fewer than `count` bytes of XDR-encoded entries.
-    /// The `count` specified by the client in the request should be greater than or equal to
-    /// the server's preferred READDIR transfer size from
+    /// The server may return fewer than [`Args::count`] bytes of XDR-encoded entries.
+    /// The [`Args::count`] specified by the client in the request should be greater than or equal to
+    /// the server's preferred [`ReadDir`] transfer size from
     /// [`super::fs_info::Success::read_dir_pref`].
     async fn read_dir(&self, args: Args, promise: impl Promise);
 }

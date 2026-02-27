@@ -36,7 +36,7 @@ pub struct Success {
     pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub commited: StableHow,
-    /// Cookie used by client to detect server reboot between unstable writes and COMMIT.
+    /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].
     pub verifier: Verifier,
 }
 
