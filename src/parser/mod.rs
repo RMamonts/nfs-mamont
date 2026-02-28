@@ -19,14 +19,22 @@ use crate::vfs::{
 /// Result of parsing operations with errors type [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Errors that can occur during parsing.
 #[derive(PartialEq, Debug)]
 pub enum Error {
+    /// An error returned when an operation could not be completed because an “end of file” was reached prematurely.
     UnexpectedEof,
+    /// Underlying socket was closed by remote source
     ConnectionClosed,
+    /// Incorrect value, though correctly parsed
     IncorrectData,
+    /// Side effect error occur during parsing
     InvalidState,
+    /// Size of underlying type with dynamic size (like vector or array) is too big
     TooMany,
+    /// An operation could not be completed, because it failed to allocate enough memory.
     OutOfMemory,
+    /// Other error
     Other,
 }
 

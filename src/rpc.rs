@@ -81,11 +81,15 @@ pub struct VersionMismatch {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Errors that can occur during parsing.
+/// Errors that can occur during processing of incoming request.
 #[derive(Debug)]
 pub enum Error {
-    IncorrectMessage,
-    ServerFailure(parser::Error),
+    /// Server inner state error occurred.
+    /// Represents `SYSTEM_ERR`.
+    ServerFailure,
+    /// Incorrect message received.
+    /// Represents `GARBAGE_ARGS`
+    IncorrectMessage(parser::Error),
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.

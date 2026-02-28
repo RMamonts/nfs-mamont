@@ -15,7 +15,6 @@ use std::io::{ErrorKind, Read};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use crate::parser::Error::InvalidState;
 use crate::parser::{Error, Result};
 use crate::rpc;
 
@@ -102,7 +101,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// Parses a value using the provided parsing function, with automatic retry on EOF.
     ///
     /// This method attempts to parse a value using a synchronous parsing function.
-    /// If the parsing function encounters an `UnexpectedEof` error, this method will:
+    /// If the parsing function encounters an [`Error::UnexpectedEof`] error, this method will:
     /// 1. Read more data from the socket into the write buffer
     /// 2. Reset read positions to allow retrying from the same point
     /// 3. Recursively retry the parsing operation
@@ -112,11 +111,11 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// # Arguments
     ///
-    /// * `caller` - A function that takes a `&mut dyn Read` and returns a `Result<T>`
+    /// * `caller` - A function that takes a `&mut impl Read` and returns a [`Result<T>`]
     ///
     /// # Returns
     ///
-    /// Returns the parsed value, or an error if parsing fails or I/O errors occur.
+    /// Returns the parsed value, or an [`rpc::Error`] if parsing fails or I/O errors occur.
     pub async fn parse_with_retry<T>(
         &mut self,
         caller: impl Fn(&mut Self) -> Result<T>,
@@ -133,7 +132,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                 match self.fill_internal().await {
                     Ok(0) => {
                         // it is impossible scenario?
-                        Err(rpc::Error::ServerFailure(Error::UnexpectedEof))
+                        Err(rpc::Error::IncorrectMessage(Error::UnexpectedEof))
                     }
                     Ok(_) => {
                         self.bufs[self.read].reset_read(retry_start_read);
@@ -141,7 +140,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                         self.total_bytes = retry_total;
                         Box::pin(self.parse_with_retry(caller)).await
                     }
-                    Err(e) => Err(rpc::Error::ServerFailure(e)),
+                    Err(e) => Err(rpc::Error::IncorrectMessage(e)),
                 }
             }
             Ok(val) => {
@@ -151,12 +150,12 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                     self.read = (self.read + 1) % 2;
                 }
                 if self.read == self.write {
-                    return Err(rpc::Error::ServerFailure(Error::InvalidState));
+                    return Err(rpc::Error::IncorrectMessage(Error::InvalidState));
                 }
                 self.retry_mode = false;
                 Ok(val)
             }
-            Err(err) => Err(rpc::Error::ServerFailure(err)),
+            Err(err) => Err(rpc::Error::IncorrectMessage(err)),
         }
     }
 
@@ -269,7 +268,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         // probably useless, since we have guarantees from Take
         if actual != from_socket {
-            return Err(InvalidState);
+            return Err(Error::InvalidState);
         }
 
         Ok(())

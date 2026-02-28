@@ -245,7 +245,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, rpc::Error::IncorrectMessage));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 #[tokio::test]
@@ -263,7 +263,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 32);
 
     let result = parser.parse_message().await;
-    assert!(matches!(result, Err(rpc::Error::IncorrectMessage)));
+    assert!(matches!(result, Err(rpc::Error::ServerFailure)));
 }
 
 #[tokio::test]
@@ -303,7 +303,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, rpc::Error::IncorrectMessage));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 /// Ensures parser rejects fragments above configured maximum size.
@@ -319,7 +319,7 @@ async fn parse_rejects_too_large_frame() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, rpc::Error::IncorrectMessage));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 /// Verifies parser handles WRITE with zero opaque payload.
