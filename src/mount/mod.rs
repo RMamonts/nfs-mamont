@@ -1,7 +1,7 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
+
 #![allow(dead_code)]
-use crate::vfs::file;
 
 pub mod dump;
 pub mod export;
@@ -9,6 +9,8 @@ pub mod mnt;
 pub mod null;
 pub mod umnt;
 pub mod umntall;
+
+use crate::vfs::file;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;

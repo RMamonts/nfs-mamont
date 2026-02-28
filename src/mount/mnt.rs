@@ -5,8 +5,8 @@
 
 use async_trait::async_trait;
 
+use crate::rpc::AuthFlavor;
 use crate::vfs::file;
-use crate::vfs::file::Handle;
 
 /// Possible MOUNT errors
 pub enum MntError {
@@ -30,21 +30,11 @@ pub enum MntError {
     ServerFault = 10006,
 }
 
-/// Authentication flavors.
-#[derive(Debug)]
-pub enum AuthFlavor {
-    None,
-    Unix,
-    Short,
-    Des,
-    Kerb,
-}
-
 /// Success result.
 pub struct Success {
     /// The file handle for the mounted directory.
     /// This file handle may be used in the NFS protocol.
-    pub file_handle: Handle,
+    pub file_handle: file::Handle,
     /// Vector of RPC authentication flavors that are supported with
     /// the client's use of the file handle (or any file handles derived from it)
     pub auth_flavors: Vec<AuthFlavor>,

@@ -4,8 +4,6 @@ use async_trait::async_trait;
 
 use crate::vfs;
 
-use super::file;
-
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the directory.
@@ -16,8 +14,7 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
 }
 
@@ -31,10 +28,9 @@ pub trait Promise {
 
 /// [`RmDir::rm_dir`] arguments.
 pub struct Args {
-    /// The file handle for the directory from which the subdirectory is to be removed.
-    pub dir: file::Handle,
-    /// The name of the subdirectory to be removed.
-    pub name: file::Name,
+    /// A [`vfs::DirOpArgs`] structure identifying the directory entry
+    /// to be removed.
+    pub object: vfs::DirOpArgs,
 }
 
 #[async_trait]

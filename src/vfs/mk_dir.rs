@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 
@@ -12,7 +12,7 @@ pub struct Success {
     pub file: Option<file::Handle>,
     /// The attributes for the newly created subdirectory.
     pub attr: Option<file::Attr>,
-    /// Weak cache consistency data for the [`Args::dir`].
+    /// Weak cache consistency data for the [`Args::object`] dir.
     pub wcc_data: vfs::WccData,
 }
 
@@ -20,7 +20,7 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, [`Args::dir`].
+    /// Weak cache consistency data for the directory, [`Args::object`] dir.
     pub dir_wcc: vfs::WccData,
 }
 
@@ -34,10 +34,8 @@ pub trait Promise {
 
 /// [`MkDir::mk_dir`] arguments.
 pub struct Args {
-    /// The file handle for the directory in which the subdirectory is to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created subdirectory.
-    pub name: file::Name,
+    /// The location of the subdirectory to be created.
+    pub object: vfs::DirOpArgs,
     /// The initial attributes for the subdirectory.
     pub attr: super::set_attr::NewAttr,
 }
