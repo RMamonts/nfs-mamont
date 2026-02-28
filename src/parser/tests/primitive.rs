@@ -41,7 +41,7 @@ fn test_u8_array_padding_error() {
         src.write_u8(*i).unwrap();
     }
     let result = array::<3>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IncorrectPadding)));
+    assert!(matches!(result, Err(Error::UnexpectedEof)));
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn test_u8_array_miss_elements() {
     let mut src = Vec::new();
     let _ = init.map(|i| src.write_u8(i).unwrap());
     let result = array::<4>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::UnexpectedEof)));
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn test_string_utf8_error() {
     src.extend_from_slice(&invalid_utf8);
     src.push(0);
     let result = string(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IncorrectString(_))));
+    assert!(matches!(result, Err(Error::IncorrectData)));
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_string_with_max_len_too_long() {
     src.extend(vec![0u8; padding_len]);
 
     let result = string_max_size(&mut Cursor::new(src), 10);
-    assert!(matches!(result, Err(Error::MaxElemLimit)));
+    assert!(matches!(result, Err(Error::TooMany)));
 }
 
 #[test]
@@ -104,5 +104,5 @@ fn test_read_error() {
     let mut src = Vec::new();
     src.write_u32::<BigEndian>(10).unwrap();
     let result = vector(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::UnexpectedEof)));
 }

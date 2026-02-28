@@ -29,7 +29,7 @@ pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
         0 => Ok(SetTime::DontChange),
         1 => Ok(SetTime::ToServer),
         2 => Ok(SetTime::ToClient(nfs_time(src)?)),
-        _ => Err(Error::EnumDiscMismatch),
+        _ => Err(Error::IncorrectData),
     }
 }
 
@@ -44,7 +44,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
         0 => Ok(create::How::Unchecked(new_attr(src)?)),
         1 => Ok(create::How::Guarded(new_attr(src)?)),
         2 => Ok(create::How::Exclusive(Verifier(array::<{ VERIFY_LEN }>(src)?))),
-        _ => Err(Error::EnumDiscMismatch),
+        _ => Err(Error::IncorrectData),
     }
 }
 
@@ -139,6 +139,6 @@ mod tests {
     fn test_how_failure() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03];
 
-        assert!(matches!(super::how(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(super::how(&mut Cursor::new(DATA)), Err(Error::IncorrectData)));
     }
 }

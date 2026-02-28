@@ -15,7 +15,9 @@ use std::io::{ErrorKind, Read};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use crate::parser::Error::InvalidState;
 use crate::parser::{Error, Result};
+use crate::rpc;
 
 /// A buffered reader that wraps an async stream and provides synchronous reading
 /// with retry capability.
@@ -75,14 +77,21 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// connection is closed or an I/O error occurs.
     ///
     /// Returns `Ok(0)` if the write buffer is full and no more data can be read.
-    async fn fill_internal(&mut self) -> io::Result<usize> {
+    async fn fill_internal(&mut self) -> Result<usize> {
         if self.bufs[self.write].available_write() == 0 {
             return Ok(0);
         }
 
-        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
+        let bytes_read =
+            self.socket.read(self.bufs[self.write].write_slice()).await.map_err(|e| {
+                if e.kind() == ErrorKind::UnexpectedEof {
+                    Error::UnexpectedEof
+                } else {
+                    Error::Other
+                }
+            })?;
         if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
+            return Err(Error::ConnectionClosed);
         }
 
         self.bufs[self.write].extend(bytes_read);
@@ -111,20 +120,20 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     pub async fn parse_with_retry<T>(
         &mut self,
         caller: impl Fn(&mut Self) -> Result<T>,
-    ) -> Result<T> {
+    ) -> rpc::Result<T> {
         let retry_start_read = self.bufs[self.read].bytes_read();
         let retry_start_write = self.bufs[self.write].bytes_read();
         let retry_total = self.total_bytes;
         // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
         // definitely be enough to read what we are planning
         match caller(self) {
-            Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+            Err(Error::UnexpectedEof) => {
                 self.retry_mode = true;
                 // called whenever we need to read more data
                 match self.fill_internal().await {
                     Ok(0) => {
                         // it is impossible scenario?
-                        Err(Error::IO(err))
+                        Err(rpc::Error::ServerFailure(Error::UnexpectedEof))
                     }
                     Ok(_) => {
                         self.bufs[self.read].reset_read(retry_start_read);
@@ -132,7 +141,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                         self.total_bytes = retry_total;
                         Box::pin(self.parse_with_retry(caller)).await
                     }
-                    Err(e) => Err(Error::IO(e)),
+                    Err(e) => Err(rpc::Error::ServerFailure(e)),
                 }
             }
             Ok(val) => {
@@ -142,14 +151,12 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                     self.read = (self.read + 1) % 2;
                 }
                 if self.read == self.write {
-                    return Err(Error::IO(io::Error::other(
-                        "Cannot read and write to one buffer simultaneously",
-                    )));
+                    return Err(rpc::Error::ServerFailure(Error::InvalidState));
                 }
                 self.retry_mode = false;
                 Ok(val)
             }
-            Err(err) => Err(err),
+            Err(err) => Err(rpc::Error::ServerFailure(err)),
         }
     }
 
@@ -166,8 +173,14 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns the number of bytes read (equal to `dest.len()`), or an error
     /// if the connection is closed before the buffer can be filled.
-    pub(super) async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
+    pub(super) async fn read_from_async(&mut self, dest: &mut [u8]) -> Result<usize> {
+        self.socket.read_exact(dest).await.map_err(|e| {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                Error::UnexpectedEof
+            } else {
+                Error::Other
+            }
+        })?;
         self.total_bytes += dest.len();
         Ok(dest.len())
     }
@@ -193,11 +206,11 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns the number of bytes read, which may be less than `dest.len()`
     /// if not enough data is available in the internal buffers.
-    pub(super) fn read_from_inner(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+    pub(super) fn read_from_inner(&mut self, dest: &mut [u8]) -> Result<usize> {
         if dest.is_empty() {
             return Ok(0);
         }
-        self.read(dest)
+        self.read(dest).map_err(|_| Error::UnexpectedEof)
     }
 
     /// Returns the total number of bytes consumed from the stream since the last reset.
@@ -222,7 +235,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns `Ok(())` if exactly `n` bytes were discarded, or an error if
     /// the connection is closed before all bytes can be discarded.
-    pub(super) async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
+    pub(super) async fn discard_bytes(&mut self, n: usize) -> Result<()> {
         let from_inner = {
             let from_inner1 = min(self.bufs[self.read].available_read(), n);
             self.bufs[self.read].consume(from_inner1);
@@ -242,7 +255,10 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         let mut actual = 0;
 
         loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
+            let n = src
+                .read(self.bufs[self.write].write_slice())
+                .await
+                .map_err(|_| Error::UnexpectedEof)?;
             if n == 0 {
                 break;
             }
@@ -253,10 +269,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         // probably useless, since we have guarantees from Take
         if actual != from_socket {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "Discarded not valid amount of bytes",
-            ));
+            return Err(InvalidState);
         }
 
         Ok(())

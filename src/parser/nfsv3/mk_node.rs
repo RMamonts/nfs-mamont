@@ -19,7 +19,7 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
         5 => Ok(What::SymbolicLink),
         6 => Ok(What::Socket(new_attr(src)?)),
         7 => Ok(What::Fifo(new_attr(src)?)),
-        _ => Err(Error::EnumDiscMismatch),
+        _ => Err(Error::IncorrectData),
     }
 }
 

@@ -7,9 +7,9 @@ use std::str::FromStr;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
+use super::Result;
+use crate::parser::Error;
 use crate::vfs::MAX_PATH_LEN;
-
-use super::{Error, Result};
 
 /// The XDR alignment in bytes.
 #[allow(dead_code)]
@@ -20,25 +20,25 @@ pub const ALIGNMENT: usize = 4;
 pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
-    src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
+    src.read_exact(&mut buf[..padding]).map_err(|_| Error::UnexpectedEof)
 }
 
 /// Parses a `u8` (byte) from the `Read` source.
 #[allow(dead_code)]
 pub fn u8(src: &mut impl Read) -> Result<u8> {
-    src.read_u8().map_err(Error::IO)
+    src.read_u8().map_err(|_| Error::UnexpectedEof)
 }
 
 /// Parses a `u32` (unsigned 32-bit integer) from the `Read` source, in Big-Endian format.
 #[allow(dead_code)]
 pub fn u32(src: &mut impl Read) -> Result<u32> {
-    src.read_u32::<BigEndian>().map_err(Error::IO)
+    src.read_u32::<BigEndian>().map_err(|_| Error::UnexpectedEof)
 }
 
 /// Parses a `u64` (unsigned 64-bit integer) from the `Read` source, in Big-Endian format.
 #[allow(dead_code)]
 pub fn u64(src: &mut impl Read) -> Result<u64> {
-    src.read_u64::<BigEndian>().map_err(Error::IO)
+    src.read_u64::<BigEndian>().map_err(|_| Error::UnexpectedEof)
 }
 
 /// Parses an XDR boolean (encoded as a `u32`) from the `Read` source.
@@ -47,7 +47,7 @@ pub fn bool(src: &mut impl Read) -> Result<bool> {
     match u32(src)? {
         0 => Ok(false),
         1 => Ok(true),
-        _ => Err(Error::EnumDiscMismatch),
+        _ => Err(Error::IncorrectData),
     }
 }
 
@@ -67,7 +67,7 @@ pub fn option<T, S: Read>(
 #[allow(dead_code)]
 pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
     let mut buf = [0u8; N];
-    src.read_exact(&mut buf).map_err(Error::IO)?;
+    src.read_exact(&mut buf).map_err(|_| Error::UnexpectedEof)?;
     padding(src, N)?;
     Ok(buf)
 }
@@ -78,7 +78,7 @@ pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
 pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    src.read_exact(vec.as_mut_slice()).map_err(|_| Error::UnexpectedEof)?;
     padding(src, size)?;
     Ok(vec)
 }
@@ -88,10 +88,10 @@ pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
 pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     if size > max_size {
-        return Err(Error::MaxElemLimit);
+        return Err(Error::TooMany);
     }
     let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    src.read_exact(vec.as_mut_slice()).map_err(|_| Error::UnexpectedEof)?;
     padding(src, size)?;
     Ok(vec)
 }
@@ -100,29 +100,29 @@ pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
 #[allow(dead_code)]
 pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
     let vec = vec_max_size(src, max_size)?;
-    String::from_utf8(vec).map_err(Error::IncorrectString)
+    String::from_utf8(vec).map_err(|_| Error::IncorrectData)
 }
 
 /// Parses an XDR string from the `Read` source.
 #[allow(dead_code)]
 pub fn string(src: &mut impl Read) -> Result<String> {
     let vec = vector(src)?;
-    String::from_utf8(vec).map_err(Error::IncorrectString)
+    String::from_utf8(vec).map_err(|_| Error::IncorrectData)
 }
 
 /// Parses an XDR-encoded path from the `Read` source.
 pub fn path(src: &mut impl Read) -> Result<PathBuf> {
-    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxElemLimit)
+    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::TooMany)
 }
 
 /// Parses an XDR enum variant from the `Read` source.
 #[allow(dead_code)]
 pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
-    FromPrimitive::from_u32(u32(src)?).ok_or(Error::EnumDiscMismatch)
+    FromPrimitive::from_u32(u32(src)?).ok_or(Error::IncorrectData)
 }
 
 /// Parses a `u32` from the `Read` source and converts it to `usize`.
 #[allow(dead_code)]
 pub fn u32_as_usize(src: &mut impl Read) -> Result<usize> {
-    u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
+    u32(src)?.to_usize().ok_or(Error::IncorrectData)
 }

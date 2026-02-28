@@ -10,10 +10,7 @@ mod rpc;
 #[cfg(test)]
 mod tests;
 
-use std::future::Future;
-
 use crate::parser::mount::{MountArgs, UnmountArgs};
-use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -22,14 +19,15 @@ use crate::vfs::{
 /// Result of parsing operations with errors type [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Helper function to process nested errors.
-/// Function takes `future` to call. If result is `OK`, discards it, and returns `error`.
-/// If `future` returns error - returns new one, rather than `error`
-pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Result<T>>) -> Error {
-    match future.await {
-        Ok(_) => error,
-        Err(err) => err,
-    }
+#[derive(PartialEq, Debug)]
+pub enum Error {
+    UnexpectedEof,
+    ConnectionClosed,
+    IncorrectData,
+    InvalidState,
+    TooMany,
+    OutOfMemory,
+    Other,
 }
 
 /// Enumerates the different types of arguments that can be parsed.

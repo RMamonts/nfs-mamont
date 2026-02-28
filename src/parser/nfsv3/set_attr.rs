@@ -73,7 +73,7 @@ mod tests {
         ];
 
         let result = super::args(&mut Cursor::new(DATA));
-        assert!(matches!(result, Err(Error::IO(_))));
+        assert!(matches!(result, Err(Error::UnexpectedEof)));
     }
 
     #[test]
@@ -109,7 +109,7 @@ mod tests {
     fn test_set_time_failure() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03];
 
-        assert!(matches!(set_time(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(set_time(&mut Cursor::new(DATA)), Err(Error::IncorrectData)));
     }
 
     #[test]
