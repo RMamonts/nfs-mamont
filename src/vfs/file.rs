@@ -17,11 +17,6 @@ pub struct Handle(pub [u8; HANDLE_SIZE]);
 /// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
 /// It provides safe construction, accessors, and conversion back into the
 /// owned inner [`String`].
-///
-/// # Errors
-///
-/// Returns an [`io::Error`] if the provided string
-/// exceeds [`MAX_NAME_LEN`].
 #[derive(Debug, PartialEq, Clone)]
 pub struct Name(String);
 
@@ -63,11 +58,6 @@ impl Name {
 /// [`Path`] ensures that the provided path string does not exceed
 /// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
 /// conversion back into the owned [`PathBuf`].
-///
-/// # Errors
-///
-/// Returns an [`io::Error`] if the provided path
-/// exceeds [`MAX_PATH_LEN`].
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Path(PathBuf);
 
@@ -80,6 +70,9 @@ impl Path {
     pub fn new(path: String) -> io::Result<Self> {
         if path.len() > MAX_PATH_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        if path.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
         }
         Ok(Path(PathBuf::from(path)))
     }
@@ -180,4 +173,60 @@ pub struct WccAttr {
     pub mtime: Time,
     /// The time of last change to the attributes of the object before the operation.
     pub ctime: Time,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Name, MAX_PATH_LEN};
+    use crate::vfs::file::Path;
+    use crate::vfs::MAX_NAME_LEN;
+
+    #[test]
+    fn path_new_rejects_too_long() {
+        let input = "a".repeat(MAX_PATH_LEN + 1);
+        let result = Path::new(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn path_new_accepts_valid_length() {
+        let input = "/tmp/file".to_string();
+        let result = Path::new(input.clone()).unwrap();
+        let expected = std::path::Path::new(&input);
+        assert_eq!(result.as_path().as_os_str(), expected.as_os_str());
+    }
+
+    #[test]
+    fn path_empty() {
+        let input = "".to_string();
+        let path = Path::new(input);
+        assert!(path.is_err());
+    }
+
+    #[test]
+    fn name_new_accepts_valid_length() {
+        let input = "valid".to_string();
+        let name = Name::new(input.clone()).unwrap();
+        assert_eq!(name.as_str(), input);
+    }
+
+    #[test]
+    fn name_backslash_error() {
+        let input = "/folder/file.rs".to_string();
+        let name = Name::new(input);
+        assert!(name.is_err());
+    }
+    #[test]
+    fn name_new_rejects_too_long() {
+        let input = "a".repeat(MAX_NAME_LEN + 1);
+        let result = Name::new(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn name_empty() {
+        let input = "".to_string();
+        let name = Path::new(input);
+        assert!(name.is_err());
+    }
 }
