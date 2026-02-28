@@ -13,7 +13,7 @@
 //! supporting retry logic for parsing operations that may need additional data.
 
 use std::cmp::min;
-use std::io::{self, ErrorKind};
+use std::future::Future;
 use std::num::NonZeroUsize;
 
 use tokio::io::AsyncRead;
@@ -29,9 +29,9 @@ use crate::parser::nfsv3::{
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
-use crate::parser::{proc_nested_errors, Arguments, Error, Result};
-use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
-use crate::vfs;
+use crate::parser::Arguments;
+use crate::rpc::{AuthFlavor, AuthStat, Error, Result, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::{parser, vfs};
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
@@ -39,6 +39,16 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
 const DEFAULT_SIZE: usize = 2500;
+
+/// Helper function to process nested errors of [`Error`] type.
+/// Function takes `future` to call. If result is `OK`, discards it, and returns `error`.
+/// If `future` returns error - returns new one, rather than `error`
+pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Result<T>>) -> Error {
+    match future.await {
+        Ok(_) => error,
+        Err(err) => err,
+    }
+}
 
 /// Parser for RPC messages over async streams.
 ///
@@ -133,25 +143,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
 
-        if self.current_frame_size < std::mem::size_of::<u32>() {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Frame size must include XID",
-            )));
+        if self.current_frame_size < size_of::<u32>() {
+            return Err(Error::ServerFailure);
         }
         if self.current_frame_size > DEFAULT_SIZE {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Frame exceeds maximum supported length",
-            )));
+            return Err(Error::ServerFailure);
         }
 
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::Unsupported,
-                "Fragmented messages not supported",
-            )));
+            return Err(Error::ServerFailure);
         }
         let _xid = self.buffer.parse_with_retry(u32).await?;
         Ok(())
@@ -346,17 +347,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // CountBuffer keep count of bytes, read from it,
         // but first u32 of message - header that shouldn't be counted
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
-        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(
-            Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Consumed bytes are less than RMS header size",
-            )),
-        )?;
+        let bytes_consumed =
+            self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(Error::ServerFailure)?;
         if bytes_consumed != self.current_frame_size {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Unparsed data remaining in frame",
-            )));
+            return Err(Error::ServerFailure);
         }
 
         self.buffer.clean();
@@ -408,11 +402,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // https://datatracker.ietf.org/doc/html/rfc5531#section-11
         let remaining = (self.current_frame_size + RMS_HEADER_SIZE)
             .checked_sub(self.buffer.total_bytes())
-            .ok_or(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Consumed more bytes than RMS header suggests",
-            )))?;
-        self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
+            .ok_or(Error::ServerFailure)?;
+        self.buffer.discard_bytes(remaining).await.map_err(Error::IncorrectMessage)?;
         self.finalize_parsing()?;
         Ok(())
     }
@@ -448,9 +439,10 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
+    let mut slice = alloc
+        .allocate(non_zero_size)
+        .await
+        .ok_or(Error::IncorrectMessage(parser::Error::OutOfMemory))?;
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
@@ -462,7 +454,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     }
 
     // Discard any trailing padding bytes after the data.
-    buffer.discard_bytes(padding).await.map_err(Error::IO)?;
+    buffer.discard_bytes(padding).await.map_err(Error::IncorrectMessage)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
@@ -501,16 +493,14 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     for buf in slice.iter_mut() {
         let in_cur = min(left_skip, buf.len());
         if left_skip > 0 && in_cur == buf.len() {
-            left_skip = left_skip
-                .checked_sub(in_cur)
-                .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
+            left_skip = left_skip.checked_sub(in_cur).ok_or(Error::ServerFailure)?;
             continue;
         }
         let cur_write = min(left_skip + left_write, buf.len() - left_skip);
-        src.read_from_async(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
-        left_write = left_write
-            .checked_sub(cur_write)
-            .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
+        src.read_from_async(&mut buf[left_skip..left_skip + cur_write])
+            .await
+            .map_err(Error::IncorrectMessage)?;
+        left_write = left_write.checked_sub(cur_write).ok_or(Error::ServerFailure)?;
         left_skip = 0;
     }
     Ok(to_write - left_write)
@@ -547,17 +537,14 @@ pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
             let n = match src.read_from_inner(&mut buf[read_count..block_size]) {
                 Ok(0) => return Ok(real_size),
                 Ok(n) => n,
-                Err(e) => return Err(Error::IO(e)),
+                Err(e) => return Err(Error::IncorrectMessage(e)),
             };
             read_count += n;
             real_size += n;
         }
     }
     if real_size != left_size {
-        return Err(Error::IO(io::Error::new(
-            ErrorKind::InvalidInput,
-            "invalid amount of data read",
-        )));
+        return Err(Error::ServerFailure);
     }
     Ok(real_size)
 }

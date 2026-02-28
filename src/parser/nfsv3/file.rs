@@ -9,7 +9,7 @@ use crate::vfs::file;
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
     if u32_as_usize(src)? != file::HANDLE_SIZE {
-        return Err(Error::BadFileHandle);
+        return Err(Error::IncorrectData);
     }
     let array = array::<{ file::HANDLE_SIZE }>(src)?;
     Ok(file::Handle(array))
@@ -27,7 +27,7 @@ pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
         5 => Symlink,
         6 => Socket,
         7 => Fifo,
-        _ => return Err(Error::EnumDiscMismatch),
+        _ => return Err(Error::IncorrectData),
     })
 }
 
@@ -93,7 +93,7 @@ mod tests {
         const DATA: &[u8] = &[0x00, 0x00, 0x01];
         let mut src = Cursor::new(DATA);
 
-        assert!(matches!(device(&mut src), Err(Error::IO(_))));
+        assert!(matches!(device(&mut src), Err(Error::UnexpectedEof)));
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
     fn test_nfstime_error() {
         const DATA: &[u8] = &[0x00, 0x00, 0x01];
 
-        assert!(matches!(super::time(&mut Cursor::new(&DATA)), Err(Error::IO(_))));
+        assert!(matches!(super::time(&mut Cursor::new(&DATA)), Err(Error::UnexpectedEof)));
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
 
         let result = super::handle(&mut Cursor::new(DATA));
 
-        assert!(matches!(result, Err(Error::BadFileHandle)));
+        assert!(matches!(result, Err(Error::IncorrectData)));
     }
 
     #[test]
@@ -185,6 +185,6 @@ mod tests {
     fn test_type_failure() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x08];
 
-        assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+        assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::IncorrectData)));
     }
 }

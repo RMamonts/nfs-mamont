@@ -43,6 +43,6 @@ mod tests {
         ];
 
         let result = super::args(&mut Cursor::new(DATA));
-        assert!(matches!(result, Err(Error::IO(_))));
+        assert!(matches!(result, Err(Error::UnexpectedEof)));
     }
 }

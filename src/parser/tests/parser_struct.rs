@@ -2,7 +2,7 @@ use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
-use crate::parser::Error;
+use crate::rpc;
 
 /// Constants for mock RPC/NFS test input construction.
 const XID: u32 = 1;
@@ -245,7 +245,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 #[tokio::test]
@@ -263,7 +263,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 32);
 
     let result = parser.parse_message().await;
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(rpc::Error::ServerFailure)));
 }
 
 #[tokio::test]
@@ -287,7 +287,7 @@ async fn parse_rejects_any_non_call_message_type() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.parse_message().await;
-    assert!(matches!(result, Err(Error::MessageTypeMismatch)));
+    assert!(matches!(result, Err(rpc::Error::MessageTypeMismatch)));
 }
 
 /// Ensures parser rejects fragments with size below XID width.
@@ -303,7 +303,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 /// Ensures parser rejects fragments above configured maximum size.
@@ -319,7 +319,7 @@ async fn parse_rejects_too_large_frame() {
 
     let result = parser.parse_message().await;
     let error = result.err().unwrap();
-    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+    assert!(matches!(error, rpc::Error::ServerFailure));
 }
 
 /// Verifies parser handles WRITE with zero opaque payload.

@@ -1,7 +1,6 @@
-use std::io;
-use std::string::FromUtf8Error;
-
 use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::parser;
 
 pub const RPC_VERSION: u32 = 2;
 
@@ -80,23 +79,17 @@ pub struct VersionMismatch {
     pub high: u32,
 }
 
-/// Errors that can occur during parsing.
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Errors that can occur during processing of incoming request.
 #[derive(Debug)]
 pub enum Error {
-    /// The maximum element limit was exceeded.
-    MaxElemLimit,
-    /// An I/O error occurred.
-    IO(io::Error),
-    /// An enum discriminant mismatch occurred.
-    EnumDiscMismatch,
-    /// An incorrect string was encountered during UTF-8 conversion.
-    IncorrectString(FromUtf8Error),
-    /// Incorrect padding was found.
-    IncorrectPadding,
-    /// An impossible type cast was attempted.
-    ImpossibleTypeCast,
-    /// A bad file handle was encountered.
-    BadFileHandle,
+    /// Server inner state error occurred.
+    /// Represents `SYSTEM_ERR`.
+    ServerFailure,
+    /// Incorrect message received.
+    /// Represents `GARBAGE_ARGS`
+    IncorrectMessage(parser::Error),
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.
