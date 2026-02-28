@@ -12,34 +12,86 @@ pub const HANDLE_SIZE: usize = 8;
 #[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
+/// A validated wrapper around a `String` representing a name.
+///
+/// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
+/// It provides safe construction, accessors, and conversion back into the
+/// owned inner [`String`].
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if the provided string
+/// exceeds [`MAX_NAME_LEN`].
 #[derive(Debug, PartialEq, Clone)]
 pub struct Name(String);
 
 impl Name {
+    /// Creates a new [`Name`] after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `name.len() > MAX_NAME_LEN`.
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > MAX_NAME_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
+        if name.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
+        }
+        if name.contains('/') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "name contains path separator",
+            ));
+        }
         Ok(Name(name))
     }
 
+    /// Consumes the wrapper and returns the inner [`String`].
     pub fn into_inner(self) -> String {
         self.0
     }
+
+    /// Returns the inner name as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
+/// A validated wrapper around a [`PathBuf`].
+///
+/// [`Path`] ensures that the provided path string does not exceed
+/// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
+/// conversion back into the owned [`PathBuf`].
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] if the provided path
+/// exceeds [`MAX_PATH_LEN`].
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Path(PathBuf);
 
 impl Path {
-    pub fn new(name: String) -> io::Result<Self> {
-        if name.len() > MAX_PATH_LEN {
+    /// Creates a new [`Path`] from a string after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `path.len() > MAX_PATH_LEN`.
+    pub fn new(path: String) -> io::Result<Self> {
+        if path.len() > MAX_PATH_LEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
         }
-        Ok(Path(PathBuf::from(name)))
+        Ok(Path(PathBuf::from(path)))
     }
+
+    /// Consumes the wrapper and returns the inner [`PathBuf`].
     pub fn into_inner(self) -> PathBuf {
         self.0
+    }
+
+    /// Returns the inner path as a `&Path`.
+    pub fn as_path(&self) -> &std::path::Path {
+        self.0.as_path()
     }
 }
 
