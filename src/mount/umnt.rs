@@ -13,6 +13,11 @@ pub trait Promise {
     async fn keep();
 }
 
+/// Arguments for the Unmount operation, containing the path to be unmounted.
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
+pub struct UnmountArgs(pub file::Path);
+
 #[async_trait]
 pub trait Umnt {
     /// Removes the mount list entry for the directory that was

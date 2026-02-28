@@ -48,6 +48,11 @@ pub trait Promise {
     async fn keep(result: Result);
 }
 
+/// Arguments for the Mount operation, containing the path to be mounted.
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
+pub struct MountArgs(pub file::Path);
+
 #[async_trait]
 pub trait Mnt {
     /// Maps a pathname on the server to a NFS version 3 protocol file handle.
