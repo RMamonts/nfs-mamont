@@ -1,5 +1,4 @@
 //! Implements parsing for [`create::Args`] structure.
-
 use std::io::Read;
 
 use crate::parser::nfsv3::{file, MAX_FILENAME};

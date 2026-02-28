@@ -2,9 +2,10 @@
 
 use std::io::Read;
 
+use crate::parser::nfsv3::file::file_path;
 use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::nfsv3::{file, MAX_FILENAME};
-use crate::parser::primitive::{path, string_max_size};
+use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::vfs::symlink;
 
@@ -16,7 +17,7 @@ pub fn args(src: &mut impl Read) -> Result<symlink::Args> {
             name: string_max_size(src, MAX_FILENAME)?,
         },
         attr: new_attr(src)?,
-        path: path(src)?,
+        path: file_path(src)?,
     })
 }
 
@@ -55,7 +56,7 @@ mod tests {
                 mtime: set_attr::SetTime::DontChange,
             }
         ));
-        assert_eq!(result.path.as_os_str(), "/path/");
+        assert_eq!(result.path.into_inner().as_os_str(), "/path/");
     }
 
     #[test]
