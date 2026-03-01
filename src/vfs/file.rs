@@ -69,10 +69,10 @@ impl Path {
     /// Returns an error if `path.len() > MAX_PATH_LEN`.
     pub fn new(path: String) -> io::Result<Self> {
         if path.len() > MAX_PATH_LEN {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path too long"));
         }
         if path.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
         }
         Ok(Path(PathBuf::from(path)))
     }
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn name_empty() {
         let input = "".to_string();
-        let name = Path::new(input);
+        let name = Name::new(input);
         assert!(name.is_err());
     }
 }
