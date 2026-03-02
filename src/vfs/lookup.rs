@@ -34,7 +34,7 @@ pub struct Args {
     /// File handle for the directory to search.
     pub parent: file::Handle,
     /// File name to be searched for.
-    pub name: String,
+    pub name: file::Name,
 }
 
 #[async_trait]

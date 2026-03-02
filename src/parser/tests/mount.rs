@@ -1,7 +1,11 @@
 use std::io::Cursor;
 
-use crate::parser::mount::{mount, unmount, MountArgs, UnmountArgs};
-use crate::vfs::{FsPath, MAX_PATH_LEN};
+use crate::mount::mnt::MountArgs;
+use crate::mount::umnt::UnmountArgs;
+use crate::mount::MOUNT_DIRPATH_LEN;
+use crate::parser::mount::mnt::mount;
+use crate::parser::mount::umnt::unmount;
+use crate::vfs::file;
 
 #[test]
 fn test_mount_basic() {
@@ -9,7 +13,7 @@ fn test_mount_basic() {
         Cursor::new(vec![0x00, 0x00, 0x00, 0x06, b'/', b'm', b'n', b't', b'/', b'1', 0x00, 0x00]);
 
     let result = mount(&mut data).unwrap();
-    let expected = MountArgs(FsPath(String::from("/mnt/1")));
+    let expected = MountArgs(file::Path::new(String::from("/mnt/1")).unwrap());
     assert_eq!(result, expected);
 }
 
@@ -19,18 +23,18 @@ fn test_unmount_basic() {
         Cursor::new(vec![0x00, 0x00, 0x00, 0x08, b'/', b't', b'm', b'p', b'/', b't', b'e', b's']);
 
     let result = unmount(&mut data).unwrap();
-    let expected = UnmountArgs(FsPath(String::from("/tmp/tes")));
+    let expected = UnmountArgs(file::Path::new(String::from("/tmp/tes")).unwrap());
     assert_eq!(result, expected);
 }
 
 #[test]
 fn test_mount_exceeds_max_length() {
-    let oversized_path = vec![b'a'; MAX_PATH_LEN + 1];
+    let oversized_path = vec![b'a'; MOUNT_DIRPATH_LEN + 1];
     let mut data_vec = vec![
-        ((MAX_PATH_LEN + 1) as u32).to_be_bytes()[0],
-        ((MAX_PATH_LEN + 1) as u32).to_be_bytes()[1],
-        ((MAX_PATH_LEN + 1) as u32).to_be_bytes()[2],
-        ((MAX_PATH_LEN + 1) as u32).to_be_bytes()[3],
+        ((MOUNT_DIRPATH_LEN + 1) as u32).to_be_bytes()[0],
+        ((MOUNT_DIRPATH_LEN + 1) as u32).to_be_bytes()[1],
+        ((MOUNT_DIRPATH_LEN + 1) as u32).to_be_bytes()[2],
+        ((MOUNT_DIRPATH_LEN + 1) as u32).to_be_bytes()[3],
     ];
     data_vec.extend_from_slice(&oversized_path);
 

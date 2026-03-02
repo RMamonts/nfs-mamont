@@ -10,7 +10,7 @@ pub mod null;
 pub mod umnt;
 pub mod umntall;
 
-use std::path;
+use crate::vfs::file;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
@@ -28,9 +28,9 @@ pub type HostName = String;
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: String,
+    pub hostname: HostName,
     /// Server pathname of a directory.
-    pub directory: String,
+    pub directory: file::Path,
 }
 
 /// Export entry, containing list of clients, allowed to
@@ -38,7 +38,7 @@ pub struct MountEntry {
 #[derive(Clone)]
 pub struct ExportEntry {
     /// Exported directory.
-    pub directory: path::PathBuf,
+    pub directory: file::Path,
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
