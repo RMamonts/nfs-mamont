@@ -1,8 +1,9 @@
 //! Defines NFSv3 [`Read`] interface.
 
+use async_trait::async_trait;
+
 use crate::allocator::Slice;
 use crate::vfs;
-use async_trait::async_trait;
 
 use super::file;
 
@@ -11,7 +12,7 @@ pub struct Success {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
     /// The number of bytes of data returned by the read.
-    pub count: u64,
+    pub count: u32,
     /// If the read ended at the end-of-file.
     pub eof: bool,
     /// The counted data read from the file.
@@ -46,8 +47,8 @@ pub struct Args {
     pub offset: u64,
     /// The number of bytes of data that are to be read. If count is `0`, the
     /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal
-    /// to the value of the TODO(`rtmax`) field. If greater, the server may return only TODO(`rtmax`)
-    /// bytes, resulting in a short read.
+    /// to the value of the server's [`super::fs_info::Success::read_max`] field. If greater,
+    /// the server may return fewer bytes, resulting in a short read.
     pub count: u32,
 }
 

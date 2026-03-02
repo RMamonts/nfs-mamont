@@ -2,17 +2,45 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 
-// TODO
 /// Identifies a point in the directory.
-pub struct Cookie {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cookie(u64);
 
-// TODO
+impl Cookie {
+    pub fn new(val: u64) -> Self {
+        Self(val)
+    }
+
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    pub fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+}
+
 /// Verifies that point identified by [`Cookie`] is still valid.
-pub struct CookieVerifier {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CookieVerifier([u8; 8]);
+
+impl CookieVerifier {
+    pub fn new(val: [u8; 8]) -> Self {
+        Self(val)
+    }
+
+    pub fn raw(self) -> [u8; 8] {
+        self.0
+    }
+
+    pub fn is_zero(self) -> bool {
+        self.0 == [0; 8]
+    }
+}
 
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
@@ -81,8 +109,9 @@ pub trait ReadDir {
     /// If the server detects that the cookie is no longer valid, the server will reject the
     /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
     ///
-    /// The server may return fewer than `count`` bytes of XDR-encoded entries.
-    /// The `count` specified by the client in the request should be greater than or equal to
-    /// TODO(FSINFO dtpref).
+    /// The server may return fewer than [`Args::count`] bytes of XDR-encoded entries.
+    /// The [`Args::count`] specified by the client in the request should be greater than or equal to
+    /// the server's preferred [`ReadDir`] transfer size from
+    /// [`super::fs_info::Success::read_dir_pref`].
     async fn read_dir(&self, args: Args, promise: impl Promise);
 }

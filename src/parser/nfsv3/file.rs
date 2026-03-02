@@ -1,12 +1,20 @@
 //! Implements [`crate::vfs::file`] structures parsing
 
-use std::io::Read;
+use std::io::{self, Read};
 
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
+
+fn map_validation_error(err: io::Error) -> Error {
+    if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
+        Error::MaxElemLimit
+    } else {
+        Error::IO(err)
+    }
+}
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
@@ -69,12 +77,12 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::MaxELemLimit)
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(map_validation_error)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::MaxELemLimit)
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(map_validation_error)
 }
 
 #[cfg(test)]

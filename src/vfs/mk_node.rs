@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::{self};
+use crate::vfs;
 
 use super::file;
 use super::set_attr::NewAttr;
@@ -39,8 +39,7 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
 }
 
@@ -54,10 +53,8 @@ pub trait Promise {
 
 /// [`MkNode::mk_node`] arguments.
 pub struct Args {
-    /// The file handle for the directory in which the special file is to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created special file.
-    pub name: file::Name,
+    /// The location of the special file to be created
+    pub object: vfs::DirOpArgs,
     /// The type of the special file to be created. See [`What`].
     pub what: What,
 }
