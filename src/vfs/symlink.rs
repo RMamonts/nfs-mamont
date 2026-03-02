@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 
-use std::path::PathBuf;
-
 use crate::vfs;
 
 use super::file;
@@ -41,7 +39,7 @@ pub struct Args {
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
-    pub path: PathBuf,
+    pub path: file::Path,
 }
 
 #[async_trait]

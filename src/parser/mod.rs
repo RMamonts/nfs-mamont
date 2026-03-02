@@ -12,7 +12,8 @@ mod tests;
 
 use std::future::Future;
 
-use crate::parser::mount::{MountArgs, UnmountArgs};
+use crate::mount::mnt::MountArgs;
+use crate::mount::umnt::UnmountArgs;
 use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,

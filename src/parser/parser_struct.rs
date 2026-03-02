@@ -21,7 +21,8 @@ use tokio::io::AsyncRead;
 use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
-use crate::parser::mount::{mount, unmount};
+use crate::parser::mount::mnt::mount;
+use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
