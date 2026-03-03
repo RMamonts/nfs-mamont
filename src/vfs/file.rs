@@ -1,6 +1,8 @@
 use std::io;
 use std::path::PathBuf;
 
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 pub const HANDLE_SIZE: usize = 8;
@@ -89,7 +91,7 @@ impl Path {
 }
 
 /// Type of file.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -128,7 +130,7 @@ pub struct Attr {
     /// or [`Type::CharacterDevice`].
     ///
     /// See [`Type`].
-    pub device: Option<Device>,
+    pub device: Device,
     /// The file system identifier for the file system.
     pub fs_id: u64,
     /// The number which uniquely identifies the file within its file system.
@@ -149,7 +151,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -165,7 +168,8 @@ pub struct Device {
 }
 
 /// Weak cache consistency attributes.
-#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
 pub struct WccAttr {
     /// The file size in bytes of the object before the operation.
     pub size: u64,
