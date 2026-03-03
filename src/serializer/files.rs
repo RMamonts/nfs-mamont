@@ -1,26 +1,24 @@
 //! Shared XDR serializers for common NFSv3 data structures.
 
 use std::io;
-use std::io::{ErrorKind, Result, Write};
+use std::io::{ErrorKind, Write};
 
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::{file, MAX_PATH_LEN};
 
-const MAX_FILEHANDLE: usize = 8;
-
 /// Serializes [`vfs::file::Time`] into XDR `nfstime3`.
-pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {
+pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> io::Result<()> {
     u32(dest, arg.seconds).and_then(|_| u32(dest, arg.nanos))
 }
 
 /// Serializes [`vfs::file::Handle`] into XDR `nfs_fh3`.
-pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> Result<()> {
-    usize_as_u32(dest, MAX_FILEHANDLE).and_then(|_| array::<MAX_FILEHANDLE>(dest, fh.0))
+pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
+    usize_as_u32(dest, file::HANDLE_SIZE).and_then(|_| array(dest, fh.0))
 }
 
 /// Serializes [`vfs::Error`] as an XDR enum discriminant (NFS status).
-pub fn error(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {
+pub fn error(dest: &mut impl Write, stat: vfs::Error) -> io::Result<()> {
     variant(dest, stat)
 }
 
@@ -84,141 +82,134 @@ mod tests {
 
     use super::*;
     use crate::vfs::file;
-    use crate::vfs::file::Time;
-
-    #[test]
-    fn test_parse_device_success() {
-        #[rustfmt::skip]
-        const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02
-        ];
-
-        let result = device(&mut Cursor::new(DATA)).unwrap();
-
-        assert_eq!(result.major, 1);
-        assert_eq!(result.minor, 2);
-    }
-
-    #[test]
-    fn test_device_error() {
-        #[rustfmt::skip]
-        const DATA: &[u8] = &[0x00, 0x00, 0x01];
-        let mut src = Cursor::new(DATA);
-
-        assert!(matches!(device(&mut src), Err(Error::IO(_))));
-    }
 
     #[test]
     fn test_nfstime_success() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02
+            0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x02,
+            0x01
         ];
 
-        let result = super::time(&mut Cursor::new(DATA)).unwrap();
+        let mut buffer = Cursor::new([1u8; 9]);
 
-        assert_eq!(result.seconds, 1);
-        assert_eq!(result.nanos, 2);
-    }
+        let time = file::Time { seconds: 1, nanos: 2 };
 
-    #[test]
-    fn test_nfstime_error() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x01];
+        nfs_time(&mut buffer, time).unwrap();
 
-        assert!(matches!(super::time(&mut Cursor::new(&DATA)), Err(Error::IO(_))));
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
     fn test_nfs_fh3_success() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x00,
-            0x00, 0x00, 0x00, 0x00
+            0x00, 0x00, 0x00, 0x08,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            0x01
         ];
 
-        let result = super::handle(&mut Cursor::new(DATA)).unwrap();
+        let mut buffer = Cursor::new([1u8; 13]);
 
-        assert_eq!(result.0, [0x01, 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    }
+        let handle = file::Handle([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
 
-    #[test]
-    fn test_nfs_fh3_badfh() {
-        #[rustfmt::skip]
-        const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00,
-            0x00, 0x00, 0x00, 0x00
-        ];
+        file_handle(&mut buffer, handle).unwrap();
 
-        let result = super::handle(&mut Cursor::new(DATA));
-
-        assert!(matches!(result, Err(Error::BadFileHandle)));
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
     fn test_type_regular() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x01];
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x01];
 
-        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
-        assert!(matches!(result, file::Type::Regular));
+        let mut buffer = Cursor::new([1u8; 5]);
+
+        file_type(&mut buffer, file::Type::Regular).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
     fn test_type_dir() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02];
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, 0x01];
 
-        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
-        assert!(matches!(result, file::Type::Directory));
-    }
+        let mut buffer = Cursor::new([1u8; 5]);
 
-    #[test]
-    fn test_type_block() {
-        #[rustfmt::skip]
-        const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x02,
-        ];
-
-        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
-        assert!(matches!(result, file::Type::BlockDevice));
+        file_type(&mut buffer, file::Type::Directory).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
     fn test_type_symlink() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x05];
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x05, 0x01];
 
-        let result = super::r#type(&mut Cursor::new(DATA)).unwrap();
-        assert!(matches!(result, file::Type::Symlink));
+        let mut buffer = Cursor::new([1u8; 5]);
+
+        file_type(&mut buffer, file::Type::Symlink).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
-    fn test_type_failure() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x08];
+    fn test_file_path_with_padding() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x05,
+            b'd', b'i', b'r', b'/',
+            b'0', 0x00, 0x00, 0x00,
+            0x01
+        ];
 
-        assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+        let mut buffer = Cursor::new([1u8; 13]);
+        let file = file::Path::new("dir/0".to_string()).unwrap();
+        file_path(&mut buffer, file).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
-    fn test_file_path_success() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
-        let file = file::Path::new("file".to_string()).unwrap();
-        assert_eq!(super::file_path(&mut Cursor::new(DATA)).unwrap(), file);
+    fn test_file_path_without_padding() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x04,
+            b'/', b'd', b'/', b'e',
+            0x01
+        ];
+
+        let mut buffer = Cursor::new([1u8; 9]);
+        let file = file::Path::new("/d/e".to_string()).unwrap();
+        file_path(&mut buffer, file).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
-    fn test_file_path_padding_error() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
+    fn test_file_name_without_padding() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x04,
+            b'f', b'i', b'l', b'e',
+            0x01
+        ];
 
-        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IncorrectPadding)));
-    }
-
-    #[test]
-    fn test_file_name_success() {
-        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
         let file = file::Name::new("file".to_string()).unwrap();
-        assert_eq!(super::file_name(&mut Cursor::new(DATA)).unwrap(), file);
+
+        let mut buffer = Cursor::new([1u8; 9]);
+        file_name(&mut buffer, file).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
+    }
+
+    #[test]
+    fn test_file_name_with_padding() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x05,
+            b'f', b'i', b'l', b'e',
+            b'0', 0x00, 0x00, 0x00,
+            0x01
+        ];
+
+        let mut buffer = Cursor::new([1u8; 13]);
+        let file = file::Name::new("file0".to_string()).unwrap();
+        file_name(&mut buffer, file).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 
     #[test]
@@ -230,12 +221,14 @@ mod tests {
             0x00, 0x00, 0x00, 0xA0, 0x00, 0x00, 0x05, 0x23,
         ];
 
-        let expected = file::WccAttr {
+        let attr = file::WccAttr {
             size: 82,
-            mtime: Time { seconds: 15, nanos: 257 },
-            ctime: Time { seconds: 160, nanos: 1315 },
+            mtime: file::Time { seconds: 15, nanos: 257 },
+            ctime: file::Time { seconds: 160, nanos: 1315 },
         };
 
-        assert_eq!(super::wcc_attr(&mut Cursor::new(DATA)).unwrap(), expected);
+        let mut buffer = Cursor::new([1u8; 24]);
+        wcc_attr(&mut buffer, attr).unwrap();
+        assert_eq!(buffer.into_inner(), DATA);
     }
 }
