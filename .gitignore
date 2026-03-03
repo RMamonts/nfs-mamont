@@ -14,5 +14,3 @@
 *secrets*.csv
 .env.local
 .env.production
-
-fuzz/target
