@@ -23,7 +23,6 @@ pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
 }
 
 /// Parses a [`SetTime`] enum from the provided `Read` source.
-#[allow(dead_code)]
 pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
     match u32(src)? {
         0 => Ok(SetTime::DontChange),

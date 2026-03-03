@@ -11,7 +11,6 @@ pub const HANDLE_SIZE: usize = 8;
 ///
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct Handle(pub [u8; HANDLE_SIZE]);
 
 /// A validated wrapper around a `String` representing a name.
