@@ -19,7 +19,7 @@ pub fn result_ok(dest: &mut impl Write, arg: fs_info::Success) -> io::Result<()>
     u32(dest, arg.read_dir_pref)?;
     u64(dest, arg.max_file_size)?;
     nfs_time(dest, arg.time_delta)?;
-    u32(dest, arg.properties.0)
+    u32(dest, arg.properties.bits())
 }
 
 /// Serializes [`fs_info::Fail`] (FSINFO3resfail body) into XDR.
