@@ -7,6 +7,8 @@ use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
+use crate::nfsv3::NFS3_FHSIZE;
+
 
 fn map_validation_error(err: io::Error) -> Error {
     if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
@@ -18,10 +20,10 @@ fn map_validation_error(err: io::Error) -> Error {
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
-    if u32_as_usize(src)? != file::HANDLE_SIZE {
+    if u32_as_usize(src)? != NFS3_FHSIZE {
         return Err(Error::BadFileHandle);
     }
-    let array = array::<{ file::HANDLE_SIZE }>(src)?;
+    let array = array::<{ NFS3_FHSIZE }>(src)?;
     Ok(file::Handle(array))
 }
 

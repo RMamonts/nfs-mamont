@@ -5,6 +5,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
 use crate::vfs;
+use crate::nfsv3::NFS3_WRITEVERFSIZE;
 
 use super::file;
 
@@ -25,10 +26,9 @@ pub enum StableHow {
     FileSync = 2,
 }
 
-pub const VERIFIER_LEN: usize = 8;
 
-/// Opaque byte array of [`VERIFIER_LEN`] used in [`Success`]
-pub struct Verifier(pub [u8; VERIFIER_LEN]);
+/// Opaque byte array of [`NFS3_WRITEVERFSIZE`] used in [`Success`]
+pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);
 
 /// Success result.
 pub struct Success {

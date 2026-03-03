@@ -7,17 +7,17 @@ pub(crate) const NFS_PROGRAM: u32 = 100003;
 #[allow(dead_code)]
 pub(crate) const NFS_VERSION: u32 = 3;
 #[allow(dead_code)]
-const NFS3_FHSIZE: u32 = 8;
+pub const NFS3_FHSIZE: usize = 8;
 #[allow(dead_code)]
-const NFS3_COOKIEVERFSIZE: u32 = 8;
+pub const NFS3_COOKIEVERFSIZE: usize = 8;
 #[allow(dead_code)]
-pub const NFS3_CREATEVERFSIZE: u32 = 8;
+pub const NFS3_CREATEVERFSIZE: usize = 8;
 #[allow(dead_code)]
-const NFS3_WRITEVERFSIZE: u32 = 8;
+pub const NFS3_WRITEVERFSIZE: usize = 8;
 #[allow(dead_code)]
-const MAX_FILENAME_SIZE: u32 = 255;
+pub const MAX_FILENAME_SIZE: usize = 255;
 #[allow(dead_code)]
-const MAX_PATH_SIZE: u32 = 255;
+pub const MAX_PATH_SIZE: usize = 255;
 
 #[allow(dead_code)]
 #[repr(u32)]

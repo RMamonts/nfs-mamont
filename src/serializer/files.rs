@@ -6,8 +6,7 @@ use std::io::{ErrorKind, Result, Write};
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::{file, MAX_PATH_LEN};
-
-const MAX_FILEHANDLE: usize = 8;
+use crate::nfsv3::NFS3_FHSIZE;
 
 /// Serializes `vfs::file::Time` into XDR `nfstime3`.
 pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {
@@ -16,7 +15,7 @@ pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {
 
 /// Serializes `vfs::file::Handle` into XDR `nfs_fh3`.
 pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> Result<()> {
-    usize_as_u32(dest, MAX_FILEHANDLE).and_then(|_| array::<MAX_FILEHANDLE>(dest, fh.0))
+    usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array::<NFS3_FHSIZE>(dest, fh.0))
 }
 
 /// Serializes `vfs::Error` as an XDR enum discriminant (NFS status).
