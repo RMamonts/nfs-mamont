@@ -44,8 +44,15 @@ pub struct ExportEntry {
     pub names: Vec<HostName>,
 }
 
-/// MOUNT v3 procedures trait.
-pub trait Mount:
+pub trait MountOps:
     null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
 {
 }
+
+pub trait MountPromises:
+    null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
+{
+}
+
+/// MOUNT v3 procedures trait.
+pub trait Mount: MountOps + MountPromises {}
