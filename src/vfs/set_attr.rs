@@ -16,7 +16,7 @@ pub struct Guard {
 
 /// Defines callback to pass [`SetAttr::set_attr`] result into.
 #[async_trait]
-pub trait Promise: Send {
+pub trait Promise {
     async fn keep(promise: Result);
 }
 

@@ -149,8 +149,7 @@ pub struct DirOpArgs {
     pub name: String,
 }
 
-/// NFS v3 procedures trait.
-pub trait Vfs:
+pub trait VfsOps:
     get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
@@ -174,3 +173,31 @@ pub trait Vfs:
     + commit::Commit
 {
 }
+
+pub trait VfsPromises:
+    get_attr::Promise
+    + set_attr::Promise
+    + lookup::Promise
+    + access::Promise
+    + read_link::Promise
+    + read::Promise
+    + write::Promise
+    + create::Promise
+    + mk_dir::Promise
+    + symlink::Promise
+    + mk_node::Promise
+    + remove::Promise
+    + rm_dir::Promise
+    + rename::Promise
+    + link::Promise
+    + read_dir::Promise
+    + read_dir_plus::Promise
+    + fs_stat::Promise
+    + fs_info::Promise
+    + path_conf::Promise
+    + commit::Promise
+{
+}
+
+/// NFS v3 procedures trait.
+pub trait Vfs: VfsOps + VfsPromises {}

@@ -8,7 +8,7 @@ use super::file;
 
 /// Defines callback to pass [`GetAttr::get_attr`] result into.
 #[async_trait]
-pub trait Promise: Send {
+pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
