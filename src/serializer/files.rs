@@ -3,10 +3,10 @@
 use std::io;
 use std::io::{ErrorKind, Result, Write};
 
+use crate::nfsv3::NFS3_FHSIZE;
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::{file, MAX_PATH_LEN};
-use crate::nfsv3::NFS3_FHSIZE;
 
 /// Serializes `vfs::file::Time` into XDR `nfstime3`.
 pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> Result<()> {

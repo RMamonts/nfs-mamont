@@ -2,11 +2,10 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
 use crate::nfsv3::NFS3_CREATEVERFSIZE;
+use crate::vfs;
 
 use super::file;
-
 
 /// Opaque byte array of `NFS3_CREATEVERFSIZE` size used in `How`
 pub struct Verifier(pub [u8; NFS3_CREATEVERFSIZE]);

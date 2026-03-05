@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
-use crate::vfs;
 use crate::nfsv3::NFS3_WRITEVERFSIZE;
+use crate::vfs;
 
 use super::file;
 
@@ -25,7 +25,6 @@ pub enum StableHow {
     DataSync = 1,
     FileSync = 2,
 }
-
 
 /// Opaque byte array of [`NFS3_WRITEVERFSIZE`] used in [`Success`]
 pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);

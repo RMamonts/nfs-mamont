@@ -52,9 +52,9 @@ type filename3 = String;
 type nfspath3 = String;
 type fileid3 = u64;
 type cookie3 = u64;
-type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE as usize];
-type createverf3 = [u8; NFS3_CREATEVERFSIZE as usize];
-type writeverf3 = [u8; NFS3_WRITEVERFSIZE as usize];
+type cookieverf3 = [u8; NFS3_COOKIEVERFSIZE];
+type createverf3 = [u8; NFS3_CREATEVERFSIZE];
+type writeverf3 = [u8; NFS3_WRITEVERFSIZE];
 type uid3 = u32;
 type gid3 = u32;
 type size3 = u64;
@@ -179,7 +179,7 @@ pub struct specdata3 {
 
 #[allow(dead_code)]
 pub struct nfs_fh3 {
-    pub data: [u8; NFS3_FHSIZE as usize],
+    pub data: [u8; NFS3_FHSIZE],
 }
 
 #[allow(dead_code)]

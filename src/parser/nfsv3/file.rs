@@ -2,13 +2,12 @@
 
 use std::io::{self, Read};
 
+use crate::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
-use crate::nfsv3::NFS3_FHSIZE;
-
 
 fn map_validation_error(err: io::Error) -> Error {
     if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
