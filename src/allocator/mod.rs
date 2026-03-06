@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 
 use tokio::sync::mpsc;
 
-pub use slice::Slice;
+pub use slice::{Reader, Slice, Writer};
 
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
