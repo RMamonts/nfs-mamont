@@ -20,7 +20,11 @@ use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
+use crate::nfsv3::{
+    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
+    NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
+    SETATTR, SYMLINK, WRITE,
+};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -244,34 +248,46 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         match head.program {
             NFS_PROGRAM => match head.version {
                 NFS_VERSION => Ok(Box::new(match head.procedure {
-                    0 => Arguments::Null,
-                    1 => Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?),
-                    2 => Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?),
-                    3 => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
-                    4 => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
-                    5 => Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?),
-                    6 => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
+                    NULL => Arguments::Null,
+                    GETATTR => {
+                        Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
+                    }
+                    SETATTR => {
+                        Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
+                    }
+                    LOOKUP => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
+                    ACCESS => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
+                    READLINK => {
+                        Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
+                    }
+                    READ => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
 
-                    7 => Arguments::Write(
+                    WRITE => Arguments::Write(
                         adapter_for_write(&mut self.allocator, &mut self.buffer).await?,
                     ),
 
-                    8 => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
-                    9 => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
-                    10 => Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?),
-                    11 => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
-                    12 => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
-                    13 => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
-                    14 => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
-                    15 => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
-                    16 => Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?),
-                    17 => Arguments::ReadDirPlus(
+                    CREATE => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
+                    MKDIR => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
+                    SYMLINK => {
+                        Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
+                    }
+                    MKNOD => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
+                    REMOVE => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
+                    RMDIR => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
+                    RENAME => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
+                    LINK => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
+                    READDIR => {
+                        Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
+                    }
+                    READDIRPLUS => Arguments::ReadDirPlus(
                         self.buffer.parse_with_retry(read_dir_plus::args).await?,
                     ),
-                    18 => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
-                    19 => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
-                    20 => Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?),
-                    21 => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
+                    FSSTAT => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
+                    FSINFO => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
+                    PATHCONF => {
+                        Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
+                    }
+                    COMMIT => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
                     _ => return Err(Error::ProcedureMismatch),
                 })),
                 _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
