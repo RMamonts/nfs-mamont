@@ -3,6 +3,7 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
+use crate::nfsv3::NFS3_FHSIZE;
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::{file, MAX_PATH_LEN};
@@ -14,7 +15,7 @@ pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> io::Result<()> {
 
 /// Serializes [`vfs::file::Handle`] into XDR `nfs_fh3`.
 pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
-    usize_as_u32(dest, file::HANDLE_SIZE).and_then(|_| array(dest, fh.0))
+    usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array(dest, fh.0))
 }
 
 /// Serializes [`vfs::Error`] as an XDR enum discriminant (NFS status).
