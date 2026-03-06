@@ -12,6 +12,19 @@ pub trait Promise {
     async fn keep(attr: vfs::Result<file::Attr>);
 }
 
+pub type Result = std::result::Result<Success, Fail>;
+
+/// Success result.
+pub struct Success {
+    pub object: file::Attr,
+}
+
+/// Fail result.
+pub struct Fail {
+    /// Error on failure.
+    pub error: vfs::Error,
+}
+
 /// [`GetAttr::get_attr`] aguments.
 pub struct Args {
     /// File handle of an object whose attributes are to be retrieved.

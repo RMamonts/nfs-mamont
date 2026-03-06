@@ -1,6 +1,5 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-
 #![allow(dead_code)]
 
 pub mod dump;
@@ -44,8 +43,15 @@ pub struct ExportEntry {
     pub names: Vec<HostName>,
 }
 
-/// MOUNT v3 procedures trait.
-pub trait Mount:
+pub trait MountOps:
     null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
 {
 }
+
+pub trait MountPromises:
+    null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
+{
+}
+
+/// MOUNT v3 procedures trait.
+pub trait Mount: MountOps + MountPromises {}

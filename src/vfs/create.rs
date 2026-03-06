@@ -2,14 +2,13 @@
 
 use async_trait::async_trait;
 
+use crate::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::vfs;
 
 use super::file;
 
-pub const VERIFY_LEN: usize = 8;
-
-/// Opaque byte array of `VERIFY_LEN` size used in `How`
-pub struct Verifier(pub [u8; VERIFY_LEN]);
+/// Opaque byte array of `NFS3_CREATEVERFSIZE` size used in `How`
+pub struct Verifier(pub [u8; NFS3_CREATEVERFSIZE]);
 
 /// Describes how the server is to handle the file creation.
 pub enum How {
@@ -50,7 +49,7 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Create::create`] result into.
 #[async_trait]
