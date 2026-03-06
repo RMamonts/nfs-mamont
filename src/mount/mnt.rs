@@ -4,10 +4,12 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
 use async_trait::async_trait;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
+#[derive(ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
 pub enum MntError {
     /// Not owner
