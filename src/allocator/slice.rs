@@ -1,5 +1,7 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+use std::io;
+
 /// Represents bounded by custome range list of buffers.
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
@@ -40,6 +42,26 @@ impl Slice {
         Self { buffers, range, sender }
     }
 
+    /// Returns length of visible byte range.
+    pub fn len(&self) -> usize {
+        self.range.end - self.range.start
+    }
+
+    /// Returns `true` if visible byte range is empty.
+    pub fn is_empty(&self) -> bool {
+        self.range.start == self.range.end
+    }
+
+    /// Returns stateful reader over visible byte range.
+    pub fn reader(&self) -> Reader<'_> {
+        Reader::new(self)
+    }
+
+    /// Returns stateful writer over visible byte range.
+    pub fn writer(&mut self) -> Writer<'_> {
+        Writer::new(self)
+    }
+
     pub fn iter_mut(&mut self) -> IterMut<'_> {
         self.into_iter()
     }
@@ -62,6 +84,112 @@ impl Slice {
 impl Drop for Slice {
     fn drop(&mut self) {
         self.deallocate();
+    }
+}
+
+/// Stateful reader over visible [`Slice`] byte range.
+pub struct Reader<'a> {
+    iter: Iter<'a>,
+    current: Option<&'a [u8]>,
+    remaining: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn new(slice: &'a Slice) -> Self {
+        Self { iter: slice.iter(), current: None, remaining: slice.len() }
+    }
+
+    /// Returns number of bytes left to read.
+    pub fn remaining(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl io::Read for Reader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let mut written = 0;
+
+        while written < buf.len() {
+            if self.current.is_none() {
+                self.current = self.iter.next();
+            }
+
+            let Some(current) = self.current.take() else {
+                break;
+            };
+
+            let count = current.len().min(buf.len() - written);
+            buf[written..written + count].copy_from_slice(&current[..count]);
+
+            if count < current.len() {
+                self.current = Some(&current[count..]);
+            }
+
+            written += count;
+            self.remaining -= count;
+        }
+
+        Ok(written)
+    }
+}
+
+/// Stateful writer over visible [`Slice`] byte range.
+pub struct Writer<'a> {
+    iter: IterMut<'a>,
+    current: Option<&'a mut [u8]>,
+    remaining: usize,
+}
+
+impl<'a> Writer<'a> {
+    fn new(slice: &'a mut Slice) -> Self {
+        let remaining = slice.len();
+        Self { iter: slice.iter_mut(), current: None, remaining }
+    }
+
+    /// Returns number of bytes left to write.
+    pub fn remaining(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl io::Write for Writer<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let mut read = 0;
+
+        while read < buf.len() {
+            if self.current.is_none() {
+                self.current = self.iter.next();
+            }
+
+            let Some(current) = self.current.take() else {
+                break;
+            };
+
+            let count = current.len().min(buf.len() - read);
+            let (to_write, rest) = current.split_at_mut(count);
+            to_write.copy_from_slice(&buf[read..read + count]);
+
+            if !rest.is_empty() {
+                self.current = Some(rest);
+            }
+
+            read += count;
+            self.remaining -= count;
+        }
+
+        Ok(read)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
