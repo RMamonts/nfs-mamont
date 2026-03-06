@@ -31,7 +31,3 @@ pub const NFS3_COOKIEVERFSIZE: usize = 8;
 pub const NFS3_CREATEVERFSIZE: usize = 8;
 
 pub const NFS3_WRITEVERFSIZE: usize = 8;
-
-pub const MAX_FILENAME_SIZE: usize = 255;
-
-pub const MAX_PATH_SIZE: usize = 255;

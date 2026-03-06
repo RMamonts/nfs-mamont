@@ -134,14 +134,12 @@ fn assert_fsstat_result(result: &Arguments, expected_root: [u8; 8]) {
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
 #[tokio::test]
 async fn parse_two_correct() {
-    let first =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT as u32, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT as u32, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
@@ -156,13 +154,12 @@ async fn parse_two_correct() {
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
 #[tokio::test]
 async fn parse_after_error() {
-    let first = nfs_call_frame(RpcBody::Call as u32, 3, AUTH_NONE, FSSTAT as u32, |buf| {
+    let first = nfs_call_frame(RpcBody::Call as u32, 3, AUTH_NONE, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
     });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT as u32, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
@@ -184,13 +181,12 @@ async fn parse_write() {
         0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
         0x01, 0x02,
     ];
-    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE as u32, |buf| {
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE, |buf| {
         buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
     });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE as u32, |buf| {
-            buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
-        });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
@@ -212,13 +208,12 @@ async fn parse_write_after_error() {
         0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
         0x01, 0x02,
     ];
-    let first = nfs_call_frame(RpcBody::Call as u32, 5, AUTH_NONE, WRITE as u32, |buf| {
+    let first = nfs_call_frame(RpcBody::Call as u32, 5, AUTH_NONE, WRITE, |buf| {
         buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
     });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE as u32, |buf| {
-            buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
-        });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
