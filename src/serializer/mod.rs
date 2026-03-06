@@ -13,6 +13,9 @@
 #![allow(dead_code)]
 
 mod files;
+mod mount;
+mod nfs;
+pub mod rpc;
 #[cfg(test)]
 mod tests;
 

@@ -1,0 +1,19 @@
+//! MOUNT protocol (mount) XDR serializers.
+//!
+//! This module serializes mount reply bodies and helper structures (exports,
+//! mount lists, groups) using the XDR rules shared by NFS/RPC.
+
+use std::io;
+use std::io::Write;
+
+use crate::mount::mnt::MntError;
+use crate::serializer::variant;
+
+pub mod dump;
+pub mod export;
+pub mod mnt;
+
+/// Serializes [`MntError`] as the XDR `mountstat3` enum discriminant.
+pub fn mount_stat(dest: &mut impl Write, status: MntError) -> io::Result<()> {
+    variant::<MntError>(dest, status)
+}

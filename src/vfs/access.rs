@@ -2,9 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
-
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -14,11 +12,12 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    /// Error on failure.
+    pub error: Error,
     pub object_attr: Option<file::Attr>,
-    pub error: vfs::Error,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Access::access`] result into.
 #[async_trait]
