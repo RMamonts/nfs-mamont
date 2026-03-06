@@ -2,6 +2,7 @@
 
 use std::io::{self, Read};
 
+use crate::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
@@ -18,10 +19,10 @@ fn map_validation_error(err: io::Error) -> Error {
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
-    if u32_as_usize(src)? != file::HANDLE_SIZE {
+    if u32_as_usize(src)? != NFS3_FHSIZE {
         return Err(Error::BadFileHandle);
     }
-    let array = array::<{ file::HANDLE_SIZE }>(src)?;
+    let array = array::<{ NFS3_FHSIZE }>(src)?;
     Ok(file::Handle(array))
 }
 

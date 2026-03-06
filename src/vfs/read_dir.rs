@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 
+use crate::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::vfs;
 
 use super::file;
@@ -26,19 +27,19 @@ impl Cookie {
 
 /// Verifies that point identified by [`Cookie`] is still valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CookieVerifier([u8; 8]);
+pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
-    pub fn new(val: [u8; 8]) -> Self {
+    pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
         Self(val)
     }
 
-    pub fn raw(self) -> [u8; 8] {
+    pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
         self.0
     }
 
     pub fn is_zero(self) -> bool {
-        self.0 == [0; 8]
+        self.0 == [0; NFS3_COOKIEVERFSIZE]
     }
 }
 

@@ -5,14 +5,13 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
-pub const HANDLE_SIZE: usize = 8;
+use crate::nfsv3::NFS3_FHSIZE;
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone, PartialEq)]
-#[allow(dead_code)]
-pub struct Handle(pub [u8; HANDLE_SIZE]);
+pub struct Handle(pub [u8; NFS3_FHSIZE]);
 
 /// A validated wrapper around a `String` representing a name.
 ///
