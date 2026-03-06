@@ -51,12 +51,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Create::create`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Create::create`] arguments.
 pub struct Args {
     /// The location of the file to be created.
@@ -68,5 +62,5 @@ pub struct Args {
 #[async_trait]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, args: Args, promise: impl Promise);
+    async fn create(&self, args: Args) -> Result;
 }

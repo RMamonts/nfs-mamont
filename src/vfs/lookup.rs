@@ -23,12 +23,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Lookup::lookup`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Lookup::lookup`] arguments.
 pub struct Args {
     /// File handle for the directory to search.
@@ -43,5 +37,5 @@ pub trait Lookup {
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, args: Args, promise: impl Promise);
+    async fn lookup(&self, args: Args) -> Result;
 }

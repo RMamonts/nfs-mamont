@@ -47,12 +47,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`ReadDirPlus::read_dir_plus`] arguments
 pub struct Args {
     /// The file handle for the directory to be read.
@@ -77,5 +71,5 @@ pub struct Args {
 pub trait ReadDirPlus {
     /// Retrieves a variable number of entries from a file system directory and returns complete
     /// information about each.
-    async fn read_dir_plus(&self, args: Args, promise: impl Promise);
+    async fn read_dir_plus(&self, args: Args) -> Result;
 }

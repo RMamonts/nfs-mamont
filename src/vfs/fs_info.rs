@@ -75,12 +75,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`FsInfo::fs_info`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`FsInfo::fs_info`] arguments.
 pub struct Args {
     /// A file handle identifying a mount point in the file system.
@@ -90,5 +84,5 @@ pub struct Args {
 #[async_trait]
 pub trait FsInfo {
     /// Retrieves nonvolatile file system state information and general information.
-    async fn fs_info(&self, args: Args, promise: impl Promise);
+    async fn fs_info(&self, args: Args) -> Result;
 }

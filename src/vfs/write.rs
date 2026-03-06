@@ -51,12 +51,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Write::write`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Write::write`] arguments.
 pub struct Args {
     /// The file handle for the file to which data is to be written.
@@ -105,5 +99,5 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args, promise: impl Promise);
+    async fn write(&self, args: Args) -> Result;
 }

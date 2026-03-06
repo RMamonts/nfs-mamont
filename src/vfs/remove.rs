@@ -20,12 +20,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Remove::remove`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Remove::remove`] arguments.
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the entry to be removed.
@@ -35,5 +29,5 @@ pub struct Args {
 #[async_trait]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
-    async fn remove(&self, args: Args, promise: impl Promise);
+    async fn remove(&self, args: Args) -> Result;
 }

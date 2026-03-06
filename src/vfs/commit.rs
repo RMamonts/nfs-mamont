@@ -26,12 +26,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Commit::commit`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Commit::commit`] arguments.
 pub struct Args {
     /// The file handle for the file to which data is to be flushed.
@@ -46,5 +40,5 @@ pub struct Args {
 #[async_trait]
 pub trait Commit {
     /// Forces or flushes data to stable storage that was previously written.
-    async fn commit(&self, args: Args, promise: impl Promise);
+    async fn commit(&self, args: Args) -> Result;
 }

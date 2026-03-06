@@ -34,12 +34,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Read::read`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Read::read`] arguments.
 pub struct Args {
     /// The file handle of the file from which data is to be read.
@@ -60,5 +54,5 @@ pub struct Args {
 #[async_trait]
 pub trait Read {
     /// Reads data from a file.
-    async fn read(&self, args: Args, promise: impl Promise);
+    async fn read(&self, args: Args) -> Result;
 }

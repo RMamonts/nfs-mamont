@@ -26,12 +26,6 @@ pub struct Fail {
 
 pub type Result = std::result::Result<Success, Fail>;
 
-/// Defines callback to pass [`Link::link`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Link::link`] arguments.
 pub struct Args {
     /// The file handle for the existing file system object.
@@ -53,5 +47,5 @@ pub trait Link {
     /// On some servers, the filenames, "." and "..", are illegal for link names.
     /// In addition, the link name cannot be an alias for the target directory. These servers will
     /// return the error, [`vfs::Error::InvalidArgument`], in these cases.
-    async fn link(&self, args: Args, promise: impl Promise);
+    async fn link(&self, args: Args) -> Result;
 }

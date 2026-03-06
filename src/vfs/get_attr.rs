@@ -6,12 +6,6 @@ use crate::vfs;
 
 use super::file;
 
-/// Defines callback to pass [`GetAttr::get_attr`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(attr: vfs::Result<file::Attr>);
-}
-
 pub type Result = std::result::Result<Success, Fail>;
 
 /// Success result.
@@ -34,5 +28,5 @@ pub struct Args {
 #[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    async fn get_attr(&self, args: Args, promise: impl Promise);
+    async fn get_attr(&self, args: Args) -> Result;
 }
