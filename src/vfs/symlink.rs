@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 
-use std::path::PathBuf;
-
 use crate::vfs;
 
 use super::file;
@@ -22,12 +20,11 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`Symlink::symlink`] result into.
 #[async_trait]
@@ -42,7 +39,7 @@ pub struct Args {
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
-    pub path: PathBuf,
+    pub path: file::Path,
 }
 
 #[async_trait]

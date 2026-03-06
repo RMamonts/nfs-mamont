@@ -14,7 +14,7 @@ pub struct Entry {
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::Name,
     pub cookie: Cookie,
     pub file_attr: Option<file::Attr>,
     pub file_handle: Option<file::Handle>,
@@ -45,7 +45,7 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
+pub type Result = std::result::Result<Success, Fail>;
 
 /// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
 #[async_trait]
