@@ -33,6 +33,17 @@ pub async fn handle_forever_with_context(
 ) -> std::io::Result<()> {
     loop {
         let (socket, _) = listener.accept().await?;
+        eprintln!(
+            "accepted connection local={} peer={}",
+            socket
+                .local_addr()
+                .map(|addr| addr.to_string())
+                .unwrap_or_else(|_| "unknown".to_string()),
+            socket
+                .peer_addr()
+                .map(|addr| addr.to_string())
+                .unwrap_or_else(|_| "unknown".to_string()),
+        );
 
         socket.set_nodelay(true)?;
 
@@ -48,7 +59,14 @@ async fn process_socket(socket: TcpStream, server_context: ServerContext) {
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    ReadTask::new(readhalf, command_sender, server_context.clone(), connection_context).spawn();
+    ReadTask::new(
+        readhalf,
+        command_sender,
+        result_sender.clone(),
+        server_context.clone(),
+        connection_context,
+    )
+    .spawn();
 
     VfsTask::new(command_receiver, result_sender, server_context).spawn();
 

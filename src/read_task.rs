@@ -5,14 +5,16 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::allocator;
-use crate::parser::RpcParser;
-use crate::rpc::{ConnectionContext, RpcCommand, ServerContext};
+use crate::parser::{ParseFailure, RpcParser};
+use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, RpcReply, ServerContext};
+use crate::serializer::serialize_reply;
 
 /// Reads RPC commands from a network connection, parses it,
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     command_sender: UnboundedSender<RpcCommand>,
+    result_sender: UnboundedSender<CommandResult>,
     server_context: ServerContext,
     connection_context: ConnectionContext,
 }
@@ -22,10 +24,11 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         command_sender: UnboundedSender<RpcCommand>,
+        result_sender: UnboundedSender<CommandResult>,
         server_context: ServerContext,
         connection_context: ConnectionContext,
     ) -> Self {
-        Self { readhalf, command_sender, server_context, connection_context }
+        Self { readhalf, command_sender, result_sender, server_context, connection_context }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -34,7 +37,13 @@ impl ReadTask {
     ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(async move {
+            if let Err(error) = self.run().await {
+                eprintln!("read task ended with error: {error}");
+            } else {
+                eprintln!("read task finished");
+            }
+        });
     }
 
     async fn run(self) -> io::Result<()> {
@@ -48,12 +57,31 @@ impl ReadTask {
         );
 
         loop {
-            let request = match parser.parse_request().await {
+            let request = match parser.parse_request_full().await {
                 Ok(request) => request,
-                Err(crate::rpc::Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+                Err(ParseFailure {
+                    xid: None,
+                    error: crate::rpc::Error::IO(err),
+                }) if err.kind() == ErrorKind::UnexpectedEof => {
+                    eprintln!("read task: client closed connection");
                     return Ok(());
                 }
-                Err(error) => return Err(map_parser_error(error)),
+                Err(ParseFailure { xid: Some(xid), error }) => {
+                    eprintln!("read task parse error xid={xid}: {error:?}");
+                    match serialize_reply(xid, Err(error)).await {
+                        Ok(payload) => {
+                            if self.result_sender.send(Ok(RpcReply::new(xid, payload))).is_err() {
+                                return Ok(());
+                            }
+                            continue;
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+                Err(ParseFailure { xid: None, error }) => {
+                    eprintln!("read task parse error: {error:?}");
+                    return Err(map_parser_error(error));
+                }
             };
 
             let command = request.with_connection(self.connection_context.clone());

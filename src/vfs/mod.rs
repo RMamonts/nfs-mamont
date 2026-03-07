@@ -1,5 +1,6 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
+use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
@@ -151,4 +152,61 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-pub trait Vfs {}
+#[async_trait]
+pub trait RootHandle {
+    /// Returns the file handle for the exported root directory.
+    async fn root_handle(&self) -> file::Handle;
+}
+
+pub trait Vfs:
+    RootHandle
+    + access::Access
+    + commit::Commit
+    + create::Create
+    + fs_info::FsInfo
+    + fs_stat::FsStat
+    + get_attr::GetAttr
+    + link::Link
+    + lookup::Lookup
+    + mk_dir::MkDir
+    + mk_node::MkNode
+    + path_conf::PathConf
+    + read::Read
+    + read_dir::ReadDir
+    + read_dir_plus::ReadDirPlus
+    + read_link::ReadLink
+    + remove::Remove
+    + rename::Rename
+    + rm_dir::RmDir
+    + set_attr::SetAttr
+    + symlink::Symlink
+    + write::Write
+{
+}
+
+impl<T> Vfs for T
+where
+    T: RootHandle
+        + access::Access
+        + commit::Commit
+        + create::Create
+        + fs_info::FsInfo
+        + fs_stat::FsStat
+        + get_attr::GetAttr
+        + link::Link
+        + lookup::Lookup
+        + mk_dir::MkDir
+        + mk_node::MkNode
+        + path_conf::PathConf
+        + read::Read
+        + read_dir::ReadDir
+        + read_dir_plus::ReadDirPlus
+        + read_link::ReadLink
+        + remove::Remove
+        + rename::Rename
+        + rm_dir::RmDir
+        + set_attr::SetAttr
+        + symlink::Symlink
+        + write::Write,
+{
+}

@@ -25,6 +25,8 @@ use std::io::{self, Error, ErrorKind, Write};
 use byteorder::{BigEndian, WriteBytesExt};
 use num_traits::ToPrimitive;
 
+pub(crate) use serialize_struct::{serialize_reply, MountRes, NfsRes, ProcResult};
+
 /// All serialized data is aligned to [`ALIGNMENT`] (4 bytes) boundaries.
 pub const ALIGNMENT: usize = 4;
 

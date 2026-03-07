@@ -4,7 +4,7 @@
 //! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
 //!
 //! - RPC message framing and headers
-//! - Authentication (currently only AUTH_NONE)
+//! - Authentication (`AUTH_NONE` and `AUTH_SYS` credentials)
 //! - NFSv3 procedure parsing (all 22 procedures)
 //! - MOUNT protocol procedure parsing
 //! - Error handling and message discarding on protocol errors
@@ -35,7 +35,9 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
-use crate::rpc::{AuthFlavor, ParsedRpcCall, RpcBody, RpcCallHeader, VersionMismatch, RPC_VERSION};
+use crate::rpc::{
+    AuthFlavor, AuthStat, ParsedRpcCall, RpcBody, RpcCallHeader, VersionMismatch, RPC_VERSION,
+};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -43,7 +45,7 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
-const DEFAULT_SIZE: usize = 2500;
+const DEFAULT_SIZE: usize = 128 * 1024;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -76,6 +78,11 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
+}
+
+pub struct ParseFailure {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 #[allow(dead_code)]
@@ -199,6 +206,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
         let auth = self.parse_authentication().await?;
+        self.buffer.parse_with_retry(crate::parser::rpc::auth).await?;
 
         Ok(RpcMessage {
             xid,
@@ -209,9 +217,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         })
     }
 
-    /// Parses and validates RPC authentication.
+    /// Parses and validates RPC credentials.
     ///
-    /// Currently only AUTH_NONE is supported.
+    /// Currently `AUTH_NONE` and `AUTH_SYS` are accepted.
     ///
     /// # Returns
     ///
@@ -221,10 +229,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let auth = self.buffer.parse_with_retry(auth).await?;
 
         match auth.flavor {
-            AuthFlavor::None => Ok(auth),
-            _ => {
-                unimplemented!()
-            }
+            AuthFlavor::None | AuthFlavor::Sys => Ok(auth),
+            _ => Err(Error::AuthError(AuthStat::BadCred)),
         }
     }
 
@@ -322,18 +328,34 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    pub async fn parse_request(&mut self) -> Result<ParsedRpcCall> {
-        let xid = self.read_message_header().await?;
+    pub async fn parse_request_full(&mut self) -> std::result::Result<ParsedRpcCall, ParseFailure> {
+        let xid = match self.read_message_header().await {
+            Ok(xid) => xid,
+            Err(error) => return Err(ParseFailure { xid: None, error }),
+        };
         let rpc_header = match self.parse_rpc_header(xid).await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ParseFailure {
+                    xid: Some(xid),
+                    error: self.match_errors(err).await,
+                });
+            }
         };
         let proc = match self.parse_proc(rpc_header).await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ParseFailure {
+                    xid: Some(xid),
+                    error: self.match_errors(err).await,
+                });
+            }
         };
 
-        self.finalize_parsing()?;
+        if let Err(error) = self.finalize_parsing() {
+            return Err(ParseFailure { xid: Some(xid), error });
+        }
+
         Ok(ParsedRpcCall {
             header: RpcCallHeader {
                 xid: rpc_header.xid,
@@ -344,6 +366,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             },
             arguments: proc,
         })
+    }
+
+    pub async fn parse_request(&mut self) -> Result<ParsedRpcCall> {
+        self.parse_request_full().await.map_err(|failure| failure.error)
     }
 
     /// Parses a complete RPC message from the stream.

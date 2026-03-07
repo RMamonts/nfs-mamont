@@ -22,7 +22,10 @@ impl WriteTask {
     ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(async move {
+            self.run().await;
+            eprintln!("write task finished");
+        });
     }
 
     async fn run(mut self) {
@@ -33,10 +36,12 @@ impl WriteTask {
             };
 
             if reply.payload.is_empty() {
+                eprintln!("write task: empty payload for xid={}", reply.xid);
                 continue;
             }
 
             if self.writehalf.write_all(&reply.payload).await.is_err() {
+                eprintln!("write task: socket write failed for xid={}", reply.xid);
                 break;
             }
         }

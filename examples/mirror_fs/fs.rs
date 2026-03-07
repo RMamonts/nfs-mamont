@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -334,6 +335,16 @@ impl MirrorFS {
         child.push(name.as_str());
         Ok(child)
     }
+
+    async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
+        let root = self.root_handle().await;
+        self.path_for_handle(&root).await
+    }
 }
 
-impl vfs::Vfs for MirrorFS {}
+#[async_trait]
+impl vfs::RootHandle for MirrorFS {
+    async fn root_handle(&self) -> file::Handle {
+        MirrorFS::root_handle(self).await
+    }
+}
