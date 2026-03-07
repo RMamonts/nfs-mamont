@@ -89,7 +89,7 @@ impl Default for ServerSettings {
             read_buffer_size: NonZeroUsize::new(4096).expect("read buffer size must be non-zero"),
             allocator_buffer_size: NonZeroUsize::new(4096)
                 .expect("allocator buffer size must be non-zero"),
-            allocator_buffer_count: NonZeroUsize::new(8)
+            allocator_buffer_count: NonZeroUsize::new(16)
                 .expect("allocator buffer count must be non-zero"),
         }
     }

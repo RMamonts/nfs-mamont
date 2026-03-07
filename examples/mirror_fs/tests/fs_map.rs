@@ -15,6 +15,8 @@ fn root_handle_and_reused_handles() {
     assert_eq!(fs_map.path_for_handle(&root_handle).unwrap(), tempdir.path());
 
     let child = tempdir.path().join("nested/file.txt");
+    std::fs::create_dir_all(child.parent().unwrap()).unwrap();
+    std::fs::write(&child, b"hello").unwrap();
     let first = fs_map.ensure_handle_for_path(&child).unwrap();
     let second = fs_map.ensure_handle_for_path(&child).unwrap();
     assert!(first == second);
@@ -32,6 +34,8 @@ fn remove_path_invalidates_subtree_handles() {
 
     let dir = tempdir.path().join("dir");
     let child = dir.join("child.txt");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&child, b"hello").unwrap();
     let dir_handle = fs_map.ensure_handle_for_path(&dir).unwrap();
     let child_handle = fs_map.ensure_handle_for_path(&child).unwrap();
 
@@ -50,6 +54,8 @@ fn rename_path_moves_cached_descendants() {
     let child_from = from.join("child.txt");
     let to = tempdir.path().join("moved");
     let child_to = to.join("child.txt");
+    std::fs::create_dir_all(&from).unwrap();
+    std::fs::write(&child_from, b"hello").unwrap();
 
     let dir_handle = fs_map.ensure_handle_for_path(&from).unwrap();
     let child_handle = fs_map.ensure_handle_for_path(&child_from).unwrap();

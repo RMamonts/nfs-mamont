@@ -2,12 +2,16 @@ use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::get_attr;
 use nfs_mamont::vfs::lookup;
+use nfs_mamont::vfs::mk_dir;
+use nfs_mamont::vfs::read_link;
 use nfs_mamont::vfs::remove;
 use nfs_mamont::vfs::rename;
 use nfs_mamont::vfs::rm_dir;
+use nfs_mamont::vfs::symlink;
 
 use super::helpers::{
-    assert_wcc_present, create_dir, dir_op, expect_err, expect_ok, name, write_file, TestContext,
+    assert_wcc_present, create_dir, dir_op, expect_err, expect_ok, file_path, name, write_file,
+    TestContext,
 };
 
 #[tokio::test]
@@ -41,22 +45,50 @@ async fn lookup_resolves_child_and_rejects_non_directory_parent() {
 }
 
 #[tokio::test]
-async fn lookup_rejects_dot_and_dotdot() {
+async fn lookup_resolves_dot_and_dotdot() {
     let ctx = TestContext::new();
+    create_dir(ctx.root_path(), "dir/nested");
     let root = ctx.root_handle().await;
+    let dir = ctx.lookup_handle(root.clone(), "dir").await;
+    let nested = ctx.lookup_handle(dir.clone(), "nested").await;
 
-    let dot_fail = expect_err(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name(".") })
-            .await,
-        "lookup '.' should be rejected",
+    let dot = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.clone(), name: name(".") }).await,
+        "lookup '.' should resolve to the same directory",
     );
-    assert_eq!(dot_fail.error, vfs::Error::InvalidArgument);
+    let dir_attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dir.clone() }).await,
+        "get_attr for directory should succeed",
+    );
+    let dot_attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dot.file }).await,
+        "get_attr for '.' result should succeed",
+    );
+    assert_eq!(dot_attr.object.file_id, dir_attr.object.file_id);
 
-    let dotdot_fail = expect_err(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root, name: name("..") }).await,
-        "lookup '..' should be rejected",
+    let dotdot = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: nested, name: name("..") }).await,
+        "lookup '..' should resolve to the parent directory",
     );
-    assert_eq!(dotdot_fail.error, vfs::Error::Exist);
+    let dotdot_attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dotdot.file }).await,
+        "get_attr for '..' result should succeed",
+    );
+    assert_eq!(dotdot_attr.object.file_id, dir_attr.object.file_id);
+
+    let root_parent = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name("..") }).await,
+        "lookup '..' at export root should stay on export root",
+    );
+    let root_attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: root.clone() }).await,
+        "get_attr for root should succeed",
+    );
+    let root_parent_attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: root_parent.file }).await,
+        "get_attr for root '..' should succeed",
+    );
+    assert_eq!(root_parent_attr.object.file_id, root_attr.object.file_id);
 }
 
 #[tokio::test]
@@ -285,4 +317,93 @@ async fn rm_dir_removes_empty_directory_and_rejects_non_empty_one() {
         "rm_dir should fail for non-empty directories",
     );
     assert_eq!(fail.error, vfs::Error::NotEmpty);
+}
+
+#[tokio::test]
+async fn directory_lifecycle_create_symlink_rename_and_remove() {
+    let ctx = TestContext::new();
+    let root = ctx.root_handle().await;
+
+    let created = expect_ok(
+        mk_dir::MkDir::mk_dir(
+            &ctx.fs,
+            mk_dir::Args {
+                object: dir_op(root.clone(), "docs"),
+                attr: super::helpers::default_new_attr(),
+            },
+        )
+        .await,
+        "directory create should succeed",
+    );
+    let docs_handle = created.file.expect("mk_dir must return a handle");
+    assert!(ctx.root_path().join("docs").is_dir());
+
+    let link = expect_ok(
+        symlink::Symlink::symlink(
+            &ctx.fs,
+            symlink::Args {
+                object: dir_op(root.clone(), "docs-link"),
+                attr: super::helpers::default_new_attr(),
+                path: file_path("docs"),
+            },
+        )
+        .await,
+        "directory symlink should succeed",
+    );
+    let link_handle = link.file.expect("symlink must return a handle");
+
+    let target = expect_ok(
+        read_link::ReadLink::read_link(&ctx.fs, read_link::Args { file: link_handle }).await,
+        "read_link for directory symlink should succeed",
+    );
+    assert_eq!(target.data.as_path(), std::path::Path::new("docs"));
+
+    let renamed = expect_ok(
+        rename::Rename::rename(
+            &ctx.fs,
+            rename::Args {
+                from: dir_op(root.clone(), "docs"),
+                to: dir_op(root.clone(), "docs-renamed"),
+            },
+        )
+        .await,
+        "directory rename should succeed",
+    );
+    assert_wcc_present(&renamed.from_dir_wcc);
+    assert!(ctx.root_path().join("docs-renamed").is_dir());
+
+    write_file(ctx.root_path(), "docs-renamed/note.txt", b"data");
+    let attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: docs_handle.clone() }).await,
+        "renamed directory handle should remain valid",
+    );
+    assert!(matches!(attr.object.file_type, file::Type::Directory));
+
+    let removed_link = expect_ok(
+        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root.clone(), "docs-link") })
+            .await,
+        "symlink removal should succeed",
+    );
+    assert_wcc_present(&removed_link.wcc_data);
+
+    let removed_file = expect_ok(
+        remove::Remove::remove(
+            &ctx.fs,
+            remove::Args { object: dir_op(docs_handle.clone(), "note.txt") },
+        )
+        .await,
+        "file inside renamed directory should be removable",
+    );
+    assert_wcc_present(&removed_file.wcc_data);
+
+    let removed_dir = expect_ok(
+        rm_dir::RmDir::rm_dir(
+            &ctx.fs,
+            rm_dir::Args { object: dir_op(root, "docs-renamed") },
+        )
+        .await,
+        "empty renamed directory should be removable",
+    );
+    assert_wcc_present(&removed_dir.wcc_data);
+    assert!(!ctx.root_path().join("docs-renamed").exists());
 }

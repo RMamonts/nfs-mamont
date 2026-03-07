@@ -11,13 +11,15 @@ use nfs_mamont::vfs::get_attr;
 use nfs_mamont::vfs::link;
 use nfs_mamont::vfs::mk_dir;
 use nfs_mamont::vfs::mk_node;
+use nfs_mamont::vfs::read;
+use nfs_mamont::vfs::remove;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::symlink;
 use nfs_mamont::vfs::write;
 
 use super::helpers::{
     assert_wcc_present, create_dir, default_new_attr, dir_op, expect_err, expect_ok, file_path,
-    sized_attr, slice_from_bytes, write_file, TestContext,
+    sized_attr, slice_from_bytes, slice_to_vec, write_file, TestContext,
 };
 
 #[tokio::test]
@@ -340,4 +342,64 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
         "commit after write should succeed",
     );
     assert_eq!(commit_result.verifier.0, write_result.verifier.0);
+}
+
+#[tokio::test]
+async fn file_lifecycle_create_edit_read_and_remove() {
+    let ctx = TestContext::new();
+    let root = ctx.root_handle().await;
+
+    let created = expect_ok(
+        create::Create::create(
+            &ctx.fs,
+            create::Args {
+                object: dir_op(root.clone(), "lifecycle.txt"),
+                how: create::How::Guarded(default_new_attr()),
+            },
+        )
+        .await,
+        "file create should succeed",
+    );
+    let handle = created.file.expect("create must return a file handle");
+
+    let write_result = expect_ok(
+        write::Write::write(
+            &ctx.fs,
+            write::Args {
+                file: handle.clone(),
+                offset: 0,
+                size: 11,
+                stable: write::StableHow::FileSync,
+                data: slice_from_bytes(b"hello world"),
+            },
+        )
+        .await,
+        "file edit should succeed",
+    );
+    assert_eq!(write_result.count, 11);
+
+    let read_result = expect_ok(
+        read::Read::read(&ctx.fs, read::Args { file: handle.clone(), offset: 0, count: 11 }).await,
+        "file read should succeed",
+    );
+    assert_eq!(read_result.head.count, 11);
+    assert!(read_result.head.eof);
+    assert_eq!(slice_to_vec(&read_result.data), b"hello world");
+
+    let removed = expect_ok(
+        remove::Remove::remove(
+            &ctx.fs,
+            remove::Args { object: dir_op(root, "lifecycle.txt") },
+        )
+        .await,
+        "file delete should succeed",
+    );
+    assert_wcc_present(&removed.wcc_data);
+    assert!(!ctx.root_path().join("lifecycle.txt").exists());
+
+    let stale = expect_err(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: handle }).await,
+        "removed file handle should become stale",
+    );
+    assert_eq!(stale.error, vfs::Error::StaleFile);
 }
