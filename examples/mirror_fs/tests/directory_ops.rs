@@ -145,6 +145,31 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
 }
 
 #[tokio::test]
+async fn removing_one_hard_link_keeps_shared_handle_valid() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "original.txt", b"hello");
+    std::fs::hard_link(ctx.root_path().join("original.txt"), ctx.root_path().join("alias.txt"))
+        .unwrap();
+
+    let root = ctx.root_handle().await;
+    let original = ctx.lookup_handle(root.clone(), "original.txt").await;
+    let alias = ctx.lookup_handle(root.clone(), "alias.txt").await;
+    assert!(original == alias);
+
+    let success = expect_ok(
+        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "alias.txt") }).await,
+        "remove hard-link alias should succeed",
+    );
+    assert_wcc_present(&success.wcc_data);
+
+    let attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: original }).await,
+        "shared handle should remain valid through surviving link",
+    );
+    assert!(matches!(attr.object.file_type, file::Type::Regular));
+}
+
+#[tokio::test]
 async fn rename_replaces_existing_file_atomically() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "src.txt", b"new content");

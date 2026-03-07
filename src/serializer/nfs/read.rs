@@ -13,10 +13,40 @@ use crate::vfs::read;
 pub fn result_ok_part(dest: &mut impl Write, arg: read::SuccessPartial) -> io::Result<()> {
     option(dest, arg.file_attr, |attr, dest| file_attr(dest, &attr))?;
     u32(dest, arg.count)?;
-    bool(dest, arg.eof)
+    bool(dest, arg.eof)?;
+    u32(dest, arg.count)
 }
 
 /// Serializes [`read::Fail`] (READ3resfail body) into XDR.
 pub fn result_fail(dest: &mut impl Write, arg: read::Fail) -> io::Result<()> {
     option(dest, arg.file_attr, |attr, dest| file_attr(dest, &attr))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn result_ok_part_writes_counted_opaque_header() {
+        let mut buf = Vec::new();
+        result_ok_part(
+            &mut buf,
+            read::SuccessPartial {
+                file_attr: None,
+                count: 3,
+                eof: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            buf,
+            vec![
+                0, 0, 0, 0, // post_op_attr = None
+                0, 0, 0, 3, // count
+                0, 0, 0, 1, // eof = true
+                0, 0, 0, 3, // opaque data length
+            ]
+        );
+    }
 }

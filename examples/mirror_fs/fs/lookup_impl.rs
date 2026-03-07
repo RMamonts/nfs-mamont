@@ -10,7 +10,7 @@ impl lookup::Lookup for MirrorFS {
         let parent_path = match self.path_for_handle(&args.parent).await {
             Ok(path) => path,
             Err(error) => {
-                eprintln!("lookup path error={error:?}");
+                eprintln!("lookup rejected error={error:?}");
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
@@ -18,7 +18,7 @@ impl lookup::Lookup for MirrorFS {
         let parent_meta = match Self::metadata(&parent_path) {
             Ok(meta) => meta,
             Err(error) => {
-                eprintln!("lookup parent metadata error={error:?}");
+                eprintln!("lookup parent failed path={} error={error:?}", parent_path.display());
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
@@ -52,7 +52,11 @@ impl lookup::Lookup for MirrorFS {
         let child_meta = match Self::metadata(&child_path) {
             Ok(meta) => meta,
             Err(error) => {
-                eprintln!("lookup child metadata error={error:?} child_path={}", child_path.display());
+                if error == vfs::Error::NoEntry {
+                    eprintln!("lookup miss child_path={}", child_path.display());
+                } else {
+                    eprintln!("lookup child failed path={} error={error:?}", child_path.display());
+                }
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
             }
         };

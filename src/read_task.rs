@@ -39,7 +39,7 @@ impl ReadTask {
     pub fn spawn(self) {
         tokio::spawn(async move {
             if let Err(error) = self.run().await {
-                eprintln!("read task ended with error: {error}");
+                eprintln!("read task error: {error}");
             } else {
                 eprintln!("read task finished");
             }
@@ -67,7 +67,11 @@ impl ReadTask {
                     return Ok(());
                 }
                 Err(ParseFailure { xid: Some(xid), error }) => {
-                    eprintln!("read task parse error xid={xid}: {error:?}");
+                    if is_expected_protocol_rejection(&error) {
+                        eprintln!("read task rejected xid={xid}: {error:?}");
+                    } else {
+                        eprintln!("read task parse error xid={xid}: {error:?}");
+                    }
                     match serialize_reply(xid, Err(error)).await {
                         Ok(payload) => {
                             if self.result_sender.send(Ok(RpcReply::new(xid, payload))).is_err() {
@@ -79,7 +83,11 @@ impl ReadTask {
                     }
                 }
                 Err(ParseFailure { xid: None, error }) => {
-                    eprintln!("read task parse error: {error:?}");
+                    if is_expected_protocol_rejection(&error) {
+                        eprintln!("read task rejected request: {error:?}");
+                    } else {
+                        eprintln!("read task parse error: {error:?}");
+                    }
                     return Err(map_parser_error(error));
                 }
             };
@@ -97,4 +105,16 @@ fn map_parser_error(error: crate::rpc::Error) -> io::Error {
         crate::rpc::Error::IO(err) => err,
         other => io::Error::new(ErrorKind::InvalidData, format!("{other:?}")),
     }
+}
+
+fn is_expected_protocol_rejection(error: &crate::rpc::Error) -> bool {
+    matches!(
+        error,
+        crate::rpc::Error::RpcVersionMismatch(_)
+            | crate::rpc::Error::ProgramMismatch
+            | crate::rpc::Error::ProcedureMismatch
+            | crate::rpc::Error::ProgramVersionMismatch(_)
+            | crate::rpc::Error::AuthError(_)
+            | crate::rpc::Error::MessageTypeMismatch
+    )
 }

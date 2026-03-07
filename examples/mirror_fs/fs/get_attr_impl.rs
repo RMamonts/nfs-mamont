@@ -13,14 +13,14 @@ impl get_attr::GetAttr for MirrorFS {
                 path
             }
             Err(error) => {
-                eprintln!("get_attr path error={error:?}");
+                eprintln!("get_attr rejected error={error:?}");
                 return Err(get_attr::Fail { error });
             }
         };
         match Self::metadata(&path) {
             Ok(meta) => Ok(get_attr::Success { object: Self::attr_from_metadata(&meta) }),
             Err(error) => {
-                eprintln!("get_attr metadata error={error:?}");
+                eprintln!("get_attr failed path={} error={error:?}", path.display());
                 Err(get_attr::Fail { error })
             }
         }

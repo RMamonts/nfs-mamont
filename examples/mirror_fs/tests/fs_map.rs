@@ -1,4 +1,5 @@
 use crate::fs_map::FsMap;
+use std::fs;
 
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -66,4 +67,37 @@ fn decode_handle_zero_returns_bad_file_handle() {
 
     let zero_handle = file::Handle([0u8; 8]);
     assert_eq!(fs_map.path_for_handle(&zero_handle).unwrap_err(), vfs::Error::BadFileHandle);
+}
+
+#[test]
+fn hard_links_share_same_handle() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let original = tempdir.path().join("original.txt");
+    let alias = tempdir.path().join("alias.txt");
+    fs::write(&original, b"hello").unwrap();
+    fs::hard_link(&original, &alias).unwrap();
+
+    let mut fs_map = FsMap::new(tempdir.path().to_path_buf());
+    let original_handle = fs_map.ensure_handle_for_path(&original).unwrap();
+    let alias_handle = fs_map.ensure_handle_for_path(&alias).unwrap();
+
+    assert!(original_handle == alias_handle);
+}
+
+#[test]
+fn removing_one_hard_link_keeps_handle_alive_if_another_path_is_cached() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let original = tempdir.path().join("original.txt");
+    let alias = tempdir.path().join("alias.txt");
+    fs::write(&original, b"hello").unwrap();
+    fs::hard_link(&original, &alias).unwrap();
+
+    let mut fs_map = FsMap::new(tempdir.path().to_path_buf());
+    let handle = fs_map.ensure_handle_for_path(&original).unwrap();
+    let alias_handle = fs_map.ensure_handle_for_path(&alias).unwrap();
+    assert!(handle == alias_handle);
+
+    fs_map.remove_path(&alias);
+
+    assert_eq!(fs_map.path_for_handle(&handle).unwrap(), original);
 }
