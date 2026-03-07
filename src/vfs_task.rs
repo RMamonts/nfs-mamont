@@ -1,18 +1,25 @@
+use std::io;
+use std::io::ErrorKind;
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use crate::rpc::{CommandResult, RpcCommand, ServerContext};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
-    _command_receiver: UnboundedReceiver<()>,
-    _result_sender: UnboundedSender<()>,
+    command_receiver: UnboundedReceiver<RpcCommand>,
+    result_sender: UnboundedSender<CommandResult>,
+    server_context: ServerContext,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        command_receiver: UnboundedReceiver<()>,
-        result_sender: UnboundedSender<()>,
+        command_receiver: UnboundedReceiver<RpcCommand>,
+        result_sender: UnboundedSender<CommandResult>,
+        server_context: ServerContext,
     ) -> Self {
-        Self { _command_receiver: command_receiver, _result_sender: result_sender }
+        Self { command_receiver, result_sender, server_context }
     }
 
     /// Spawns a [`VfsTask`].
@@ -24,7 +31,24 @@ impl VfsTask {
         tokio::spawn(async move { self.run().await });
     }
 
-    async fn run(self) {
-        todo!("Implement VfsTask")
+    async fn run(mut self) {
+        while let Some(command) = self.command_receiver.recv().await {
+            let _ = &self.server_context;
+            let _ = &command.arguments;
+
+            let result = Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "RPC dispatch is not implemented yet for program={}, version={}, procedure={}",
+                    command.context.header.program,
+                    command.context.header.version,
+                    command.context.header.procedure,
+                ),
+            ));
+
+            if self.result_sender.send(result).is_err() {
+                break;
+            }
+        }
     }
 }

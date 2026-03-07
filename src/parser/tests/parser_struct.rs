@@ -318,6 +318,28 @@ async fn parse_rejects_too_large_frame() {
     assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
 }
 
+/// Verifies parser preserves RPC metadata in the parsed request envelope.
+#[tokio::test]
+async fn parse_request_preserves_rpc_header() {
+    let socket = MockSocket::new(
+        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, FSSTAT, |buf| {
+            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+        })
+        .as_slice(),
+    );
+    let alloc = MockAllocator::new(0);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
+
+    let request = parser.parse_request().await.unwrap();
+
+    assert_eq!(request.header.xid, XID);
+    assert_eq!(request.header.program, NFS_PROGRAM);
+    assert_eq!(request.header.version, NFS_VERSION);
+    assert_eq!(request.header.procedure, FSSTAT);
+    assert_eq!(request.header.auth_flavor as u32, AUTH_NONE);
+    assert_fsstat_result(&request.arguments, [1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
 /// Verifies parser handles WRITE with zero opaque payload.
 #[tokio::test]
 async fn parse_write_with_empty_payload() {
