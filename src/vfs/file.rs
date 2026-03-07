@@ -61,12 +61,12 @@ impl Name {
 #[cfg(feature = "arbitrary")]
 impl Arbitrary<'_> for Name {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-        loop {
-            match Name::new(String::arbitrary(u)?) {
-                Ok(n) => break Ok(n),
-                Err(_) => continue,
-            }
-        }
+        let size = u.int_in_range(1..=MAX_NAME_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let name = bytes.into_iter().filter(|b| *b == b'/').collect();
+        let s = String::from_utf8(name).to_string();
+        Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
@@ -108,12 +108,11 @@ impl Path {
 #[cfg(feature = "arbitrary")]
 impl Arbitrary<'_> for Path {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-        loop {
-            match Path::new(String::arbitrary(u)?) {
-                Ok(n) => break Ok(n),
-                Err(_) => continue,
-            }
-        }
+        let size = u.int_in_range(1..=MAX_PATH_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Path::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 

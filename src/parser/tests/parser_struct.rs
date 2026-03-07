@@ -1,7 +1,7 @@
-use crate::mocks::alloc::MockAllocator;
-use crate::mocks::socket::MockSocket;
 use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
+use crate::parser::tests::alloc::MockAllocator;
+use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
 use crate::parser::Error;
 use crate::rpc::{RpcBody, RPC_VERSION};

@@ -1,5 +1,8 @@
 //! Defines NFSv3 [`Access`] interface.
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+
 use async_trait::async_trait;
 
 use super::{file, Error};
@@ -27,7 +30,6 @@ pub trait Promise {
 
 /// Mask of [`Access::access`] rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Mask(u32);
 
 impl Mask {
@@ -51,6 +53,13 @@ impl Mask {
 
     pub fn contains(self, flag: u32) -> bool {
         self.0 & flag == flag
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Mask {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        Ok(Self::from_wire(u.arbitrary()?))
     }
 }
 
