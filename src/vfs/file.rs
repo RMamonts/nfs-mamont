@@ -64,8 +64,8 @@ impl Arbitrary<'_> for Name {
         let size = u.int_in_range(1..=MAX_NAME_LEN)?;
         let mut bytes = vec![0u8; size];
         u.fill_buffer(&mut bytes)?;
-        let name = bytes.into_iter().filter(|b| *b == b'/').collect();
-        let s = String::from_utf8(name).to_string();
+        let name = bytes.into_iter().filter(|b| *b == b'/').collect::<Vec<u8>>();
+        let s = String::from_utf8_lossy(&name).to_string();
         Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }

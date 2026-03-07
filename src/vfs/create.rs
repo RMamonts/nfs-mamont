@@ -35,6 +35,13 @@ pub enum How {
     Exclusive(Verifier),
 }
 
+/// Describes codes of [`How`] branches as integers.
+pub enum HowMode {
+    Unchecked = 0,
+    Guarded = 1,
+    Exclusive = 2,
+}
+
 /// Success result.
 pub struct Success {
     /// The file handle of the newly created regular file.

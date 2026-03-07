@@ -5,6 +5,10 @@ use crate::serializer::files::file_handle;
 use crate::serializer::{padding, u32, u64, usize_as_u32, variant};
 use crate::vfs::write::Args;
 
+/// Serializes [`Slice`].
+///
+/// ## Warning:
+/// should be used only in tests
 pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
     let size: usize = arg.iter().map(|buf| buf.len()).sum();
     usize_as_u32(dest, size)?;
@@ -15,6 +19,7 @@ pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
     Ok(())
 }
 
+/// Serializes the arguments [`Args`] for an NFSv3 `WRITE` operation to the provided `Write` destination.
 pub fn write_args(dest: &mut impl Write, arg: Args) -> Result<()> {
     file_handle(dest, arg.file)
         .and_then(|_| u64(dest, arg.offset))

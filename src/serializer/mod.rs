@@ -29,6 +29,7 @@ pub const ALIGNMENT: usize = 4;
 
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
+/// XDR requires 4-byte alignment; this emits zero bytes until the next multiple of [`ALIGNMENT`].
 pub fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
