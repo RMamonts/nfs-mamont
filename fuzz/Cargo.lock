@@ -168,7 +168,6 @@ dependencies = [
  "arbitrary",
  "libfuzzer-sys",
  "nfs-mamont",
- "tokio",
 ]
 
 [[package]]

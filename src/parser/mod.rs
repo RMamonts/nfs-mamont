@@ -33,7 +33,6 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 }
 
 /// Enumerates the different types of arguments that can be parsed.
-#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u32)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]

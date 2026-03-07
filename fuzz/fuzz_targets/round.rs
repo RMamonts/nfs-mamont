@@ -132,13 +132,13 @@ fuzz_target!(|data: Arguments| {
         Arguments::Mount(arg) => {
             arguments::mount::mount_args(&mut buf, arg.clone()).unwrap();
             buf.set_position(0);
-            let res = mount::mount(&mut buf).unwrap();
+            let res = mount::mnt::mount(&mut buf).unwrap();
             assert_eq!(res, arg)
         }
         Arguments::Unmount(arg) => {
             arguments::mount::unmount_args(&mut buf, arg.clone()).unwrap();
             buf.set_position(0);
-            let res = mount::unmount(&mut buf).unwrap();
+            let res = mount::umnt::unmount(&mut buf).unwrap();
             assert_eq!(res, arg)
         }
         _ => {}
