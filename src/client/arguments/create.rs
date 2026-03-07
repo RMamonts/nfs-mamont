@@ -7,10 +7,12 @@ use crate::vfs::create::{Args, How, Verifier};
 
 use super::set_attr::serialize_new_attr;
 
+/// Serializes [`Verifier`].
 fn serialize_verifier(dest: &mut impl Write, verf: Verifier) -> Result<()> {
     array::<NFS3_CREATEVERFSIZE>(dest, verf.0)
 }
 
+/// Serializes [`How`].
 fn serialize_how(dest: &mut impl Write, how: How) -> Result<()> {
     match how {
         How::Unchecked(new_attr) => {
@@ -25,6 +27,7 @@ fn serialize_how(dest: &mut impl Write, how: How) -> Result<()> {
     }
 }
 
+/// Serializes the arguments [`Args`] for an NFSv3 `CREATE` operation to the provided `Write` destination.
 pub fn create_args(dest: &mut impl Write, arg: Args) -> Result<()> {
     dir_op_arg(dest, arg.object).and_then(|_| serialize_how(dest, arg.how))
 }

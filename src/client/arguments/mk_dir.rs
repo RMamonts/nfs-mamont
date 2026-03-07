@@ -5,6 +5,7 @@ use crate::vfs::mk_dir::Args;
 
 use super::set_attr::serialize_new_attr;
 
+/// Serializes the arguments [`Args`] for an NFSv3 `ACCESS` operation to the provided `Write` destination.
 pub fn mk_dir_args(dest: &mut impl Write, arg: Args) -> Result<()> {
     dir_op_arg(dest, arg.object).and_then(|_| serialize_new_attr(dest, arg.attr))
 }

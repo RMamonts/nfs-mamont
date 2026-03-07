@@ -5,6 +5,7 @@ use crate::serializer::files::dir_op_arg;
 use crate::serializer::files::file_path;
 use crate::vfs::symlink::Args;
 
+/// Serializes the arguments [`Args`] for an NFSv3 `SYMLINK` operation to the provided `Write` destination.
 pub fn symlink_args(dest: &mut impl Write, arg: Args) -> Result<()> {
     dir_op_arg(dest, arg.object)
         .and_then(|_| serialize_new_attr(dest, arg.attr))
