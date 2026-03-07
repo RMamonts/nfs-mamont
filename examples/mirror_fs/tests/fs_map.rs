@@ -1,6 +1,7 @@
 use crate::fs_map::FsMap;
 
 use nfs_mamont::vfs;
+use nfs_mamont::vfs::file;
 
 use super::helpers::expect_err;
 
@@ -56,4 +57,13 @@ fn rename_path_moves_cached_descendants() {
 
     assert_eq!(fs_map.path_for_handle(&dir_handle).unwrap(), to);
     assert_eq!(fs_map.path_for_handle(&child_handle).unwrap(), child_to);
+}
+
+#[test]
+fn decode_handle_zero_returns_bad_file_handle() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let fs_map = FsMap::new(tempdir.path().to_path_buf());
+
+    let zero_handle = file::Handle([0u8; 8]);
+    assert_eq!(fs_map.path_for_handle(&zero_handle).unwrap_err(), vfs::Error::BadFileHandle);
 }

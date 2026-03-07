@@ -29,14 +29,20 @@ impl rm_dir::RmDir for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before = std::fs::symlink_metadata(&dir_path)
+            .ok()
+            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let child_path = match self.child_path(&args.object.dir, &args.object.name).await {
             Ok(path) => path,
-            Err(error) => return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
         let child_meta = match Self::metadata(&child_path) {
             Ok(meta) => meta,
-            Err(error) => return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
         if !child_meta.is_dir() {
             return Err(rm_dir::Fail {

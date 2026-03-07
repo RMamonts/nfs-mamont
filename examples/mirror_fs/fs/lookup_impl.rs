@@ -6,6 +6,10 @@ use super::*;
 #[async_trait]
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, args: lookup::Args) -> lookup::Result {
+        if let Err(error) = Self::ensure_name_allowed(&args.name) {
+            return Err(lookup::Fail { error, dir_attr: None });
+        }
+
         let parent_path = match self.path_for_handle(&args.parent).await {
             Ok(path) => path,
             Err(error) => {

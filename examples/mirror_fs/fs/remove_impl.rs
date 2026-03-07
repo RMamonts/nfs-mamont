@@ -8,6 +8,13 @@ use super::*;
 #[async_trait]
 impl remove::Remove for MirrorFS {
     async fn remove(&self, args: remove::Args) -> remove::Result {
+        if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
+            return Err(remove::Fail {
+                error,
+                dir_wcc: vfs::WccData { before: None, after: None },
+            });
+        }
+
         let dir_path = match self.path_for_handle(&args.object.dir).await {
             Ok(path) => path,
             Err(error) => {
@@ -17,7 +24,9 @@ impl remove::Remove for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before = std::fs::symlink_metadata(&dir_path)
+            .ok()
+            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let child_path = match self.child_path(&args.object.dir, &args.object.name).await {
             Ok(path) => path,
             Err(error) => {

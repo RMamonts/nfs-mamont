@@ -33,17 +33,18 @@ impl FsMap {
     }
 
     pub fn ensure_handle_for_path(&mut self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        let relative = path
-            .strip_prefix(&self.root)
-            .map_err(|_| vfs::Error::BadFileHandle)?
-            .to_path_buf();
+        let relative =
+            path.strip_prefix(&self.root).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
 
         if let Some(id) = self.relative_to_id.get(&relative).copied() {
             return Ok(Self::encode_handle(id));
         }
 
         let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        self.next_id = self.next_id.wrapping_add(1);
+        if self.next_id <= 1 {
+            self.next_id = 2;
+        }
         self.id_to_relative.insert(id, relative.clone());
         self.relative_to_id.insert(relative, id);
         Ok(Self::encode_handle(id))
@@ -67,14 +68,10 @@ impl FsMap {
     }
 
     pub fn rename_path(&mut self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        let from_relative = from
-            .strip_prefix(&self.root)
-            .map_err(|_| vfs::Error::BadFileHandle)?
-            .to_path_buf();
-        let to_relative = to
-            .strip_prefix(&self.root)
-            .map_err(|_| vfs::Error::BadFileHandle)?
-            .to_path_buf();
+        let from_relative =
+            from.strip_prefix(&self.root).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
+        let to_relative =
+            to.strip_prefix(&self.root).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
 
         let updates = self
             .id_to_relative

@@ -24,7 +24,9 @@ impl create::Create for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before = std::fs::symlink_metadata(&dir_path)
+            .ok()
+            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let dir_meta = match Self::metadata(&dir_path) {
             Ok(meta) => meta,
             Err(error) => {
@@ -38,7 +40,7 @@ impl create::Create for MirrorFS {
 
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
-        let existed = child_path.exists();
+        let existed = std::fs::symlink_metadata(&child_path).is_ok();
 
         let apply_attr = match &args.how {
             create::How::Unchecked(attr) => {
@@ -65,11 +67,8 @@ impl create::Create for MirrorFS {
                         wcc_data: Self::wcc_data(&dir_path, before),
                     });
                 }
-                if let Err(error) = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&child_path)
-                    .await
+                if let Err(error) =
+                    OpenOptions::new().write(true).create_new(true).open(&child_path).await
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -78,17 +77,25 @@ impl create::Create for MirrorFS {
                 }
                 attr
             }
-            create::How::Exclusive(_) => {
-                if let Err(error) = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&child_path)
-                    .await
-                {
-                    return Err(create::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        wcc_data: Self::wcc_data(&dir_path, before),
-                    });
+            create::How::Exclusive(ref verifier) => {
+                match OpenOptions::new().write(true).create_new(true).open(&child_path).await {
+                    Ok(_) => {
+                        Self::store_exclusive_verifier(&child_path, &verifier.0);
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if !Self::check_exclusive_verifier(&child_path, &verifier.0) {
+                            return Err(create::Fail {
+                                error: vfs::Error::Exist,
+                                wcc_data: Self::wcc_data(&dir_path, before),
+                            });
+                        }
+                    }
+                    Err(error) => {
+                        return Err(create::Fail {
+                            error: Self::io_error_to_vfs(&error),
+                            wcc_data: Self::wcc_data(&dir_path, before),
+                        });
+                    }
                 }
                 &DEFAULT_SET_ATTR
             }

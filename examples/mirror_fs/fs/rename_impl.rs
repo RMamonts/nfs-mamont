@@ -8,7 +8,9 @@ use super::*;
 #[async_trait]
 impl rename::Rename for MirrorFS {
     async fn rename(&self, args: rename::Args) -> rename::Result {
-        if matches!(args.from.name.as_str(), "." | "..") || matches!(args.to.name.as_str(), "." | "..") {
+        if matches!(args.from.name.as_str(), "." | "..")
+            || matches!(args.to.name.as_str(), "." | "..")
+        {
             return Err(rename::Fail {
                 error: vfs::Error::InvalidArgument,
                 from_dir_wcc: vfs::WccData { before: None, after: None },
@@ -76,37 +78,15 @@ impl rename::Rename for MirrorFS {
                 });
             }
             if target_meta.is_dir() {
-                match std::fs::read_dir(&to_path) {
-                    Ok(mut iter) => {
-                        if iter.next().is_some() {
-                            return Err(rename::Fail {
-                                error: vfs::Error::Exist,
-                                from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                                to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
-                            });
-                        }
-                        if let Err(error) = std::fs::remove_dir(&to_path) {
-                            return Err(rename::Fail {
-                                error: Self::io_error_to_vfs(&error),
-                                from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                                to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
-                            });
-                        }
-                    }
-                    Err(error) => {
+                if let Ok(mut iter) = std::fs::read_dir(&to_path) {
+                    if iter.next().is_some() {
                         return Err(rename::Fail {
-                            error: Self::io_error_to_vfs(&error),
+                            error: vfs::Error::Exist,
                             from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
                             to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
                         });
                     }
                 }
-            } else if let Err(error) = std::fs::remove_file(&to_path) {
-                return Err(rename::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                    to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
-                });
             }
             self.remove_cached_path(&to_path).await;
         }

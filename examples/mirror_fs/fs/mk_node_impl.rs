@@ -24,8 +24,11 @@ impl mk_node::MkNode for MirrorFS {
                 Err(fail) => Err(mk_node::Fail { error: fail.error, dir_wcc: fail.wcc_data }),
             },
             mk_node::What::Directory => {
-                match mk_dir::MkDir::mk_dir(self, mk_dir::Args { object: args.object, attr: DEFAULT_SET_ATTR })
-                    .await
+                match mk_dir::MkDir::mk_dir(
+                    self,
+                    mk_dir::Args { object: args.object, attr: DEFAULT_SET_ATTR },
+                )
+                .await
                 {
                     Ok(success) => Ok(mk_node::Success {
                         file: success.file,

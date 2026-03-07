@@ -5,11 +5,11 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 use nfs_mamont::allocator::Slice;
-use nfs_mamont::nfsv3::NFS3_COOKIEVERFSIZE;
+use nfs_mamont::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
@@ -62,10 +62,9 @@ impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
         let root = std::fs::canonicalize(&root).unwrap_or(root);
-        let generation = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO)
-            .as_nanos() as u64;
+        let generation =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
+                as u64;
         Self { fsmap: Mutex::new(FsMap::new(root)), generation }
     }
 
@@ -235,6 +234,27 @@ impl MirrorFS {
         std::fs::symlink_metadata(path).ok().map(|meta| Self::attr_from_metadata(&meta))
     }
 
+    /// Stores an exclusive create verifier in the file's mtime (per RFC 1813 §3.3.8).
+    fn store_exclusive_verifier(path: &Path, verifier: &[u8; NFS3_CREATEVERFSIZE]) {
+        let sec = u32::from_be_bytes(verifier[0..4].try_into().unwrap());
+        let nsec = u32::from_be_bytes(verifier[4..8].try_into().unwrap());
+        let time = UNIX_EPOCH + Duration::new(u64::from(sec), nsec);
+        let times = std::fs::FileTimes::new().set_modified(time);
+        if let Ok(file) = std::fs::File::open(path) {
+            let _ = file.set_times(times);
+        }
+    }
+
+    /// Checks if an existing file's mtime matches the exclusive create verifier.
+    fn check_exclusive_verifier(path: &Path, verifier: &[u8; NFS3_CREATEVERFSIZE]) -> bool {
+        let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
+        let stored_sec = meta.mtime() as u32;
+        let stored_nsec = meta.mtime_nsec() as u32;
+        let expected_sec = u32::from_be_bytes(verifier[0..4].try_into().unwrap());
+        let expected_nsec = u32::from_be_bytes(verifier[4..8].try_into().unwrap());
+        stored_sec == expected_sec && stored_nsec == expected_nsec
+    }
+
     fn apply_set_attr(path: &Path, new_attr: &set_attr::NewAttr) -> Result<(), vfs::Error> {
         if new_attr.uid.is_some() || new_attr.gid.is_some() {
             return Err(vfs::Error::InvalidArgument);
@@ -263,12 +283,16 @@ impl MirrorFS {
             let meta = file.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
             let current_attr = Self::attr_from_metadata(&meta);
             let atime = match new_attr.atime {
-                set_attr::SetTime::DontChange => Self::system_time_from_file_time(current_attr.atime),
+                set_attr::SetTime::DontChange => {
+                    Self::system_time_from_file_time(current_attr.atime)
+                }
                 set_attr::SetTime::ToServer => SystemTime::now(),
                 set_attr::SetTime::ToClient(time) => Self::system_time_from_file_time(time),
             };
             let mtime = match new_attr.mtime {
-                set_attr::SetTime::DontChange => Self::system_time_from_file_time(current_attr.mtime),
+                set_attr::SetTime::DontChange => {
+                    Self::system_time_from_file_time(current_attr.mtime)
+                }
                 set_attr::SetTime::ToServer => SystemTime::now(),
                 set_attr::SetTime::ToClient(time) => Self::system_time_from_file_time(time),
             };

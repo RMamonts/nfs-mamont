@@ -77,7 +77,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
         create::Create::create(
             &ctx.fs,
             create::Args {
-                object: dir_op(root, "beta.txt"),
+                object: dir_op(root.clone(), "beta.txt"),
                 how: create::How::Exclusive(create::Verifier([7u8; NFS3_CREATEVERFSIZE])),
             },
         )
@@ -86,6 +86,34 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     );
     assert!(exclusive.file.is_some());
     assert_eq!(stdfs::metadata(ctx.root_path().join("beta.txt")).unwrap().len(), 0);
+
+    // Idempotent retry with the SAME verifier should succeed (RFC 1813 §3.3.8)
+    let retry = expect_ok(
+        create::Create::create(
+            &ctx.fs,
+            create::Args {
+                object: dir_op(root.clone(), "beta.txt"),
+                how: create::How::Exclusive(create::Verifier([7u8; NFS3_CREATEVERFSIZE])),
+            },
+        )
+        .await,
+        "exclusive create retry with same verifier should succeed",
+    );
+    assert!(retry.file.is_some());
+
+    // Retry with a DIFFERENT verifier should fail with Exist
+    let different = expect_err(
+        create::Create::create(
+            &ctx.fs,
+            create::Args {
+                object: dir_op(root, "beta.txt"),
+                how: create::How::Exclusive(create::Verifier([99u8; NFS3_CREATEVERFSIZE])),
+            },
+        )
+        .await,
+        "exclusive create retry with different verifier should fail",
+    );
+    assert_eq!(different.error, vfs::Error::Exist);
 }
 
 #[tokio::test]
@@ -128,7 +156,10 @@ async fn mk_dir_creates_directory_and_applies_mode() {
     let success = expect_ok(
         mk_dir::MkDir::mk_dir(
             &ctx.fs,
-            mk_dir::Args { object: dir_op(root.clone(), "child"), attr: sized_attr(Some(0o750), None) },
+            mk_dir::Args {
+                object: dir_op(root.clone(), "child"),
+                attr: sized_attr(Some(0o750), None),
+            },
         )
         .await,
         "mk_dir should succeed",
@@ -149,7 +180,10 @@ async fn mk_node_handles_supported_and_unsupported_types() {
     let regular = expect_ok(
         mk_node::MkNode::mk_node(
             &ctx.fs,
-            mk_node::Args { object: dir_op(root.clone(), "node-file.txt"), what: mk_node::What::Regular },
+            mk_node::Args {
+                object: dir_op(root.clone(), "node-file.txt"),
+                what: mk_node::What::Regular,
+            },
         )
         .await,
         "mk_node regular should succeed",
@@ -160,7 +194,10 @@ async fn mk_node_handles_supported_and_unsupported_types() {
     let directory = expect_ok(
         mk_node::MkNode::mk_node(
             &ctx.fs,
-            mk_node::Args { object: dir_op(root.clone(), "node-dir"), what: mk_node::What::Directory },
+            mk_node::Args {
+                object: dir_op(root.clone(), "node-dir"),
+                what: mk_node::What::Directory,
+            },
         )
         .await,
         "mk_node directory should succeed",
@@ -171,7 +208,10 @@ async fn mk_node_handles_supported_and_unsupported_types() {
     let bad_type = expect_err(
         mk_node::MkNode::mk_node(
             &ctx.fs,
-            mk_node::Args { object: dir_op(root.clone(), "node-link"), what: mk_node::What::SymbolicLink },
+            mk_node::Args {
+                object: dir_op(root.clone(), "node-link"),
+                what: mk_node::What::SymbolicLink,
+            },
         )
         .await,
         "mk_node symlink should fail with bad type",
@@ -260,7 +300,10 @@ async fn symlink_creates_symbolic_link() {
     assert!(success.file.is_some());
     assert!(matches!(success.attr.unwrap().file_type, file::Type::Symlink));
     assert_wcc_present(&success.wcc_data);
-    assert_eq!(stdfs::read_link(ctx.root_path().join("link.txt")).unwrap(), PathBuf::from("target.txt"));
+    assert_eq!(
+        stdfs::read_link(ctx.root_path().join("link.txt")).unwrap(),
+        PathBuf::from("target.txt")
+    );
 }
 
 #[tokio::test]
@@ -287,7 +330,10 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
     assert_eq!(write_result.count, 3);
     assert_eq!(write_result.commited, write::StableHow::DataSync);
     assert_wcc_present(&write_result.file_wcc);
-    assert_eq!(stdfs::read(ctx.root_path().join("file.txt")).unwrap(), vec![0, 0, b'x', b'y', b'z']);
+    assert_eq!(
+        stdfs::read(ctx.root_path().join("file.txt")).unwrap(),
+        vec![0, 0, b'x', b'y', b'z']
+    );
 
     let commit_result = expect_ok(
         commit::Commit::commit(&ctx.fs, commit::Args { file: handle, offset: 0, count: 0 }).await,

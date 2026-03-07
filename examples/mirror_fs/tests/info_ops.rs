@@ -1,3 +1,4 @@
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use nfs_mamont::nfsv3::NFS3_COOKIEVERFSIZE;
@@ -42,6 +43,33 @@ async fn access_returns_requested_mask() {
 }
 
 #[tokio::test]
+async fn access_respects_file_permissions() {
+    let ctx = TestContext::new();
+    let path = write_file(ctx.root_path(), "readonly.txt", b"data");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let root = ctx.root_handle().await;
+    let handle = ctx.lookup_handle(root, "readonly.txt").await;
+
+    let result = expect_ok(
+        access::Access::access(
+            &ctx.fs,
+            access::Args {
+                file: handle,
+                mask: access::Mask::from_wire(
+                    access::Mask::READ | access::Mask::MODIFY | access::Mask::EXECUTE,
+                ),
+            },
+        )
+        .await,
+        "access should succeed on read-only file",
+    );
+
+    assert!(result.access.contains(access::Mask::READ));
+    assert!(!result.access.contains(access::Mask::MODIFY));
+    assert!(!result.access.contains(access::Mask::EXECUTE));
+}
+
+#[tokio::test]
 async fn commit_flushes_regular_file_and_rejects_directory() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -51,14 +79,16 @@ async fn commit_flushes_regular_file_and_rejects_directory() {
     let dir_handle = ctx.lookup_handle(root, "dir").await;
 
     let success = expect_ok(
-        commit::Commit::commit(&ctx.fs, commit::Args { file: file_handle, offset: 0, count: 0 }).await,
+        commit::Commit::commit(&ctx.fs, commit::Args { file: file_handle, offset: 0, count: 0 })
+            .await,
         "commit should succeed for regular files",
     );
     super::helpers::assert_wcc_present(&success.file_wcc);
     assert_eq!(success.verifier.0.len(), 8);
 
     let fail = expect_err(
-        commit::Commit::commit(&ctx.fs, commit::Args { file: dir_handle, offset: 0, count: 0 }).await,
+        commit::Commit::commit(&ctx.fs, commit::Args { file: dir_handle, offset: 0, count: 0 })
+            .await,
         "commit should fail for directories",
     );
     assert_eq!(fail.error, vfs::Error::InvalidArgument);
@@ -70,7 +100,10 @@ async fn fs_info_returns_server_limits() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
 
-    let result = expect_ok(fs_info::FsInfo::fs_info(&ctx.fs, fs_info::Args { root }).await, "fs_info should succeed");
+    let result = expect_ok(
+        fs_info::FsInfo::fs_info(&ctx.fs, fs_info::Args { root }).await,
+        "fs_info should succeed",
+    );
     let properties = result.properties.bits();
 
     assert!(result.root_attr.is_some());
@@ -87,7 +120,10 @@ async fn fs_stat_returns_zero_counters() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
 
-    let result = expect_ok(fs_stat::FsStat::fs_stat(&ctx.fs, fs_stat::Args { root }).await, "fs_stat should succeed");
+    let result = expect_ok(
+        fs_stat::FsStat::fs_stat(&ctx.fs, fs_stat::Args { root }).await,
+        "fs_stat should succeed",
+    );
 
     assert!(result.root_attr.is_some());
     assert_eq!(result.total_bytes, 0);
@@ -103,7 +139,10 @@ async fn get_attr_returns_metadata() {
     let root = ctx.root_handle().await;
     let handle = ctx.lookup_handle(root, "file.txt").await;
 
-    let result = expect_ok(get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: handle }).await, "get_attr should succeed");
+    let result = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: handle }).await,
+        "get_attr should succeed",
+    );
 
     assert!(matches!(result.object.file_type, file::Type::Regular));
     assert_eq!(result.object.size, 5);
@@ -116,7 +155,10 @@ async fn path_conf_reports_limits() {
     let root = ctx.root_handle().await;
     let handle = ctx.lookup_handle(root, "file.txt").await;
 
-    let result = expect_ok(path_conf::PathConf::path_conf(&ctx.fs, path_conf::Args { file: handle }).await, "path_conf should succeed");
+    let result = expect_ok(
+        path_conf::PathConf::path_conf(&ctx.fs, path_conf::Args { file: handle }).await,
+        "path_conf should succeed",
+    );
 
     assert!(result.file_attr.is_some());
     assert_eq!(result.link_max, u32::MAX);
@@ -187,11 +229,8 @@ async fn read_dir_returns_sorted_entries_and_rejects_bad_cookie() {
         .await,
         "read_dir should succeed",
     );
-    let names = success
-        .entries
-        .iter()
-        .map(|entry| entry.file_name.as_str().to_owned())
-        .collect::<Vec<_>>();
+    let names =
+        success.entries.iter().map(|entry| entry.file_name.as_str().to_owned()).collect::<Vec<_>>();
     assert_eq!(names, vec!["a.txt", "b.txt", "c.txt"]);
 
     let fail = expect_err(
@@ -234,7 +273,10 @@ async fn read_dir_plus_returns_handles_and_supports_pagination() {
     );
     assert_eq!(first.entries.len(), 2);
     assert!(!first.eof);
-    assert!(first.entries.iter().all(|entry| entry.file_attr.is_some() && entry.file_handle.is_some()));
+    assert!(first
+        .entries
+        .iter()
+        .all(|entry| entry.file_attr.is_some() && entry.file_handle.is_some()));
 
     let second = expect_ok(
         read_dir_plus::ReadDirPlus::read_dir_plus(

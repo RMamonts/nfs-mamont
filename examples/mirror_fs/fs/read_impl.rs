@@ -42,10 +42,7 @@ impl read::Read for MirrorFS {
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let count = end.saturating_sub(start) as usize;
         if let Err(error) = file.seek(SeekFrom::Start(start)).await {
-            return Err(read::Fail {
-                error: Self::io_error_to_vfs(&error),
-                file_attr: Some(attr),
-            });
+            return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
         }
 
         let mut bytes = vec![0u8; count];

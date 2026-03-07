@@ -47,7 +47,11 @@ impl TestContext {
         self.fs.root_handle().await
     }
 
-    pub(crate) async fn lookup_handle(&self, parent: file::Handle, child_name: &str) -> file::Handle {
+    pub(crate) async fn lookup_handle(
+        &self,
+        parent: file::Handle,
+        child_name: &str,
+    ) -> file::Handle {
         expect_ok(
             lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await,
             "lookup should succeed",

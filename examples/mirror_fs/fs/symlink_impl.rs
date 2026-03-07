@@ -23,7 +23,9 @@ impl symlink::Symlink for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before = std::fs::symlink_metadata(&dir_path)
+            .ok()
+            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let mut link_path = dir_path.clone();
         link_path.push(args.object.name.as_str());
 
@@ -39,11 +41,15 @@ impl symlink::Symlink for MirrorFS {
 
         let attr = match Self::metadata(&link_path) {
             Ok(meta) => Self::attr_from_metadata(&meta),
-            Err(error) => return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
         let handle = match self.ensure_handle_for_path(&link_path).await {
             Ok(handle) => handle,
-            Err(error) => return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
 
         Ok(symlink::Success {

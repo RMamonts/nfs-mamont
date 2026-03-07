@@ -48,6 +48,10 @@ impl read_dir::ReadDir for MirrorFS {
             used = used.saturating_add(estimated);
         }
 
-        Ok(read_dir::Success { dir_attr: Some(dir_attr), cookie_verifier: verifier, entries: result })
+        Ok(read_dir::Success {
+            dir_attr: Some(dir_attr),
+            cookie_verifier: verifier,
+            entries: result,
+        })
     }
 }

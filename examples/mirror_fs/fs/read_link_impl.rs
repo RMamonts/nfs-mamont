@@ -36,7 +36,13 @@ impl read_link::ReadLink for MirrorFS {
                 });
             }
         };
-        let data = match file::Path::new(target.to_string_lossy().into_owned()) {
+        let target_str = match target.to_str() {
+            Some(s) => s.to_owned(),
+            None => {
+                return Err(read_link::Fail { error: vfs::Error::IO, symlink_attr: Some(attr) });
+            }
+        };
+        let data = match file::Path::new(target_str) {
             Ok(path) => path,
             Err(_) => {
                 return Err(read_link::Fail {

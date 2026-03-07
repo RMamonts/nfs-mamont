@@ -23,7 +23,9 @@ impl mk_dir::MkDir for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before = std::fs::symlink_metadata(&dir_path)
+            .ok()
+            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
         if let Err(error) = fs::create_dir(&child_path).await {
@@ -37,11 +39,15 @@ impl mk_dir::MkDir for MirrorFS {
         }
         let attr = match Self::metadata(&child_path) {
             Ok(meta) => Self::attr_from_metadata(&meta),
-            Err(error) => return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
         let handle = match self.ensure_handle_for_path(&child_path).await {
             Ok(handle) => handle,
-            Err(error) => return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) }),
+            Err(error) => {
+                return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+            }
         };
 
         Ok(mk_dir::Success {
