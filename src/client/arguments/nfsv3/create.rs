@@ -3,7 +3,7 @@ use std::io::{Result, Write};
 use crate::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::serializer::files::dir_op_arg;
 use crate::serializer::{array, u32};
-use crate::vfs::create::{Args, How, Verifier};
+use crate::vfs::create::{Args, How, HowMode, Verifier};
 
 use crate::client::arguments::nfsv3::set_attr::serialize_new_attr;
 
@@ -16,13 +16,13 @@ fn serialize_verifier(dest: &mut impl Write, verf: Verifier) -> Result<()> {
 fn serialize_how(dest: &mut impl Write, how: How) -> Result<()> {
     match how {
         How::Unchecked(new_attr) => {
-            u32(dest, How::Unchecked as u32).and_then(|_| serialize_new_attr(dest, new_attr))
+            u32(dest, HowMode::Unchecked as u32).and_then(|_| serialize_new_attr(dest, new_attr))
         }
         How::Guarded(new_attr) => {
-            u32(dest, How::Guarded as u32).and_then(|_| serialize_new_attr(dest, new_attr))
+            u32(dest, HowMode::Guarded as u32).and_then(|_| serialize_new_attr(dest, new_attr))
         }
         How::Exclusive(verifier) => {
-            u32(dest, How::Exclusive as u32).and_then(|_| serialize_verifier(dest, verifier))
+            u32(dest, HowMode::Exclusive as u32).and_then(|_| serialize_verifier(dest, verifier))
         }
     }
 }

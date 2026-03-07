@@ -11,12 +11,11 @@ use super::file;
 pub struct Verifier(pub [u8; NFS3_CREATEVERFSIZE]);
 
 /// Describes how the server is to handle the file creation.
-#[repr(u32)]
 pub enum How {
     /// Means that the file should be created without checking
     /// for the existence of a duplicate file in the same
     /// directory with initial attributes for the file.
-    Unchecked(super::set_attr::NewAttr) = 0,
+    Unchecked(super::set_attr::NewAttr),
     /// Specifies that the server should check for the presence
     /// of a duplicate file before performing the create and
     /// should fail the request with [`vfs::Error::Exist`] if a
@@ -24,12 +23,19 @@ pub enum How {
     ///
     /// If the file does not exist, the request is performed as
     /// described for [`How::Unchecked`].
-    Guarded(super::set_attr::NewAttr) = 1,
+    Guarded(super::set_attr::NewAttr),
     /// Specifies that the server is to follow exclusive creation
     /// semantics, using the verifier to ensure exclusive creation
     /// of the target. No attributes provided in this case, since the
     /// server may use the target file metadata to store the [`Verifier`].
-    Exclusive(Verifier) = 2,
+    Exclusive(Verifier),
+}
+
+/// Describes codes of [`How`] branches as integers.
+pub enum HowMode {
+    Unchecked = 0,
+    Guarded = 1,
+    Exclusive = 2,
 }
 
 /// Success result.
