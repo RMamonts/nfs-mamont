@@ -20,8 +20,13 @@ use tokio::io::AsyncRead;
 
 use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::nfsv3::{NFS_PROGRAM, NFS_VERSION};
-use crate::parser::mount::{mount, unmount};
+use crate::nfsv3::{
+    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
+    NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
+    SETATTR, SYMLINK, WRITE,
+};
+use crate::parser::mount::mnt::mount;
+use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -30,13 +35,15 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
-use crate::rpc::{
-    AuthFlavor, AuthStat, ProgramVersionMismatch, RPCVersionMismatch, RpcBody, RPC_VERSION,
-};
+use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
-#[allow(dead_code)]
-const MAX_MESSAGE_LEN: usize = 2500;
+const RMS_HEADER_SIZE: usize = size_of::<u32>();
+
+/// Minimum buffer size, that could hold complete RPC message
+/// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -60,7 +67,7 @@ const MAX_MESSAGE_LEN: usize = 2500;
 /// use crate::allocator::Allocator;
 ///
 /// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
-/// let mut parser = RpcParser::new(socket, alloc, 4096);
+/// let mut parser = RpcParser::new(socket, alloc);
 /// let args = parser.parse_message().await?;
 /// # }
 /// ```
@@ -73,6 +80,25 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+    /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket` - The async stream to read RPC messages from
+    /// * `allocator` - The allocator to use for dynamic memory allocation
+    ///
+    /// # Returns
+    ///
+    /// A new `RpcParser` instance ready to parse messages.
+    pub fn new(socket: S, allocator: A) -> Self {
+        Self {
+            allocator,
+            buffer: CountBuffer::new(DEFAULT_SIZE, socket),
+            last: false,
+            current_frame_size: 0,
+        }
+    }
+
     /// Creates a new `RpcParser` with the specified buffer size.
     ///
     /// # Arguments
@@ -84,7 +110,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: A, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -111,6 +137,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
+
+        if self.current_frame_size < std::mem::size_of::<u32>() {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame size must include XID",
+            )));
+        }
+        if self.current_frame_size > DEFAULT_SIZE {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Frame exceeds maximum supported length",
+            )));
+        }
 
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
@@ -149,7 +188,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            return Err(Error::RpcVersionMismatch(RPCVersionMismatch {
+            return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
@@ -209,37 +248,49 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         match head.program {
             NFS_PROGRAM => match head.version {
                 NFS_VERSION => Ok(Box::new(match head.procedure {
-                    0 => Arguments::Null,
-                    1 => Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?),
-                    2 => Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?),
-                    3 => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
-                    4 => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
-                    5 => Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?),
-                    6 => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
+                    NULL => Arguments::Null,
+                    GETATTR => {
+                        Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
+                    }
+                    SETATTR => {
+                        Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
+                    }
+                    LOOKUP => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
+                    ACCESS => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
+                    READLINK => {
+                        Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
+                    }
+                    READ => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
 
-                    7 => Arguments::Write(
+                    WRITE => Arguments::Write(
                         adapter_for_write(&mut self.allocator, &mut self.buffer).await?,
                     ),
 
-                    8 => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
-                    9 => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
-                    10 => Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?),
-                    11 => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
-                    12 => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
-                    13 => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
-                    14 => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
-                    15 => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
-                    16 => Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?),
-                    17 => Arguments::ReadDirPlus(
+                    CREATE => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
+                    MKDIR => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
+                    SYMLINK => {
+                        Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
+                    }
+                    MKNOD => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
+                    REMOVE => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
+                    RMDIR => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
+                    RENAME => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
+                    LINK => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
+                    READDIR => {
+                        Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
+                    }
+                    READDIRPLUS => Arguments::ReadDirPlus(
                         self.buffer.parse_with_retry(read_dir_plus::args).await?,
                     ),
-                    18 => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
-                    19 => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
-                    20 => Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?),
-                    21 => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
+                    FSSTAT => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
+                    FSINFO => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
+                    PATHCONF => {
+                        Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
+                    }
+                    COMMIT => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
                     _ => return Err(Error::ProcedureMismatch),
                 })),
-                _ => Err(Error::ProgramVersionMismatch(ProgramVersionMismatch {
+                _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
                     low: NFS_VERSION,
                     high: NFS_VERSION,
                 })),
@@ -247,7 +298,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
             MOUNT_PROGRAM => {
                 if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch(ProgramVersionMismatch {
+                    return Err(Error::ProgramVersionMismatch(VersionMismatch {
                         low: MOUNT_VERSION,
                         high: MOUNT_VERSION,
                     }));
@@ -309,7 +360,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if validation passes, or an error if unparsed data
     /// remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
-        if self.buffer.total_bytes() != self.current_frame_size {
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        let bytes_consumed = self.buffer.total_bytes().checked_sub(RMS_HEADER_SIZE).ok_or(
+            Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed bytes are less than RMS header size",
+            )),
+        )?;
+        if bytes_consumed != self.current_frame_size {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
@@ -360,7 +420,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
     async fn discard_current_message(&mut self) -> Result<()> {
-        let remaining = self.current_frame_size - self.buffer.total_bytes();
+        // CountBuffer keep count of bytes, read from it,
+        // but first u32 of message - header that shouldn't be counted
+        // https://datatracker.ietf.org/doc/html/rfc5531#section-11
+        let remaining = (self.current_frame_size + RMS_HEADER_SIZE)
+            .checked_sub(self.buffer.total_bytes())
+            .ok_or(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "Consumed more bytes than RMS header suggests",
+            )))?;
         self.buffer.discard_bytes(remaining).await.map_err(Error::IO)?;
         self.finalize_parsing()?;
         Ok(())
@@ -391,15 +459,26 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
     alloc: &mut impl Allocator,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
+    // Parse arguments for WRITE procedure.
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
-    let mut slice = alloc
-        .allocate(NonZeroUsize::new(size).unwrap())
-        .await
-        .ok_or(Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
-    let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
-    let from_sync = read_in_slice_sync(buffer, &mut slice, size)?;
-    read_in_slice_async(buffer, &mut slice, from_sync, size - from_sync).await?;
+
+    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
+    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
+    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
+        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+    })?;
+
+    // Calculate necessary padding to maintain ALIGNMENT
+    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
+
+    // Read synchronously what is available, then finish asynchronously if needed.
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    if bytes_read_sync < size {
+        read_in_slice_async(buffer, &mut slice, bytes_read_sync, size - bytes_read_sync).await?;
+    }
+
+    // Discard any trailing padding bytes after the data.
     buffer.discard_bytes(padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,

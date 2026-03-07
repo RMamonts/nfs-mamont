@@ -2,14 +2,14 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
 #![allow(dead_code)]
 
-use crate::vfs::file;
-
 pub mod dump;
 pub mod export;
 pub mod mnt;
 pub mod null;
 pub mod umnt;
 pub mod umntall;
+
+use crate::vfs::file;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
@@ -43,8 +43,15 @@ pub struct ExportEntry {
     pub names: Vec<HostName>,
 }
 
-/// MOUNT v3 procedures trait.
-pub trait Mount:
+pub trait MountOps:
     null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
 {
 }
+
+pub trait MountPromises:
+    null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
+{
+}
+
+/// MOUNT v3 procedures trait.
+pub trait Mount: MountOps + MountPromises {}

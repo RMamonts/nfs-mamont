@@ -1,12 +1,13 @@
 //! Implements parsing for [`create::Args`] structure.
 use std::io::Read;
 
+use crate::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::primitive::{array, option, u32, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::create;
-use crate::vfs::create::{Verifier, VERIFY_LEN};
+use crate::vfs::create::Verifier;
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
 
@@ -43,14 +44,17 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
     match u32(src)? {
         0 => Ok(create::How::Unchecked(new_attr(src)?)),
         1 => Ok(create::How::Guarded(new_attr(src)?)),
-        2 => Ok(create::How::Exclusive(Verifier(array::<{ VERIFY_LEN }>(src)?))),
+        2 => Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?))),
         _ => Err(Error::EnumDiscMismatch),
     }
 }
 
 /// Parses the arguments for an NFSv3 `CREATE` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
-    Ok(create::Args { dir: file::handle(src)?, name: file_name(src)?, how: how(src)? })
+    Ok(create::Args {
+        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        how: how(src)?,
+    })
 }
 
 #[cfg(test)]
@@ -76,8 +80,8 @@ mod tests {
 
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
-        assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name.into_inner(), "file");
+        assert_eq!(result.object.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(result.object.name.as_str(), "file");
         assert!(matches!(
             result.how,
             create::How::Unchecked(set_attr::NewAttr {

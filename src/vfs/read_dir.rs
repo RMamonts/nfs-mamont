@@ -2,19 +2,46 @@
 
 use async_trait::async_trait;
 
+use crate::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::vfs;
 
 use super::file;
 
-pub const COOKIE_VERF_SIZE: usize = 8;
-
-// as in RFC, but probably can change to [u8; 8]
 /// Identifies a point in the directory.
-pub type Cookie = u64;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cookie(u64);
 
-// as in RFC
+impl Cookie {
+    pub fn new(val: u64) -> Self {
+        Self(val)
+    }
+
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    pub fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+}
+
 /// Verifies that point identified by [`Cookie`] is still valid.
-pub struct CookieVerifier(pub [u8; COOKIE_VERF_SIZE]);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
+
+impl CookieVerifier {
+    pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
+        Self(val)
+    }
+
+    pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
+        self.0
+    }
+
+    pub fn is_zero(self) -> bool {
+        self.0 == [0; NFS3_COOKIEVERFSIZE]
+    }
+}
 
 // not exactly as in RFC, but possible
 pub struct Entry {
@@ -76,8 +103,9 @@ pub trait ReadDir {
     /// If the server detects that the cookie is no longer valid, the server will reject the
     /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
     ///
-    /// The server may return fewer than `count`` bytes of XDR-encoded entries.
-    /// The `count` specified by the client in the request should be greater than or equal to
-    /// TODO(FSINFO dtpref).
+    /// The server may return fewer than [`Args::count`] bytes of XDR-encoded entries.
+    /// The [`Args::count`] specified by the client in the request should be greater than or equal to
+    /// the server's preferred [`ReadDir`] transfer size from
+    /// [`super::fs_info::Success::read_dir_pref`].
     async fn read_dir(&self, args: Args, promise: impl Promise);
 }

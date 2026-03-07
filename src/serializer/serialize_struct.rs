@@ -250,7 +250,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 | Error::BadFileHandle
                 | Error::MessageTypeMismatch
                 | Error::EnumDiscMismatch
-                | Error::MaxELemLimit
+                | Error::MaxElemLimit
                 | Error::IncorrectString(_) => {
                     u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                     auth(&mut self.buffer, reply.verf)?;

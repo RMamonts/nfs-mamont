@@ -3,11 +3,11 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
-use crate::rpc::AuthFlavor;
-use crate::vfs::file;
-use crate::vfs::file::Handle;
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::rpc::AuthFlavor;
+use crate::vfs::file;
 
 #[derive(ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
@@ -36,7 +36,7 @@ pub enum MntError {
 pub struct Success {
     /// The file handle for the mounted directory.
     /// This file handle may be used in the NFS protocol.
-    pub file_handle: Handle,
+    pub file_handle: file::Handle,
     /// Vector of RPC authentication flavors that are supported with
     /// the client's use of the file handle (or any file handles derived from it)
     pub auth_flavors: Vec<AuthFlavor>,
@@ -49,6 +49,11 @@ pub type Result = std::result::Result<Success, MntError>;
 pub trait Promise {
     async fn keep(result: Result);
 }
+
+/// Arguments for the Mount operation, containing the path to be mounted.
+#[cfg_attr(test, derive(Eq, PartialEq))]
+#[derive(Debug)]
+pub struct MountArgs(pub file::Path);
 
 #[async_trait]
 pub trait Mnt {
