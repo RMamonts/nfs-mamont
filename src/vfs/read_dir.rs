@@ -9,6 +9,7 @@ use super::file;
 
 /// Identifies a point in the directory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Cookie(u64);
 
 impl Cookie {
@@ -27,6 +28,7 @@ impl Cookie {
 
 /// Verifies that point identified by [`Cookie`] is still valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {

@@ -27,6 +27,7 @@ pub trait Promise {
 
 /// Mask of [`Access::access`] rights.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Mask(u32);
 
 impl Mask {

@@ -9,13 +9,13 @@
 //!   big-endian (network byte order)
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
+#![allow(dead_code)]
 
 pub mod mount;
 pub mod nfs;
 mod rpc;
-mod serialize_struct;
 
-mod files;
+pub mod files;
 #[cfg(test)]
 mod tests;
 
@@ -29,7 +29,7 @@ pub const ALIGNMENT: usize = 4;
 
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
-fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
+pub fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])

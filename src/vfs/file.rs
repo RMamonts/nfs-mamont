@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 #[cfg(feature = "arbitrary")]
-use arbitrary::{Arbitrary, Unstructured};
+use arbitrary::Arbitrary;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
@@ -58,6 +58,18 @@ impl Name {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        loop {
+            match Name::new(String::arbitrary(u)?) {
+                Ok(n) => break Ok(n),
+                Err(_) => continue,
+            }
+        }
+    }
+}
+
 /// A validated wrapper around a [`PathBuf`].
 ///
 /// [`Path`] ensures that the provided path string does not exceed
@@ -90,6 +102,18 @@ impl Path {
     /// Returns the inner path as a `&Path`.
     pub fn as_path(&self) -> &std::path::Path {
         self.0.as_path()
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Path {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        loop {
+            match Path::new(String::arbitrary(u)?) {
+                Ok(n) => break Ok(n),
+                Err(_) => continue,
+            }
+        }
     }
 }
 
@@ -156,9 +180,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,

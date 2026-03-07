@@ -20,6 +20,7 @@ use super::file;
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
 /// commited to stable storage.
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,

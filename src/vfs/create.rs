@@ -8,6 +8,8 @@ use crate::vfs;
 use super::file;
 
 /// Opaque byte array of `NFS3_CREATEVERFSIZE` size used in `How`
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, PartialEq))]
 pub struct Verifier(pub [u8; NFS3_CREATEVERFSIZE]);
 
 /// Describes how the server is to handle the file creation.

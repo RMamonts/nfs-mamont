@@ -6,7 +6,6 @@
 pub mod access;
 pub mod commit;
 pub mod create;
-pub mod files;
 pub mod fs_info;
 pub mod fs_stat;
 pub mod get_attr;

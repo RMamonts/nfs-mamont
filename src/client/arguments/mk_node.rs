@@ -1,7 +1,6 @@
 use std::io::{Result, Write};
 
-use crate::serializer::nfs::file_handle;
-use crate::serializer::nfs::files::file_name;
+use crate::serializer::files::dir_op_arg;
 use crate::serializer::u32;
 use crate::vfs::file::{Device, Type};
 use crate::vfs::mk_node::{Args, What};
@@ -33,7 +32,5 @@ fn serialize_how(dest: &mut impl Write, what: What) -> Result<()> {
 }
 
 pub fn mk_node_args(dest: &mut impl Write, arg: Args) -> Result<()> {
-    file_handle(dest, arg.dir)
-        .and_then(|_| file_name(dest, arg.name))
-        .and_then(|_| serialize_how(dest, arg.what))
+    dir_op_arg(dest, arg.object).and_then(|_| serialize_how(dest, arg.what))
 }

@@ -1,6 +1,6 @@
 use std::io::{Result, Write};
 
-use crate::serializer::nfs::file_handle;
+use crate::serializer::files::file_handle;
 use crate::serializer::{option, u32, u64};
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{Args, Guard, NewAttr, SetTime};

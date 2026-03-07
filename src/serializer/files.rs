@@ -6,7 +6,7 @@ use std::io::{ErrorKind, Write};
 use crate::nfsv3::NFS3_FHSIZE;
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
-use crate::vfs::{file, MAX_PATH_LEN};
+use crate::vfs::{file, DirOpArgs, MAX_PATH_LEN};
 
 /// Serializes [`vfs::file::Time`] into XDR `nfstime3`.
 pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> io::Result<()> {
@@ -75,6 +75,11 @@ pub fn file_path(dest: &mut impl Write, file_name: file::Path) -> io::Result<()>
             .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?,
         MAX_PATH_LEN,
     )
+}
+
+/// Serializes [`DirOpArgs`] as XDR `diroparg3`.
+pub fn dir_op_arg(dest: &mut impl Write, arg: DirOpArgs) -> io::Result<()> {
+    file_handle(dest, arg.dir).and_then(|_| file_name(dest, arg.name))
 }
 
 #[cfg(test)]
