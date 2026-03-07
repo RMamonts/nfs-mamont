@@ -6,24 +6,21 @@ use nfs_mamont::client::arguments::nfsv3::{
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
 use nfs_mamont::mocks::fuzz_socket::{FuzzMockSocket, FuzzSocketHandler};
-use nfs_mamont::mount;
 use nfs_mamont::nfsv3;
-use nfs_mamont::nfsv3::NFS_PROGRAM;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
 use nfs_mamont::parser::{Arguments, Result};
+use nfs_mamont::{mount, rpc};
+
+const FAULT_VERSION: u32 = 7;
+const FAULT_PROGRAM: u32 = 1;
 
 #[derive(Clone, Debug)]
 pub struct RpcRequest {
-    // calculated
-    pub size: u32,
     pub xid: u32,
-    // always
     pub request: u32,
-    // always 2
     pub rpc_version: u32,
     pub prog: u32,
-    // both mount and nfs - 3
     pub version: u32,
     pub proc: u32,
     // for now only None (0)
@@ -35,31 +32,31 @@ pub struct RpcRequest {
 
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let prog = u.int_in_range(NFS_PROGRAM..=mount::MOUNT_PROGRAM)?;
+        let prog = u.int_in_range(nfsv3::NFS_PROGRAM..=mount::MOUNT_PROGRAM)?;
         let proc = u.int_in_range(0..=24)?;
         let args = match (prog, proc) {
-            (NFS_PROGRAM, nfsv3::NULL) => Arguments::Null,
-            (NFS_PROGRAM, nfsv3::GETATTR) => Arguments::GetAttr(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::SETATTR) => Arguments::SetAttr(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::LOOKUP) => Arguments::LookUp(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::ACCESS) => Arguments::Access(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::READLINK) => Arguments::ReadLink(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::READ) => Arguments::Read(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::WRITE) => Arguments::Write(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::CREATE) => Arguments::Create(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::MKDIR) => Arguments::MkDir(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::SYMLINK) => Arguments::SymLink(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::MKNOD) => Arguments::MkNod(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::REMOVE) => Arguments::Remove(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::RMDIR) => Arguments::RmDir(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::RENAME) => Arguments::Rename(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::LINK) => Arguments::Link(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::READDIR) => Arguments::ReadDir(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::READDIRPLUS) => Arguments::ReadDirPlus(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::FSSTAT) => Arguments::FsStat(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::FSINFO) => Arguments::FsInfo(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::PATHCONF) => Arguments::PathConf(u.arbitrary()?),
-            (NFS_PROGRAM, nfsv3::COMMIT) => Arguments::Commit(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::NULL) => Arguments::Null,
+            (nfsv3::NFS_PROGRAM, nfsv3::GETATTR) => Arguments::GetAttr(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::SETATTR) => Arguments::SetAttr(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::LOOKUP) => Arguments::LookUp(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::ACCESS) => Arguments::Access(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::READLINK) => Arguments::ReadLink(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::READ) => Arguments::Read(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::WRITE) => Arguments::Write(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::CREATE) => Arguments::Create(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::MKDIR) => Arguments::MkDir(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::SYMLINK) => Arguments::SymLink(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::MKNOD) => Arguments::MkNod(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::REMOVE) => Arguments::Remove(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::RMDIR) => Arguments::RmDir(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::RENAME) => Arguments::Rename(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::LINK) => Arguments::Link(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::READDIR) => Arguments::ReadDir(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::READDIRPLUS) => Arguments::ReadDirPlus(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::FSSTAT) => Arguments::FsStat(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::FSINFO) => Arguments::FsInfo(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::PATHCONF) => Arguments::PathConf(u.arbitrary()?),
+            (nfsv3::NFS_PROGRAM, nfsv3::COMMIT) => Arguments::Commit(u.arbitrary()?),
             (mount::MOUNT_PROGRAM, mount::NULL) => Arguments::Null,
             (mount::MOUNT_PROGRAM, mount::MOUNT) => Arguments::Mount(u.arbitrary()?),
             (mount::MOUNT_PROGRAM, mount::DUMP) => Arguments::Dump,
@@ -69,15 +66,14 @@ impl<'a> Arbitrary<'a> for RpcRequest {
             _ => u.arbitrary::<Arguments>()?,
         };
         Ok(Self {
-            size: 0,
-            xid: 0,
-            request: 0,
+            xid: u.arbitrary()?,
+            request: *u.choose(&[rpc::RpcBody::Call as u32, rpc::RpcBody::Reply as u32])?,
             //so there would be RpcVersionMismatch
-            rpc_version: u.int_in_range(1..=2)?,
+            rpc_version: *u.choose(&[mount::MOUNT_PROGRAM, nfsv3::NFS_PROGRAM, FAULT_PROGRAM])?,
             //so there would be ProgramMismatch
             prog,
             //so there would be ProgramVersionMismatch
-            version: u.int_in_range(2..=3)?,
+            version: *u.choose(&[mount::MOUNT_VERSION, nfsv3::NFS_VERSION, FAULT_VERSION])?,
             //so there would be ProcedureMismatch (nfsv3 has 21 proc)
             proc,
             auth: 0,
@@ -94,14 +90,13 @@ pub struct ParserWrapper<A: Allocator> {
 
 impl<A: Allocator> ParserWrapper<A> {
     pub fn new(parser: RpcParser<A, FuzzMockSocket>, sender: FuzzSocketHandler) -> Self {
-        // inner buffer size + max amount of bytes can be generated for Slice
         Self { parser, sender }
     }
 
     // forms completely new message
     pub fn write_new_message(&mut self, arg: RpcRequest) {
-        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE + 1000);
-        // tmp
+        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE + 5000);
+        // place for size
         tmp_buffer.extend_from_slice(&[0, 0, 0, 0]);
         // xid
         tmp_buffer.extend_from_slice(&arg.xid.to_be_bytes());

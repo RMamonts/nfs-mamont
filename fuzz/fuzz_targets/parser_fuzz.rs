@@ -46,6 +46,7 @@ fuzz_target!(|data: RpcRequest| {
                 | Error::AuthError(_)
                 | Error::ProgramMismatch
                 | Error::ProcedureMismatch
+                | Error::MessageTypeMismatch
                 | Error::ProgramVersionMismatch(_) => {}
                 _ => {
                     panic!("{:?}", error);
