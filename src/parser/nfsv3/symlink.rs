@@ -38,6 +38,7 @@ mod tests {
         ];
 
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
+
         assert_eq!(result.object.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         assert_eq!(result.object.name.as_str(), "link");
         assert!(matches!(

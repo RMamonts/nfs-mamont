@@ -1,4 +1,5 @@
 //! Shared XDR serializers for common NFSv3 data structures.
+
 use std::io;
 use std::io::{ErrorKind, Write};
 
