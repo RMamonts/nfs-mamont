@@ -38,7 +38,7 @@ use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
-const RMS_HEADER_SIZE: usize = size_of::<u32>();
+pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
