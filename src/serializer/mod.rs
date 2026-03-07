@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-mod files;
+pub mod files;
 mod mount;
 mod nfs;
 pub mod rpc;
