@@ -10,8 +10,7 @@ use crate::vfs::symlink;
 
 pub fn args(src: &mut impl Read) -> Result<symlink::Args> {
     Ok(symlink::Args {
-        dir: file::handle(src)?,
-        name: file_name(src)?,
+        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         attr: new_attr(src)?,
         path: file_path(src)?,
     })
@@ -39,8 +38,8 @@ mod tests {
 
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
-        assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name.0, "link");
+        assert_eq!(result.object.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(result.object.name.as_str(), "link");
         assert!(matches!(
             result.attr,
             set_attr::NewAttr {
@@ -52,7 +51,7 @@ mod tests {
                 mtime: set_attr::SetTime::DontChange,
             }
         ));
-        assert_eq!(result.path.0.as_os_str(), "/path/");
+        assert_eq!(result.path.as_path().as_os_str(), "/path/");
     }
 
     #[test]

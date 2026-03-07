@@ -11,7 +11,7 @@ pub struct Success {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
     /// The data associated with the symbolic link.
-    pub data: file::FilePath,
+    pub data: file::Path,
 }
 
 /// Fail result.

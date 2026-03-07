@@ -3,7 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::wcc_data;
+use crate::serializer::files::wcc_data;
 use crate::vfs::set_attr;
 
 /// Serializes [`set_attr::Success`] (SETATTR3resok body) into XDR.

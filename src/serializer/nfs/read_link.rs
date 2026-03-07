@@ -3,8 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::file_attr;
-use crate::serializer::nfs::files::file_path;
+use crate::serializer::files::{file_attr, file_path};
 use crate::serializer::option;
 use crate::vfs::read_link;
 

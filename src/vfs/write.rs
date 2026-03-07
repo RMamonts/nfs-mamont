@@ -3,36 +3,41 @@
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use super::file;
 use crate::allocator::Slice;
+use crate::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::vfs;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+use super::file;
+
 /// Enum describing servers behaviour after performing write:
-/// * `FileSync` indicates that all data and metadata should be commited to stable storage.
-/// * `DataSync` indicates that all data should be commited to stable storage.
-/// * `Unstable` indicates that the server is free to commit any part of the data and the metadata to stable storage, including all or none
+///
+/// If `stable` is [`StableHow::FileSync`], the server must commit the data
+/// written plus all file system metadata to stable storage before returning results.
+/// If `stable` is [`StableHow::DataSync`], then server must commit all of the data
+/// to stable storage and enough of the metadata to retrieve the data before returning.
+/// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
+/// `data` and the metadata to stable storage, including all or none, before returning a reply
+/// the client. There is no guarantee whether or when any uncommitted data will subsequently be
+/// commited to stable storage.
+#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
     FileSync = 2,
 }
 
-pub const VERIFIER_LEN: usize = 8;
-
-/// Opaque byte array of [`VERIFIER_LEN`] used in [`Success`]
-pub struct Verifier(pub [u8; VERIFIER_LEN]);
+/// Opaque byte array of [`NFS3_WRITEVERFSIZE`] used in [`Success`]
+pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);
 
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
     /// The number of bytes of data written to the file.
-    pub count: u64,
+    pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub commited: StableHow,
-    /// TODO(what is it?)
+    /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].
     pub verifier: Verifier,
 }
 
@@ -63,20 +68,13 @@ pub struct Args {
     pub offset: u64,
     /// Size of data in `Slice`
     pub size: u32,
-    /// If `stable` is [`StableHow::FileSync`], the server must commit the data
-    /// written plus all file system metadata to stable storage before returning results.
-    /// If `stable` is [`StableHow::DataSync`], then server must commit all of the data
-    /// to stable storage and enough of the metadata to retrieve the data before returning.
-    /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
-    /// `data` and the metadata to stable storage, including all or none, before returning a reply
-    /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
+    /// Server's behaviour after performing write
     pub stable: StableHow,
     /// The data to be written to the file.
     ///
-    /// The size of data must be less than or equal to the value of the TODO(wtmax) field.
-    /// If greater, the server may write only TODO(wtmax) bytes, resulting in a short write.
-    ///
+    /// The size of data must be less than or equal to the value of the server's
+    /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
+    /// resulting in a short write.
     pub data: Slice,
 }
 
@@ -96,7 +94,7 @@ pub struct ArgsPartial {
     /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
     /// `data` and the metadata to stable storage, including all or none, before returning a reply
     /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    /// commited to stable storage. // TODO(i.erin) move comment to StableHow definition
+    /// commited to stable storage.
     pub stable: StableHow,
 }
 

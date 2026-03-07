@@ -10,7 +10,7 @@ use crate::rpc::{OpaqueAuth, MAX_AUTH_SIZE};
 use crate::serializer::{variant, vec_max_size};
 
 /// Serializes [`OpaqueAuth`] (flavor + body) into XDR.
-pub fn auth_opaque(dest: &mut impl Write, data: OpaqueAuth) -> io::Result<()> {
+pub fn auth(dest: &mut impl Write, data: OpaqueAuth) -> io::Result<()> {
     variant(dest, data.flavor)?;
-    vec_max_size(dest, data.body, MAX_AUTH_SIZE)
+    vec_max_size(dest, &data.body, MAX_AUTH_SIZE)
 }

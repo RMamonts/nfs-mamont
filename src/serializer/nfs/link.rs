@@ -3,7 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::{file_attr, wcc_data};
+use crate::serializer::files::{file_attr, wcc_data};
 use crate::serializer::option;
 use crate::vfs::link;
 

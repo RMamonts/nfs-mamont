@@ -3,12 +3,12 @@ use std::io::Write;
 
 use crate::mount;
 use crate::mount::dump;
-use crate::serializer::bool;
-use crate::serializer::nfs::files::{file_name, file_path};
+use crate::serializer::files::file_path;
+use crate::serializer::{bool, string_max_size};
 
 /// Serializes [`mount::MountEntry`] as an XDR `mountbody` linked list node.
 pub fn mount_entry(dest: &mut impl Write, arg: mount::MountEntry) -> io::Result<()> {
-    file_name(dest, arg.hostname)?;
+    string_max_size(dest, arg.hostname, mount::MOUNT_HOST_NAME_LEN)?;
     file_path(dest, arg.directory)
 }
 

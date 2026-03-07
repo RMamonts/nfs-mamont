@@ -1,13 +1,11 @@
 //! Primitive XDR data type parsing utilities.
 
 use std::io::Read;
-use std::path::PathBuf;
-use std::str::FromStr;
 
-use super::{Error, Result};
-use crate::vfs::MAX_PATH_LEN;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
+
+use super::{Error, Result};
 
 /// The XDR alignment in bytes.
 pub const ALIGNMENT: usize = 4;
@@ -76,7 +74,7 @@ pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
 pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     if size > max_size {
-        return Err(Error::MaxELemLimit);
+        return Err(Error::MaxElemLimit);
     }
     let mut vec = vec![0u8; size];
     src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
@@ -94,11 +92,6 @@ pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
 pub fn string(src: &mut impl Read) -> Result<String> {
     let vec = vector(src)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
-}
-
-/// Parses an XDR-encoded path from the `Read` source.
-pub fn path(src: &mut impl Read) -> Result<PathBuf> {
-    PathBuf::from_str(string_max_size(src, MAX_PATH_LEN)?.as_str()).map_err(|_| Error::MaxELemLimit)
 }
 
 /// Parses an XDR enum variant from the `Read` source.

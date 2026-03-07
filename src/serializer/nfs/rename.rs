@@ -3,7 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::wcc_data;
+use crate::serializer::files::wcc_data;
 use crate::vfs::rename;
 
 /// Serializes [`rename::Success`] (RENAME3resok body) into XDR.

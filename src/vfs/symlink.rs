@@ -20,8 +20,7 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
 }
 
@@ -37,14 +36,12 @@ pub trait Promise {
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
-    /// The file handle for the directory in which the symbolic link to be created.
-    pub dir: file::Handle,
-    /// The name that is to be associated with the created symbolic link.
-    pub name: file::FileName,
+    /// The location of the symbolic link to be created.
+    pub object: vfs::DirOpArgs,
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
-    pub path: file::FilePath,
+    pub path: file::Path,
 }
 
 #[async_trait]

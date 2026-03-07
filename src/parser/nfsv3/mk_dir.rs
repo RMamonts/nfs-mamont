@@ -10,7 +10,10 @@ use crate::vfs::mk_dir;
 
 /// Parses the arguments for an NFSv3 `MKDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
-    Ok(mk_dir::Args { dir: file::handle(src)?, name: file_name(src)?, attr: new_attr(src)? })
+    Ok(mk_dir::Args {
+        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        attr: new_attr(src)?,
+    })
 }
 
 #[cfg(test)]
@@ -33,8 +36,8 @@ mod tests {
 
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
-        assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.name.0, "dir1");
+        assert_eq!(result.object.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(result.object.name.as_str(), "dir1");
         assert!(matches!(
             result.attr,
             set_attr::NewAttr {

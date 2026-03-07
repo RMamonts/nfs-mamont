@@ -37,7 +37,7 @@ pub const MAX_PATH_LEN: usize = 1024;
 /// Represents `OK` variant in enum `nfsstat3`, that indicates of successful operation
 pub const STATUS_OK: usize = 0;
 
-/// [`crate::vfs`] errors.
+/// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Error {
     /// Not owner. The operation was not allowed because the
@@ -127,19 +127,28 @@ pub enum Error {
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait
     /// and then try the request with a new RPC transaction ID.
-    /// For example, this error should be returned from a server
-    /// that supports hierarchical storage and receives a request
     /// to process a file that has been migrated. In this case,
     /// the server should start the immigration process and
     /// respond to client with this error.
     JUKEBOX = 10008,
 }
 
-/// TODO(i.erin)
 #[derive(Clone)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
     pub after: Option<file::Attr>,
+}
+
+/// This struct represents the generic `diropargs3` structure from NFSv3.
+///
+/// It is used by several directory operations (for example, create, mkdir, rmdir,
+/// remove, symlink, mknod, link, and rename). See NFSv3 RFC 1813:
+/// <https://datatracker.ietf.org/doc/html/rfc1813#autoid-15>
+pub struct DirOpArgs {
+    /// The file handle for the directory.
+    pub dir: file::Handle,
+    /// The name of the entry within the directory.
+    pub name: file::Name,
 }
 
 pub trait Vfs {}

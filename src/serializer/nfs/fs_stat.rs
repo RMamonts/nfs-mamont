@@ -3,7 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::file_attr;
+use crate::serializer::files::file_attr;
 use crate::serializer::{option, u32, u64};
 use crate::vfs::fs_stat;
 

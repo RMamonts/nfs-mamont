@@ -3,7 +3,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::serializer::nfs::files::wcc_data;
+use crate::serializer::files::wcc_data;
 use crate::vfs::rm_dir;
 
 /// Serializes [`rm_dir::Success`] (RMDIR3resok body) into XDR.

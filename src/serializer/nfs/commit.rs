@@ -4,7 +4,7 @@ use std::io;
 use std::io::Write;
 
 use crate::serializer::array;
-use crate::serializer::nfs::files::wcc_data;
+use crate::serializer::files::wcc_data;
 use crate::vfs::commit;
 
 /// Serializes [`commit::Success`] (COMMIT3resok body) into XDR.

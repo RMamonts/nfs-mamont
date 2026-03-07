@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::mount;
 use crate::mount::{export, MOUNT_HOST_NAME_LEN};
-use crate::serializer::nfs::files::file_path;
+use crate::serializer::files::file_path;
 use crate::serializer::{bool, string_max_size};
 
 /// Serializes [`mount::ExportEntry`] as an XDR `groupnode` linked list node.
