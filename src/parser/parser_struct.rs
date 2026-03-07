@@ -35,7 +35,7 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
-use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, ParsedRpcCall, RpcBody, RpcCallHeader, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -133,7 +133,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the header was successfully parsed, or an error if:
     /// - The message is fragmented (not supported)
     /// - An I/O error occurs
-    async fn read_message_header(&mut self) -> Result<()> {
+    async fn read_message_header(&mut self) -> Result<u32> {
         let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
@@ -158,8 +158,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Fragmented messages not supported",
             )));
         }
-        let _xid = self.buffer.parse_with_retry(u32).await?;
-        Ok(())
+        let xid = self.buffer.parse_with_retry(u32).await?;
+        Ok(xid)
     }
 
     /// Parses the RPC call header.
@@ -180,7 +180,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - The RPC version doesn't match
     /// - Authentication fails
     /// - An I/O error occurs
-    async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
+    async fn parse_rpc_header(&mut self, xid: u32) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type != RpcBody::Call as u32 {
             return Err(Error::MessageTypeMismatch);
@@ -198,12 +198,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
-        let auth_status = self.parse_authentication().await?;
-        if auth_status != AuthStat::Ok {
-            return Err(Error::AuthError(auth_status));
-        }
+        let auth = self.parse_authentication().await?;
 
-        Ok(RpcMessage { program, procedure, version })
+        Ok(RpcMessage {
+            xid,
+            program,
+            procedure,
+            version,
+            auth_flavor: auth.flavor,
+        })
     }
 
     /// Parses and validates RPC authentication.
@@ -212,11 +215,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns [`AuthStat::Ok`] if authentication succeeds, or an error
-    /// if authentication fails or an I/O error occurs.
-    async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        match self.buffer.parse_with_retry(auth).await?.flavor {
-            AuthFlavor::None => Ok(AuthStat::Ok),
+    /// Returns parsed opaque authentication metadata if authentication succeeds,
+    /// or an error if authentication fails or an I/O error occurs.
+    async fn parse_authentication(&mut self) -> Result<crate::rpc::OpaqueAuth> {
+        let auth = self.buffer.parse_with_retry(auth).await?;
+
+        match auth.flavor {
+            AuthFlavor::None => Ok(auth),
             _ => {
                 unimplemented!()
             }
@@ -317,6 +322,30 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
+    pub async fn parse_request(&mut self) -> Result<ParsedRpcCall> {
+        let xid = self.read_message_header().await?;
+        let rpc_header = match self.parse_rpc_header(xid).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+        let proc = match self.parse_proc(rpc_header).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+
+        self.finalize_parsing()?;
+        Ok(ParsedRpcCall {
+            header: RpcCallHeader {
+                xid: rpc_header.xid,
+                program: rpc_header.program,
+                version: rpc_header.version,
+                procedure: rpc_header.procedure,
+                auth_flavor: rpc_header.auth_flavor,
+            },
+            arguments: proc,
+        })
+    }
+
     /// Parses a complete RPC message from the stream.
     ///
     /// This is the main entry point for parsing. It performs the following steps:
@@ -334,19 +363,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns a boxed [`Arguments`] enum variant containing the parsed procedure arguments,
     /// or an error if parsing fails at any stage.
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
-        self.read_message_header().await?;
-        let rpc_header = match self.parse_rpc_header().await {
-            Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-        let proc = match self.parse_proc(rpc_header).await {
-            Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-
-        // that's done after normal parsing without errors
-        self.finalize_parsing()?;
-        Ok(proc)
+        Ok(self.parse_request().await?.arguments)
     }
 
     /// Finalizes parsing by validating that all frame data was consumed.

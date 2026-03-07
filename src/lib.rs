@@ -16,30 +16,40 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 use crate::read_task::ReadTask;
+use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
+    handle_forever_with_context(listener, ServerContext::default()).await
+}
+
+/// Starts the NFS server and processes client connections using explicit server state.
+pub async fn handle_forever_with_context(
+    listener: TcpListener,
+    server_context: ServerContext,
+) -> std::io::Result<()> {
     loop {
         let (socket, _) = listener.accept().await?;
 
         socket.set_nodelay(true)?;
 
-        process_socket(socket).await;
+        process_socket(socket, server_context.clone()).await;
     }
 }
 
-async fn process_socket(socket: TcpStream) {
+async fn process_socket(socket: TcpStream, server_context: ServerContext) {
+    let connection_context = ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<()>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
     // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<()>();
+    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
 
-    ReadTask::new(readhalf, command_sender).spawn();
+    ReadTask::new(readhalf, command_sender, server_context.clone(), connection_context).spawn();
 
-    VfsTask::new(command_receiver, result_sender).spawn();
+    VfsTask::new(command_receiver, result_sender, server_context).spawn();
 
     WriteTask::new(writehalf, result_receiver).spawn();
 }
