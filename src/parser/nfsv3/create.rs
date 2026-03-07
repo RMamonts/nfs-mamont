@@ -6,9 +6,11 @@ use crate::parser::nfsv3::file::file_name;
 use crate::parser::primitive::{array, option, u32, u64};
 use crate::parser::{Error, Result};
 use crate::vfs::create;
-use crate::vfs::create::{Verifier, VERIFY_LEN};
+use crate::vfs::create::Verifier;
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
+
+use crate::nfsv3::NFS3_CREATEVERFSIZE;
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
@@ -42,7 +44,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
     match u32(src)? {
         0 => Ok(create::How::Unchecked(new_attr(src)?)),
         1 => Ok(create::How::Guarded(new_attr(src)?)),
-        2 => Ok(create::How::Exclusive(Verifier(array::<{ VERIFY_LEN }>(src)?))),
+        2 => Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?))),
         _ => Err(Error::EnumDiscMismatch),
     }
 }

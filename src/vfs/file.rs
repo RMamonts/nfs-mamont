@@ -5,13 +5,13 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
-pub const HANDLE_SIZE: usize = 8;
+use crate::nfsv3::NFS3_FHSIZE;
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
 #[derive(Clone, PartialEq)]
-pub struct Handle(pub [u8; HANDLE_SIZE]);
+pub struct Handle(pub [u8; NFS3_FHSIZE]);
 
 /// A validated wrapper around a `String` representing a name.
 ///
@@ -108,7 +108,7 @@ pub enum Type {
     Fifo = 7,
 }
 
-/// File attributes.
+/// File attributes, also known as `fattr3` in RFC
 #[derive(Clone)]
 pub struct Attr {
     /// Type of the file, see [`Type`].
