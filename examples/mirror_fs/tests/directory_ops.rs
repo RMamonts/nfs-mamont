@@ -1,0 +1,125 @@
+use nfs_mamont::vfs;
+use nfs_mamont::vfs::file;
+use nfs_mamont::vfs::get_attr;
+use nfs_mamont::vfs::lookup;
+use nfs_mamont::vfs::remove;
+use nfs_mamont::vfs::rename;
+use nfs_mamont::vfs::rm_dir;
+
+use super::helpers::{assert_wcc_present, create_dir, dir_op, expect_err, expect_ok, write_file, TestContext};
+
+#[tokio::test]
+async fn lookup_resolves_child_and_rejects_non_directory_parent() {
+    let ctx = TestContext::new();
+    create_dir(ctx.root_path(), "dir");
+    write_file(ctx.root_path(), "dir/child.txt", b"data");
+    write_file(ctx.root_path(), "plain.txt", b"data");
+    let root = ctx.root_handle().await;
+
+    let dir = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: super::helpers::name("dir") }).await,
+        "lookup dir should succeed",
+    );
+    assert!(matches!(dir.file_attr.unwrap().file_type, file::Type::Directory));
+
+    let child = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.file, name: super::helpers::name("child.txt") }).await,
+        "lookup child should succeed",
+    );
+    assert!(matches!(child.file_attr.unwrap().file_type, file::Type::Regular));
+
+    let plain = ctx.lookup_handle(root, "plain.txt").await;
+    let fail = expect_err(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: plain, name: super::helpers::name("nope") }).await,
+        "lookup through non-directory should fail",
+    );
+    assert_eq!(fail.error, vfs::Error::NotDir);
+}
+
+#[tokio::test]
+async fn remove_deletes_file_and_invalidates_cached_handle() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "file.txt", b"hello");
+    let root = ctx.root_handle().await;
+    let file_handle = ctx.lookup_handle(root.clone(), "file.txt").await;
+
+    let success = expect_ok(
+        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "file.txt") }).await,
+        "remove should succeed",
+    );
+    assert_wcc_present(&success.wcc_data);
+    assert!(!ctx.root_path().join("file.txt").exists());
+
+    let fail = expect_err(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: file_handle }).await,
+        "removed handle should be stale",
+    );
+    assert_eq!(fail.error, vfs::Error::StaleFile);
+}
+
+#[tokio::test]
+async fn rename_moves_subtree_and_updates_cached_descendants() {
+    let ctx = TestContext::new();
+    create_dir(ctx.root_path(), "dir/nested");
+    write_file(ctx.root_path(), "dir/nested/file.txt", b"hello");
+    let root = ctx.root_handle().await;
+    let dir_handle = ctx.lookup_handle(root.clone(), "dir").await;
+    let nested_handle = ctx.lookup_handle(dir_handle, "nested").await;
+    let file_handle = ctx.lookup_handle(nested_handle, "file.txt").await;
+
+    let success = expect_ok(
+        rename::Rename::rename(
+            &ctx.fs,
+            rename::Args {
+                from: dir_op(root.clone(), "dir"),
+                to: dir_op(root.clone(), "moved"),
+            },
+        )
+        .await,
+        "rename should succeed",
+    );
+    assert_wcc_present(&success.from_dir_wcc);
+    assert_wcc_present(&success.to_dir_wcc);
+    assert!(!ctx.root_path().join("dir").exists());
+    assert!(ctx.root_path().join("moved/nested/file.txt").exists());
+
+    let attr = expect_ok(
+        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: file_handle }).await,
+        "cached descendant handle should remain valid after rename",
+    );
+    assert!(matches!(attr.object.file_type, file::Type::Regular));
+
+    let moved = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: super::helpers::name("moved") }).await,
+        "lookup renamed directory should succeed",
+    );
+    assert!(matches!(moved.file_attr.unwrap().file_type, file::Type::Directory));
+
+    let missing = expect_err(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root, name: super::helpers::name("dir") }).await,
+        "old name should be gone after rename",
+    );
+    assert_eq!(missing.error, vfs::Error::NoEntry);
+}
+
+#[tokio::test]
+async fn rm_dir_removes_empty_directory_and_rejects_non_empty_one() {
+    let ctx = TestContext::new();
+    create_dir(ctx.root_path(), "empty");
+    create_dir(ctx.root_path(), "non-empty");
+    write_file(ctx.root_path(), "non-empty/file.txt", b"data");
+    let root = ctx.root_handle().await;
+
+    let success = expect_ok(
+        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root.clone(), "empty") }).await,
+        "rm_dir should remove empty directories",
+    );
+    assert_wcc_present(&success.wcc_data);
+    assert!(!ctx.root_path().join("empty").exists());
+
+    let fail = expect_err(
+        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root, "non-empty") }).await,
+        "rm_dir should fail for non-empty directories",
+    );
+    assert_eq!(fail.error, vfs::Error::NotEmpty);
+}

@@ -2,6 +2,9 @@ use std::path::PathBuf;
 pub mod fs;
 pub mod fs_map;
 
+#[cfg(test)]
+mod tests;
+
 /// Main entry point for the mirror file system example
 ///
 /// This function initializes the tracing subscriber, reads the directory path
