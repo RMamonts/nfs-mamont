@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io;
+use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -9,7 +10,7 @@ use tracing::{debug, info};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, SharedVfs};
+use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, ServerMetrics, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
@@ -39,6 +40,7 @@ impl VfsTask {
     }
 
     async fn run(mut self) {
+        let metrics = self.server_context.metrics();
         let max_in_flight = self.server_context.settings().max_in_flight_requests().get();
         let mut receiver_closed = false;
         let mut next_sequence = 0_u64;
@@ -70,6 +72,7 @@ impl VfsTask {
                             let server_context = self.server_context.clone();
                             let span = command.context.span.clone();
                             let result_queue_depth = queue_depth(&self.result_sender);
+                            let metrics = Arc::clone(&metrics);
                             debug!(
                                 parent: &span,
                                 sequence,
@@ -78,18 +81,22 @@ impl VfsTask {
                                 "queued rpc request for dispatch",
                             );
                             in_flight.spawn(async move {
+                                let _in_flight = InFlightGuard::new(Arc::clone(&metrics));
                                 let xid = command.context.header.xid;
                                 let received_at = command.context.received_at;
+                                let queue_wait_micros = received_at.elapsed().as_micros() as u64;
                                 let dispatched_at = Instant::now();
                                 let result = serialize_reply(
                                     xid,
                                     Self::dispatch_with_context(server_context, command).await,
                                 )
                                 .await;
+                                let dispatch_micros = dispatched_at.elapsed().as_micros() as u64;
+                                metrics.record_dispatch(queue_wait_micros, dispatch_micros);
                                 debug!(
                                     parent: &span,
                                     sequence,
-                                    dispatch_micros = dispatched_at.elapsed().as_micros() as u64,
+                                    dispatch_micros,
                                     "completed rpc dispatch",
                                 );
                                 (
@@ -115,11 +122,14 @@ impl VfsTask {
         pending: &mut BTreeMap<u64, ReplyEnvelope>,
         next_reply_sequence: &mut u64,
     ) {
+        let metrics = self.server_context.metrics();
         while let Some(reply) = pending.remove(next_reply_sequence) {
+            let writer_queue_depth = queue_depth(&self.result_sender).saturating_add(1);
+            metrics.observe_result_queue_depth(writer_queue_depth);
             debug!(
                 parent: &reply.span,
                 sequence = *next_reply_sequence,
-                writer_queue_depth = queue_depth(&self.result_sender),
+                writer_queue_depth,
                 total_elapsed_micros = reply.received_at.elapsed().as_micros() as u64,
                 "forwarding rpc reply to writer",
             );
@@ -219,4 +229,21 @@ impl VfsTask {
 
 fn queue_depth<T>(sender: &Sender<T>) -> usize {
     sender.max_capacity().saturating_sub(sender.capacity())
+}
+
+struct InFlightGuard {
+    metrics: Arc<ServerMetrics>,
+}
+
+impl InFlightGuard {
+    fn new(metrics: Arc<ServerMetrics>) -> Self {
+        metrics.start_in_flight_request();
+        Self { metrics }
+    }
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.metrics.finish_in_flight_request();
+    }
 }

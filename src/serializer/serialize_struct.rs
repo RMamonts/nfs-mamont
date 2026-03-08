@@ -447,3 +447,42 @@ fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply
 
     Ok(RpcReply::new(xid, ReplyPayload::Read { header, data: ok.data, padding }))
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use super::{serialize_reply, NfsRes, ProcResult};
+    use crate::allocator::Slice;
+    use crate::rpc::ReplyPayload;
+    use crate::vfs;
+
+    #[tokio::test]
+    async fn serialize_reply_streams_successful_read_payload() {
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let slice = Slice::new(
+            vec![vec![1u8, 2, 3].into_boxed_slice(), vec![4u8, 5].into_boxed_slice()],
+            1..5,
+            sender,
+        );
+        let reply = serialize_reply(
+            7,
+            Ok(ProcResult::Nfs3(NfsRes::Read(Ok(vfs::read::Success {
+                head: vfs::read::SuccessPartial { file_attr: None, count: 4, eof: true },
+                data: slice,
+            })))),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(reply.xid, 7);
+        match reply.payload {
+            ReplyPayload::Read { header, data, padding } => {
+                assert!(header.len() > 4);
+                assert_eq!(data.iter().flatten().copied().collect::<Vec<_>>(), vec![2, 3, 4, 5]);
+                assert_eq!(padding, 0);
+            }
+            ReplyPayload::Buffer(_) => panic!("expected streamed read reply"),
+        }
+    }
+}

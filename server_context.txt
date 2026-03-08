@@ -510,27 +510,28 @@ impl fs_stat::FsStat for MirrorFS {
 <file path="examples/mirror_fs/fs/get_attr_impl.rs">
 use async_trait::async_trait;
 use nfs_mamont::vfs::get_attr;
+use tracing::{error, info};
 
 use super::*;
 
 #[async_trait]
 impl get_attr::GetAttr for MirrorFS {
     async fn get_attr(&self, args: get_attr::Args) -> get_attr::Result {
-        eprintln!("get_attr handle={:02x?}", args.file.0);
+        info!("get_attr handle={:02x?}", args.file.0);
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => {
-                eprintln!("get_attr path={}", path.display());
+                info!("get_attr path={}", path.display());
                 path
             }
             Err(error) => {
-                eprintln!("get_attr rejected error={error:?}");
+                error!("get_attr rejected error={error:?}");
                 return Err(get_attr::Fail { error });
             }
         };
         match Self::metadata(&path) {
             Ok(meta) => Ok(get_attr::Success { object: Self::attr_from_metadata(&meta) }),
             Err(error) => {
-                eprintln!("get_attr failed path={} error={error:?}", path.display());
+                error!("get_attr failed path={} error={error:?}", path.display());
                 Err(get_attr::Fail { error })
             }
         }
@@ -612,25 +613,26 @@ impl link::Link for MirrorFS {
 <file path="examples/mirror_fs/fs/lookup_impl.rs">
 use async_trait::async_trait;
 use nfs_mamont::vfs::lookup;
+use tracing::{error, info};
 
 use super::*;
 
 #[async_trait]
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, args: lookup::Args) -> lookup::Result {
-        eprintln!("lookup handle={:02x?} name={}", args.parent.0, args.name.as_str());
+        info!("lookup handle={:02x?} name={}", args.parent.0, args.name.as_str());
         let parent_path = match self.path_for_handle(&args.parent).await {
             Ok(path) => path,
             Err(error) => {
-                eprintln!("lookup rejected error={error:?}");
+                error!("lookup rejected error={error:?}");
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
-        eprintln!("lookup parent_path={}", parent_path.display());
+        info!("lookup parent_path={}", parent_path.display());
         let parent_meta = match Self::metadata(&parent_path) {
             Ok(meta) => meta,
             Err(error) => {
-                eprintln!("lookup parent failed path={} error={error:?}", parent_path.display());
+                error!("lookup parent failed path={} error={error:?}", parent_path.display());
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
@@ -665,9 +667,9 @@ impl lookup::Lookup for MirrorFS {
             Ok(meta) => meta,
             Err(error) => {
                 if error == vfs::Error::NoEntry {
-                    eprintln!("lookup miss child_path={}", child_path.display());
+                    info!("lookup miss child_path={}", child_path.display());
                 } else {
-                    eprintln!("lookup child failed path={} error={error:?}", child_path.display());
+                    error!("lookup child failed path={} error={error:?}", child_path.display());
                 }
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
             }
@@ -3497,7 +3499,11 @@ mod tests;
 /// an NFS server on the specified port.
 #[tokio::main]
 async fn main() {
-    let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer(std::io::stderr)
+        // .with_env_filter(EnvFilter::from_default_env())
+        .try_init();
 
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
@@ -5630,32 +5636,11 @@ impl<'a> MountService<'a> {
     }
 
     async fn dump_mounts(&self) -> dump::Success {
-        let mount_list = self
-            .server_context
-            .mount_entries()
-            .await
-            .iter()
-            .cloned()
-            .map(|(hostname, directory)| crate::mount::MountEntry { hostname, directory })
-            .collect();
-
-        dump::Success { mount_list }
+        dump::Success { mount_list: self.server_context.mount_dump_entries().await }
     }
 
     async fn export_list(&self) -> export::Success {
-        let exports = self
-            .server_context
-            .exports()
-            .await
-            .iter()
-            .cloned()
-            .map(|export| crate::mount::ExportEntry {
-                directory: export.directory().clone(),
-                names: export.allowed_hosts().to_vec(),
-            })
-            .collect();
-
-        export::Success { exports }
+        export::Success { exports: self.server_context.export_entries().await }
     }
 
     async fn unmount(&self, args: umnt::UnmountArgs) {
@@ -10396,9 +10381,10 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             }
             NfsRes::Read(res) => match res {
                 Ok(ok) => {
+                    let read_size = ok.head.count as usize;
                     usize_as_u32(&mut self.buffer, STATUS_OK)?;
                     read::result_ok_part(&mut self.buffer, ok.head)?;
-                    self.buffer.send_inner_with_slice(ok.data).await
+                    self.buffer.send_inner_with_slice(ok.data, read_size).await
                 }
                 Err(err) => {
                     error(&mut self.buffer, err.error)?;
@@ -10589,8 +10575,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
-        let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
+    async fn send_inner_with_slice(&mut self, slice: Slice, slice_size: usize) -> io::Result<()> {
         let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(
             self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding,
@@ -10616,8 +10601,8 @@ struct VecAsyncWriter {
 }
 
 impl VecAsyncWriter {
-    fn new() -> Self {
-        Self { data: Vec::new() }
+    fn with_capacity(capacity: usize) -> Self {
+        Self { data: Vec::with_capacity(capacity) }
     }
 
     fn into_inner(self) -> Vec<u8> {
@@ -10651,7 +10636,7 @@ pub async fn serialize_reply(
     match proc_result {
         Ok(ProcResult::Nfs3(NfsRes::Read(Ok(ok)))) => serialize_read_reply(xid, ok),
         other => {
-            let writer = VecAsyncWriter::new();
+            let writer = VecAsyncWriter::with_capacity(DEFAULT_SIZE);
             let mut serializer = Serializer::with_capacity(writer, DEFAULT_SIZE);
             serializer.form_reply(ReplyFromVfs::new(xid, other)).await?;
             Ok(RpcReply::new(xid, ReplyPayload::Buffer(serializer.buffer.socket.into_inner())))
@@ -10660,6 +10645,7 @@ pub async fn serialize_reply(
 }
 
 fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply> {
+    let slice_size = ok.head.count as usize;
     let mut header = Vec::with_capacity(DEFAULT_SIZE);
     header.extend_from_slice(&[0; HEADER_SIZE]);
     u32(&mut header, xid)?;
@@ -10670,7 +10656,6 @@ fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply
     usize_as_u32(&mut header, STATUS_OK)?;
     read::result_ok_part(&mut header, ok.head)?;
 
-    let slice_size = ok.data.iter().map(|chunk| chunk.len()).sum::<usize>();
     let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
     let fragment_size =
         header.len().saturating_sub(HEADER_SIZE).saturating_add(slice_size).saturating_add(padding);
@@ -12700,9 +12685,10 @@ impl ReadTask {
                     match serialize_reply(xid, Err(error)).await {
                         Ok(reply) => {
                             let span = rejected_request_span(&self.connection_context, xid);
+                            let received_at = std::time::Instant::now();
                             if self
                                 .result_sender
-                                .send(ReplyEnvelope::new(Ok(reply), span))
+                                .send(ReplyEnvelope::new(Ok(reply), span, received_at, None))
                                 .await
                                 .is_err()
                             {
@@ -12724,7 +12710,12 @@ impl ReadTask {
             };
 
             let command = request.with_connection(self.connection_context.clone());
-            debug!(parent: &command.context.span, "parsed rpc request");
+            let command_queue_depth = queue_depth(&self.command_sender);
+            debug!(
+                parent: &command.context.span,
+                command_queue_depth,
+                "parsed rpc request",
+            );
             if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
@@ -12751,6 +12742,10 @@ fn is_expected_protocol_rejection(error: &crate::rpc::Error) -> bool {
     )
 }
 
+fn queue_depth<T>(sender: &Sender<T>) -> usize {
+    sender.max_capacity().saturating_sub(sender.capacity())
+}
+
 </file>
 <file path="src/rpc.rs">
 use std::collections::BTreeMap;
@@ -12760,12 +12755,14 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
+use std::time::Instant;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use tokio::sync::RwLock;
 use tracing::{info_span, Span};
 
 use crate::allocator::Slice;
+use crate::mount;
 use crate::parser::Arguments;
 use crate::vfs;
 use crate::vfs::file;
@@ -13087,6 +13084,7 @@ pub struct RequestContext {
     pub connection: ConnectionContext,
     pub header: RpcCallHeader,
     pub span: Span,
+    pub received_at: Instant,
 }
 
 pub struct ParsedRpcCall {
@@ -13100,7 +13098,12 @@ impl ParsedRpcCall {
         let connection = connection.with_auth(auth);
         let span = request_span(&connection, self.header);
         RpcCommand {
-            context: RequestContext { connection, header: self.header, span },
+            context: RequestContext {
+                connection,
+                header: self.header,
+                span,
+                received_at: Instant::now(),
+            },
             arguments: self.arguments,
         }
     }
@@ -13131,11 +13134,18 @@ pub struct RpcCommand {
 pub struct ReplyEnvelope {
     pub result: CommandResult,
     pub span: Span,
+    pub received_at: Instant,
+    pub dispatched_at: Option<Instant>,
 }
 
 impl ReplyEnvelope {
-    pub fn new(result: CommandResult, span: Span) -> Self {
-        Self { result, span }
+    pub fn new(
+        result: CommandResult,
+        span: Span,
+        received_at: Instant,
+        dispatched_at: Option<Instant>,
+    ) -> Self {
+        Self { result, span, received_at, dispatched_at }
     }
 }
 
@@ -13174,6 +13184,16 @@ impl ExportRegistry {
     fn snapshot(&self) -> Vec<ServerExport> {
         self.by_directory.values().cloned().collect()
     }
+
+    fn export_entries(&self) -> Vec<mount::ExportEntry> {
+        self.by_directory
+            .values()
+            .map(|export| mount::ExportEntry {
+                directory: export.directory().clone(),
+                names: export.allowed_hosts().to_vec(),
+            })
+            .collect()
+    }
 }
 
 #[derive(Default)]
@@ -13194,6 +13214,18 @@ impl MountRegistry {
             .iter()
             .flat_map(|(client_addr, directories)| {
                 directories.values().cloned().map(|directory| (client_addr.clone(), directory))
+            })
+            .collect()
+    }
+
+    fn mount_entries(&self) -> Vec<mount::MountEntry> {
+        self.by_client
+            .iter()
+            .flat_map(|(client_addr, directories)| {
+                directories
+                    .values()
+                    .cloned()
+                    .map(|directory| mount::MountEntry { hostname: client_addr.clone(), directory })
             })
             .collect()
     }
@@ -13241,6 +13273,18 @@ pub fn rejected_request_span(connection: &ConnectionContext, xid: u32) -> Span {
 
 fn socket_addr_label(socket_addr: Option<SocketAddr>) -> String {
     socket_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "unknown".to_string())
+}
+
+impl ServerContext {
+    /// Returns active mounts already converted into mount protocol response entries.
+    pub async fn mount_dump_entries(&self) -> Vec<mount::MountEntry> {
+        self.mounts.read().await.mount_entries()
+    }
+
+    /// Returns exports already converted into mount protocol response entries.
+    pub async fn export_entries(&self) -> Vec<mount::ExportEntry> {
+        self.exports.read().await.export_entries()
+    }
 }
 
 pub enum RejectedReply {
@@ -13291,6 +13335,7 @@ pub enum Error {
 <file path="src/vfs_task.rs">
 use std::collections::BTreeMap;
 use std::io;
+use std::time::Instant;
 
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -13359,16 +13404,33 @@ impl VfsTask {
                             next_sequence += 1;
                             let server_context = self.server_context.clone();
                             let span = command.context.span.clone();
-                            debug!(parent: &span, sequence, "queued rpc request for dispatch");
+                            let result_queue_depth = queue_depth(&self.result_sender);
+                            debug!(
+                                parent: &span,
+                                sequence,
+                                result_queue_depth,
+                                queue_wait_micros = command.context.received_at.elapsed().as_micros() as u64,
+                                "queued rpc request for dispatch",
+                            );
                             in_flight.spawn(async move {
                                 let xid = command.context.header.xid;
+                                let received_at = command.context.received_at;
+                                let dispatched_at = Instant::now();
                                 let result = serialize_reply(
                                     xid,
                                     Self::dispatch_with_context(server_context, command).await,
                                 )
                                 .await;
-                                debug!(parent: &span, sequence, "completed rpc dispatch");
-                                (sequence, ReplyEnvelope::new(result, span))
+                                debug!(
+                                    parent: &span,
+                                    sequence,
+                                    dispatch_micros = dispatched_at.elapsed().as_micros() as u64,
+                                    "completed rpc dispatch",
+                                );
+                                (
+                                    sequence,
+                                    ReplyEnvelope::new(result, span, received_at, Some(dispatched_at)),
+                                )
                             });
                         }
                         None => receiver_closed = true,
@@ -13389,7 +13451,13 @@ impl VfsTask {
         next_reply_sequence: &mut u64,
     ) {
         while let Some(reply) = pending.remove(next_reply_sequence) {
-            debug!(parent: &reply.span, sequence = *next_reply_sequence, "forwarding rpc reply to writer");
+            debug!(
+                parent: &reply.span,
+                sequence = *next_reply_sequence,
+                writer_queue_depth = queue_depth(&self.result_sender),
+                total_elapsed_micros = reply.received_at.elapsed().as_micros() as u64,
+                "forwarding rpc reply to writer",
+            );
             if self.result_sender.send(reply).await.is_err() {
                 break;
             }
@@ -13484,6 +13552,10 @@ impl VfsTask {
     }
 }
 
+fn queue_depth<T>(sender: &Sender<T>) -> usize {
+    sender.max_capacity().saturating_sub(sender.capacity())
+}
+
 </file>
 <file path="src/write_task.rs">
 use tokio::io::AsyncWriteExt;
@@ -13520,8 +13592,8 @@ impl WriteTask {
 
     async fn run(mut self) {
         while let Some(envelope) = self.result_receiver.recv().await {
-            let span = envelope.span;
-            let reply = match envelope.result {
+            let ReplyEnvelope { result, span, received_at, dispatched_at } = envelope;
+            let reply = match result {
                 Ok(reply) => reply,
                 Err(error) => {
                     warn!(parent: &span, error = %error, "write task dropped failed reply envelope");
@@ -13566,7 +13638,15 @@ impl WriteTask {
                 }
             }
 
-            debug!(parent: &span, xid = reply.xid, "write task sent reply");
+            debug!(
+                parent: &span,
+                xid = reply.xid,
+                total_latency_micros = received_at.elapsed().as_micros() as u64,
+                dispatch_to_write_micros = dispatched_at
+                    .map(|instant| instant.elapsed().as_micros() as u64)
+                    .unwrap_or_default(),
+                "write task sent reply",
+            );
         }
     }
 }

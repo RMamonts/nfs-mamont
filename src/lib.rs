@@ -59,6 +59,7 @@ fn process_socket(socket: TcpStream, server_context: ServerContext) {
             ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
         let (readhalf, writehalf) = socket.into_split();
         let settings = server_context.settings().clone();
+        let metrics = server_context.metrics();
         // channel for result
         let (result_sender, result_receiver) =
             mpsc::channel::<ReplyEnvelope>(settings.result_queue_size().get());
@@ -77,7 +78,7 @@ fn process_socket(socket: TcpStream, server_context: ServerContext) {
 
         let vfs_task = VfsTask::new(command_receiver, result_sender, server_context).spawn();
 
-        let write_task = WriteTask::new(writehalf, result_receiver).spawn();
+        let write_task = WriteTask::new(writehalf, result_receiver, metrics).spawn();
 
         await_connection(write_task, read_task, vfs_task).await;
     });

@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use byteorder::{BigEndian, WriteBytesExt};
 
-use crate::parser::primitive::{array, string, string_max_size, vector};
+use crate::parser::primitive::{array, discard_opaque_max_size, string, string_max_size, vector};
 use crate::parser::Error;
 
 #[test]
@@ -105,4 +105,23 @@ fn test_read_error() {
     src.write_u32::<BigEndian>(10).unwrap();
     let result = vector(&mut Cursor::new(src));
     assert!(matches!(result, Err(Error::IO(_))));
+}
+
+#[test]
+fn test_discard_opaque_max_size() {
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(5).unwrap();
+    src.extend_from_slice(&[1, 2, 3, 4, 5, 0, 0, 0]);
+
+    let mut cursor = Cursor::new(src);
+    discard_opaque_max_size(&mut cursor, 8).unwrap();
+    assert_eq!(cursor.position() as usize, cursor.get_ref().len());
+}
+
+#[test]
+fn test_discard_opaque_max_size_too_long() {
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(9).unwrap();
+    let result = discard_opaque_max_size(&mut Cursor::new(src), 8);
+    assert!(matches!(result, Err(Error::MaxElemLimit)));
 }

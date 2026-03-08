@@ -51,6 +51,7 @@ impl ReadTask {
     }
 
     async fn run(self) -> io::Result<()> {
+        let metrics = self.server_context.metrics();
         let mut parser = RpcParser::with_capacity(
             self.readhalf,
             allocator::Impl::new(
@@ -70,6 +71,7 @@ impl ReadTask {
                     return Ok(());
                 }
                 Err(ParseFailure { xid: Some(xid), error }) => {
+                    metrics.record_request_rejected();
                     if is_expected_protocol_rejection(&error) {
                         warn!(xid, error = ?error, "read task rejected request");
                     } else {
@@ -93,6 +95,7 @@ impl ReadTask {
                     }
                 }
                 Err(ParseFailure { xid: None, error }) => {
+                    metrics.record_request_rejected();
                     if is_expected_protocol_rejection(&error) {
                         warn!(error = ?error, "read task rejected request without xid");
                     } else {
@@ -103,7 +106,7 @@ impl ReadTask {
             };
 
             let command = request.with_connection(self.connection_context.clone());
-            let command_queue_depth = queue_depth(&self.command_sender);
+            let command_queue_depth = queue_depth(&self.command_sender).saturating_add(1);
             debug!(
                 parent: &command.context.span,
                 command_queue_depth,
@@ -112,6 +115,7 @@ impl ReadTask {
             if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
+            metrics.record_request_received(command_queue_depth);
         }
     }
 }

@@ -94,6 +94,23 @@ pub fn string(src: &mut impl Read) -> Result<String> {
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
+/// Discards a counted XDR opaque field without allocating a temporary vector.
+// pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
+//     let size = u32_as_usize(src)?;
+//     discard_bytes(src, size)?;
+//     padding(src, size)
+// }
+
+/// Discards a counted XDR opaque field with an explicit maximum size check.
+pub fn discard_opaque_max_size(src: &mut impl Read, max_size: usize) -> Result<()> {
+    let size = u32_as_usize(src)?;
+    if size > max_size {
+        return Err(Error::MaxElemLimit);
+    }
+    discard_bytes(src, size)?;
+    padding(src, size)
+}
+
 /// Parses an XDR enum variant from the `Read` source.
 pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
     FromPrimitive::from_u32(u32(src)?).ok_or(Error::EnumDiscMismatch)
@@ -102,4 +119,14 @@ pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
 /// Parses a `u32` from the `Read` source and converts it to `usize`.
 pub fn u32_as_usize(src: &mut impl Read) -> Result<usize> {
     u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
+}
+
+fn discard_bytes(src: &mut impl Read, mut size: usize) -> Result<()> {
+    let mut buf = [0u8; 256];
+    while size != 0 {
+        let chunk = size.min(buf.len());
+        src.read_exact(&mut buf[..chunk]).map_err(Error::IO)?;
+        size -= chunk;
+    }
+    Ok(())
 }

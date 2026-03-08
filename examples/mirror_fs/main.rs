@@ -24,7 +24,10 @@ async fn main() {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_writer(std::io::stderr)
-        // .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,nfs_mamont=debug")),
+        )
         .try_init();
 
     let path = std::env::args().nth(1).expect("must supply directory to mirror");

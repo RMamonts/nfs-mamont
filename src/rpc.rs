@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::string::FromUtf8Error;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -75,6 +76,249 @@ pub enum AuthFlavor {
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
+}
+
+/// Point-in-time gauge snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GaugeSnapshot {
+    /// Current observed value.
+    pub current: usize,
+    /// Highest observed value.
+    pub peak: usize,
+}
+
+/// Aggregated latency statistics measured in microseconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LatencySnapshot {
+    /// Number of recorded samples.
+    pub samples: u64,
+    /// Sum of all observed latencies.
+    pub total_micros: u64,
+    /// Integer average latency.
+    pub average_micros: u64,
+    /// Maximum observed latency.
+    pub max_micros: u64,
+}
+
+/// Snapshot of exported server metrics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerMetricsSnapshot {
+    /// Requests successfully accepted into the command queue.
+    pub requests_received: u64,
+    /// Requests rejected during parsing or reply serialization.
+    pub requests_rejected: u64,
+    /// Requests dispatched to protocol handlers.
+    pub requests_dispatched: u64,
+    /// Replies successfully written to the client socket.
+    pub replies_sent: u64,
+    /// Replies dropped before reaching the socket.
+    pub reply_failures: u64,
+    /// Command queue occupancy.
+    pub command_queue_depth: GaugeSnapshot,
+    /// Result queue occupancy.
+    pub result_queue_depth: GaugeSnapshot,
+    /// In-flight request occupancy.
+    pub in_flight_requests: GaugeSnapshot,
+    /// Time spent waiting before dispatch.
+    pub queue_wait: LatencySnapshot,
+    /// Time spent inside dispatch and serialization.
+    pub dispatch: LatencySnapshot,
+    /// End-to-end time from request acceptance to successful write.
+    pub total_latency: LatencySnapshot,
+    /// Time spent between dispatch completion and socket write completion.
+    pub dispatch_to_write: LatencySnapshot,
+}
+
+/// Shared server metrics backend backed by atomics.
+#[derive(Debug, Default)]
+pub struct ServerMetrics {
+    requests_received: AtomicU64,
+    requests_rejected: AtomicU64,
+    requests_dispatched: AtomicU64,
+    replies_sent: AtomicU64,
+    reply_failures: AtomicU64,
+    command_queue_current: AtomicUsize,
+    command_queue_peak: AtomicUsize,
+    result_queue_current: AtomicUsize,
+    result_queue_peak: AtomicUsize,
+    in_flight_current: AtomicUsize,
+    in_flight_peak: AtomicUsize,
+    queue_wait_samples: AtomicU64,
+    queue_wait_total_micros: AtomicU64,
+    queue_wait_max_micros: AtomicU64,
+    dispatch_samples: AtomicU64,
+    dispatch_total_micros: AtomicU64,
+    dispatch_max_micros: AtomicU64,
+    total_latency_samples: AtomicU64,
+    total_latency_total_micros: AtomicU64,
+    total_latency_max_micros: AtomicU64,
+    dispatch_to_write_samples: AtomicU64,
+    dispatch_to_write_total_micros: AtomicU64,
+    dispatch_to_write_max_micros: AtomicU64,
+}
+
+impl ServerMetrics {
+    /// Creates a new metrics backend.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns an atomic snapshot of all exported metrics.
+    pub fn snapshot(&self) -> ServerMetricsSnapshot {
+        ServerMetricsSnapshot {
+            requests_received: self.requests_received.load(Ordering::Relaxed),
+            requests_rejected: self.requests_rejected.load(Ordering::Relaxed),
+            requests_dispatched: self.requests_dispatched.load(Ordering::Relaxed),
+            replies_sent: self.replies_sent.load(Ordering::Relaxed),
+            reply_failures: self.reply_failures.load(Ordering::Relaxed),
+            command_queue_depth: GaugeSnapshot {
+                current: self.command_queue_current.load(Ordering::Relaxed),
+                peak: self.command_queue_peak.load(Ordering::Relaxed),
+            },
+            result_queue_depth: GaugeSnapshot {
+                current: self.result_queue_current.load(Ordering::Relaxed),
+                peak: self.result_queue_peak.load(Ordering::Relaxed),
+            },
+            in_flight_requests: GaugeSnapshot {
+                current: self.in_flight_current.load(Ordering::Relaxed),
+                peak: self.in_flight_peak.load(Ordering::Relaxed),
+            },
+            queue_wait: Self::latency_snapshot(
+                &self.queue_wait_samples,
+                &self.queue_wait_total_micros,
+                &self.queue_wait_max_micros,
+            ),
+            dispatch: Self::latency_snapshot(
+                &self.dispatch_samples,
+                &self.dispatch_total_micros,
+                &self.dispatch_max_micros,
+            ),
+            total_latency: Self::latency_snapshot(
+                &self.total_latency_samples,
+                &self.total_latency_total_micros,
+                &self.total_latency_max_micros,
+            ),
+            dispatch_to_write: Self::latency_snapshot(
+                &self.dispatch_to_write_samples,
+                &self.dispatch_to_write_total_micros,
+                &self.dispatch_to_write_max_micros,
+            ),
+        }
+    }
+
+    fn latency_snapshot(
+        samples: &AtomicU64,
+        total_micros: &AtomicU64,
+        max_micros: &AtomicU64,
+    ) -> LatencySnapshot {
+        let samples = samples.load(Ordering::Relaxed);
+        let total_micros = total_micros.load(Ordering::Relaxed);
+        LatencySnapshot {
+            samples,
+            total_micros,
+            average_micros: if samples == 0 { 0 } else { total_micros / samples },
+            max_micros: max_micros.load(Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn record_request_received(&self, command_queue_depth: usize) {
+        self.requests_received.fetch_add(1, Ordering::Relaxed);
+        self.observe_command_queue_depth(command_queue_depth);
+    }
+
+    pub(crate) fn record_request_rejected(&self) {
+        self.requests_rejected.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn observe_command_queue_depth(&self, depth: usize) {
+        self.command_queue_current.store(depth, Ordering::Relaxed);
+        update_peak_usize(&self.command_queue_peak, depth);
+    }
+
+    pub(crate) fn observe_result_queue_depth(&self, depth: usize) {
+        self.result_queue_current.store(depth, Ordering::Relaxed);
+        update_peak_usize(&self.result_queue_peak, depth);
+    }
+
+    pub(crate) fn start_in_flight_request(&self) {
+        let in_flight = self.in_flight_current.fetch_add(1, Ordering::Relaxed) + 1;
+        update_peak_usize(&self.in_flight_peak, in_flight);
+    }
+
+    pub(crate) fn finish_in_flight_request(&self) {
+        self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_dispatch(&self, queue_wait_micros: u64, dispatch_micros: u64) {
+        self.requests_dispatched.fetch_add(1, Ordering::Relaxed);
+        record_latency(
+            &self.queue_wait_samples,
+            &self.queue_wait_total_micros,
+            &self.queue_wait_max_micros,
+            queue_wait_micros,
+        );
+        record_latency(
+            &self.dispatch_samples,
+            &self.dispatch_total_micros,
+            &self.dispatch_max_micros,
+            dispatch_micros,
+        );
+    }
+
+    pub(crate) fn record_reply_sent(
+        &self,
+        total_latency_micros: u64,
+        dispatch_to_write_micros: u64,
+    ) {
+        self.replies_sent.fetch_add(1, Ordering::Relaxed);
+        record_latency(
+            &self.total_latency_samples,
+            &self.total_latency_total_micros,
+            &self.total_latency_max_micros,
+            total_latency_micros,
+        );
+        record_latency(
+            &self.dispatch_to_write_samples,
+            &self.dispatch_to_write_total_micros,
+            &self.dispatch_to_write_max_micros,
+            dispatch_to_write_micros,
+        );
+    }
+
+    pub(crate) fn record_reply_failure(&self) {
+        self.reply_failures.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn record_latency(
+    samples: &AtomicU64,
+    total_micros: &AtomicU64,
+    max_micros: &AtomicU64,
+    value: u64,
+) {
+    samples.fetch_add(1, Ordering::Relaxed);
+    total_micros.fetch_add(value, Ordering::Relaxed);
+    update_peak_u64(max_micros, value);
+}
+
+fn update_peak_usize(peak: &AtomicUsize, value: usize) {
+    let mut current = peak.load(Ordering::Relaxed);
+    while value > current {
+        match peak.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+fn update_peak_u64(peak: &AtomicU64, value: u64) {
+    let mut current = peak.load(Ordering::Relaxed);
+    while value > current {
+        match peak.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 pub type SharedVfs = Arc<dyn vfs::Vfs + Send + Sync + 'static>;
@@ -194,6 +438,7 @@ pub struct ServerContext {
     backend: Option<SharedVfs>,
     exports: Arc<RwLock<ExportRegistry>>,
     mounts: Arc<RwLock<MountRegistry>>,
+    metrics: Arc<ServerMetrics>,
 }
 
 impl Default for ServerContext {
@@ -203,6 +448,7 @@ impl Default for ServerContext {
             backend: None,
             exports: Arc::new(RwLock::new(ExportRegistry::default())),
             mounts: Arc::new(RwLock::new(MountRegistry::default())),
+            metrics: Arc::new(ServerMetrics::default()),
         }
     }
 }
@@ -231,6 +477,11 @@ impl ServerContext {
     /// Returns the configured backend, if any.
     pub fn backend(&self) -> Option<&SharedVfs> {
         self.backend.as_ref()
+    }
+
+    /// Returns the shared metrics backend.
+    pub fn metrics(&self) -> Arc<ServerMetrics> {
+        Arc::clone(&self.metrics)
     }
 
     /// Registers an exported directory.
@@ -271,7 +522,7 @@ impl ServerContext {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerSettings;
+    use super::{ServerMetrics, ServerSettings};
 
     #[test]
     fn server_settings_allow_queue_configuration() {
@@ -283,6 +534,37 @@ mod tests {
         assert_eq!(settings.command_queue_size().get(), 8);
         assert_eq!(settings.result_queue_size().get(), 16);
         assert_eq!(settings.max_in_flight_requests().get(), 4);
+    }
+
+    #[test]
+    fn server_metrics_snapshot_exposes_aggregates() {
+        let metrics = ServerMetrics::new();
+
+        metrics.record_request_received(3);
+        metrics.record_request_rejected();
+        metrics.observe_result_queue_depth(2);
+        metrics.start_in_flight_request();
+        metrics.record_dispatch(10, 20);
+        metrics.record_reply_sent(40, 15);
+        metrics.record_reply_failure();
+        metrics.finish_in_flight_request();
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.requests_received, 1);
+        assert_eq!(snapshot.requests_rejected, 1);
+        assert_eq!(snapshot.requests_dispatched, 1);
+        assert_eq!(snapshot.replies_sent, 1);
+        assert_eq!(snapshot.reply_failures, 1);
+        assert_eq!(snapshot.command_queue_depth.current, 3);
+        assert_eq!(snapshot.command_queue_depth.peak, 3);
+        assert_eq!(snapshot.result_queue_depth.current, 2);
+        assert_eq!(snapshot.result_queue_depth.peak, 2);
+        assert_eq!(snapshot.in_flight_requests.current, 0);
+        assert_eq!(snapshot.in_flight_requests.peak, 1);
+        assert_eq!(snapshot.queue_wait.average_micros, 10);
+        assert_eq!(snapshot.dispatch.average_micros, 20);
+        assert_eq!(snapshot.total_latency.average_micros, 40);
+        assert_eq!(snapshot.dispatch_to_write.average_micros, 15);
     }
 }
 

@@ -33,7 +33,7 @@ use crate::parser::nfsv3::{
 };
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
-use crate::parser::rpc::{auth, RpcMessage};
+use crate::parser::rpc::{auth_flavor, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{
     AuthFlavor, AuthStat, ParsedRpcCall, RpcBody, RpcCallHeader, VersionMismatch, RPC_VERSION,
@@ -209,7 +209,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
         let auth = self.parse_authentication().await?;
-        self.buffer.parse_with_retry(crate::parser::rpc::auth).await?;
+        self.buffer.parse_with_retry(crate::parser::rpc::auth_flavor).await?;
 
         Ok(RpcMessage { xid, program, procedure, version, auth_flavor: auth.flavor })
     }
@@ -223,10 +223,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns parsed opaque authentication metadata if authentication succeeds,
     /// or an error if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<crate::rpc::OpaqueAuth> {
-        let auth = self.buffer.parse_with_retry(auth).await?;
+        let flavor = self.buffer.parse_with_retry(auth_flavor).await?;
 
-        match auth.flavor {
-            AuthFlavor::None | AuthFlavor::Sys => Ok(auth),
+        match flavor {
+            AuthFlavor::None | AuthFlavor::Sys => {
+                Ok(crate::rpc::OpaqueAuth { flavor, body: Vec::new() })
+            }
             _ => Err(Error::AuthError(AuthStat::BadCred)),
         }
     }
