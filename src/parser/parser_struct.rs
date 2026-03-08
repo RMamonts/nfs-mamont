@@ -255,75 +255,72 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - Parsing the procedure arguments fails
     async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
         match head.program {
-            NFS_PROGRAM => match head.version {
-                NFS_VERSION => Ok(Box::new(match head.procedure {
-                    NULL => Arguments::Null,
-                    GETATTR => {
-                        Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
-                    }
-                    SETATTR => {
-                        Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
-                    }
-                    LOOKUP => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
-                    ACCESS => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
-                    READLINK => {
-                        Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
-                    }
-                    READ => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
-
-                    WRITE => Arguments::Write(
-                        adapter_for_write(&mut self.allocator, &mut self.buffer).await?,
-                    ),
-
-                    CREATE => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
-                    MKDIR => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
-                    SYMLINK => {
-                        Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
-                    }
-                    MKNOD => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
-                    REMOVE => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
-                    RMDIR => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
-                    RENAME => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
-                    LINK => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
-                    READDIR => {
-                        Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
-                    }
-                    READDIRPLUS => Arguments::ReadDirPlus(
-                        self.buffer.parse_with_retry(read_dir_plus::args).await?,
-                    ),
-                    FSSTAT => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
-                    FSINFO => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
-                    PATHCONF => {
-                        Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
-                    }
-                    COMMIT => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
-                    _ => return Err(Error::ProcedureMismatch),
-                })),
-                _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
-                    low: NFS_VERSION,
-                    high: NFS_VERSION,
-                })),
-            },
-
-            MOUNT_PROGRAM => {
-                if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch(VersionMismatch {
-                        low: MOUNT_VERSION,
-                        high: MOUNT_VERSION,
-                    }));
-                }
-                Ok(Box::new(match head.procedure {
-                    0 => Arguments::Null,
-                    1 => Arguments::Mount(self.buffer.parse_with_retry(mount).await?),
-                    2 => Arguments::Dump,
-                    3 => Arguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
-                    4 => Arguments::UnmountAll,
-                    5 => Arguments::Export,
-                    _ => return Err(Error::ProcedureMismatch),
-                }))
-            }
+            NFS_PROGRAM => self.parse_nfs_proc(head).await,
+            MOUNT_PROGRAM => self.parse_mount_proc(head).await,
             _ => Err(Error::ProgramMismatch),
         }
+    }
+
+    async fn parse_nfs_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
+        if head.version != NFS_VERSION {
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: NFS_VERSION,
+                high: NFS_VERSION,
+            }));
+        }
+
+        macro_rules! parse_arg {
+            ($variant:ident, $parser:path) => {
+                Arguments::$variant(self.buffer.parse_with_retry($parser).await?)
+            };
+        }
+
+        Ok(Box::new(match head.procedure {
+            NULL => Arguments::Null,
+            GETATTR => parse_arg!(GetAttr, get_attr::args),
+            SETATTR => parse_arg!(SetAttr, set_attr::args),
+            LOOKUP => parse_arg!(LookUp, lookup::args),
+            ACCESS => parse_arg!(Access, access::args),
+            READLINK => parse_arg!(ReadLink, read_link::args),
+            READ => parse_arg!(Read, read::args),
+            WRITE => {
+                Arguments::Write(adapter_for_write(&mut self.allocator, &mut self.buffer).await?)
+            }
+            CREATE => parse_arg!(Create, create::args),
+            MKDIR => parse_arg!(MkDir, mk_dir::args),
+            SYMLINK => parse_arg!(SymLink, symlink::args),
+            MKNOD => parse_arg!(MkNod, mk_node::args),
+            REMOVE => parse_arg!(Remove, remove::args),
+            RMDIR => parse_arg!(RmDir, rm_dir::args),
+            RENAME => parse_arg!(Rename, rename::args),
+            LINK => parse_arg!(Link, link::args),
+            READDIR => parse_arg!(ReadDir, read_dir::args),
+            READDIRPLUS => parse_arg!(ReadDirPlus, read_dir_plus::args),
+            FSSTAT => parse_arg!(FsStat, fs_stat::args),
+            FSINFO => parse_arg!(FsInfo, fs_info::args),
+            PATHCONF => parse_arg!(PathConf, path_conf::args),
+            COMMIT => parse_arg!(Commit, commit::args),
+            _ => return Err(Error::ProcedureMismatch),
+        }))
+    }
+
+    async fn parse_mount_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
+        if head.version != MOUNT_VERSION {
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: MOUNT_VERSION,
+                high: MOUNT_VERSION,
+            }));
+        }
+
+        Ok(Box::new(match head.procedure {
+            0 => Arguments::Null,
+            1 => Arguments::Mount(self.buffer.parse_with_retry(mount).await?),
+            2 => Arguments::Dump,
+            3 => Arguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
+            4 => Arguments::UnmountAll,
+            5 => Arguments::Export,
+            _ => return Err(Error::ProcedureMismatch),
+        }))
     }
 
     pub async fn parse_request_full(&mut self) -> std::result::Result<ParsedRpcCall, ParseFailure> {

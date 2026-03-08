@@ -32,7 +32,7 @@ async fn main() {
 
     let fs = Arc::new(fs::MirrorFS::new(export_root.clone()));
     let context = ServerContext::with_backend(fs);
-    context.exports.write().expect("exports lock poisoned").push(ServerExport {
+    context.exports.write().await.push(ServerExport {
         directory: file::Path::new(export_root.display().to_string())
             .expect("export path must fit"),
         allowed_hosts: vec!["*".to_string()],

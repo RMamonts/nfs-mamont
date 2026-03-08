@@ -2,10 +2,12 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::string::FromUtf8Error;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use num_derive::{FromPrimitive, ToPrimitive};
+use tokio::sync::RwLock;
 
+use crate::allocator::Slice;
 use crate::parser::Arguments;
 use crate::vfs;
 use crate::vfs::file;
@@ -183,14 +185,18 @@ pub struct RpcCommand {
     pub arguments: Box<Arguments>,
 }
 
-#[derive(Debug, Clone)]
+pub enum ReplyPayload {
+    Buffer(Vec<u8>),
+    Read { header: Vec<u8>, data: Slice, padding: usize },
+}
+
 pub struct RpcReply {
     pub xid: u32,
-    pub payload: Vec<u8>,
+    pub payload: ReplyPayload,
 }
 
 impl RpcReply {
-    pub fn new(xid: u32, payload: Vec<u8>) -> Self {
+    pub fn new(xid: u32, payload: ReplyPayload) -> Self {
         Self { xid, payload }
     }
 }

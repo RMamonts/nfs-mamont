@@ -2,7 +2,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::rpc::CommandResult;
+use crate::rpc::{CommandResult, ReplyPayload};
 
 /// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
 pub struct WriteTask {
@@ -38,14 +38,47 @@ impl WriteTask {
                 Err(_) => continue,
             };
 
-            if reply.payload.is_empty() {
-                eprintln!("write task: empty payload for xid={}", reply.xid);
-                continue;
-            }
-
-            if self.writehalf.write_all(&reply.payload).await.is_err() {
-                eprintln!("write task: socket write failed for xid={}", reply.xid);
-                break;
+            match reply.payload {
+                ReplyPayload::Buffer(payload) => {
+                    if payload.is_empty() {
+                        eprintln!("write task: empty payload for xid={}", reply.xid);
+                        continue;
+                    }
+                    if self.writehalf.write_all(&payload).await.is_err() {
+                        eprintln!("write task: socket write failed for xid={}", reply.xid);
+                        break;
+                    }
+                }
+                ReplyPayload::Read { header, data, padding } => {
+                    if self.writehalf.write_all(&header).await.is_err() {
+                        eprintln!("write task: socket header write failed for xid={}", reply.xid);
+                        break;
+                    }
+                    let mut failed = false;
+                    for chunk in data.iter() {
+                        if self.writehalf.write_all(chunk).await.is_err() {
+                            failed = true;
+                            break;
+                        }
+                    }
+                    if failed {
+                        eprintln!(
+                            "write task: socket read-payload write failed for xid={}",
+                            reply.xid
+                        );
+                        break;
+                    }
+                    if padding != 0 {
+                        let zeros = [0u8; 4];
+                        if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
+                            eprintln!(
+                                "write task: socket padding write failed for xid={}",
+                                reply.xid
+                            );
+                            break;
+                        }
+                    }
+                }
             }
         }
     }

@@ -4,9 +4,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{
-    CommandResult, ConnectionContext, RpcCommand, RpcReply, ServerContext, SharedVfs,
-};
+use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
@@ -38,10 +36,7 @@ impl VfsTask {
     async fn run(mut self) {
         while let Some(command) = self.command_receiver.recv().await {
             let xid = command.context.header.xid;
-            let result = match serialize_reply(xid, self.dispatch(command).await).await {
-                Ok(payload) => Ok(RpcReply::new(xid, payload)),
-                Err(err) => Err(err),
-            };
+            let result = serialize_reply(xid, self.dispatch(command).await).await;
 
             if self.result_sender.send(result).is_err() {
                 break;
@@ -63,82 +58,63 @@ impl VfsTask {
                 crate::mount::MOUNT_PROGRAM => ProcResult::Mount(MountRes::Null),
                 _ => return Err(crate::rpc::Error::ProgramMismatch),
             }),
-            Arguments::GetAttr(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::GetAttr(self.backend()?.get_attr(args).await)))
+            other => self.dispatch_non_null(other, &command.context.connection).await,
+        }
+    }
+
+    async fn dispatch_non_null(
+        &self,
+        arguments: Arguments,
+        connection: &ConnectionContext,
+    ) -> Result<ProcResult, crate::rpc::Error> {
+        match arguments {
+            Arguments::Mount(args) => {
+                Ok(ProcResult::Mount(MountRes::Mount(self.mount(args, connection).await)))
             }
-            Arguments::SetAttr(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::SetAttr(self.backend()?.set_attr(args).await)))
-            }
-            Arguments::LookUp(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::LookUp(self.backend()?.lookup(args).await)))
-            }
-            Arguments::Access(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Access(self.backend()?.access(args).await)))
-            }
-            Arguments::ReadLink(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::ReadLink(self.backend()?.read_link(args).await)))
-            }
-            Arguments::Read(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Read(self.backend()?.read(args).await)))
-            }
-            Arguments::Write(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Write(self.backend()?.write(args).await)))
-            }
-            Arguments::Create(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Create(self.backend()?.create(args).await)))
-            }
-            Arguments::MkDir(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::MkDir(self.backend()?.mk_dir(args).await)))
-            }
-            Arguments::SymLink(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::SymLink(self.backend()?.symlink(args).await)))
-            }
-            Arguments::MkNod(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::MkNod(self.backend()?.mk_node(args).await)))
-            }
-            Arguments::Remove(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Remove(self.backend()?.remove(args).await)))
-            }
-            Arguments::RmDir(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::RmDir(self.backend()?.rm_dir(args).await)))
-            }
-            Arguments::Rename(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Rename(self.backend()?.rename(args).await)))
-            }
-            Arguments::Link(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Link(self.backend()?.link(args).await)))
-            }
-            Arguments::ReadDir(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::ReadDir(self.backend()?.read_dir(args).await)))
-            }
-            Arguments::ReadDirPlus(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::ReadDirPlus(self.backend()?.read_dir_plus(args).await)))
-            }
-            Arguments::FsStat(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::FsStat(self.backend()?.fs_stat(args).await)))
-            }
-            Arguments::FsInfo(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::FsInfo(self.backend()?.fs_info(args).await)))
-            }
-            Arguments::PathConf(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::PathConf(self.backend()?.path_conf(args).await)))
-            }
-            Arguments::Commit(args) => {
-                Ok(ProcResult::Nfs3(NfsRes::Commit(self.backend()?.commit(args).await)))
-            }
-            Arguments::Mount(args) => Ok(ProcResult::Mount(MountRes::Mount(
-                self.mount(args, &command.context.connection).await,
-            ))),
-            Arguments::Dump => Ok(ProcResult::Mount(MountRes::Dump(self.dump_mounts()))),
+            Arguments::Dump => Ok(ProcResult::Mount(MountRes::Dump(self.dump_mounts().await))),
             Arguments::Unmount(args) => {
-                self.unmount(args, &command.context.connection);
+                self.unmount(args, connection).await;
                 Ok(ProcResult::Mount(MountRes::Unmount))
             }
             Arguments::UnmountAll => {
-                self.unmount_all(&command.context.connection);
+                self.unmount_all(connection).await;
                 Ok(ProcResult::Mount(MountRes::UnmountAll))
             }
-            Arguments::Export => Ok(ProcResult::Mount(MountRes::Export(self.export_list()))),
+            Arguments::Export => Ok(ProcResult::Mount(MountRes::Export(self.export_list().await))),
+            other => self.dispatch_nfs(other).await,
+        }
+    }
+
+    async fn dispatch_nfs(&self, arguments: Arguments) -> Result<ProcResult, crate::rpc::Error> {
+        macro_rules! dispatch_backend {
+            ($args:ident, $method:ident, $variant:ident) => {
+                Ok(ProcResult::Nfs3(NfsRes::$variant(self.backend()?.$method($args).await)))
+            };
+        }
+
+        match arguments {
+            Arguments::GetAttr(args) => dispatch_backend!(args, get_attr, GetAttr),
+            Arguments::SetAttr(args) => dispatch_backend!(args, set_attr, SetAttr),
+            Arguments::LookUp(args) => dispatch_backend!(args, lookup, LookUp),
+            Arguments::Access(args) => dispatch_backend!(args, access, Access),
+            Arguments::ReadLink(args) => dispatch_backend!(args, read_link, ReadLink),
+            Arguments::Read(args) => dispatch_backend!(args, read, Read),
+            Arguments::Write(args) => dispatch_backend!(args, write, Write),
+            Arguments::Create(args) => dispatch_backend!(args, create, Create),
+            Arguments::MkDir(args) => dispatch_backend!(args, mk_dir, MkDir),
+            Arguments::SymLink(args) => dispatch_backend!(args, symlink, SymLink),
+            Arguments::MkNod(args) => dispatch_backend!(args, mk_node, MkNod),
+            Arguments::Remove(args) => dispatch_backend!(args, remove, Remove),
+            Arguments::RmDir(args) => dispatch_backend!(args, rm_dir, RmDir),
+            Arguments::Rename(args) => dispatch_backend!(args, rename, Rename),
+            Arguments::Link(args) => dispatch_backend!(args, link, Link),
+            Arguments::ReadDir(args) => dispatch_backend!(args, read_dir, ReadDir),
+            Arguments::ReadDirPlus(args) => dispatch_backend!(args, read_dir_plus, ReadDirPlus),
+            Arguments::FsStat(args) => dispatch_backend!(args, fs_stat, FsStat),
+            Arguments::FsInfo(args) => dispatch_backend!(args, fs_info, FsInfo),
+            Arguments::PathConf(args) => dispatch_backend!(args, path_conf, PathConf),
+            Arguments::Commit(args) => dispatch_backend!(args, commit, Commit),
+            _ => Err(crate::rpc::Error::ProcedureMismatch),
         }
     }
 
@@ -153,7 +129,7 @@ impl VfsTask {
         args: mount::mnt::MountArgs,
         connection: &ConnectionContext,
     ) -> mount::mnt::Result {
-        let Some(export) = self.find_export(&args.0, connection) else {
+        let Some(export) = self.find_export(&args.0, connection).await else {
             return Err(mount::mnt::MntError::Access);
         };
 
@@ -168,10 +144,8 @@ impl VfsTask {
             .map(|addr| addr.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        if let Ok(mut mounts) = self.server_context.mounts.write() {
-            mounts
-                .push(crate::rpc::ServerMount { client_addr, directory: export.directory.clone() });
-        }
+        let mut mounts = self.server_context.mounts.write().await;
+        mounts.push(crate::rpc::ServerMount { client_addr, directory: export.directory.clone() });
 
         Ok(mount::mnt::Success {
             file_handle,
@@ -179,12 +153,12 @@ impl VfsTask {
         })
     }
 
-    fn find_export(
+    async fn find_export(
         &self,
         requested: &crate::vfs::file::Path,
         connection: &ConnectionContext,
     ) -> Option<crate::rpc::ServerExport> {
-        let exports = self.server_context.exports.read().ok()?;
+        let exports = self.server_context.exports.read().await;
         exports
             .iter()
             .find(|export| {
@@ -214,65 +188,51 @@ impl VfsTask {
         })
     }
 
-    fn dump_mounts(&self) -> mount::dump::Success {
-        let mount_list = self
-            .server_context
-            .mounts
-            .read()
-            .map(|mounts| {
-                mounts
-                    .iter()
-                    .cloned()
-                    .map(|mount| mount::MountEntry {
-                        hostname: mount.client_addr,
-                        directory: mount.directory,
-                    })
-                    .collect()
+    async fn dump_mounts(&self) -> mount::dump::Success {
+        let mounts = self.server_context.mounts.read().await;
+        let mount_list = mounts
+            .iter()
+            .cloned()
+            .map(|mount| mount::MountEntry {
+                hostname: mount.client_addr,
+                directory: mount.directory,
             })
-            .unwrap_or_default();
+            .collect();
 
         mount::dump::Success { mount_list }
     }
 
-    fn export_list(&self) -> mount::export::Success {
-        let exports = self
-            .server_context
-            .exports
-            .read()
-            .map(|exports| {
-                exports
-                    .iter()
-                    .cloned()
-                    .map(|export| mount::ExportEntry {
-                        directory: export.directory,
-                        names: export.allowed_hosts,
-                    })
-                    .collect()
+    async fn export_list(&self) -> mount::export::Success {
+        let exports = self.server_context.exports.read().await;
+        let exports = exports
+            .iter()
+            .cloned()
+            .map(|export| mount::ExportEntry {
+                directory: export.directory,
+                names: export.allowed_hosts,
             })
-            .unwrap_or_default();
+            .collect();
 
         mount::export::Success { exports }
     }
 
-    fn unmount(&self, args: mount::umnt::UnmountArgs, connection: &ConnectionContext) {
+    async fn unmount(&self, args: mount::umnt::UnmountArgs, connection: &ConnectionContext) {
         let Some(client_addr) = connection.client_addr.map(|addr| addr.ip().to_string()) else {
             return;
         };
 
-        if let Ok(mut mounts) = self.server_context.mounts.write() {
-            mounts.retain(|mount| {
-                !(mount.client_addr == client_addr && mount.directory.as_path() == args.0.as_path())
-            });
-        }
+        let mut mounts = self.server_context.mounts.write().await;
+        mounts.retain(|mount| {
+            !(mount.client_addr == client_addr && mount.directory.as_path() == args.0.as_path())
+        });
     }
 
-    fn unmount_all(&self, connection: &ConnectionContext) {
+    async fn unmount_all(&self, connection: &ConnectionContext) {
         let Some(client_addr) = connection.client_addr.map(|addr| addr.ip().to_string()) else {
             return;
         };
 
-        if let Ok(mut mounts) = self.server_context.mounts.write() {
-            mounts.retain(|mount| mount.client_addr != client_addr);
-        }
+        let mut mounts = self.server_context.mounts.write().await;
+        mounts.retain(|mount| mount.client_addr != client_addr);
     }
 }

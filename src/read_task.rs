@@ -6,7 +6,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::allocator;
 use crate::parser::{ParseFailure, RpcParser};
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, RpcReply, ServerContext};
+use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
 use crate::serializer::serialize_reply;
 
 /// Reads RPC commands from a network connection, parses it,
@@ -72,8 +72,8 @@ impl ReadTask {
                         eprintln!("read task parse error xid={xid}: {error:?}");
                     }
                     match serialize_reply(xid, Err(error)).await {
-                        Ok(payload) => {
-                            if self.result_sender.send(Ok(RpcReply::new(xid, payload))).is_err() {
+                        Ok(reply) => {
+                            if self.result_sender.send(Ok(reply)).is_err() {
                                 return Ok(());
                             }
                             continue;

@@ -14,7 +14,10 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
 use crate::mount::{dump, export};
-use crate::rpc::{AcceptStat, AuthFlavor, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
+use crate::rpc::{
+    AcceptStat, AuthFlavor, Error, OpaqueAuth, RejectedReply, ReplyBody, ReplyPayload, RpcBody,
+    RpcReply,
+};
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
@@ -138,106 +141,87 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
     async fn process_result(&mut self, result: ProcResult) -> io::Result<()> {
         match result {
-            ProcResult::Nfs3(data) => match data {
-                NfsRes::Null => self.buffer.send_inner_buffer().await,
-                NfsRes::GetAttr(res) => {
-                    nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
+            ProcResult::Nfs3(data) => self.process_nfs_result(data).await,
+            ProcResult::Mount(data) => self.process_mount_result(data).await,
+        }
+    }
+
+    async fn process_nfs_result(&mut self, data: NfsRes) -> io::Result<()> {
+        match data {
+            NfsRes::Null => self.buffer.send_inner_buffer().await,
+            NfsRes::GetAttr(res) => {
+                nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
+            }
+            NfsRes::SetAttr(res) => {
+                nfs_result!(self, res, set_attr::result_ok, set_attr::result_fail)
+            }
+            NfsRes::LookUp(res) => nfs_result!(self, res, lookup::result_ok, lookup::result_fail),
+            NfsRes::Access(res) => nfs_result!(self, res, access::result_ok, access::result_fail),
+            NfsRes::ReadLink(res) => {
+                nfs_result!(self, res, read_link::result_ok, read_link::result_fail)
+            }
+            NfsRes::Read(res) => match res {
+                Ok(ok) => {
+                    usize_as_u32(&mut self.buffer, STATUS_OK)?;
+                    read::result_ok_part(&mut self.buffer, ok.head)?;
+                    self.buffer.send_inner_with_slice(ok.data).await
                 }
-                NfsRes::SetAttr(res) => {
-                    nfs_result!(self, res, set_attr::result_ok, set_attr::result_fail)
-                }
-                NfsRes::LookUp(res) => {
-                    nfs_result!(self, res, lookup::result_ok, lookup::result_fail)
-                }
-                NfsRes::Access(res) => {
-                    nfs_result!(self, res, access::result_ok, access::result_fail)
-                }
-                NfsRes::ReadLink(res) => {
-                    nfs_result!(self, res, read_link::result_ok, read_link::result_fail)
-                }
-                //special case because of Slice
-                NfsRes::Read(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        read::result_ok_part(&mut self.buffer, ok.head)?;
-                        self.buffer.send_inner_with_slice(ok.data).await
-                    }
-                    Err(err) => {
-                        error(&mut self.buffer, err.error)?;
-                        read::result_fail(&mut self.buffer, err)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                NfsRes::Write(res) => {
-                    nfs_result!(self, res, write::result_ok, write::result_fail)
-                }
-                NfsRes::Create(res) => {
-                    nfs_result!(self, res, create::result_ok, create::result_fail)
-                }
-                NfsRes::MkDir(res) => {
-                    nfs_result!(self, res, mk_dir::result_ok, mk_dir::result_fail)
-                }
-                NfsRes::SymLink(res) => {
-                    nfs_result!(self, res, symlink::result_ok, symlink::result_fail)
-                }
-                NfsRes::MkNod(res) => {
-                    nfs_result!(self, res, mk_node::result_ok, mk_node::result_fail)
-                }
-                NfsRes::Remove(res) => {
-                    nfs_result!(self, res, remove::result_ok, remove::result_fail)
-                }
-                NfsRes::RmDir(res) => {
-                    nfs_result!(self, res, rm_dir::result_ok, rm_dir::result_fail)
-                }
-                NfsRes::Rename(res) => {
-                    nfs_result!(self, res, rename::result_ok, rename::result_fail)
-                }
-                NfsRes::Link(res) => {
-                    nfs_result!(self, res, link::result_ok, link::result_fail)
-                }
-                NfsRes::ReadDir(res) => {
-                    nfs_result!(self, res, read_dir::result_ok, read_dir::result_fail)
-                }
-                NfsRes::ReadDirPlus(res) => {
-                    nfs_result!(self, res, read_dir_plus::result_ok, read_dir_plus::result_fail)
-                }
-                NfsRes::FsStat(res) => {
-                    nfs_result!(self, res, fs_stat::result_ok, fs_stat::result_fail)
-                }
-                NfsRes::FsInfo(res) => {
-                    nfs_result!(self, res, fs_info::result_ok, fs_info::result_fail)
-                }
-                NfsRes::PathConf(res) => {
-                    nfs_result!(self, res, path_conf::result_ok, path_conf::result_fail)
-                }
-                NfsRes::Commit(res) => {
-                    nfs_result!(self, res, commit::result_ok, commit::result_fail)
-                }
-            },
-            ProcResult::Mount(data) => match data {
-                MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
-                    self.buffer.send_inner_buffer().await
-                }
-                MountRes::Mount(res) => match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        mnt::result_ok(&mut self.buffer, ok)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                    Err(stat) => {
-                        serializer::mount::mount_stat(&mut self.buffer, stat)?;
-                        self.buffer.send_inner_buffer().await
-                    }
-                },
-                MountRes::Export(node) => {
-                    serializer::mount::export::result_ok(&mut self.buffer, node)?;
-                    self.buffer.send_inner_buffer().await
-                }
-                MountRes::Dump(body) => {
-                    serializer::mount::dump::result_ok(&mut self.buffer, body)?;
+                Err(err) => {
+                    error(&mut self.buffer, err.error)?;
+                    read::result_fail(&mut self.buffer, err)?;
                     self.buffer.send_inner_buffer().await
                 }
             },
+            NfsRes::Write(res) => nfs_result!(self, res, write::result_ok, write::result_fail),
+            NfsRes::Create(res) => nfs_result!(self, res, create::result_ok, create::result_fail),
+            NfsRes::MkDir(res) => nfs_result!(self, res, mk_dir::result_ok, mk_dir::result_fail),
+            NfsRes::SymLink(res) => {
+                nfs_result!(self, res, symlink::result_ok, symlink::result_fail)
+            }
+            NfsRes::MkNod(res) => nfs_result!(self, res, mk_node::result_ok, mk_node::result_fail),
+            NfsRes::Remove(res) => nfs_result!(self, res, remove::result_ok, remove::result_fail),
+            NfsRes::RmDir(res) => nfs_result!(self, res, rm_dir::result_ok, rm_dir::result_fail),
+            NfsRes::Rename(res) => nfs_result!(self, res, rename::result_ok, rename::result_fail),
+            NfsRes::Link(res) => nfs_result!(self, res, link::result_ok, link::result_fail),
+            NfsRes::ReadDir(res) => {
+                nfs_result!(self, res, read_dir::result_ok, read_dir::result_fail)
+            }
+            NfsRes::ReadDirPlus(res) => {
+                nfs_result!(self, res, read_dir_plus::result_ok, read_dir_plus::result_fail)
+            }
+            NfsRes::FsStat(res) => nfs_result!(self, res, fs_stat::result_ok, fs_stat::result_fail),
+            NfsRes::FsInfo(res) => nfs_result!(self, res, fs_info::result_ok, fs_info::result_fail),
+            NfsRes::PathConf(res) => {
+                nfs_result!(self, res, path_conf::result_ok, path_conf::result_fail)
+            }
+            NfsRes::Commit(res) => nfs_result!(self, res, commit::result_ok, commit::result_fail),
+        }
+    }
+
+    async fn process_mount_result(&mut self, data: MountRes) -> io::Result<()> {
+        match data {
+            MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
+                self.buffer.send_inner_buffer().await
+            }
+            MountRes::Mount(res) => match res {
+                Ok(ok) => {
+                    usize_as_u32(&mut self.buffer, STATUS_OK)?;
+                    mnt::result_ok(&mut self.buffer, ok)?;
+                    self.buffer.send_inner_buffer().await
+                }
+                Err(stat) => {
+                    serializer::mount::mount_stat(&mut self.buffer, stat)?;
+                    self.buffer.send_inner_buffer().await
+                }
+            },
+            MountRes::Export(node) => {
+                serializer::mount::export::result_ok(&mut self.buffer, node)?;
+                self.buffer.send_inner_buffer().await
+            }
+            MountRes::Dump(body) => {
+                serializer::mount::dump::result_ok(&mut self.buffer, body)?;
+                self.buffer.send_inner_buffer().await
+            }
         }
     }
 
@@ -429,9 +413,38 @@ impl AsyncWrite for VecAsyncWriter {
 pub(crate) async fn serialize_reply(
     xid: u32,
     proc_result: Result<ProcResult, Error>,
-) -> io::Result<Vec<u8>> {
-    let writer = VecAsyncWriter::new();
-    let mut serializer = Serializer::with_capacity(writer, DEFAULT_SIZE);
-    serializer.form_reply(ReplyFromVfs::new(xid, proc_result)).await?;
-    Ok(serializer.buffer.socket.into_inner())
+) -> io::Result<RpcReply> {
+    match proc_result {
+        Ok(ProcResult::Nfs3(NfsRes::Read(Ok(ok)))) => serialize_read_reply(xid, ok),
+        other => {
+            let writer = VecAsyncWriter::new();
+            let mut serializer = Serializer::with_capacity(writer, DEFAULT_SIZE);
+            serializer.form_reply(ReplyFromVfs::new(xid, other)).await?;
+            Ok(RpcReply::new(xid, ReplyPayload::Buffer(serializer.buffer.socket.into_inner())))
+        }
+    }
+}
+
+fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply> {
+    let mut header = Vec::with_capacity(DEFAULT_SIZE);
+    header.extend_from_slice(&[0; HEADER_SIZE]);
+    u32(&mut header, xid)?;
+    u32(&mut header, RpcBody::Reply as u32)?;
+    u32(&mut header, ReplyBody::MsgAccepted as u32)?;
+    auth(&mut header, OpaqueAuth { flavor: AuthFlavor::None, body: Vec::new() })?;
+    u32(&mut header, AcceptStat::Success as u32)?;
+    usize_as_u32(&mut header, STATUS_OK)?;
+    read::result_ok_part(&mut header, ok.head)?;
+
+    let slice_size = ok.data.iter().map(|chunk| chunk.len()).sum::<usize>();
+    let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
+    let fragment_size =
+        header.len().saturating_sub(HEADER_SIZE).saturating_add(slice_size).saturating_add(padding);
+    if fragment_size > MAX_FRAGMENT_SIZE {
+        return Err(io::Error::new(ErrorKind::Unsupported, "Fragmented messages not supported"));
+    }
+
+    header[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | fragment_size) as u32).to_be_bytes());
+
+    Ok(RpcReply::new(xid, ReplyPayload::Read { header, data: ok.data, padding }))
 }
