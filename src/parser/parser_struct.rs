@@ -89,7 +89,6 @@ pub struct ParseFailure {
     pub error: Error,
 }
 
-#[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Creates a new `RpcParser` with the default buffer size.
     ///

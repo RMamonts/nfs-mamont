@@ -10,8 +10,6 @@
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
 
-#![allow(dead_code)]
-
 pub mod files;
 mod mount;
 mod nfs;
@@ -98,7 +96,6 @@ pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -
     vec_max_size(dest, &string.into_bytes(), max_size)
 }
 
-#[allow(dead_code)]
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
 pub fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
     vector(dest, &string.into_bytes())

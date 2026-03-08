@@ -42,8 +42,7 @@ use crate::parser::{Error, Result};
 /// # }
 /// ```
 pub struct CountBuffer<S: AsyncRead + Unpin> {
-    // actually, there are definitely two
-    bufs: Vec<ReadBuffer>,
+    bufs: [ReadBuffer; 2],
     read: usize,
     write: usize,
     retry_mode: bool,
@@ -60,7 +59,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// * `socket` - The async stream to read from
     pub(super) fn new(capacity: usize, socket: S) -> CountBuffer<S> {
         Self {
-            bufs: vec![ReadBuffer::new(capacity), ReadBuffer::new(capacity)],
+            bufs: [ReadBuffer::new(capacity), ReadBuffer::new(capacity)],
             read: 0,
             write: 1,
             retry_mode: false,
@@ -284,7 +283,6 @@ struct ReadBuffer {
     write_pos: usize,
 }
 
-#[allow(dead_code)]
 impl ReadBuffer {
     /// Creates a new `ReadBuffer` with the specified capacity.
     ///
