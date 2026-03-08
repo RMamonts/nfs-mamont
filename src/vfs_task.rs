@@ -50,7 +50,7 @@ impl VfsTask {
             command.context.header.program,
             command.context.header.version,
             command.context.header.procedure,
-            command.context.connection.auth,
+            command.context.connection.auth(),
         );
         match *command.arguments {
             Arguments::Null => Ok(match command.context.header.program {
@@ -109,7 +109,7 @@ impl VfsTask {
     }
 
     fn backend(&self) -> Result<&SharedVfs, crate::rpc::Error> {
-        self.server_context.backend.as_ref().ok_or_else(|| {
+        self.server_context.backend().ok_or_else(|| {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
     }

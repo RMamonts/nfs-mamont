@@ -409,7 +409,7 @@ impl AsyncWrite for VecAsyncWriter {
     }
 }
 
-pub(crate) async fn serialize_reply(
+pub async fn serialize_reply(
     xid: u32,
     proc_result: Result<ProcResult, Error>,
 ) -> io::Result<RpcReply> {

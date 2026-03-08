@@ -50,10 +50,10 @@ impl ReadTask {
         let mut parser = RpcParser::with_capacity(
             self.readhalf,
             allocator::Impl::new(
-                self.server_context.settings.allocator_buffer_size,
-                self.server_context.settings.allocator_buffer_count,
+                self.server_context.settings().allocator_buffer_size(),
+                self.server_context.settings().allocator_buffer_count(),
             ),
-            self.server_context.settings.read_buffer_size.get(),
+            self.server_context.settings().read_buffer_size().get(),
         );
 
         loop {

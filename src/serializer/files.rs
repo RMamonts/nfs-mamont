@@ -18,11 +18,6 @@ pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
     usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array(dest, fh.0))
 }
 
-/// Serializes [`vfs::Error`] as an XDR enum discriminant (NFS status).
-pub fn error(dest: &mut impl Write, stat: vfs::Error) -> io::Result<()> {
-    variant(dest, stat)
-}
-
 /// Serializes [file::Type] as the XDR `ftype3` enum discriminant.
 pub fn file_type(dest: &mut impl Write, file_type: file::Type) -> io::Result<()> {
     variant::<file::Type>(dest, file_type)

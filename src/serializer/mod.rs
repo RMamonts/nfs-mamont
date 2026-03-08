@@ -23,7 +23,7 @@ use std::io::{self, Error, ErrorKind, Write};
 use byteorder::{BigEndian, WriteBytesExt};
 use num_traits::ToPrimitive;
 
-pub(crate) use serialize_struct::{serialize_reply, MountRes, NfsRes, ProcResult};
+pub use serialize_struct::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// All serialized data is aligned to [`ALIGNMENT`] (4 bytes) boundaries.
 pub const ALIGNMENT: usize = 4;
@@ -92,12 +92,16 @@ pub fn vec_max_size(dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::R
 }
 
 /// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
-pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -> io::Result<()> {
-    vec_max_size(dest, &string.into_bytes(), max_size)
+pub fn string_max_size(dest: &mut impl Write, value: String, max_size: usize) -> io::Result<()> {
+    if value.len() > max_size {
+        return Err(Error::new(ErrorKind::InvalidInput, "vector out of bounds"));
+    }
+
+    string(dest, value)
 }
 
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
-pub fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
+fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
     vector(dest, &string.into_bytes())
 }
 

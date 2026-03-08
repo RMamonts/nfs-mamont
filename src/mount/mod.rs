@@ -9,7 +9,7 @@ mod service;
 pub mod umnt;
 pub mod umntall;
 
-pub(crate) use service::{MountRequest, MountService};
+pub(super) use service::{MountRequest, MountService};
 
 use crate::vfs::file;
 

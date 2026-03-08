@@ -76,9 +76,9 @@ pub type SharedVfs = Arc<dyn vfs::Vfs + Send + Sync + 'static>;
 
 #[derive(Debug, Clone)]
 pub struct ServerSettings {
-    pub read_buffer_size: NonZeroUsize,
-    pub allocator_buffer_size: NonZeroUsize,
-    pub allocator_buffer_count: NonZeroUsize,
+    read_buffer_size: NonZeroUsize,
+    allocator_buffer_size: NonZeroUsize,
+    allocator_buffer_count: NonZeroUsize,
 }
 
 impl Default for ServerSettings {
@@ -93,24 +93,35 @@ impl Default for ServerSettings {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ServerExport {
-    pub directory: file::Path,
-    pub allowed_hosts: Vec<String>,
+impl ServerSettings {
+    /// Returns the read buffer size in bytes.
+    pub fn read_buffer_size(&self) -> NonZeroUsize {
+        self.read_buffer_size
+    }
+
+    /// Returns the allocator buffer size in bytes.
+    pub fn allocator_buffer_size(&self) -> NonZeroUsize {
+        self.allocator_buffer_size
+    }
+
+    /// Returns the number of allocator buffers.
+    pub fn allocator_buffer_count(&self) -> NonZeroUsize {
+        self.allocator_buffer_count
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct ServerMount {
-    pub client_addr: String,
-    pub directory: file::Path,
+pub struct ServerExport {
+    directory: file::Path,
+    allowed_hosts: Vec<String>,
 }
 
 #[derive(Clone)]
 pub struct ServerContext {
-    pub settings: ServerSettings,
-    pub backend: Option<SharedVfs>,
-    pub exports: Arc<RwLock<Vec<ServerExport>>>,
-    pub mounts: Arc<RwLock<Vec<ServerMount>>>,
+    settings: ServerSettings,
+    backend: Option<SharedVfs>,
+    exports: Arc<RwLock<Vec<ServerExport>>>,
+    mounts: Arc<RwLock<Vec<MountedDirectory>>>,
 }
 
 impl Default for ServerContext {
@@ -125,21 +136,90 @@ impl Default for ServerContext {
 }
 
 impl ServerContext {
+    /// Creates a new context with the provided backend.
     pub fn with_backend(backend: SharedVfs) -> Self {
         Self { backend: Some(backend), ..Self::default() }
+    }
+
+    /// Returns the server settings.
+    pub fn settings(&self) -> &ServerSettings {
+        &self.settings
+    }
+
+    /// Returns the configured backend, if any.
+    pub fn backend(&self) -> Option<&SharedVfs> {
+        self.backend.as_ref()
+    }
+
+    /// Registers an exported directory.
+    pub async fn add_export(&self, export: ServerExport) {
+        self.exports.write().await.push(export);
+    }
+
+    /// Returns a snapshot of configured exports.
+    pub async fn exports(&self) -> Vec<ServerExport> {
+        self.exports.read().await.clone()
+    }
+
+    /// Records a mounted directory for a client.
+    pub async fn record_mount(&self, client_addr: String, directory: file::Path) {
+        self.mounts.write().await.push(MountedDirectory { client_addr, directory });
+    }
+
+    /// Returns a snapshot of active mounts.
+    pub async fn mount_entries(&self) -> Vec<(String, file::Path)> {
+        self.mounts
+            .read()
+            .await
+            .iter()
+            .map(|mount| (mount.client_addr.clone(), mount.directory.clone()))
+            .collect()
+    }
+
+    /// Removes a single mounted directory for a client.
+    pub async fn remove_mount(&self, client_addr: &str, directory: &file::Path) {
+        self.mounts.write().await.retain(|mount| {
+            !(mount.client_addr == client_addr && mount.directory.as_path() == directory.as_path())
+        });
+    }
+
+    /// Removes all mounted directories associated with a client.
+    pub async fn remove_mounts_by_client(&self, client_addr: &str) {
+        self.mounts.write().await.retain(|mount| mount.client_addr != client_addr);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ConnectionContext {
-    pub local_addr: Option<SocketAddr>,
-    pub client_addr: Option<SocketAddr>,
-    pub auth: Option<AuthFlavor>,
+    local_addr: Option<SocketAddr>,
+    client_addr: Option<SocketAddr>,
+    auth: Option<AuthFlavor>,
 }
 
 impl ConnectionContext {
+    /// Creates a new connection context.
     pub fn new(local_addr: Option<SocketAddr>, client_addr: Option<SocketAddr>) -> Self {
         Self { local_addr, client_addr, auth: None }
+    }
+
+    /// Returns the local socket address.
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        self.local_addr
+    }
+
+    /// Returns the client socket address.
+    pub fn client_addr(&self) -> Option<SocketAddr> {
+        self.client_addr
+    }
+
+    /// Returns the negotiated authentication flavor.
+    pub fn auth(&self) -> Option<AuthFlavor> {
+        self.auth
+    }
+
+    fn with_auth(mut self, auth: AuthFlavor) -> Self {
+        self.auth = Some(auth);
+        self
     }
 }
 
@@ -167,13 +247,33 @@ impl ParsedRpcCall {
     pub fn with_connection(self, connection: ConnectionContext) -> RpcCommand {
         let auth = self.header.auth_flavor;
         RpcCommand {
-            context: RequestContext {
-                connection: ConnectionContext { auth: Some(auth), ..connection },
-                header: self.header,
-            },
+            context: RequestContext { connection: connection.with_auth(auth), header: self.header },
             arguments: self.arguments,
         }
     }
+}
+
+impl ServerExport {
+    /// Creates a new export definition.
+    pub fn new(directory: file::Path, allowed_hosts: Vec<String>) -> Self {
+        Self { directory, allowed_hosts }
+    }
+
+    /// Returns the exported directory.
+    pub fn directory(&self) -> &file::Path {
+        &self.directory
+    }
+
+    /// Returns the allowed host patterns.
+    pub fn allowed_hosts(&self) -> &[String] {
+        &self.allowed_hosts
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MountedDirectory {
+    client_addr: String,
+    directory: file::Path,
 }
 
 pub struct RpcCommand {

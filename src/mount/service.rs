@@ -5,23 +5,17 @@ use crate::parser::Arguments;
 use crate::rpc::{ConnectionContext, ServerContext, SharedVfs};
 use crate::serializer::{MountRes, ProcResult};
 
-pub(crate) struct MountService<'a> {
+pub struct MountService<'a> {
     connection: &'a ConnectionContext,
     server_context: &'a ServerContext,
 }
 
 impl<'a> MountService<'a> {
-    pub(crate) fn new(
-        connection: &'a ConnectionContext,
-        server_context: &'a ServerContext,
-    ) -> Self {
+    pub fn new(connection: &'a ConnectionContext, server_context: &'a ServerContext) -> Self {
         Self { connection, server_context }
     }
 
-    pub(crate) async fn dispatch(
-        &self,
-        request: MountRequest,
-    ) -> Result<ProcResult, crate::rpc::Error> {
+    pub async fn dispatch(&self, request: MountRequest) -> Result<ProcResult, crate::rpc::Error> {
         let result = match request {
             MountRequest::Mount(args) => MountRes::Mount(self.mount(args).await),
             MountRequest::Dump => MountRes::Dump(self.dump_mounts().await),
@@ -40,7 +34,7 @@ impl<'a> MountService<'a> {
     }
 
     fn backend(&self) -> Result<&SharedVfs, crate::rpc::Error> {
-        self.server_context.backend.as_ref().ok_or_else(|| {
+        self.server_context.backend().ok_or_else(|| {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
     }
@@ -58,12 +52,11 @@ impl<'a> MountService<'a> {
         let file_handle = backend.root_handle().await;
         let client_addr = self
             .connection
-            .client_addr
+            .client_addr()
             .map(|addr| addr.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.push(crate::rpc::ServerMount { client_addr, directory: export.directory.clone() });
+        self.server_context.record_mount(client_addr, export.directory().clone()).await;
 
         Ok(mnt::Success {
             file_handle,
@@ -75,12 +68,12 @@ impl<'a> MountService<'a> {
         &self,
         requested: &crate::vfs::file::Path,
     ) -> Option<crate::rpc::ServerExport> {
-        let exports = self.server_context.exports.read().await;
+        let exports = self.server_context.exports().await;
         exports
             .iter()
             .find(|export| {
-                export.directory.as_path() == requested.as_path()
-                    && self.client_allowed(&export.allowed_hosts)
+                export.directory().as_path() == requested.as_path()
+                    && self.client_allowed(export.allowed_hosts())
             })
             .cloned()
     }
@@ -90,7 +83,7 @@ impl<'a> MountService<'a> {
             return true;
         }
 
-        let Some(client_addr) = self.connection.client_addr else {
+        let Some(client_addr) = self.connection.client_addr() else {
             return false;
         };
         let ip = client_addr.ip();
@@ -106,27 +99,28 @@ impl<'a> MountService<'a> {
     }
 
     async fn dump_mounts(&self) -> dump::Success {
-        let mounts = self.server_context.mounts.read().await;
-        let mount_list = mounts
+        let mount_list = self
+            .server_context
+            .mount_entries()
+            .await
             .iter()
             .cloned()
-            .map(|mount| crate::mount::MountEntry {
-                hostname: mount.client_addr,
-                directory: mount.directory,
-            })
+            .map(|(hostname, directory)| crate::mount::MountEntry { hostname, directory })
             .collect();
 
         dump::Success { mount_list }
     }
 
     async fn export_list(&self) -> export::Success {
-        let exports = self.server_context.exports.read().await;
-        let exports = exports
+        let exports = self
+            .server_context
+            .exports()
+            .await
             .iter()
             .cloned()
             .map(|export| crate::mount::ExportEntry {
-                directory: export.directory,
-                names: export.allowed_hosts,
+                directory: export.directory().clone(),
+                names: export.allowed_hosts().to_vec(),
             })
             .collect();
 
@@ -134,29 +128,25 @@ impl<'a> MountService<'a> {
     }
 
     async fn unmount(&self, args: umnt::UnmountArgs) {
-        let Some(client_addr) = self.connection.client_addr.map(|addr| addr.ip().to_string())
+        let Some(client_addr) = self.connection.client_addr().map(|addr| addr.ip().to_string())
         else {
             return;
         };
 
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.retain(|mount| {
-            !(mount.client_addr == client_addr && mount.directory.as_path() == args.0.as_path())
-        });
+        self.server_context.remove_mount(&client_addr, &args.0).await;
     }
 
     async fn unmount_all(&self) {
-        let Some(client_addr) = self.connection.client_addr.map(|addr| addr.ip().to_string())
+        let Some(client_addr) = self.connection.client_addr().map(|addr| addr.ip().to_string())
         else {
             return;
         };
 
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.retain(|mount| mount.client_addr != client_addr);
+        self.server_context.remove_mounts_by_client(&client_addr).await;
     }
 }
 
-pub(crate) enum MountRequest {
+pub enum MountRequest {
     Mount(mnt::MountArgs),
     Dump,
     Unmount(umnt::UnmountArgs),
