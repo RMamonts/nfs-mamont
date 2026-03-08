@@ -9,7 +9,6 @@ use crate::vfs::write::Args;
 ///
 /// ## Warning:
 /// should be used only in tests
-#[cfg(test)]
 pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
     let size: usize = arg.iter().map(|buf| buf.len()).sum();
     usize_as_u32(dest, size)?;
