@@ -1,6 +1,10 @@
+use std::collections::BTreeMap;
 use std::io;
 
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
+use tracing::{debug, info};
 
 use crate::mount;
 use crate::parser::Arguments;
@@ -9,16 +13,16 @@ use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
-    command_receiver: UnboundedReceiver<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>,
+    command_receiver: Receiver<RpcCommand>,
+    result_sender: Sender<CommandResult>,
     server_context: ServerContext,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        command_receiver: UnboundedReceiver<RpcCommand>,
-        result_sender: UnboundedSender<CommandResult>,
+        command_receiver: Receiver<RpcCommand>,
+        result_sender: Sender<CommandResult>,
         server_context: ServerContext,
     ) -> Self {
         Self { command_receiver, result_sender, server_context }
@@ -29,28 +33,85 @@ impl VfsTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(self) -> JoinHandle<()> {
+        tokio::spawn(async move { self.run().await })
     }
 
     async fn run(mut self) {
-        while let Some(command) = self.command_receiver.recv().await {
-            let xid = command.context.header.xid;
-            let result = serialize_reply(xid, self.dispatch(command).await).await;
+        let max_in_flight = self.server_context.settings().max_in_flight_requests().get();
+        let mut receiver_closed = false;
+        let mut next_sequence = 0_u64;
+        let mut next_reply_sequence = 0_u64;
+        let mut pending = BTreeMap::new();
+        let mut in_flight = JoinSet::new();
 
-            if self.result_sender.send(result).is_err() {
+        loop {
+            self.flush_ready_replies(&mut pending, &mut next_reply_sequence).await;
+
+            if receiver_closed && in_flight.is_empty() && pending.is_empty() {
+                info!("vfs task finished");
                 break;
+            }
+
+            if receiver_closed || in_flight.len() >= max_in_flight {
+                if let Some(Ok((sequence, result))) = in_flight.join_next().await {
+                    pending.insert(sequence, result);
+                }
+                continue;
+            }
+
+            tokio::select! {
+                maybe_command = self.command_receiver.recv() => {
+                    match maybe_command {
+                        Some(command) => {
+                            let sequence = next_sequence;
+                            next_sequence += 1;
+                            let server_context = self.server_context.clone();
+                            in_flight.spawn(async move {
+                                let xid = command.context.header.xid;
+                                let result = serialize_reply(
+                                    xid,
+                                    Self::dispatch_with_context(server_context, command).await,
+                                )
+                                .await;
+                                (sequence, result)
+                            });
+                        }
+                        None => receiver_closed = true,
+                    }
+                }
+                joined = in_flight.join_next(), if !in_flight.is_empty() => {
+                    if let Some(Ok((sequence, result))) = joined {
+                        pending.insert(sequence, result);
+                    }
+                }
             }
         }
     }
 
-    async fn dispatch(&self, command: RpcCommand) -> Result<ProcResult, crate::rpc::Error> {
-        eprintln!(
-            "rpc program={} version={} procedure={} auth={:?}",
+    async fn flush_ready_replies(
+        &self,
+        pending: &mut BTreeMap<u64, CommandResult>,
+        next_reply_sequence: &mut u64,
+    ) {
+        while let Some(result) = pending.remove(next_reply_sequence) {
+            if self.result_sender.send(result).await.is_err() {
+                break;
+            }
+            *next_reply_sequence += 1;
+        }
+    }
+
+    async fn dispatch_with_context(
+        server_context: ServerContext,
+        command: RpcCommand,
+    ) -> Result<ProcResult, crate::rpc::Error> {
+        debug!(
             command.context.header.program,
             command.context.header.version,
             command.context.header.procedure,
-            command.context.connection.auth(),
+            auth = ?command.context.connection.auth(),
+            "dispatching rpc request",
         );
         match *command.arguments {
             Arguments::Null => Ok(match command.context.header.program {
@@ -58,27 +119,39 @@ impl VfsTask {
                 crate::mount::MOUNT_PROGRAM => ProcResult::Mount(MountRes::Null),
                 _ => return Err(crate::rpc::Error::ProgramMismatch),
             }),
-            other => self.dispatch_non_null(other, &command.context.connection).await,
+            other => {
+                Self::dispatch_non_null_with_context(
+                    server_context,
+                    other,
+                    &command.context.connection,
+                )
+                .await
+            }
         }
     }
 
-    async fn dispatch_non_null(
-        &self,
+    async fn dispatch_non_null_with_context(
+        server_context: ServerContext,
         arguments: Arguments,
         connection: &crate::rpc::ConnectionContext,
     ) -> Result<ProcResult, crate::rpc::Error> {
         match mount::MountRequest::try_from(arguments) {
             Ok(request) => {
-                mount::MountService::new(connection, &self.server_context).dispatch(request).await
+                mount::MountService::new(connection, &server_context).dispatch(request).await
             }
-            Err(other) => self.dispatch_nfs(other).await,
+            Err(other) => Self::dispatch_nfs_with_context(server_context, other).await,
         }
     }
 
-    async fn dispatch_nfs(&self, arguments: Arguments) -> Result<ProcResult, crate::rpc::Error> {
+    async fn dispatch_nfs_with_context(
+        server_context: ServerContext,
+        arguments: Arguments,
+    ) -> Result<ProcResult, crate::rpc::Error> {
         macro_rules! dispatch_backend {
             ($args:ident, $method:ident, $variant:ident) => {
-                Ok(ProcResult::Nfs3(NfsRes::$variant(self.backend()?.$method($args).await)))
+                Ok(ProcResult::Nfs3(NfsRes::$variant(
+                    Self::backend(&server_context)?.$method($args).await,
+                )))
             };
         }
 
@@ -108,8 +181,8 @@ impl VfsTask {
         }
     }
 
-    fn backend(&self) -> Result<&SharedVfs, crate::rpc::Error> {
-        self.server_context.backend().ok_or_else(|| {
+    fn backend(server_context: &ServerContext) -> Result<&SharedVfs, crate::rpc::Error> {
+        server_context.backend().ok_or_else(|| {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
     }

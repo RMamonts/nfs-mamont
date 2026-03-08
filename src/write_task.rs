@@ -1,21 +1,20 @@
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
+use tokio::task::JoinHandle;
+use tracing::{debug, info, warn};
 
 use crate::rpc::{CommandResult, ReplyPayload};
 
 /// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<CommandResult>,
+    result_receiver: Receiver<CommandResult>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(
-        writehalf: OwnedWriteHalf,
-        result_receiver: UnboundedReceiver<CommandResult>,
-    ) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: Receiver<CommandResult>) -> Self {
         Self { writehalf, result_receiver }
     }
 
@@ -24,11 +23,11 @@ impl WriteTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
-            eprintln!("write task finished");
-        });
+            info!("write task finished");
+        })
     }
 
     async fn run(mut self) {
@@ -41,17 +40,17 @@ impl WriteTask {
             match reply.payload {
                 ReplyPayload::Buffer(payload) => {
                     if payload.is_empty() {
-                        eprintln!("write task: empty payload for xid={}", reply.xid);
+                        warn!(xid = reply.xid, "write task skipped empty payload");
                         continue;
                     }
                     if self.writehalf.write_all(&payload).await.is_err() {
-                        eprintln!("write task: socket write failed for xid={}", reply.xid);
+                        warn!(xid = reply.xid, "write task socket write failed");
                         break;
                     }
                 }
                 ReplyPayload::Read { header, data, padding } => {
                     if self.writehalf.write_all(&header).await.is_err() {
-                        eprintln!("write task: socket header write failed for xid={}", reply.xid);
+                        warn!(xid = reply.xid, "write task socket header write failed");
                         break;
                     }
                     let mut failed = false;
@@ -62,24 +61,20 @@ impl WriteTask {
                         }
                     }
                     if failed {
-                        eprintln!(
-                            "write task: socket read-payload write failed for xid={}",
-                            reply.xid
-                        );
+                        warn!(xid = reply.xid, "write task read-payload write failed");
                         break;
                     }
                     if padding != 0 {
                         let zeros = [0u8; 4];
                         if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
-                            eprintln!(
-                                "write task: socket padding write failed for xid={}",
-                                reply.xid
-                            );
+                            warn!(xid = reply.xid, "write task socket padding write failed");
                             break;
                         }
                     }
                 }
             }
+
+            debug!(xid = reply.xid, "write task sent reply");
         }
     }
 }

@@ -79,24 +79,39 @@ pub struct ServerSettings {
     read_buffer_size: NonZeroUsize,
     allocator_buffer_size: NonZeroUsize,
     allocator_buffer_count: NonZeroUsize,
+    command_queue_size: NonZeroUsize,
+    result_queue_size: NonZeroUsize,
+    max_in_flight_requests: NonZeroUsize,
 }
 
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {
-            read_buffer_size: NonZeroUsize::new(4096).expect("read buffer size must be non-zero"),
-            allocator_buffer_size: NonZeroUsize::new(4096)
-                .expect("allocator buffer size must be non-zero"),
-            allocator_buffer_count: NonZeroUsize::new(16)
-                .expect("allocator buffer count must be non-zero"),
+            read_buffer_size: default_non_zero_usize(4096),
+            allocator_buffer_size: default_non_zero_usize(4096),
+            allocator_buffer_count: default_non_zero_usize(16),
+            command_queue_size: default_non_zero_usize(64),
+            result_queue_size: default_non_zero_usize(64),
+            max_in_flight_requests: default_non_zero_usize(8),
         }
     }
 }
 
 impl ServerSettings {
+    /// Creates a settings value with defaults suitable for a small server.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Returns the read buffer size in bytes.
     pub fn read_buffer_size(&self) -> NonZeroUsize {
         self.read_buffer_size
+    }
+
+    /// Sets the read buffer size in bytes.
+    pub fn with_read_buffer_size(mut self, read_buffer_size: NonZeroUsize) -> Self {
+        self.read_buffer_size = read_buffer_size;
+        self
     }
 
     /// Returns the allocator buffer size in bytes.
@@ -104,9 +119,61 @@ impl ServerSettings {
         self.allocator_buffer_size
     }
 
+    /// Sets the allocator buffer size in bytes.
+    pub fn with_allocator_buffer_size(mut self, allocator_buffer_size: NonZeroUsize) -> Self {
+        self.allocator_buffer_size = allocator_buffer_size;
+        self
+    }
+
     /// Returns the number of allocator buffers.
     pub fn allocator_buffer_count(&self) -> NonZeroUsize {
         self.allocator_buffer_count
+    }
+
+    /// Sets the number of allocator buffers.
+    pub fn with_allocator_buffer_count(mut self, allocator_buffer_count: NonZeroUsize) -> Self {
+        self.allocator_buffer_count = allocator_buffer_count;
+        self
+    }
+
+    /// Returns the maximum number of queued RPC commands per connection.
+    pub fn command_queue_size(&self) -> NonZeroUsize {
+        self.command_queue_size
+    }
+
+    /// Sets the maximum number of queued RPC commands per connection.
+    pub fn with_command_queue_size(mut self, command_queue_size: NonZeroUsize) -> Self {
+        self.command_queue_size = command_queue_size;
+        self
+    }
+
+    /// Returns the maximum number of queued RPC replies per connection.
+    pub fn result_queue_size(&self) -> NonZeroUsize {
+        self.result_queue_size
+    }
+
+    /// Sets the maximum number of queued RPC replies per connection.
+    pub fn with_result_queue_size(mut self, result_queue_size: NonZeroUsize) -> Self {
+        self.result_queue_size = result_queue_size;
+        self
+    }
+
+    /// Returns the maximum number of concurrently processed RPC requests per connection.
+    pub fn max_in_flight_requests(&self) -> NonZeroUsize {
+        self.max_in_flight_requests
+    }
+
+    /// Sets the maximum number of concurrently processed RPC requests per connection.
+    pub fn with_max_in_flight_requests(mut self, max_in_flight_requests: NonZeroUsize) -> Self {
+        self.max_in_flight_requests = max_in_flight_requests;
+        self
+    }
+}
+
+fn default_non_zero_usize(value: usize) -> NonZeroUsize {
+    match NonZeroUsize::new(value) {
+        Some(value) => value,
+        None => unreachable!("default server setting must be non-zero"),
     }
 }
 
@@ -136,9 +203,19 @@ impl Default for ServerContext {
 }
 
 impl ServerContext {
+    /// Creates a new context with the provided settings and no backend.
+    pub fn with_settings(settings: ServerSettings) -> Self {
+        Self { settings, ..Self::default() }
+    }
+
     /// Creates a new context with the provided backend.
     pub fn with_backend(backend: SharedVfs) -> Self {
         Self { backend: Some(backend), ..Self::default() }
+    }
+
+    /// Creates a new context with the provided backend and settings.
+    pub fn with_backend_and_settings(backend: SharedVfs, settings: ServerSettings) -> Self {
+        Self { settings, backend: Some(backend), ..Self::default() }
     }
 
     /// Returns the server settings.
@@ -186,6 +263,23 @@ impl ServerContext {
     /// Removes all mounted directories associated with a client.
     pub async fn remove_mounts_by_client(&self, client_addr: &str) {
         self.mounts.write().await.retain(|mount| mount.client_addr != client_addr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerSettings;
+
+    #[test]
+    fn server_settings_allow_queue_configuration() {
+        let settings = ServerSettings::new()
+            .with_command_queue_size(std::num::NonZeroUsize::new(8).expect("non-zero literal"))
+            .with_result_queue_size(std::num::NonZeroUsize::new(16).expect("non-zero literal"))
+            .with_max_in_flight_requests(std::num::NonZeroUsize::new(4).expect("non-zero literal"));
+
+        assert_eq!(settings.command_queue_size().get(), 8);
+        assert_eq!(settings.result_queue_size().get(), 16);
+        assert_eq!(settings.max_in_flight_requests().get(), 4);
     }
 }
 

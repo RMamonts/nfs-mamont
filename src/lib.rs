@@ -15,6 +15,8 @@ mod write_task;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tracing::info;
 
 use crate::read_task::ReadTask;
 use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
@@ -33,7 +35,7 @@ pub async fn handle_forever_with_context(
 ) -> std::io::Result<()> {
     loop {
         let (socket, _) = listener.accept().await?;
-        eprintln!(
+        info!(
             "accepted connection local={} peer={}",
             socket
                 .local_addr()
@@ -47,29 +49,50 @@ pub async fn handle_forever_with_context(
 
         socket.set_nodelay(true)?;
 
-        process_socket(socket, server_context.clone()).await;
+        process_socket(socket, server_context.clone());
     }
 }
 
-async fn process_socket(socket: TcpStream, server_context: ServerContext) {
-    let connection_context =
-        ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
-    let (readhalf, writehalf) = socket.into_split();
-    // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
-    // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
+fn process_socket(socket: TcpStream, server_context: ServerContext) {
+    tokio::spawn(async move {
+        let connection_context =
+            ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
+        let (readhalf, writehalf) = socket.into_split();
+        let settings = server_context.settings().clone();
+        // channel for result
+        let (result_sender, result_receiver) =
+            mpsc::channel::<CommandResult>(settings.result_queue_size().get());
+        // channel for request
+        let (command_sender, command_receiver) =
+            mpsc::channel::<RpcCommand>(settings.command_queue_size().get());
 
-    ReadTask::new(
-        readhalf,
-        command_sender,
-        result_sender.clone(),
-        server_context.clone(),
-        connection_context,
-    )
-    .spawn();
+        let read_task = ReadTask::new(
+            readhalf,
+            command_sender,
+            result_sender.clone(),
+            server_context.clone(),
+            connection_context,
+        )
+        .spawn();
 
-    VfsTask::new(command_receiver, result_sender, server_context).spawn();
+        let vfs_task = VfsTask::new(command_receiver, result_sender, server_context).spawn();
 
-    WriteTask::new(writehalf, result_receiver).spawn();
+        let write_task = WriteTask::new(writehalf, result_receiver).spawn();
+
+        await_connection(write_task, read_task, vfs_task).await;
+    });
+}
+
+async fn await_connection(
+    write_task: JoinHandle<()>,
+    read_task: JoinHandle<()>,
+    vfs_task: JoinHandle<()>,
+) {
+    let _ = write_task.await;
+
+    read_task.abort();
+    vfs_task.abort();
+
+    let _ = read_task.await;
+    let _ = vfs_task.await;
 }

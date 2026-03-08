@@ -2,7 +2,9 @@ use std::io;
 use std::io::ErrorKind;
 
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 use crate::allocator;
 use crate::parser::{ParseFailure, RpcParser};
@@ -13,8 +15,8 @@ use crate::serializer::serialize_reply;
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
-    command_sender: UnboundedSender<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>,
+    command_sender: Sender<RpcCommand>,
+    result_sender: Sender<CommandResult>,
     server_context: ServerContext,
     connection_context: ConnectionContext,
 }
@@ -23,8 +25,8 @@ impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
-        command_sender: UnboundedSender<RpcCommand>,
-        result_sender: UnboundedSender<CommandResult>,
+        command_sender: Sender<RpcCommand>,
+        result_sender: Sender<CommandResult>,
         server_context: ServerContext,
         connection_context: ConnectionContext,
     ) -> Self {
@@ -36,14 +38,14 @@ impl ReadTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             if let Err(error) = self.run().await {
-                eprintln!("read task error: {error}");
+                error!(error = %error, "read task failed");
             } else {
-                eprintln!("read task finished");
+                info!("read task finished");
             }
-        });
+        })
     }
 
     async fn run(self) -> io::Result<()> {
@@ -62,18 +64,18 @@ impl ReadTask {
                 Err(ParseFailure { xid: None, error: crate::rpc::Error::IO(err) })
                     if err.kind() == ErrorKind::UnexpectedEof =>
                 {
-                    eprintln!("read task: client closed connection");
+                    info!("read task detected client connection close");
                     return Ok(());
                 }
                 Err(ParseFailure { xid: Some(xid), error }) => {
                     if is_expected_protocol_rejection(&error) {
-                        eprintln!("read task rejected xid={xid}: {error:?}");
+                        warn!(xid, error = ?error, "read task rejected request");
                     } else {
-                        eprintln!("read task parse error xid={xid}: {error:?}");
+                        debug!(xid, error = ?error, "read task parse error with reply");
                     }
                     match serialize_reply(xid, Err(error)).await {
                         Ok(reply) => {
-                            if self.result_sender.send(Ok(reply)).is_err() {
+                            if self.result_sender.send(Ok(reply)).await.is_err() {
                                 return Ok(());
                             }
                             continue;
@@ -83,16 +85,16 @@ impl ReadTask {
                 }
                 Err(ParseFailure { xid: None, error }) => {
                     if is_expected_protocol_rejection(&error) {
-                        eprintln!("read task rejected request: {error:?}");
+                        warn!(error = ?error, "read task rejected request without xid");
                     } else {
-                        eprintln!("read task parse error: {error:?}");
+                        error!(error = ?error, "read task parse error without xid");
                     }
                     return Err(map_parser_error(error));
                 }
             };
 
             let command = request.with_connection(self.connection_context.clone());
-            if self.command_sender.send(command).is_err() {
+            if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
         }

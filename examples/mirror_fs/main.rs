@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 use nfs_mamont::rpc::{ServerContext, ServerExport};
 use nfs_mamont::vfs::file;
@@ -19,6 +21,8 @@ mod tests;
 /// an NFS server on the specified port.
 #[tokio::main]
 async fn main() {
+    let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
     let listen = std::env::args().nth(2).unwrap_or_else(|| "0.0.0.0:2049".to_string());
@@ -40,6 +44,6 @@ async fn main() {
         .await;
 
     let listener = TcpListener::bind(&listen).await.expect("failed to bind listener");
-    eprintln!("mirrorfs listening on {listen}, export {}", export_root.display());
+    info!(listen, export = %export_root.display(), "mirrorfs listening");
     nfs_mamont::handle_forever_with_context(listener, context).await.expect("server loop failed");
 }
