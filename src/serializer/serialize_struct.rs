@@ -15,8 +15,8 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Slice;
 use crate::mount::{dump, export};
 use crate::rpc::{
-    AcceptStat, AuthFlavor, Error, OpaqueAuth, RejectedReply, ReplyBody, ReplyPayload, RpcBody,
-    RpcReply,
+    AcceptStat, AuthFlavor, Error, OpaqueAuth, OwnedReplyBuffer, RejectedReply, ReplyBody,
+    ReplyBufferPool, ReplyPayload, RpcBody, RpcReply,
 };
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
@@ -377,15 +377,15 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 }
 
 struct VecAsyncWriter {
-    data: Vec<u8>,
+    data: OwnedReplyBuffer,
 }
 
 impl VecAsyncWriter {
-    fn with_capacity(capacity: usize) -> Self {
-        Self { data: Vec::with_capacity(capacity) }
+    fn with_capacity(pool: std::sync::Arc<ReplyBufferPool>, capacity: usize) -> Self {
+        Self { data: pool.acquire(capacity) }
     }
 
-    fn into_inner(self) -> Vec<u8> {
+    fn into_inner(self) -> OwnedReplyBuffer {
         self.data
     }
 }
@@ -396,7 +396,7 @@ impl AsyncWrite for VecAsyncWriter {
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        self.data.extend_from_slice(buf);
+        self.data.as_mut_vec().extend_from_slice(buf);
         Poll::Ready(Ok(buf.len()))
     }
 
@@ -409,14 +409,24 @@ impl AsyncWrite for VecAsyncWriter {
     }
 }
 
+#[cfg(test)]
 pub async fn serialize_reply(
+    xid: u32,
+    proc_result: Result<ProcResult, Error>,
+) -> io::Result<RpcReply> {
+    serialize_reply_with_pool(std::sync::Arc::new(ReplyBufferPool::new()), xid, proc_result).await
+}
+
+/// Serializes an RPC reply using a reusable buffer acquired from the provided pool.
+pub async fn serialize_reply_with_pool(
+    pool: std::sync::Arc<ReplyBufferPool>,
     xid: u32,
     proc_result: Result<ProcResult, Error>,
 ) -> io::Result<RpcReply> {
     match proc_result {
         Ok(ProcResult::Nfs3(NfsRes::Read(Ok(ok)))) => serialize_read_reply(xid, ok),
         other => {
-            let writer = VecAsyncWriter::with_capacity(DEFAULT_SIZE);
+            let writer = VecAsyncWriter::with_capacity(pool, DEFAULT_SIZE);
             let mut serializer = Serializer::with_capacity(writer, DEFAULT_SIZE);
             serializer.form_reply(ReplyFromVfs::new(xid, other)).await?;
             Ok(RpcReply::new(xid, ReplyPayload::Buffer(serializer.buffer.socket.into_inner())))

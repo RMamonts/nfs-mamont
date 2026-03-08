@@ -40,11 +40,11 @@ impl WriteTask {
 
     async fn run(mut self) {
         while let Some(envelope) = self.result_receiver.recv().await {
-            let ReplyEnvelope { result, span, received_at, dispatched_at } = envelope;
+            let ReplyEnvelope { result, procedure, span, received_at, dispatched_at } = envelope;
             let reply = match result {
                 Ok(reply) => reply,
                 Err(error) => {
-                    self.metrics.record_reply_failure();
+                    self.metrics.record_reply_failure(procedure);
                     warn!(parent: &span, error = %error, "write task dropped failed reply envelope");
                     continue;
                 }
@@ -53,12 +53,12 @@ impl WriteTask {
             match reply.payload {
                 ReplyPayload::Buffer(payload) => {
                     if payload.is_empty() {
-                        self.metrics.record_reply_failure();
+                        self.metrics.record_reply_failure(procedure);
                         warn!(parent: &span, xid = reply.xid, "write task skipped empty payload");
                         continue;
                     }
-                    if self.writehalf.write_all(&payload).await.is_err() {
-                        self.metrics.record_reply_failure();
+                    if self.writehalf.write_all(payload.as_slice()).await.is_err() {
+                        self.metrics.record_reply_failure(procedure);
                         warn!(parent: &span, xid = reply.xid, "write task socket write failed");
                         break;
                     }
@@ -70,7 +70,7 @@ impl WriteTask {
                             .await
                             .is_err()
                         {
-                            self.metrics.record_reply_failure();
+                            self.metrics.record_reply_failure(procedure);
                             warn!(parent: &span, xid = reply.xid, "write task vectored read write failed");
                             break;
                         }
@@ -83,12 +83,12 @@ impl WriteTask {
                             }
                         }
                         if failed {
-                            self.metrics.record_reply_failure();
+                            self.metrics.record_reply_failure(procedure);
                             warn!(parent: &span, xid = reply.xid, "write task read-payload write failed");
                             break;
                         }
                     } else if self.writehalf.write_all(&header).await.is_err() {
-                        self.metrics.record_reply_failure();
+                        self.metrics.record_reply_failure(procedure);
                         warn!(parent: &span, xid = reply.xid, "write task socket header write failed");
                         break;
                     }
@@ -96,7 +96,7 @@ impl WriteTask {
                     if padding != 0 {
                         let zeros = [0u8; 4];
                         if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
-                            self.metrics.record_reply_failure();
+                            self.metrics.record_reply_failure(procedure);
                             warn!(parent: &span, xid = reply.xid, "write task socket padding write failed");
                             break;
                         }
@@ -108,7 +108,11 @@ impl WriteTask {
             let dispatch_to_write_micros = dispatched_at
                 .map(|instant| instant.elapsed().as_micros() as u64)
                 .unwrap_or_default();
-            self.metrics.record_reply_sent(total_latency_micros, dispatch_to_write_micros);
+            self.metrics.record_reply_sent(
+                procedure,
+                total_latency_micros,
+                dispatch_to_write_micros,
+            );
 
             debug!(
                 parent: &span,

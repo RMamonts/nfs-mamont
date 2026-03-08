@@ -63,35 +63,60 @@ pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
 /// Parses a variable-length vector of bytes (opaque data) from the `Read` source.
 /// The vector's length is encoded as a `u32` preceding the data.
 pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    vector_into(src, &mut buf)?;
+    Ok(buf)
+}
+
+/// Parses a variable-length vector of bytes into a caller-provided buffer.
+pub fn vector_into(src: &mut impl Read, buf: &mut Vec<u8>) -> Result<()> {
     let size = u32_as_usize(src)?;
-    let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    read_counted_bytes(src, size, None, buf)?;
     padding(src, size)?;
-    Ok(vec)
+    Ok(())
 }
 
 /// Parses a variable-length vector of bytes with a maximum allowed size.
 pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    vec_max_size_into(src, max_size, &mut buf)?;
+    Ok(buf)
+}
+
+/// Parses a variable-length vector of bytes with a maximum allowed size into a caller-provided buffer.
+pub fn vec_max_size_into(src: &mut impl Read, max_size: usize, buf: &mut Vec<u8>) -> Result<()> {
     let size = u32_as_usize(src)?;
-    if size > max_size {
-        return Err(Error::MaxElemLimit);
-    }
-    let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    read_counted_bytes(src, size, Some(max_size), buf)?;
     padding(src, size)?;
-    Ok(vec)
+    Ok(())
 }
 
 /// Parses an XDR string with a maximum allowed size.
 pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
-    let vec = vec_max_size(src, max_size)?;
-    String::from_utf8(vec).map_err(Error::IncorrectString)
+    let mut buf = Vec::new();
+    string_max_size_into(src, max_size, &mut buf)
 }
 
 /// Parses an XDR string from the `Read` source.
 pub fn string(src: &mut impl Read) -> Result<String> {
-    let vec = vector(src)?;
-    String::from_utf8(vec).map_err(Error::IncorrectString)
+    let mut buf = Vec::new();
+    string_into(src, &mut buf)
+}
+
+/// Parses an XDR string into a caller-provided byte buffer.
+pub fn string_into(src: &mut impl Read, buf: &mut Vec<u8>) -> Result<String> {
+    vector_into(src, buf)?;
+    String::from_utf8(std::mem::take(buf)).map_err(Error::IncorrectString)
+}
+
+/// Parses an XDR string with a maximum allowed size into a caller-provided byte buffer.
+pub fn string_max_size_into(
+    src: &mut impl Read,
+    max_size: usize,
+    buf: &mut Vec<u8>,
+) -> Result<String> {
+    vec_max_size_into(src, max_size, buf)?;
+    String::from_utf8(std::mem::take(buf)).map_err(Error::IncorrectString)
 }
 
 /// Discards a counted XDR opaque field without allocating a temporary vector.
@@ -129,4 +154,20 @@ fn discard_bytes(src: &mut impl Read, mut size: usize) -> Result<()> {
         size -= chunk;
     }
     Ok(())
+}
+
+fn read_counted_bytes(
+    src: &mut impl Read,
+    size: usize,
+    max_size: Option<usize>,
+    buf: &mut Vec<u8>,
+) -> Result<()> {
+    if let Some(max_size) = max_size {
+        if size > max_size {
+            return Err(Error::MaxElemLimit);
+        }
+    }
+    buf.clear();
+    buf.resize(size, 0u8);
+    src.read_exact(buf.as_mut_slice()).map_err(Error::IO)
 }

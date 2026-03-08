@@ -5715,15 +5715,15 @@ use std::io::Read;
 
 use crate::mount::mnt::MountArgs;
 use crate::mount::MOUNT_DIRPATH_LEN;
-use crate::parser::primitive::string_max_size;
+use crate::parser::primitive::vec_max_size;
 use crate::parser::Result;
 use crate::rpc::Error;
 use crate::vfs::file;
 
 /// Parses the arguments for a Mount operation.
 pub fn mount(src: &mut impl Read) -> Result<MountArgs> {
-    let path = string_max_size(src, MOUNT_DIRPATH_LEN)?;
-    Ok(MountArgs(file::Path::new(path).map_err(Error::IO)?))
+    let path = vec_max_size(src, MOUNT_DIRPATH_LEN)?;
+    Ok(MountArgs(file::Path::from_utf8(path).map_err(Error::IO)?))
 }
 
 </file>
@@ -5739,15 +5739,15 @@ use std::io::Read;
 
 use crate::mount::umnt::UnmountArgs;
 use crate::mount::MOUNT_DIRPATH_LEN;
-use crate::parser::primitive::string_max_size;
+use crate::parser::primitive::vec_max_size;
 use crate::parser::Result;
 use crate::rpc::Error;
 use crate::vfs::file;
 
 /// Parses the arguments for an Unmount operation.
 pub fn unmount(src: &mut impl Read) -> Result<UnmountArgs> {
-    let path = string_max_size(src, MOUNT_DIRPATH_LEN)?;
-    Ok(UnmountArgs(file::Path::new(path).map_err(Error::IO)?))
+    let path = vec_max_size(src, MOUNT_DIRPATH_LEN)?;
+    Ok(UnmountArgs(file::Path::from_utf8(path).map_err(Error::IO)?))
 }
 
 </file>
@@ -5976,7 +5976,7 @@ mod tests {
 use std::io::{self, Read};
 
 use crate::nfsv3::NFS3_FHSIZE;
-use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
+use crate::parser::primitive::{array, u32, u32_as_usize, u64, vec_max_size};
 use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
@@ -6051,12 +6051,12 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(map_validation_error)
+    Name::from_utf8(vec_max_size(src, vfs::MAX_NAME_LEN)?).map_err(map_validation_error)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(map_validation_error)
+    Path::from_utf8(vec_max_size(src, MAX_PATH_LEN)?).map_err(map_validation_error)
 }
 
 #[cfg(test)]
@@ -8686,11 +8686,11 @@ pub fn string(src: &mut impl Read) -> Result<String> {
 }
 
 /// Discards a counted XDR opaque field without allocating a temporary vector.
-// pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
-//     let size = u32_as_usize(src)?;
-//     discard_bytes(src, size)?;
-//     padding(src, size)
-// }
+pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
+    let size = u32_as_usize(src)?;
+    discard_bytes(src, size)?;
+    padding(src, size)
+}
 
 /// Discards a counted XDR opaque field with an explicit maximum size check.
 pub fn discard_opaque_max_size(src: &mut impl Read, max_size: usize) -> Result<()> {
@@ -10996,6 +10996,11 @@ pub trait Create {
 use std::io;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+use std::ffi::OsString;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
@@ -11038,6 +11043,19 @@ impl Name {
         Ok(Name(name))
     }
 
+    /// Creates a new [`Name`] from UTF-8 bytes after validating its contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes are not valid UTF-8 or the decoded name
+    /// violates [`MAX_NAME_LEN`] or content constraints.
+    pub fn from_utf8(bytes: Vec<u8>) -> io::Result<Self> {
+        let name = String::from_utf8(bytes).map_err(|error| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 name: {error}"))
+        })?;
+        Self::new(name)
+    }
+
     /// Consumes the wrapper and returns the inner [`String`].
     pub fn into_inner(self) -> String {
         self.0
@@ -11071,6 +11089,37 @@ impl Path {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
         }
         Ok(Path(PathBuf::from(path)))
+    }
+
+    /// Creates a new [`Path`] from UTF-8 bytes after validating its contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes are not valid UTF-8 or the decoded path
+    /// violates [`MAX_PATH_LEN`] or emptiness constraints.
+    pub fn from_utf8(bytes: Vec<u8>) -> io::Result<Self> {
+        if bytes.len() > MAX_PATH_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path too long"));
+        }
+        if bytes.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
+        }
+
+        #[cfg(unix)]
+        {
+            std::str::from_utf8(&bytes).map_err(|error| {
+                io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 path: {error}"))
+            })?;
+            Ok(Path(PathBuf::from(OsString::from_vec(bytes))))
+        }
+
+        #[cfg(not(unix))]
+        {
+            let path = String::from_utf8(bytes).map_err(|error| {
+                io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 path: {error}"))
+            })?;
+            Ok(Path(PathBuf::from(path)))
+        }
     }
 
     /// Consumes the wrapper and returns the inner [`PathBuf`].
@@ -11214,6 +11263,19 @@ mod tests {
         let name = Name::new(input);
         assert!(name.is_err());
     }
+
+    #[test]
+    fn name_from_utf8_accepts_valid_input() {
+        let name = Name::from_utf8(b"valid".to_vec()).unwrap();
+        assert_eq!(name.as_str(), "valid");
+    }
+
+    #[test]
+    fn path_from_utf8_accepts_valid_input() {
+        let path = Path::from_utf8(b"/tmp/file".to_vec()).unwrap();
+        assert_eq!(path.as_path(), std::path::Path::new("/tmp/file"));
+    }
+
     #[test]
     fn name_new_rejects_too_long() {
         let input = "a".repeat(MAX_NAME_LEN + 1);
@@ -12881,6 +12943,7 @@ fn queue_depth<T>(sender: &Sender<T>) -> usize {
 </file>
 <file path="src/rpc.rs">
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
@@ -13088,6 +13151,16 @@ impl ServerMetrics {
         }
     }
 
+    /// Encodes the current metrics snapshot in Prometheus text format.
+    pub fn encode_prometheus(&self) -> String {
+        self.snapshot().encode_prometheus()
+    }
+
+    /// Encodes the current metrics snapshot in OpenMetrics text format.
+    pub fn encode_openmetrics(&self) -> String {
+        self.snapshot().encode_openmetrics()
+    }
+
     fn latency_snapshot(
         samples: &AtomicU64,
         total_micros: &AtomicU64,
@@ -13170,6 +13243,145 @@ impl ServerMetrics {
     pub(crate) fn record_reply_failure(&self) {
         self.reply_failures.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+impl ServerMetricsSnapshot {
+    /// Encodes the snapshot in Prometheus text format.
+    pub fn encode_prometheus(&self) -> String {
+        self.encode_metrics(false)
+    }
+
+    /// Encodes the snapshot in OpenMetrics text format.
+    pub fn encode_openmetrics(&self) -> String {
+        self.encode_metrics(true)
+    }
+
+    fn encode_metrics(&self, openmetrics: bool) -> String {
+        let mut output = String::new();
+
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_received_total",
+            "Requests accepted into the command queue.",
+            self.requests_received,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_rejected_total",
+            "Requests rejected during parsing or reply serialization.",
+            self.requests_rejected,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_dispatched_total",
+            "Requests dispatched to protocol handlers.",
+            self.requests_dispatched,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_replies_sent_total",
+            "Replies successfully written to the client socket.",
+            self.replies_sent,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_reply_failures_total",
+            "Replies dropped before reaching the client socket.",
+            self.reply_failures,
+        );
+
+        append_gauge(
+            &mut output,
+            "nfs_mamont_command_queue_depth",
+            "Current command queue depth.",
+            self.command_queue_depth.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_command_queue_depth_peak",
+            "Peak command queue depth.",
+            self.command_queue_depth.peak,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_result_queue_depth",
+            "Current result queue depth.",
+            self.result_queue_depth.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_result_queue_depth_peak",
+            "Peak result queue depth.",
+            self.result_queue_depth.peak,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_in_flight_requests",
+            "Current number of in-flight requests.",
+            self.in_flight_requests.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_in_flight_requests_peak",
+            "Peak number of in-flight requests.",
+            self.in_flight_requests.peak,
+        );
+
+        append_latency_metrics(&mut output, "queue_wait", &self.queue_wait);
+        append_latency_metrics(&mut output, "dispatch", &self.dispatch);
+        append_latency_metrics(&mut output, "total_latency", &self.total_latency);
+        append_latency_metrics(&mut output, "dispatch_to_write", &self.dispatch_to_write);
+
+        if openmetrics {
+            output.push_str("# EOF\n");
+        }
+
+        output
+    }
+}
+
+fn append_counter(output: &mut String, name: &str, help: &str, value: u64) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} counter");
+    let _ = writeln!(output, "{name} {value}");
+}
+
+fn append_gauge(output: &mut String, name: &str, help: &str, value: usize) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} gauge");
+    let _ = writeln!(output, "{name} {value}");
+}
+
+fn append_latency_metrics(output: &mut String, prefix: &str, latency: &LatencySnapshot) {
+    let samples_total_name = format!("nfs_mamont_{prefix}_samples_total");
+    let micros_total_name = format!("nfs_mamont_{prefix}_micros_total");
+    let average_name = format!("nfs_mamont_{prefix}_average_micros");
+    let max_name = format!("nfs_mamont_{prefix}_max_micros");
+
+    append_counter(
+        output,
+        &samples_total_name,
+        "Number of recorded latency samples.",
+        latency.samples,
+    );
+    append_counter(
+        output,
+        &micros_total_name,
+        "Total observed latency in microseconds.",
+        latency.total_micros,
+    );
+    append_gauge(
+        output,
+        &average_name,
+        "Average observed latency in microseconds.",
+        latency.average_micros as usize,
+    );
+    append_gauge(
+        output,
+        &max_name,
+        "Maximum observed latency in microseconds.",
+        latency.max_micros as usize,
+    );
 }
 
 fn record_latency(
@@ -13447,6 +13659,22 @@ mod tests {
         assert_eq!(snapshot.dispatch.average_micros, 20);
         assert_eq!(snapshot.total_latency.average_micros, 40);
         assert_eq!(snapshot.dispatch_to_write.average_micros, 15);
+    }
+
+    #[test]
+    fn server_metrics_snapshot_encodes_openmetrics() {
+        let metrics = ServerMetrics::new();
+        metrics.record_request_received(1);
+        metrics.record_dispatch(12, 34);
+        metrics.record_reply_sent(56, 22);
+
+        let text = metrics.encode_openmetrics();
+
+        assert!(text.contains("# TYPE nfs_mamont_requests_received_total counter"));
+        assert!(text.contains("nfs_mamont_requests_received_total 1"));
+        assert!(text.contains("nfs_mamont_dispatch_micros_total 34"));
+        assert!(text.contains("nfs_mamont_total_latency_average_micros 56"));
+        assert!(text.ends_with("# EOF\n"));
     }
 }
 
@@ -13999,9 +14227,10 @@ impl Drop for InFlightGuard {
 
 </file>
 <file path="src/write_task.rs">
+use std::io::{self, ErrorKind, IoSlice};
 use std::sync::Arc;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
@@ -14064,23 +14293,35 @@ impl WriteTask {
                     }
                 }
                 ReplyPayload::Read { header, data, padding } => {
-                    if self.writehalf.write_all(&header).await.is_err() {
+                    let mut chunks = data.iter();
+                    if let Some(first_chunk) = chunks.next() {
+                        if write_header_and_first_chunk(&mut self.writehalf, &header, first_chunk)
+                            .await
+                            .is_err()
+                        {
+                            self.metrics.record_reply_failure();
+                            warn!(parent: &span, xid = reply.xid, "write task vectored read write failed");
+                            break;
+                        }
+
+                        let mut failed = false;
+                        for chunk in chunks {
+                            if self.writehalf.write_all(chunk).await.is_err() {
+                                failed = true;
+                                break;
+                            }
+                        }
+                        if failed {
+                            self.metrics.record_reply_failure();
+                            warn!(parent: &span, xid = reply.xid, "write task read-payload write failed");
+                            break;
+                        }
+                    } else if self.writehalf.write_all(&header).await.is_err() {
                         self.metrics.record_reply_failure();
                         warn!(parent: &span, xid = reply.xid, "write task socket header write failed");
                         break;
                     }
-                    let mut failed = false;
-                    for chunk in data.iter() {
-                        if self.writehalf.write_all(chunk).await.is_err() {
-                            failed = true;
-                            break;
-                        }
-                    }
-                    if failed {
-                        self.metrics.record_reply_failure();
-                        warn!(parent: &span, xid = reply.xid, "write task read-payload write failed");
-                        break;
-                    }
+
                     if padding != 0 {
                         let zeros = [0u8; 4];
                         if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
@@ -14106,6 +14347,124 @@ impl WriteTask {
                 "write task sent reply",
             );
         }
+    }
+}
+
+async fn write_header_and_first_chunk<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    header: &[u8],
+    first_chunk: &[u8],
+) -> io::Result<()> {
+    let mut header_offset = 0;
+    let mut chunk_offset = 0;
+
+    while header_offset < header.len() || chunk_offset < first_chunk.len() {
+        let written = match (header_offset < header.len(), chunk_offset < first_chunk.len()) {
+            (true, true) => {
+                let buffers = [
+                    IoSlice::new(&header[header_offset..]),
+                    IoSlice::new(&first_chunk[chunk_offset..]),
+                ];
+                writer.write_vectored(&buffers).await?
+            }
+            (true, false) => writer.write(&header[header_offset..]).await?,
+            (false, true) => writer.write(&first_chunk[chunk_offset..]).await?,
+            (false, false) => break,
+        };
+
+        if written == 0 {
+            return Err(io::Error::new(
+                ErrorKind::WriteZero,
+                "failed to write header and first read chunk",
+            ));
+        }
+
+        let header_remaining = header.len().saturating_sub(header_offset);
+        let header_written = written.min(header_remaining);
+        header_offset += header_written;
+        chunk_offset += written.saturating_sub(header_written);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::io::IoSlice;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    use tokio::io::AsyncWrite;
+
+    use super::write_header_and_first_chunk;
+
+    struct PartialWriter {
+        buf: Vec<u8>,
+        max_write: usize,
+        vectored_calls: usize,
+    }
+
+    impl PartialWriter {
+        fn new(max_write: usize) -> Self {
+            Self { buf: Vec::new(), max_write, vectored_calls: 0 }
+        }
+    }
+
+    impl AsyncWrite for PartialWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            let count = buf.len().min(self.max_write);
+            self.buf.extend_from_slice(&buf[..count]);
+            Poll::Ready(Ok(count))
+        }
+
+        fn poll_write_vectored(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            bufs: &[IoSlice<'_>],
+        ) -> Poll<io::Result<usize>> {
+            self.vectored_calls += 1;
+            let mut remaining = self.max_write;
+            let mut written = 0;
+
+            for buf in bufs {
+                if remaining == 0 {
+                    break;
+                }
+                let count = buf.len().min(remaining);
+                self.buf.extend_from_slice(&buf[..count]);
+                written += count;
+                remaining -= count;
+            }
+
+            Poll::Ready(Ok(written))
+        }
+
+        fn is_write_vectored(&self) -> bool {
+            true
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn write_header_and_first_chunk_handles_partial_vectored_writes() {
+        let mut writer = PartialWriter::new(3);
+
+        write_header_and_first_chunk(&mut writer, &[1, 2, 3, 4], &[5, 6, 7, 8]).await.unwrap();
+
+        assert_eq!(writer.buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(writer.vectored_calls > 0);
     }
 }
 

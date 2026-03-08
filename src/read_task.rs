@@ -11,7 +11,7 @@ use crate::parser::{ParseFailure, RpcParser};
 use crate::rpc::{
     rejected_request_span, ConnectionContext, ReplyEnvelope, RpcCommand, ServerContext,
 };
-use crate::serializer::serialize_reply;
+use crate::serializer::serialize_reply_with_pool;
 
 /// Reads RPC commands from a network connection, parses it,
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
@@ -52,6 +52,7 @@ impl ReadTask {
 
     async fn run(self) -> io::Result<()> {
         let metrics = self.server_context.metrics();
+        let reply_buffers = self.server_context.reply_buffers();
         let mut parser = RpcParser::with_capacity(
             self.readhalf,
             allocator::Impl::new(
@@ -77,13 +78,13 @@ impl ReadTask {
                     } else {
                         debug!(xid, error = ?error, "read task parse error with reply");
                     }
-                    match serialize_reply(xid, Err(error)).await {
+                    match serialize_reply_with_pool(reply_buffers.clone(), xid, Err(error)).await {
                         Ok(reply) => {
                             let span = rejected_request_span(&self.connection_context, xid);
                             let received_at = std::time::Instant::now();
                             if self
                                 .result_sender
-                                .send(ReplyEnvelope::new(Ok(reply), span, received_at, None))
+                                .send(ReplyEnvelope::new(Ok(reply), None, span, received_at, None))
                                 .await
                                 .is_err()
                             {
@@ -112,10 +113,11 @@ impl ReadTask {
                 command_queue_depth,
                 "parsed rpc request",
             );
+            let procedure = command.context.procedure;
             if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
-            metrics.record_request_received(command_queue_depth);
+            metrics.record_request_received(procedure, command_queue_depth);
         }
     }
 }

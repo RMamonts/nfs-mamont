@@ -2,7 +2,9 @@ use std::io::Cursor;
 
 use byteorder::{BigEndian, WriteBytesExt};
 
-use crate::parser::primitive::{array, discard_opaque_max_size, string, string_max_size, vector};
+use crate::parser::primitive::{
+    array, discard_opaque_max_size, string, string_into, string_max_size, vector, vector_into,
+};
 use crate::parser::Error;
 
 #[test]
@@ -31,6 +33,20 @@ fn test_vec_u8_with_padding() {
     src.push(0);
     let result = vector(&mut Cursor::new(src)).unwrap();
     assert_eq!(result, init);
+}
+
+#[test]
+fn test_vector_into_reuses_buffer() {
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(3).unwrap();
+    src.extend_from_slice(&[9, 8, 7, 0]);
+
+    let mut buffer = vec![1, 2, 3, 4, 5, 6];
+    let old_capacity = buffer.capacity();
+    vector_into(&mut Cursor::new(src), &mut buffer).unwrap();
+
+    assert_eq!(buffer, vec![9, 8, 7]);
+    assert!(buffer.capacity() >= old_capacity.min(3));
 }
 
 #[test]
@@ -73,6 +89,21 @@ fn test_string_valid() {
     src.write_u8(0u8).unwrap();
     let result = string(&mut Cursor::new(src)).unwrap();
     assert_eq!(result, test_string);
+}
+
+#[test]
+fn test_string_into_reuses_buffer() {
+    let test_string = "hello".to_string();
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
+    src.extend_from_slice(test_string.as_bytes());
+    src.extend_from_slice(&[0, 0, 0]);
+
+    let mut buffer = vec![42; 16];
+    let parsed = string_into(&mut Cursor::new(src), &mut buffer).unwrap();
+
+    assert_eq!(parsed, test_string);
+    assert!(buffer.is_empty());
 }
 
 #[test]

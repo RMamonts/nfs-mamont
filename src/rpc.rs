@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::string::FromUtf8Error;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -79,6 +80,75 @@ pub struct OpaqueAuth {
     pub body: Vec<u8>,
 }
 
+/// Pool of reusable reply buffers for non-streamed RPC replies.
+#[derive(Debug, Default)]
+pub struct ReplyBufferPool {
+    buffers: Mutex<Vec<Vec<u8>>>,
+}
+
+impl ReplyBufferPool {
+    /// Creates a new empty reply buffer pool.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Acquires a reusable reply buffer with at least the requested capacity.
+    pub fn acquire(self: &Arc<Self>, capacity: usize) -> OwnedReplyBuffer {
+        let mut data = self
+            .buffers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .pop()
+            .unwrap_or_default();
+        data.clear();
+        if data.capacity() < capacity {
+            data.reserve(capacity - data.capacity());
+        }
+        OwnedReplyBuffer { data, pool: Arc::clone(self) }
+    }
+
+    fn release(&self, mut data: Vec<u8>) {
+        data.clear();
+        self.buffers.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(data);
+    }
+}
+
+/// Reply buffer that automatically returns its storage back to the pool on drop.
+#[derive(Debug)]
+pub struct OwnedReplyBuffer {
+    data: Vec<u8>,
+    pool: Arc<ReplyBufferPool>,
+}
+
+impl OwnedReplyBuffer {
+    /// Returns the buffered reply bytes.
+    pub fn as_slice(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Returns the reply length.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns whether the reply buffer is empty.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Returns mutable access to the underlying reply buffer.
+    pub fn as_mut_vec(&mut self) -> &mut Vec<u8> {
+        &mut self.data
+    }
+}
+
+impl Drop for OwnedReplyBuffer {
+    fn drop(&mut self) {
+        let data = std::mem::take(&mut self.data);
+        self.pool.release(data);
+    }
+}
+
 /// Point-in-time gauge snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GaugeSnapshot {
@@ -130,8 +200,158 @@ pub struct ServerMetricsSnapshot {
     pub dispatch_to_write: LatencySnapshot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProcedureLabels {
+    program: &'static str,
+    version: &'static str,
+    procedure: &'static str,
+}
+
+impl ProcedureLabels {
+    const fn new(program: &'static str, version: &'static str, procedure: &'static str) -> Self {
+        Self { program, version, procedure }
+    }
+}
+
+#[derive(Debug)]
+struct ProcedureMetricsEntry {
+    labels: ProcedureLabels,
+    requests_received: AtomicU64,
+    requests_dispatched: AtomicU64,
+    replies_sent: AtomicU64,
+    reply_failures: AtomicU64,
+    queue_wait_samples: AtomicU64,
+    queue_wait_total_micros: AtomicU64,
+    queue_wait_max_micros: AtomicU64,
+    dispatch_samples: AtomicU64,
+    dispatch_total_micros: AtomicU64,
+    dispatch_max_micros: AtomicU64,
+    total_latency_samples: AtomicU64,
+    total_latency_total_micros: AtomicU64,
+    total_latency_max_micros: AtomicU64,
+    dispatch_to_write_samples: AtomicU64,
+    dispatch_to_write_total_micros: AtomicU64,
+    dispatch_to_write_max_micros: AtomicU64,
+}
+
+impl ProcedureMetricsEntry {
+    fn new(labels: ProcedureLabels) -> Self {
+        Self {
+            labels,
+            requests_received: AtomicU64::new(0),
+            requests_dispatched: AtomicU64::new(0),
+            replies_sent: AtomicU64::new(0),
+            reply_failures: AtomicU64::new(0),
+            queue_wait_samples: AtomicU64::new(0),
+            queue_wait_total_micros: AtomicU64::new(0),
+            queue_wait_max_micros: AtomicU64::new(0),
+            dispatch_samples: AtomicU64::new(0),
+            dispatch_total_micros: AtomicU64::new(0),
+            dispatch_max_micros: AtomicU64::new(0),
+            total_latency_samples: AtomicU64::new(0),
+            total_latency_total_micros: AtomicU64::new(0),
+            total_latency_max_micros: AtomicU64::new(0),
+            dispatch_to_write_samples: AtomicU64::new(0),
+            dispatch_to_write_total_micros: AtomicU64::new(0),
+            dispatch_to_write_max_micros: AtomicU64::new(0),
+        }
+    }
+
+    fn snapshot(&self) -> ProcedureMetricsSnapshot {
+        ProcedureMetricsSnapshot {
+            labels: self.labels,
+            requests_received: self.requests_received.load(Ordering::Relaxed),
+            requests_dispatched: self.requests_dispatched.load(Ordering::Relaxed),
+            replies_sent: self.replies_sent.load(Ordering::Relaxed),
+            reply_failures: self.reply_failures.load(Ordering::Relaxed),
+            queue_wait: ServerMetrics::latency_snapshot(
+                &self.queue_wait_samples,
+                &self.queue_wait_total_micros,
+                &self.queue_wait_max_micros,
+            ),
+            dispatch: ServerMetrics::latency_snapshot(
+                &self.dispatch_samples,
+                &self.dispatch_total_micros,
+                &self.dispatch_max_micros,
+            ),
+            total_latency: ServerMetrics::latency_snapshot(
+                &self.total_latency_samples,
+                &self.total_latency_total_micros,
+                &self.total_latency_max_micros,
+            ),
+            dispatch_to_write: ServerMetrics::latency_snapshot(
+                &self.dispatch_to_write_samples,
+                &self.dispatch_to_write_total_micros,
+                &self.dispatch_to_write_max_micros,
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProcedureMetricsSnapshot {
+    labels: ProcedureLabels,
+    requests_received: u64,
+    requests_dispatched: u64,
+    replies_sent: u64,
+    reply_failures: u64,
+    queue_wait: LatencySnapshot,
+    dispatch: LatencySnapshot,
+    total_latency: LatencySnapshot,
+    dispatch_to_write: LatencySnapshot,
+}
+
+const PROCEDURE_LABELS: [ProcedureLabels; 28] = [
+    ProcedureLabels::new("nfs", "3", "null"),
+    ProcedureLabels::new("nfs", "3", "getattr"),
+    ProcedureLabels::new("nfs", "3", "setattr"),
+    ProcedureLabels::new("nfs", "3", "lookup"),
+    ProcedureLabels::new("nfs", "3", "access"),
+    ProcedureLabels::new("nfs", "3", "readlink"),
+    ProcedureLabels::new("nfs", "3", "read"),
+    ProcedureLabels::new("nfs", "3", "write"),
+    ProcedureLabels::new("nfs", "3", "create"),
+    ProcedureLabels::new("nfs", "3", "mkdir"),
+    ProcedureLabels::new("nfs", "3", "symlink"),
+    ProcedureLabels::new("nfs", "3", "mknod"),
+    ProcedureLabels::new("nfs", "3", "remove"),
+    ProcedureLabels::new("nfs", "3", "rmdir"),
+    ProcedureLabels::new("nfs", "3", "rename"),
+    ProcedureLabels::new("nfs", "3", "link"),
+    ProcedureLabels::new("nfs", "3", "readdir"),
+    ProcedureLabels::new("nfs", "3", "readdirplus"),
+    ProcedureLabels::new("nfs", "3", "fsstat"),
+    ProcedureLabels::new("nfs", "3", "fsinfo"),
+    ProcedureLabels::new("nfs", "3", "pathconf"),
+    ProcedureLabels::new("nfs", "3", "commit"),
+    ProcedureLabels::new("mount", "3", "null"),
+    ProcedureLabels::new("mount", "3", "mnt"),
+    ProcedureLabels::new("mount", "3", "dump"),
+    ProcedureLabels::new("mount", "3", "umnt"),
+    ProcedureLabels::new("mount", "3", "umntall"),
+    ProcedureLabels::new("mount", "3", "export"),
+];
+
+fn procedure_metric_index(header: RpcCallHeader) -> Option<usize> {
+    match (header.program, header.version, header.procedure) {
+        (crate::nfsv3::NFS_PROGRAM, crate::nfsv3::NFS_VERSION, procedure @ 0..=21) => {
+            Some(procedure as usize)
+        }
+        (crate::mount::MOUNT_PROGRAM, crate::mount::MOUNT_VERSION, procedure @ 0..=5) => {
+            Some(crate::nfsv3::COMMIT as usize + 1 + procedure as usize)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn procedure_labels(header: RpcCallHeader) -> ProcedureLabels {
+    procedure_metric_index(header)
+        .map(|index| PROCEDURE_LABELS[index])
+        .unwrap_or_else(|| ProcedureLabels::new("unknown", "unknown", "unknown"))
+}
+
 /// Shared server metrics backend backed by atomics.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ServerMetrics {
     requests_received: AtomicU64,
     requests_rejected: AtomicU64,
@@ -156,12 +376,42 @@ pub struct ServerMetrics {
     dispatch_to_write_samples: AtomicU64,
     dispatch_to_write_total_micros: AtomicU64,
     dispatch_to_write_max_micros: AtomicU64,
+    procedure_metrics: Box<[ProcedureMetricsEntry]>,
 }
 
 impl ServerMetrics {
     /// Creates a new metrics backend.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            requests_received: AtomicU64::new(0),
+            requests_rejected: AtomicU64::new(0),
+            requests_dispatched: AtomicU64::new(0),
+            replies_sent: AtomicU64::new(0),
+            reply_failures: AtomicU64::new(0),
+            command_queue_current: AtomicUsize::new(0),
+            command_queue_peak: AtomicUsize::new(0),
+            result_queue_current: AtomicUsize::new(0),
+            result_queue_peak: AtomicUsize::new(0),
+            in_flight_current: AtomicUsize::new(0),
+            in_flight_peak: AtomicUsize::new(0),
+            queue_wait_samples: AtomicU64::new(0),
+            queue_wait_total_micros: AtomicU64::new(0),
+            queue_wait_max_micros: AtomicU64::new(0),
+            dispatch_samples: AtomicU64::new(0),
+            dispatch_total_micros: AtomicU64::new(0),
+            dispatch_max_micros: AtomicU64::new(0),
+            total_latency_samples: AtomicU64::new(0),
+            total_latency_total_micros: AtomicU64::new(0),
+            total_latency_max_micros: AtomicU64::new(0),
+            dispatch_to_write_samples: AtomicU64::new(0),
+            dispatch_to_write_total_micros: AtomicU64::new(0),
+            dispatch_to_write_max_micros: AtomicU64::new(0),
+            procedure_metrics: PROCEDURE_LABELS
+                .into_iter()
+                .map(ProcedureMetricsEntry::new)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        }
     }
 
     /// Returns an atomic snapshot of all exported metrics.
@@ -209,12 +459,16 @@ impl ServerMetrics {
 
     /// Encodes the current metrics snapshot in Prometheus text format.
     pub fn encode_prometheus(&self) -> String {
-        self.snapshot().encode_prometheus()
+        encode_metrics(&self.snapshot(), &self.procedure_snapshots(), false)
     }
 
     /// Encodes the current metrics snapshot in OpenMetrics text format.
     pub fn encode_openmetrics(&self) -> String {
-        self.snapshot().encode_openmetrics()
+        encode_metrics(&self.snapshot(), &self.procedure_snapshots(), true)
+    }
+
+    fn procedure_snapshots(&self) -> Vec<ProcedureMetricsSnapshot> {
+        self.procedure_metrics.iter().map(ProcedureMetricsEntry::snapshot).collect()
     }
 
     fn latency_snapshot(
@@ -232,8 +486,13 @@ impl ServerMetrics {
         }
     }
 
-    pub(crate) fn record_request_received(&self, command_queue_depth: usize) {
+    pub(crate) fn record_request_received(
+        &self,
+        procedure: ProcedureLabels,
+        command_queue_depth: usize,
+    ) {
         self.requests_received.fetch_add(1, Ordering::Relaxed);
+        self.procedure_metrics_entry(procedure).requests_received.fetch_add(1, Ordering::Relaxed);
         self.observe_command_queue_depth(command_queue_depth);
     }
 
@@ -260,7 +519,12 @@ impl ServerMetrics {
         self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn record_dispatch(&self, queue_wait_micros: u64, dispatch_micros: u64) {
+    pub(crate) fn record_dispatch(
+        &self,
+        procedure: ProcedureLabels,
+        queue_wait_micros: u64,
+        dispatch_micros: u64,
+    ) {
         self.requests_dispatched.fetch_add(1, Ordering::Relaxed);
         record_latency(
             &self.queue_wait_samples,
@@ -274,10 +538,25 @@ impl ServerMetrics {
             &self.dispatch_max_micros,
             dispatch_micros,
         );
+        let procedure_metrics = self.procedure_metrics_entry(procedure);
+        procedure_metrics.requests_dispatched.fetch_add(1, Ordering::Relaxed);
+        record_latency(
+            &procedure_metrics.queue_wait_samples,
+            &procedure_metrics.queue_wait_total_micros,
+            &procedure_metrics.queue_wait_max_micros,
+            queue_wait_micros,
+        );
+        record_latency(
+            &procedure_metrics.dispatch_samples,
+            &procedure_metrics.dispatch_total_micros,
+            &procedure_metrics.dispatch_max_micros,
+            dispatch_micros,
+        );
     }
 
     pub(crate) fn record_reply_sent(
         &self,
+        procedure: Option<ProcedureLabels>,
         total_latency_micros: u64,
         dispatch_to_write_micros: u64,
     ) {
@@ -294,106 +573,144 @@ impl ServerMetrics {
             &self.dispatch_to_write_max_micros,
             dispatch_to_write_micros,
         );
+        if let Some(procedure) = procedure {
+            let procedure_metrics = self.procedure_metrics_entry(procedure);
+            procedure_metrics.replies_sent.fetch_add(1, Ordering::Relaxed);
+            record_latency(
+                &procedure_metrics.total_latency_samples,
+                &procedure_metrics.total_latency_total_micros,
+                &procedure_metrics.total_latency_max_micros,
+                total_latency_micros,
+            );
+            record_latency(
+                &procedure_metrics.dispatch_to_write_samples,
+                &procedure_metrics.dispatch_to_write_total_micros,
+                &procedure_metrics.dispatch_to_write_max_micros,
+                dispatch_to_write_micros,
+            );
+        }
     }
 
-    pub(crate) fn record_reply_failure(&self) {
+    pub(crate) fn record_reply_failure(&self, procedure: Option<ProcedureLabels>) {
         self.reply_failures.fetch_add(1, Ordering::Relaxed);
+        if let Some(procedure) = procedure {
+            self.procedure_metrics_entry(procedure).reply_failures.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn procedure_metrics_entry(&self, procedure: ProcedureLabels) -> &ProcedureMetricsEntry {
+        let index = PROCEDURE_LABELS
+            .iter()
+            .position(|labels| *labels == procedure)
+            .expect("procedure labels must exist in metrics registry");
+        &self.procedure_metrics[index]
+    }
+}
+
+impl Default for ServerMetrics {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl ServerMetricsSnapshot {
     /// Encodes the snapshot in Prometheus text format.
     pub fn encode_prometheus(&self) -> String {
-        self.encode_metrics(false)
+        encode_metrics(self, &[], false)
     }
 
     /// Encodes the snapshot in OpenMetrics text format.
     pub fn encode_openmetrics(&self) -> String {
-        self.encode_metrics(true)
+        encode_metrics(self, &[], true)
+    }
+}
+
+fn encode_metrics(
+    snapshot: &ServerMetricsSnapshot,
+    procedure_snapshots: &[ProcedureMetricsSnapshot],
+    openmetrics: bool,
+) -> String {
+    let mut output = String::new();
+
+    append_counter(
+        &mut output,
+        "nfs_mamont_requests_received_total",
+        "Requests accepted into the command queue.",
+        snapshot.requests_received,
+    );
+    append_counter(
+        &mut output,
+        "nfs_mamont_requests_rejected_total",
+        "Requests rejected during parsing or reply serialization.",
+        snapshot.requests_rejected,
+    );
+    append_counter(
+        &mut output,
+        "nfs_mamont_requests_dispatched_total",
+        "Requests dispatched to protocol handlers.",
+        snapshot.requests_dispatched,
+    );
+    append_counter(
+        &mut output,
+        "nfs_mamont_replies_sent_total",
+        "Replies successfully written to the client socket.",
+        snapshot.replies_sent,
+    );
+    append_counter(
+        &mut output,
+        "nfs_mamont_reply_failures_total",
+        "Replies dropped before reaching the client socket.",
+        snapshot.reply_failures,
+    );
+
+    append_gauge(
+        &mut output,
+        "nfs_mamont_command_queue_depth",
+        "Current command queue depth.",
+        snapshot.command_queue_depth.current,
+    );
+    append_gauge(
+        &mut output,
+        "nfs_mamont_command_queue_depth_peak",
+        "Peak command queue depth.",
+        snapshot.command_queue_depth.peak,
+    );
+    append_gauge(
+        &mut output,
+        "nfs_mamont_result_queue_depth",
+        "Current result queue depth.",
+        snapshot.result_queue_depth.current,
+    );
+    append_gauge(
+        &mut output,
+        "nfs_mamont_result_queue_depth_peak",
+        "Peak result queue depth.",
+        snapshot.result_queue_depth.peak,
+    );
+    append_gauge(
+        &mut output,
+        "nfs_mamont_in_flight_requests",
+        "Current number of in-flight requests.",
+        snapshot.in_flight_requests.current,
+    );
+    append_gauge(
+        &mut output,
+        "nfs_mamont_in_flight_requests_peak",
+        "Peak number of in-flight requests.",
+        snapshot.in_flight_requests.peak,
+    );
+
+    append_latency_metrics(&mut output, "queue_wait", &snapshot.queue_wait);
+    append_latency_metrics(&mut output, "dispatch", &snapshot.dispatch);
+    append_latency_metrics(&mut output, "total_latency", &snapshot.total_latency);
+    append_latency_metrics(&mut output, "dispatch_to_write", &snapshot.dispatch_to_write);
+    append_procedure_metrics(&mut output, procedure_snapshots);
+
+    if openmetrics {
+        output.push_str("# EOF\n");
     }
 
-    fn encode_metrics(&self, openmetrics: bool) -> String {
-        let mut output = String::new();
-
-        append_counter(
-            &mut output,
-            "nfs_mamont_requests_received_total",
-            "Requests accepted into the command queue.",
-            self.requests_received,
-        );
-        append_counter(
-            &mut output,
-            "nfs_mamont_requests_rejected_total",
-            "Requests rejected during parsing or reply serialization.",
-            self.requests_rejected,
-        );
-        append_counter(
-            &mut output,
-            "nfs_mamont_requests_dispatched_total",
-            "Requests dispatched to protocol handlers.",
-            self.requests_dispatched,
-        );
-        append_counter(
-            &mut output,
-            "nfs_mamont_replies_sent_total",
-            "Replies successfully written to the client socket.",
-            self.replies_sent,
-        );
-        append_counter(
-            &mut output,
-            "nfs_mamont_reply_failures_total",
-            "Replies dropped before reaching the client socket.",
-            self.reply_failures,
-        );
-
-        append_gauge(
-            &mut output,
-            "nfs_mamont_command_queue_depth",
-            "Current command queue depth.",
-            self.command_queue_depth.current,
-        );
-        append_gauge(
-            &mut output,
-            "nfs_mamont_command_queue_depth_peak",
-            "Peak command queue depth.",
-            self.command_queue_depth.peak,
-        );
-        append_gauge(
-            &mut output,
-            "nfs_mamont_result_queue_depth",
-            "Current result queue depth.",
-            self.result_queue_depth.current,
-        );
-        append_gauge(
-            &mut output,
-            "nfs_mamont_result_queue_depth_peak",
-            "Peak result queue depth.",
-            self.result_queue_depth.peak,
-        );
-        append_gauge(
-            &mut output,
-            "nfs_mamont_in_flight_requests",
-            "Current number of in-flight requests.",
-            self.in_flight_requests.current,
-        );
-        append_gauge(
-            &mut output,
-            "nfs_mamont_in_flight_requests_peak",
-            "Peak number of in-flight requests.",
-            self.in_flight_requests.peak,
-        );
-
-        append_latency_metrics(&mut output, "queue_wait", &self.queue_wait);
-        append_latency_metrics(&mut output, "dispatch", &self.dispatch);
-        append_latency_metrics(&mut output, "total_latency", &self.total_latency);
-        append_latency_metrics(&mut output, "dispatch_to_write", &self.dispatch_to_write);
-
-        if openmetrics {
-            output.push_str("# EOF\n");
-        }
-
-        output
-    }
+    output
 }
 
 fn append_counter(output: &mut String, name: &str, help: &str, value: u64) {
@@ -438,6 +755,116 @@ fn append_latency_metrics(output: &mut String, prefix: &str, latency: &LatencySn
         "Maximum observed latency in microseconds.",
         latency.max_micros as usize,
     );
+}
+
+fn append_procedure_metrics(output: &mut String, procedure_snapshots: &[ProcedureMetricsSnapshot]) {
+    append_labeled_counter_family(
+        output,
+        "nfs_mamont_procedure_requests_received_total",
+        "Requests accepted into the command queue for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.requests_received,
+    );
+    append_labeled_counter_family(
+        output,
+        "nfs_mamont_procedure_requests_dispatched_total",
+        "Requests dispatched to protocol handlers for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.requests_dispatched,
+    );
+    append_labeled_counter_family(
+        output,
+        "nfs_mamont_procedure_replies_sent_total",
+        "Replies successfully written to the client socket for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.replies_sent,
+    );
+    append_labeled_counter_family(
+        output,
+        "nfs_mamont_procedure_reply_failures_total",
+        "Replies dropped before reaching the client socket for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.reply_failures,
+    );
+
+    append_labeled_latency_family(
+        output,
+        "nfs_mamont_procedure_queue_wait_average_micros",
+        "Average queue wait in microseconds for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.queue_wait.average_micros,
+    );
+    append_labeled_latency_family(
+        output,
+        "nfs_mamont_procedure_dispatch_average_micros",
+        "Average dispatch latency in microseconds for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.dispatch.average_micros,
+    );
+    append_labeled_latency_family(
+        output,
+        "nfs_mamont_procedure_total_latency_average_micros",
+        "Average total latency in microseconds for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.total_latency.average_micros,
+    );
+    append_labeled_latency_family(
+        output,
+        "nfs_mamont_procedure_dispatch_to_write_average_micros",
+        "Average write latency in microseconds for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.dispatch_to_write.average_micros,
+    );
+    append_labeled_latency_family(
+        output,
+        "nfs_mamont_procedure_total_latency_max_micros",
+        "Maximum total latency in microseconds for each RPC procedure.",
+        procedure_snapshots,
+        |snapshot| snapshot.total_latency.max_micros,
+    );
+}
+
+fn append_labeled_counter_family(
+    output: &mut String,
+    name: &str,
+    help: &str,
+    snapshots: &[ProcedureMetricsSnapshot],
+    value: impl Fn(&ProcedureMetricsSnapshot) -> u64,
+) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} counter");
+    for snapshot in snapshots {
+        let _ =
+            writeln!(output, "{name}{} {}", prometheus_labels(snapshot.labels), value(snapshot));
+    }
+}
+
+fn append_labeled_latency_family(
+    output: &mut String,
+    name: &str,
+    help: &str,
+    snapshots: &[ProcedureMetricsSnapshot],
+    value: impl Fn(&ProcedureMetricsSnapshot) -> u64,
+) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} gauge");
+    for snapshot in snapshots {
+        let _ =
+            writeln!(output, "{name}{} {}", prometheus_labels(snapshot.labels), value(snapshot));
+    }
+}
+
+fn prometheus_labels(labels: ProcedureLabels) -> String {
+    format!(
+        "{{program=\"{}\",version=\"{}\",procedure=\"{}\"}}",
+        escape_prometheus_label_value(labels.program),
+        escape_prometheus_label_value(labels.version),
+        escape_prometheus_label_value(labels.procedure),
+    )
+}
+
+fn escape_prometheus_label_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn record_latency(
@@ -589,6 +1016,7 @@ pub struct ServerContext {
     exports: Arc<RwLock<ExportRegistry>>,
     mounts: Arc<RwLock<MountRegistry>>,
     metrics: Arc<ServerMetrics>,
+    reply_buffers: Arc<ReplyBufferPool>,
 }
 
 impl Default for ServerContext {
@@ -599,6 +1027,7 @@ impl Default for ServerContext {
             exports: Arc::new(RwLock::new(ExportRegistry::default())),
             mounts: Arc::new(RwLock::new(MountRegistry::default())),
             metrics: Arc::new(ServerMetrics::default()),
+            reply_buffers: Arc::new(ReplyBufferPool::default()),
         }
     }
 }
@@ -632,6 +1061,11 @@ impl ServerContext {
     /// Returns the shared metrics backend.
     pub fn metrics(&self) -> Arc<ServerMetrics> {
         Arc::clone(&self.metrics)
+    }
+
+    /// Returns the shared reply buffer pool.
+    pub fn reply_buffers(&self) -> Arc<ReplyBufferPool> {
+        Arc::clone(&self.reply_buffers)
     }
 
     /// Registers an exported directory.
@@ -672,7 +1106,9 @@ impl ServerContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{ServerMetrics, ServerSettings};
+    use std::sync::Arc;
+
+    use super::{procedure_labels, ReplyBufferPool, RpcCallHeader, ServerMetrics, ServerSettings};
 
     #[test]
     fn server_settings_allow_queue_configuration() {
@@ -689,14 +1125,21 @@ mod tests {
     #[test]
     fn server_metrics_snapshot_exposes_aggregates() {
         let metrics = ServerMetrics::new();
+        let procedure = procedure_labels(RpcCallHeader {
+            xid: 7,
+            program: crate::nfsv3::NFS_PROGRAM,
+            version: crate::nfsv3::NFS_VERSION,
+            procedure: crate::nfsv3::READ,
+            auth_flavor: super::AuthFlavor::None,
+        });
 
-        metrics.record_request_received(3);
+        metrics.record_request_received(procedure, 3);
         metrics.record_request_rejected();
         metrics.observe_result_queue_depth(2);
         metrics.start_in_flight_request();
-        metrics.record_dispatch(10, 20);
-        metrics.record_reply_sent(40, 15);
-        metrics.record_reply_failure();
+        metrics.record_dispatch(procedure, 10, 20);
+        metrics.record_reply_sent(Some(procedure), 40, 15);
+        metrics.record_reply_failure(Some(procedure));
         metrics.finish_in_flight_request();
 
         let snapshot = metrics.snapshot();
@@ -720,9 +1163,17 @@ mod tests {
     #[test]
     fn server_metrics_snapshot_encodes_openmetrics() {
         let metrics = ServerMetrics::new();
-        metrics.record_request_received(1);
-        metrics.record_dispatch(12, 34);
-        metrics.record_reply_sent(56, 22);
+        let procedure = procedure_labels(RpcCallHeader {
+            xid: 11,
+            program: crate::mount::MOUNT_PROGRAM,
+            version: crate::mount::MOUNT_VERSION,
+            procedure: 1,
+            auth_flavor: super::AuthFlavor::None,
+        });
+
+        metrics.record_request_received(procedure, 1);
+        metrics.record_dispatch(procedure, 12, 34);
+        metrics.record_reply_sent(Some(procedure), 56, 22);
 
         let text = metrics.encode_openmetrics();
 
@@ -730,7 +1181,27 @@ mod tests {
         assert!(text.contains("nfs_mamont_requests_received_total 1"));
         assert!(text.contains("nfs_mamont_dispatch_micros_total 34"));
         assert!(text.contains("nfs_mamont_total_latency_average_micros 56"));
+        assert!(text.contains(
+            "nfs_mamont_procedure_requests_received_total{program=\"mount\",version=\"3\",procedure=\"mnt\"} 1"
+        ));
+        assert!(text.contains(
+            "nfs_mamont_procedure_total_latency_average_micros{program=\"mount\",version=\"3\",procedure=\"mnt\"} 56"
+        ));
         assert!(text.ends_with("# EOF\n"));
+    }
+
+    #[test]
+    fn reply_buffer_pool_reuses_allocations() {
+        let pool = Arc::new(ReplyBufferPool::new());
+        let first_capacity = {
+            let mut first = pool.acquire(128);
+            first.as_mut_vec().extend_from_slice(&[1, 2, 3]);
+            first.as_mut_vec().capacity()
+        };
+
+        let mut second = pool.acquire(64);
+        assert!(second.as_slice().is_empty());
+        assert!(second.as_mut_vec().capacity() >= first_capacity);
     }
 }
 
@@ -781,6 +1252,7 @@ pub struct RpcCallHeader {
 pub struct RequestContext {
     pub connection: ConnectionContext,
     pub header: RpcCallHeader,
+    pub(crate) procedure: ProcedureLabels,
     pub span: Span,
     pub received_at: Instant,
 }
@@ -795,10 +1267,12 @@ impl ParsedRpcCall {
         let auth = self.header.auth_flavor;
         let connection = connection.with_auth(auth);
         let span = request_span(&connection, self.header);
+        let procedure = procedure_labels(self.header);
         RpcCommand {
             context: RequestContext {
                 connection,
                 header: self.header,
+                procedure,
                 span,
                 received_at: Instant::now(),
             },
@@ -831,24 +1305,26 @@ pub struct RpcCommand {
 
 pub struct ReplyEnvelope {
     pub result: CommandResult,
+    pub(crate) procedure: Option<ProcedureLabels>,
     pub span: Span,
     pub received_at: Instant,
     pub dispatched_at: Option<Instant>,
 }
 
 impl ReplyEnvelope {
-    pub fn new(
+    pub(crate) fn new(
         result: CommandResult,
+        procedure: Option<ProcedureLabels>,
         span: Span,
         received_at: Instant,
         dispatched_at: Option<Instant>,
     ) -> Self {
-        Self { result, span, received_at, dispatched_at }
+        Self { result, procedure, span, received_at, dispatched_at }
     }
 }
 
 pub enum ReplyPayload {
-    Buffer(Vec<u8>),
+    Buffer(OwnedReplyBuffer),
     Read { header: Vec<u8>, data: Slice, padding: usize },
 }
 

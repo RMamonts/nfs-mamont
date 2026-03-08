@@ -11,7 +11,7 @@ use tracing::{debug, info};
 use crate::mount;
 use crate::parser::Arguments;
 use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, ServerMetrics, SharedVfs};
-use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
+use crate::serializer::{serialize_reply_with_pool, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
@@ -73,6 +73,7 @@ impl VfsTask {
                             let span = command.context.span.clone();
                             let result_queue_depth = queue_depth(&self.result_sender);
                             let metrics = Arc::clone(&metrics);
+                            let reply_buffers = self.server_context.reply_buffers();
                             debug!(
                                 parent: &span,
                                 sequence,
@@ -83,16 +84,18 @@ impl VfsTask {
                             in_flight.spawn(async move {
                                 let _in_flight = InFlightGuard::new(Arc::clone(&metrics));
                                 let xid = command.context.header.xid;
+                                let procedure = command.context.procedure;
                                 let received_at = command.context.received_at;
                                 let queue_wait_micros = received_at.elapsed().as_micros() as u64;
                                 let dispatched_at = Instant::now();
-                                let result = serialize_reply(
+                                let result = serialize_reply_with_pool(
+                                    reply_buffers,
                                     xid,
                                     Self::dispatch_with_context(server_context, command).await,
                                 )
                                 .await;
                                 let dispatch_micros = dispatched_at.elapsed().as_micros() as u64;
-                                metrics.record_dispatch(queue_wait_micros, dispatch_micros);
+                                metrics.record_dispatch(procedure, queue_wait_micros, dispatch_micros);
                                 debug!(
                                     parent: &span,
                                     sequence,
@@ -101,7 +104,13 @@ impl VfsTask {
                                 );
                                 (
                                     sequence,
-                                    ReplyEnvelope::new(result, span, received_at, Some(dispatched_at)),
+                                    ReplyEnvelope::new(
+                                        result,
+                                        Some(procedure),
+                                        span,
+                                        received_at,
+                                        Some(dispatched_at),
+                                    ),
                                 )
                             });
                         }
