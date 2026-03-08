@@ -31,7 +31,6 @@ pub enum How {
     Exclusive(Verifier),
 }
 
-
 /// Success result.
 pub struct Success {
     /// The file handle of the newly created regular file.

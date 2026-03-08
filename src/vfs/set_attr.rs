@@ -12,18 +12,6 @@ pub struct Guard {
     pub ctime: file::Time,
 }
 
-/// Success result.
-pub struct Success {
-    pub wcc_data: vfs::WccData,
-}
-
-/// Fail result.
-pub struct Fail {
-    /// Error on failure.
-    pub error: vfs::Error,
-    pub wcc_data: vfs::WccData,
-}
-
 /// Strategy for updating timestamps in [`SetAttr`].
 #[derive(Copy, Clone)]
 pub enum SetTime {
@@ -50,6 +38,18 @@ pub struct Args {
     pub new_attr: NewAttr,
     /// Optionally verify that `ctime` of the object matches the client expectation.
     pub guard: Option<Guard>,
+}
+
+/// Success result.
+pub struct Success {
+    pub wcc_data: vfs::WccData,
+}
+
+/// Fail result.
+pub struct Fail {
+    /// Error on failure.
+    pub error: vfs::Error,
+    pub wcc_data: vfs::WccData,
 }
 
 #[async_trait]

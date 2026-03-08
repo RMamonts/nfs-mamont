@@ -1,6 +1,5 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-
 #![allow(dead_code)]
 
 pub mod dump;
@@ -10,7 +9,7 @@ pub mod null;
 pub mod umnt;
 pub mod umntall;
 
-use std::path;
+use crate::vfs::file;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
@@ -28,9 +27,9 @@ pub type HostName = String;
 #[derive(Clone)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
-    pub hostname: String,
+    pub hostname: HostName,
     /// Server pathname of a directory.
-    pub directory: String,
+    pub directory: file::Path,
 }
 
 /// Export entry, containing list of clients, allowed to
@@ -38,14 +37,21 @@ pub struct MountEntry {
 #[derive(Clone)]
 pub struct ExportEntry {
     /// Exported directory.
-    pub directory: path::PathBuf,
+    pub directory: file::Path,
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
 }
 
-/// MOUNT v3 procedures trait.
-pub trait Mount:
+pub trait MountOps:
     null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
 {
 }
+
+pub trait MountPromises:
+    null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
+{
+}
+
+/// MOUNT v3 procedures trait.
+pub trait Mount: MountOps + MountPromises {}
