@@ -1,8 +1,8 @@
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, RwLock};
 use std::string::FromUtf8Error;
+use std::sync::{Arc, RwLock};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 

@@ -53,7 +53,8 @@ async fn lookup_resolves_dot_and_dotdot() {
     let nested = ctx.lookup_handle(dir.clone(), "nested").await;
 
     let dot = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.clone(), name: name(".") }).await,
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.clone(), name: name(".") })
+            .await,
         "lookup '.' should resolve to the same directory",
     );
     let dir_attr = expect_ok(
@@ -77,7 +78,8 @@ async fn lookup_resolves_dot_and_dotdot() {
     assert_eq!(dotdot_attr.object.file_id, dir_attr.object.file_id);
 
     let root_parent = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name("..") }).await,
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name("..") })
+            .await,
         "lookup '..' at export root should stay on export root",
     );
     let root_attr = expect_ok(
@@ -397,11 +399,7 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     assert_wcc_present(&removed_file.wcc_data);
 
     let removed_dir = expect_ok(
-        rm_dir::RmDir::rm_dir(
-            &ctx.fs,
-            rm_dir::Args { object: dir_op(root, "docs-renamed") },
-        )
-        .await,
+        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root, "docs-renamed") }).await,
         "empty renamed directory should be removable",
     );
     assert_wcc_present(&removed_dir.wcc_data);

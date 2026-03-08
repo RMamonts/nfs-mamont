@@ -59,10 +59,9 @@ impl ReadTask {
         loop {
             let request = match parser.parse_request_full().await {
                 Ok(request) => request,
-                Err(ParseFailure {
-                    xid: None,
-                    error: crate::rpc::Error::IO(err),
-                }) if err.kind() == ErrorKind::UnexpectedEof => {
+                Err(ParseFailure { xid: None, error: crate::rpc::Error::IO(err) })
+                    if err.kind() == ErrorKind::UnexpectedEof =>
+                {
                     eprintln!("read task: client closed connection");
                     return Ok(());
                 }

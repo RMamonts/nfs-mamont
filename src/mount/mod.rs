@@ -43,11 +43,13 @@ pub struct ExportEntry {
     pub names: Vec<HostName>,
 }
 
+/// Composed trait for all MOUNT protocol procedures.
 pub trait MountOps:
     null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
 {
 }
 
+/// Composed trait for all MOUNT protocol procedure callbacks.
 pub trait MountPromises:
     null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
 {

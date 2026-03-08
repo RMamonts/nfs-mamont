@@ -8,9 +8,11 @@ use async_trait::async_trait;
 /// Defines callback to pass [`Null::null`] result into.
 #[async_trait]
 pub trait Promise {
+    /// Persists the result of the NULL procedure.
     async fn keep();
 }
 
+/// Mount version 3 NULL procedure.
 #[async_trait]
 pub trait Null {
     /// Does not do any work. It is made available to allow server response

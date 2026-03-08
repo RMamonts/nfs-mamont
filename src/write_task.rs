@@ -12,7 +12,10 @@ pub struct WriteTask {
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<CommandResult>) -> Self {
+    pub fn new(
+        writehalf: OwnedWriteHalf,
+        result_receiver: UnboundedReceiver<CommandResult>,
+    ) -> Self {
         Self { writehalf, result_receiver }
     }
 

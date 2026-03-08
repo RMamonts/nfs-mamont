@@ -8,15 +8,14 @@ use async_trait::async_trait;
 /// Defines callback to pass [`Umntall::umntall`] result into.
 #[async_trait]
 pub trait Promise {
+    /// Persists the result of the UMNTALL procedure.
     async fn keep();
 }
 
+/// Mount version 3 UMNTALL procedure.
 #[async_trait]
 pub trait Umntall {
     /// Removes all of the mount entries for this client previously
     /// recorded by calls to MNT.
-    ///
-    /// AUTH_UNIX authentication or better is required.
-    /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn umntall(&self);
 }

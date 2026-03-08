@@ -47,6 +47,7 @@ pub type Result = std::result::Result<Success, MntError>;
 /// Defines callback to pass [`Mnt::mnt`] result into.
 #[async_trait]
 pub trait Promise {
+    /// Persists the result of the MNT procedure.
     async fn keep(result: Result);
 }
 
@@ -55,14 +56,13 @@ pub trait Promise {
 #[derive(Debug)]
 pub struct MountArgs(pub file::Path);
 
+/// Mount version 3 MNT procedure.
 #[async_trait]
 pub trait Mnt {
     /// Maps a pathname on the server to a NFS version 3 protocol file handle.
     ///
-    /// # Parameters:
-    /// * `dirpath` --- a server pathname of a directory.
-    ///
-    /// This procedure also results in the server adding a new entry
-    /// to its mount list recording that this client has mounted the directory.
+    /// # Parameters
+    /// * `dirpath` - A server pathname of a directory.
+    /// * `promise` - Callback receiving the MNT result.
     async fn mnt(&self, dirpath: file::Path, promise: impl Promise);
 }

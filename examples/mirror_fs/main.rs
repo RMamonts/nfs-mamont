@@ -22,22 +22,23 @@ async fn main() {
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
     let listen = std::env::args().nth(2).unwrap_or_else(|| "0.0.0.0:2049".to_string());
-    let export_root = std::fs::canonicalize(&path)
-        .unwrap_or_else(|error| panic!("failed to resolve export root {}: {error}", path.display()));
-    let metadata = std::fs::metadata(&export_root)
-        .unwrap_or_else(|error| panic!("failed to stat export root {}: {error}", export_root.display()));
+    let export_root = std::fs::canonicalize(&path).unwrap_or_else(|error| {
+        panic!("failed to resolve export root {}: {error}", path.display())
+    });
+    let metadata = std::fs::metadata(&export_root).unwrap_or_else(|error| {
+        panic!("failed to stat export root {}: {error}", export_root.display())
+    });
     assert!(metadata.is_dir(), "export root {} must be a directory", export_root.display());
 
     let fs = Arc::new(fs::MirrorFS::new(export_root.clone()));
     let context = ServerContext::with_backend(fs);
     context.exports.write().expect("exports lock poisoned").push(ServerExport {
-        directory: file::Path::new(export_root.display().to_string()).expect("export path must fit"),
+        directory: file::Path::new(export_root.display().to_string())
+            .expect("export path must fit"),
         allowed_hosts: vec!["*".to_string()],
     });
 
     let listener = TcpListener::bind(&listen).await.expect("failed to bind listener");
     eprintln!("mirrorfs listening on {listen}, export {}", export_root.display());
-    nfs_mamont::handle_forever_with_context(listener, context)
-        .await
-        .expect("server loop failed");
+    nfs_mamont::handle_forever_with_context(listener, context).await.expect("server loop failed");
 }

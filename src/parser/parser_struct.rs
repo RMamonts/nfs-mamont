@@ -63,14 +63,18 @@ const DEFAULT_SIZE: usize = 128 * 1024;
 ///
 /// # Example
 ///
-/// ```no_run
-/// use tokio::io::AsyncRead;
-/// use crate::parser::parser_struct::RpcParser;
-/// use crate::allocator::Allocator;
+/// ```ignore
+/// use std::io;
 ///
-/// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
+/// use nfs_mamont::allocator::Allocator;
+/// use nfs_mamont::parser::parser_struct::RpcParser;
+/// use tokio::io::AsyncRead;
+///
+/// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) -> io::Result<()> {
 /// let mut parser = RpcParser::new(socket, alloc);
 /// let args = parser.parse_message().await?;
+/// # let _ = args;
+/// # Ok(())
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
@@ -87,7 +91,7 @@ pub struct ParseFailure {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
-    /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
+    /// Creates a new `RpcParser` with the default buffer size.
     ///
     /// # Arguments
     ///
@@ -208,13 +212,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let auth = self.parse_authentication().await?;
         self.buffer.parse_with_retry(crate::parser::rpc::auth).await?;
 
-        Ok(RpcMessage {
-            xid,
-            program,
-            procedure,
-            version,
-            auth_flavor: auth.flavor,
-        })
+        Ok(RpcMessage { xid, program, procedure, version, auth_flavor: auth.flavor })
     }
 
     /// Parses and validates RPC credentials.
@@ -336,19 +334,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let rpc_header = match self.parse_rpc_header(xid).await {
             Ok(arg) => arg,
             Err(err) => {
-                return Err(ParseFailure {
-                    xid: Some(xid),
-                    error: self.match_errors(err).await,
-                });
+                return Err(ParseFailure { xid: Some(xid), error: self.match_errors(err).await });
             }
         };
         let proc = match self.parse_proc(rpc_header).await {
             Ok(arg) => arg,
             Err(err) => {
-                return Err(ParseFailure {
-                    xid: Some(xid),
-                    error: self.match_errors(err).await,
-                });
+                return Err(ParseFailure { xid: Some(xid), error: self.match_errors(err).await });
             }
         };
 

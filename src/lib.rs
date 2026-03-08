@@ -52,7 +52,8 @@ pub async fn handle_forever_with_context(
 }
 
 async fn process_socket(socket: TcpStream, server_context: ServerContext) {
-    let connection_context = ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
+    let connection_context =
+        ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();

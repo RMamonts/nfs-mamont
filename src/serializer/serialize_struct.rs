@@ -114,14 +114,7 @@ pub struct ReplyFromVfs {
 
 impl ReplyFromVfs {
     fn new(xid: u32, proc_result: Result<ProcResult, Error>) -> Self {
-        Self {
-            xid,
-            verf: OpaqueAuth {
-                flavor: AuthFlavor::None,
-                body: Vec::new(),
-            },
-            proc_result,
-        }
+        Self { xid, verf: OpaqueAuth { flavor: AuthFlavor::None, body: Vec::new() }, proc_result }
     }
 }
 
@@ -381,7 +374,9 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
         let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
         let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding)?;
+        self.append_fragment_size(
+            self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding,
+        )?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)

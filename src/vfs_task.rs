@@ -4,7 +4,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, RpcReply, ServerContext, SharedVfs};
+use crate::rpc::{
+    CommandResult, ConnectionContext, RpcCommand, RpcReply, ServerContext, SharedVfs,
+};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
@@ -109,18 +111,18 @@ impl VfsTask {
             Arguments::ReadDir(args) => {
                 Ok(ProcResult::Nfs3(NfsRes::ReadDir(self.backend()?.read_dir(args).await)))
             }
-            Arguments::ReadDirPlus(args) => Ok(ProcResult::Nfs3(NfsRes::ReadDirPlus(
-                self.backend()?.read_dir_plus(args).await,
-            ))),
+            Arguments::ReadDirPlus(args) => {
+                Ok(ProcResult::Nfs3(NfsRes::ReadDirPlus(self.backend()?.read_dir_plus(args).await)))
+            }
             Arguments::FsStat(args) => {
                 Ok(ProcResult::Nfs3(NfsRes::FsStat(self.backend()?.fs_stat(args).await)))
             }
             Arguments::FsInfo(args) => {
                 Ok(ProcResult::Nfs3(NfsRes::FsInfo(self.backend()?.fs_info(args).await)))
             }
-            Arguments::PathConf(args) => Ok(ProcResult::Nfs3(NfsRes::PathConf(
-                self.backend()?.path_conf(args).await,
-            ))),
+            Arguments::PathConf(args) => {
+                Ok(ProcResult::Nfs3(NfsRes::PathConf(self.backend()?.path_conf(args).await)))
+            }
             Arguments::Commit(args) => {
                 Ok(ProcResult::Nfs3(NfsRes::Commit(self.backend()?.commit(args).await)))
             }
@@ -141,10 +143,9 @@ impl VfsTask {
     }
 
     fn backend(&self) -> Result<&SharedVfs, crate::rpc::Error> {
-        self.server_context
-            .backend
-            .as_ref()
-            .ok_or_else(|| crate::rpc::Error::IO(io::Error::other("server backend is not configured")))
+        self.server_context.backend.as_ref().ok_or_else(|| {
+            crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
+        })
     }
 
     async fn mount(
@@ -168,10 +169,8 @@ impl VfsTask {
             .unwrap_or_else(|| "unknown".to_string());
 
         if let Ok(mut mounts) = self.server_context.mounts.write() {
-            mounts.push(crate::rpc::ServerMount {
-                client_addr,
-                directory: export.directory.clone(),
-            });
+            mounts
+                .push(crate::rpc::ServerMount { client_addr, directory: export.directory.clone() });
         }
 
         Ok(mount::mnt::Success {

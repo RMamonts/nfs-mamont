@@ -184,8 +184,7 @@ pub trait Vfs:
 {
 }
 
-impl<T> Vfs for T
-where
+impl<T> Vfs for T where
     T: RootHandle
         + access::Access
         + commit::Commit
@@ -207,6 +206,6 @@ where
         + rm_dir::RmDir
         + set_attr::SetAttr
         + symlink::Symlink
-        + write::Write,
+        + write::Write
 {
 }

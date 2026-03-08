@@ -31,13 +31,14 @@ use crate::parser::{Error, Result};
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
+/// use nfs_mamont::parser::read_buffer::CountBuffer;
 /// use tokio::io::AsyncRead;
-/// use crate::parser::read_buffer::CountBuffer;
 ///
 /// # async fn example<S: AsyncRead + Unpin>(socket: S) {
 /// let mut buffer = CountBuffer::new(4096, socket);
 /// // Use parse_with_retry to parse XDR-encoded data
+/// # let _ = &mut buffer;
 /// # }
 /// ```
 pub struct CountBuffer<S: AsyncRead + Unpin> {

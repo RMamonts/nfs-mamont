@@ -387,11 +387,8 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     assert_eq!(slice_to_vec(&read_result.data), b"hello world");
 
     let removed = expect_ok(
-        remove::Remove::remove(
-            &ctx.fs,
-            remove::Args { object: dir_op(root, "lifecycle.txt") },
-        )
-        .await,
+        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "lifecycle.txt") })
+            .await,
         "file delete should succeed",
     );
     assert_wcc_present(&removed.wcc_data);

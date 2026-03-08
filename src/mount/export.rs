@@ -18,14 +18,14 @@ pub struct Success {
 /// Defines callback to pass [`Export::export`] result into.
 #[async_trait]
 pub trait Promise {
+    /// Persists the result of the EXPORT procedure.
     async fn keep(result: Success);
 }
 
+/// Mount version 3 EXPORT procedure.
 #[async_trait]
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.
-    ///
-    /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn export(&self, promise: impl Promise);
 }

@@ -19,13 +19,13 @@ pub struct Success {
 /// Defines callback to pass [`Dump::dump`] result into.
 #[async_trait]
 pub trait Promise {
+    /// Persists the result of the DUMP procedure.
     async fn keep(result: Success);
 }
 
+/// Mount version 3 DUMP procedure.
 #[async_trait]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.
-    ///
-    /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn dump(&self, promise: impl Promise);
 }

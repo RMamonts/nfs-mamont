@@ -29,15 +29,8 @@ mod tests {
     #[test]
     fn result_ok_part_writes_counted_opaque_header() {
         let mut buf = Vec::new();
-        result_ok_part(
-            &mut buf,
-            read::SuccessPartial {
-                file_attr: None,
-                count: 3,
-                eof: true,
-            },
-        )
-        .unwrap();
+        result_ok_part(&mut buf, read::SuccessPartial { file_attr: None, count: 3, eof: true })
+            .unwrap();
 
         assert_eq!(
             buf,
