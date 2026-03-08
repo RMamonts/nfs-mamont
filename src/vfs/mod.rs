@@ -122,15 +122,12 @@ pub enum Error {
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait
     /// and then try the request with a new RPC transaction ID.
-    /// For example, this error should be returned from a server
-    /// that supports hierarchical storage and receives a request
     /// to process a file that has been migrated. In this case,
     /// the server should start the immigration process and
     /// respond to client with this error.
     JUKEBOX,
 }
 
-/// TODO(i.erin)
 #[derive(Clone)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
@@ -146,10 +143,11 @@ pub struct DirOpArgs {
     /// The file handle for the directory.
     pub dir: file::Handle,
     /// The name of the entry within the directory.
-    pub name: String,
+    pub name: file::Name,
 }
 
-pub trait VfsOps:
+/// NFS v3 procedures trait.
+pub trait Vfs:
     get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
@@ -173,31 +171,3 @@ pub trait VfsOps:
     + commit::Commit
 {
 }
-
-pub trait VfsPromises:
-    get_attr::Promise
-    + set_attr::Promise
-    + lookup::Promise
-    + access::Promise
-    + read_link::Promise
-    + read::Promise
-    + write::Promise
-    + create::Promise
-    + mk_dir::Promise
-    + symlink::Promise
-    + mk_node::Promise
-    + remove::Promise
-    + rm_dir::Promise
-    + rename::Promise
-    + link::Promise
-    + read_dir::Promise
-    + read_dir_plus::Promise
-    + fs_stat::Promise
-    + fs_info::Promise
-    + path_conf::Promise
-    + commit::Promise
-{
-}
-
-/// NFS v3 procedures trait.
-pub trait Vfs: VfsOps + VfsPromises {}

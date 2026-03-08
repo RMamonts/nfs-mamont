@@ -24,14 +24,6 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`MkDir::mk_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`MkDir::mk_dir`] arguments.
 pub struct Args {
     /// The location of the subdirectory to be created.
@@ -45,5 +37,5 @@ pub trait MkDir {
     /// Creates a new subdirectory.
     ///
     /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
-    async fn mk_dir(&self, args: Args, promise: impl Promise);
+    async fn mk_dir(&self, args: Args) -> Result<Success, Fail>;
 }

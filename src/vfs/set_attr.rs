@@ -6,18 +6,22 @@ use crate::vfs;
 
 use super::file;
 
-type Result = std::result::Result<vfs::WccData, (vfs::Error, vfs::WccData)>;
-
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Copy, Clone)]
 pub struct Guard {
     pub ctime: file::Time,
 }
 
-/// Defines callback to pass [`SetAttr::set_attr`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
+/// Success result.
+pub struct Success {
+    pub wcc_data: vfs::WccData,
+}
+
+/// Fail result.
+pub struct Fail {
+    /// Error on failure.
+    pub error: vfs::Error,
+    pub wcc_data: vfs::WccData,
 }
 
 /// Strategy for updating timestamps in [`SetAttr`].
@@ -75,5 +79,5 @@ pub trait SetAttr {
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than
     ///   can be represented in 32 bit.
-    async fn set_attr(&self, args: Args, promise: impl Promise);
+    async fn set_attr(&self, args: Args) -> Result<Success, Fail>;
 }

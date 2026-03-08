@@ -14,17 +14,8 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
-}
-
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`RmDir::rm_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// [`RmDir::rm_dir`] arguments.
@@ -43,5 +34,5 @@ pub trait RmDir {
     ///
     /// On some servers, the filename, "..", is illegal. These servers will return
     /// the error, [`vfs::Error::Exist`].
-    async fn rm_dir(&self, args: Args, promise: impl Promise);
+    async fn rm_dir(&self, args: Args) -> Result<Success, Fail>;
 }

@@ -2,9 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
-
-use super::file;
+use super::{file, Error};
 
 /// Success result.
 pub struct Success {
@@ -14,16 +12,9 @@ pub struct Success {
 
 /// Fail result.
 pub struct Fail {
+    /// Error on failure.
+    pub error: Error,
     pub object_attr: Option<file::Attr>,
-    pub error: vfs::Error,
-}
-
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Access::access`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// Mask of [`Access::access`] rights.
@@ -73,5 +64,5 @@ pub trait Access {
     /// such access will be allowed to the file system object in
     /// the future, as access rights can be revoked by the server
     /// at any time.
-    async fn access(&self, args: Args, promise: impl Promise);
+    async fn access(&self, args: Args) -> Result<Success, Fail>;
 }

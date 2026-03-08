@@ -39,17 +39,8 @@ pub struct Success {
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
-    /// Weak cache consistency data for the directory, where.dir.
-    /// TODO(use Args structure).
+    /// Weak cache consistency data for the directory from [`Args::object`].
     pub dir_wcc: vfs::WccData,
-}
-
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`MkNode::mk_node`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// [`MkNode::mk_node`] arguments.
@@ -69,5 +60,5 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args, promise: impl Promise);
+    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
 }

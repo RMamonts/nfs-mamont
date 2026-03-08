@@ -32,7 +32,7 @@ pub struct Success {
     pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub commited: StableHow,
-    /// TODO(what is it?)
+    /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].
     pub verifier: Verifier,
 }
 
@@ -42,14 +42,6 @@ pub struct Fail {
     pub error: vfs::Error,
     /// Weak cache consistency data for the file.
     pub wcc_data: vfs::WccData,
-}
-
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Write::write`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// [`Write::write`] arguments.
@@ -107,5 +99,5 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args, promise: impl Promise);
+    async fn write(&self, args: Args) -> Result<Success, Fail>;
 }
