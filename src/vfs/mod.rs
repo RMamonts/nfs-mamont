@@ -151,7 +151,6 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-
 pub trait Vfs:
     get_attr::GetAttr
     + set_attr::SetAttr
