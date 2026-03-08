@@ -1,24 +1,25 @@
 use async_trait::async_trait;
 use nfs_mamont::vfs::lookup;
+use tracing::{error, info};
 
 use super::*;
 
 #[async_trait]
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, args: lookup::Args) -> lookup::Result {
-        eprintln!("lookup handle={:02x?} name={}", args.parent.0, args.name.as_str());
+        info!("lookup handle={:02x?} name={}", args.parent.0, args.name.as_str());
         let parent_path = match self.path_for_handle(&args.parent).await {
             Ok(path) => path,
             Err(error) => {
-                eprintln!("lookup rejected error={error:?}");
+                error!("lookup rejected error={error:?}");
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
-        eprintln!("lookup parent_path={}", parent_path.display());
+        info!("lookup parent_path={}", parent_path.display());
         let parent_meta = match Self::metadata(&parent_path) {
             Ok(meta) => meta,
             Err(error) => {
-                eprintln!("lookup parent failed path={} error={error:?}", parent_path.display());
+                error!("lookup parent failed path={} error={error:?}", parent_path.display());
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
@@ -53,9 +54,9 @@ impl lookup::Lookup for MirrorFS {
             Ok(meta) => meta,
             Err(error) => {
                 if error == vfs::Error::NoEntry {
-                    eprintln!("lookup miss child_path={}", child_path.display());
+                    info!("lookup miss child_path={}", child_path.display());
                 } else {
-                    eprintln!("lookup child failed path={} error={error:?}", child_path.display());
+                    error!("lookup child failed path={} error={error:?}", child_path.display());
                 }
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
             }

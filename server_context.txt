@@ -193,9 +193,13 @@ nfs-mamont/
 │   ├── rpc.rs
 │   ├── vfs_task.rs
 │   └── write_task.rs
+├── tests
+│   └── server_pipeline.rs
 ├── .rustfmt.toml
 ├── Cargo.lock
 ├── Cargo.toml
+├── LICENSE
+├── README.md
 └── rust-toolchain.toml
 
 <file path="examples/mirror_fs/fs/access_impl.rs">
@@ -3474,6 +3478,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 use nfs_mamont::rpc::{ServerContext, ServerExport};
 use nfs_mamont::vfs::file;
@@ -3491,6 +3497,8 @@ mod tests;
 /// an NFS server on the specified port.
 #[tokio::main]
 async fn main() {
+    let _ = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).try_init();
+
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
     let listen = std::env::args().nth(2).unwrap_or_else(|| "0.0.0.0:2049".to_string());
@@ -3512,7 +3520,7 @@ async fn main() {
         .await;
 
     let listener = TcpListener::bind(&listen).await.expect("failed to bind listener");
-    eprintln!("mirrorfs listening on {listen}, export {}", export_root.display());
+    info!(listen, export = %export_root.display(), "mirrorfs listening");
     nfs_mamont::handle_forever_with_context(listener, context).await.expect("server loop failed");
 }
 
@@ -5595,14 +5603,10 @@ impl<'a> MountService<'a> {
         &self,
         requested: &crate::vfs::file::Path,
     ) -> Option<crate::rpc::ServerExport> {
-        let exports = self.server_context.exports().await;
-        exports
-            .iter()
-            .find(|export| {
-                export.directory().as_path() == requested.as_path()
-                    && self.client_allowed(export.allowed_hosts())
-            })
-            .cloned()
+        self.server_context
+            .find_export(requested)
+            .await
+            .filter(|export| self.client_allowed(export.allowed_hosts()))
     }
 
     fn client_allowed(&self, allowed_hosts: &[String]) -> bool {
@@ -12496,9 +12500,11 @@ mod write_task;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tracing::info;
 
 use crate::read_task::ReadTask;
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
+use crate::rpc::{ConnectionContext, ReplyEnvelope, RpcCommand, ServerContext};
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
 
@@ -12514,7 +12520,7 @@ pub async fn handle_forever_with_context(
 ) -> std::io::Result<()> {
     loop {
         let (socket, _) = listener.accept().await?;
-        eprintln!(
+        info!(
             "accepted connection local={} peer={}",
             socket
                 .local_addr()
@@ -12528,31 +12534,52 @@ pub async fn handle_forever_with_context(
 
         socket.set_nodelay(true)?;
 
-        process_socket(socket, server_context.clone()).await;
+        process_socket(socket, server_context.clone());
     }
 }
 
-async fn process_socket(socket: TcpStream, server_context: ServerContext) {
-    let connection_context =
-        ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
-    let (readhalf, writehalf) = socket.into_split();
-    // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<CommandResult>();
-    // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<RpcCommand>();
+fn process_socket(socket: TcpStream, server_context: ServerContext) {
+    tokio::spawn(async move {
+        let connection_context =
+            ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
+        let (readhalf, writehalf) = socket.into_split();
+        let settings = server_context.settings().clone();
+        // channel for result
+        let (result_sender, result_receiver) =
+            mpsc::channel::<ReplyEnvelope>(settings.result_queue_size().get());
+        // channel for request
+        let (command_sender, command_receiver) =
+            mpsc::channel::<RpcCommand>(settings.command_queue_size().get());
 
-    ReadTask::new(
-        readhalf,
-        command_sender,
-        result_sender.clone(),
-        server_context.clone(),
-        connection_context,
-    )
-    .spawn();
+        let read_task = ReadTask::new(
+            readhalf,
+            command_sender,
+            result_sender.clone(),
+            server_context.clone(),
+            connection_context,
+        )
+        .spawn();
 
-    VfsTask::new(command_receiver, result_sender, server_context).spawn();
+        let vfs_task = VfsTask::new(command_receiver, result_sender, server_context).spawn();
 
-    WriteTask::new(writehalf, result_receiver).spawn();
+        let write_task = WriteTask::new(writehalf, result_receiver).spawn();
+
+        await_connection(write_task, read_task, vfs_task).await;
+    });
+}
+
+async fn await_connection(
+    write_task: JoinHandle<()>,
+    read_task: JoinHandle<()>,
+    vfs_task: JoinHandle<()>,
+) {
+    let _ = write_task.await;
+
+    read_task.abort();
+    vfs_task.abort();
+
+    let _ = read_task.await;
+    let _ = vfs_task.await;
 }
 
 </file>
@@ -12597,19 +12624,23 @@ use std::io;
 use std::io::ErrorKind;
 
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 use crate::allocator;
 use crate::parser::{ParseFailure, RpcParser};
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
+use crate::rpc::{
+    rejected_request_span, ConnectionContext, ReplyEnvelope, RpcCommand, ServerContext,
+};
 use crate::serializer::serialize_reply;
 
 /// Reads RPC commands from a network connection, parses it,
 /// and forwards them to a [`crate::vfs_task::VfsTask`].
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
-    command_sender: UnboundedSender<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>,
+    command_sender: Sender<RpcCommand>,
+    result_sender: Sender<ReplyEnvelope>,
     server_context: ServerContext,
     connection_context: ConnectionContext,
 }
@@ -12618,8 +12649,8 @@ impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
-        command_sender: UnboundedSender<RpcCommand>,
-        result_sender: UnboundedSender<CommandResult>,
+        command_sender: Sender<RpcCommand>,
+        result_sender: Sender<ReplyEnvelope>,
         server_context: ServerContext,
         connection_context: ConnectionContext,
     ) -> Self {
@@ -12631,14 +12662,14 @@ impl ReadTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             if let Err(error) = self.run().await {
-                eprintln!("read task error: {error}");
+                error!(error = %error, "read task failed");
             } else {
-                eprintln!("read task finished");
+                info!("read task finished");
             }
-        });
+        })
     }
 
     async fn run(self) -> io::Result<()> {
@@ -12657,18 +12688,24 @@ impl ReadTask {
                 Err(ParseFailure { xid: None, error: crate::rpc::Error::IO(err) })
                     if err.kind() == ErrorKind::UnexpectedEof =>
                 {
-                    eprintln!("read task: client closed connection");
+                    info!("read task detected client connection close");
                     return Ok(());
                 }
                 Err(ParseFailure { xid: Some(xid), error }) => {
                     if is_expected_protocol_rejection(&error) {
-                        eprintln!("read task rejected xid={xid}: {error:?}");
+                        warn!(xid, error = ?error, "read task rejected request");
                     } else {
-                        eprintln!("read task parse error xid={xid}: {error:?}");
+                        debug!(xid, error = ?error, "read task parse error with reply");
                     }
                     match serialize_reply(xid, Err(error)).await {
                         Ok(reply) => {
-                            if self.result_sender.send(Ok(reply)).is_err() {
+                            let span = rejected_request_span(&self.connection_context, xid);
+                            if self
+                                .result_sender
+                                .send(ReplyEnvelope::new(Ok(reply), span))
+                                .await
+                                .is_err()
+                            {
                                 return Ok(());
                             }
                             continue;
@@ -12678,16 +12715,17 @@ impl ReadTask {
                 }
                 Err(ParseFailure { xid: None, error }) => {
                     if is_expected_protocol_rejection(&error) {
-                        eprintln!("read task rejected request: {error:?}");
+                        warn!(error = ?error, "read task rejected request without xid");
                     } else {
-                        eprintln!("read task parse error: {error:?}");
+                        error!(error = ?error, "read task parse error without xid");
                     }
                     return Err(map_parser_error(error));
                 }
             };
 
             let command = request.with_connection(self.connection_context.clone());
-            if self.command_sender.send(command).is_err() {
+            debug!(parent: &command.context.span, "parsed rpc request");
+            if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
         }
@@ -12715,14 +12753,17 @@ fn is_expected_protocol_rejection(error: &crate::rpc::Error) -> bool {
 
 </file>
 <file path="src/rpc.rs">
+use std::collections::BTreeMap;
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use tokio::sync::RwLock;
+use tracing::{info_span, Span};
 
 use crate::allocator::Slice;
 use crate::parser::Arguments;
@@ -12796,24 +12837,39 @@ pub struct ServerSettings {
     read_buffer_size: NonZeroUsize,
     allocator_buffer_size: NonZeroUsize,
     allocator_buffer_count: NonZeroUsize,
+    command_queue_size: NonZeroUsize,
+    result_queue_size: NonZeroUsize,
+    max_in_flight_requests: NonZeroUsize,
 }
 
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {
-            read_buffer_size: NonZeroUsize::new(4096).expect("read buffer size must be non-zero"),
-            allocator_buffer_size: NonZeroUsize::new(4096)
-                .expect("allocator buffer size must be non-zero"),
-            allocator_buffer_count: NonZeroUsize::new(16)
-                .expect("allocator buffer count must be non-zero"),
+            read_buffer_size: default_non_zero_usize(4096),
+            allocator_buffer_size: default_non_zero_usize(4096),
+            allocator_buffer_count: default_non_zero_usize(16),
+            command_queue_size: default_non_zero_usize(64),
+            result_queue_size: default_non_zero_usize(64),
+            max_in_flight_requests: default_non_zero_usize(8),
         }
     }
 }
 
 impl ServerSettings {
+    /// Creates a settings value with defaults suitable for a small server.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Returns the read buffer size in bytes.
     pub fn read_buffer_size(&self) -> NonZeroUsize {
         self.read_buffer_size
+    }
+
+    /// Sets the read buffer size in bytes.
+    pub fn with_read_buffer_size(mut self, read_buffer_size: NonZeroUsize) -> Self {
+        self.read_buffer_size = read_buffer_size;
+        self
     }
 
     /// Returns the allocator buffer size in bytes.
@@ -12821,9 +12877,61 @@ impl ServerSettings {
         self.allocator_buffer_size
     }
 
+    /// Sets the allocator buffer size in bytes.
+    pub fn with_allocator_buffer_size(mut self, allocator_buffer_size: NonZeroUsize) -> Self {
+        self.allocator_buffer_size = allocator_buffer_size;
+        self
+    }
+
     /// Returns the number of allocator buffers.
     pub fn allocator_buffer_count(&self) -> NonZeroUsize {
         self.allocator_buffer_count
+    }
+
+    /// Sets the number of allocator buffers.
+    pub fn with_allocator_buffer_count(mut self, allocator_buffer_count: NonZeroUsize) -> Self {
+        self.allocator_buffer_count = allocator_buffer_count;
+        self
+    }
+
+    /// Returns the maximum number of queued RPC commands per connection.
+    pub fn command_queue_size(&self) -> NonZeroUsize {
+        self.command_queue_size
+    }
+
+    /// Sets the maximum number of queued RPC commands per connection.
+    pub fn with_command_queue_size(mut self, command_queue_size: NonZeroUsize) -> Self {
+        self.command_queue_size = command_queue_size;
+        self
+    }
+
+    /// Returns the maximum number of queued RPC replies per connection.
+    pub fn result_queue_size(&self) -> NonZeroUsize {
+        self.result_queue_size
+    }
+
+    /// Sets the maximum number of queued RPC replies per connection.
+    pub fn with_result_queue_size(mut self, result_queue_size: NonZeroUsize) -> Self {
+        self.result_queue_size = result_queue_size;
+        self
+    }
+
+    /// Returns the maximum number of concurrently processed RPC requests per connection.
+    pub fn max_in_flight_requests(&self) -> NonZeroUsize {
+        self.max_in_flight_requests
+    }
+
+    /// Sets the maximum number of concurrently processed RPC requests per connection.
+    pub fn with_max_in_flight_requests(mut self, max_in_flight_requests: NonZeroUsize) -> Self {
+        self.max_in_flight_requests = max_in_flight_requests;
+        self
+    }
+}
+
+fn default_non_zero_usize(value: usize) -> NonZeroUsize {
+    match NonZeroUsize::new(value) {
+        Some(value) => value,
+        None => unreachable!("default server setting must be non-zero"),
     }
 }
 
@@ -12837,8 +12945,8 @@ pub struct ServerExport {
 pub struct ServerContext {
     settings: ServerSettings,
     backend: Option<SharedVfs>,
-    exports: Arc<RwLock<Vec<ServerExport>>>,
-    mounts: Arc<RwLock<Vec<MountedDirectory>>>,
+    exports: Arc<RwLock<ExportRegistry>>,
+    mounts: Arc<RwLock<MountRegistry>>,
 }
 
 impl Default for ServerContext {
@@ -12846,16 +12954,26 @@ impl Default for ServerContext {
         Self {
             settings: ServerSettings::default(),
             backend: None,
-            exports: Arc::new(RwLock::new(Vec::new())),
-            mounts: Arc::new(RwLock::new(Vec::new())),
+            exports: Arc::new(RwLock::new(ExportRegistry::default())),
+            mounts: Arc::new(RwLock::new(MountRegistry::default())),
         }
     }
 }
 
 impl ServerContext {
+    /// Creates a new context with the provided settings and no backend.
+    pub fn with_settings(settings: ServerSettings) -> Self {
+        Self { settings, ..Self::default() }
+    }
+
     /// Creates a new context with the provided backend.
     pub fn with_backend(backend: SharedVfs) -> Self {
         Self { backend: Some(backend), ..Self::default() }
+    }
+
+    /// Creates a new context with the provided backend and settings.
+    pub fn with_backend_and_settings(backend: SharedVfs, settings: ServerSettings) -> Self {
+        Self { settings, backend: Some(backend), ..Self::default() }
     }
 
     /// Returns the server settings.
@@ -12870,39 +12988,54 @@ impl ServerContext {
 
     /// Registers an exported directory.
     pub async fn add_export(&self, export: ServerExport) {
-        self.exports.write().await.push(export);
+        self.exports.write().await.insert(export);
     }
 
     /// Returns a snapshot of configured exports.
     pub async fn exports(&self) -> Vec<ServerExport> {
-        self.exports.read().await.clone()
+        self.exports.read().await.snapshot()
+    }
+
+    /// Finds a configured export by its directory path.
+    pub async fn find_export(&self, directory: &file::Path) -> Option<ServerExport> {
+        self.exports.read().await.find(directory).cloned()
     }
 
     /// Records a mounted directory for a client.
     pub async fn record_mount(&self, client_addr: String, directory: file::Path) {
-        self.mounts.write().await.push(MountedDirectory { client_addr, directory });
+        self.mounts.write().await.record(client_addr, directory);
     }
 
     /// Returns a snapshot of active mounts.
     pub async fn mount_entries(&self) -> Vec<(String, file::Path)> {
-        self.mounts
-            .read()
-            .await
-            .iter()
-            .map(|mount| (mount.client_addr.clone(), mount.directory.clone()))
-            .collect()
+        self.mounts.read().await.snapshot()
     }
 
     /// Removes a single mounted directory for a client.
     pub async fn remove_mount(&self, client_addr: &str, directory: &file::Path) {
-        self.mounts.write().await.retain(|mount| {
-            !(mount.client_addr == client_addr && mount.directory.as_path() == directory.as_path())
-        });
+        self.mounts.write().await.remove(client_addr, directory);
     }
 
     /// Removes all mounted directories associated with a client.
     pub async fn remove_mounts_by_client(&self, client_addr: &str) {
-        self.mounts.write().await.retain(|mount| mount.client_addr != client_addr);
+        self.mounts.write().await.remove_client(client_addr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServerSettings;
+
+    #[test]
+    fn server_settings_allow_queue_configuration() {
+        let settings = ServerSettings::new()
+            .with_command_queue_size(std::num::NonZeroUsize::new(8).expect("non-zero literal"))
+            .with_result_queue_size(std::num::NonZeroUsize::new(16).expect("non-zero literal"))
+            .with_max_in_flight_requests(std::num::NonZeroUsize::new(4).expect("non-zero literal"));
+
+        assert_eq!(settings.command_queue_size().get(), 8);
+        assert_eq!(settings.result_queue_size().get(), 16);
+        assert_eq!(settings.max_in_flight_requests().get(), 4);
     }
 }
 
@@ -12953,6 +13086,7 @@ pub struct RpcCallHeader {
 pub struct RequestContext {
     pub connection: ConnectionContext,
     pub header: RpcCallHeader,
+    pub span: Span,
 }
 
 pub struct ParsedRpcCall {
@@ -12963,8 +13097,10 @@ pub struct ParsedRpcCall {
 impl ParsedRpcCall {
     pub fn with_connection(self, connection: ConnectionContext) -> RpcCommand {
         let auth = self.header.auth_flavor;
+        let connection = connection.with_auth(auth);
+        let span = request_span(&connection, self.header);
         RpcCommand {
-            context: RequestContext { connection: connection.with_auth(auth), header: self.header },
+            context: RequestContext { connection, header: self.header, span },
             arguments: self.arguments,
         }
     }
@@ -12987,15 +13123,20 @@ impl ServerExport {
     }
 }
 
-#[derive(Debug, Clone)]
-struct MountedDirectory {
-    client_addr: String,
-    directory: file::Path,
-}
-
 pub struct RpcCommand {
     pub context: RequestContext,
     pub arguments: Box<Arguments>,
+}
+
+pub struct ReplyEnvelope {
+    pub result: CommandResult,
+    pub span: Span,
+}
+
+impl ReplyEnvelope {
+    pub fn new(result: CommandResult, span: Span) -> Self {
+        Self { result, span }
+    }
 }
 
 pub enum ReplyPayload {
@@ -13015,6 +13156,92 @@ impl RpcReply {
 }
 
 pub type CommandResult = io::Result<RpcReply>;
+
+#[derive(Default)]
+struct ExportRegistry {
+    by_directory: BTreeMap<PathBuf, ServerExport>,
+}
+
+impl ExportRegistry {
+    fn insert(&mut self, export: ServerExport) {
+        self.by_directory.insert(export.directory().as_path().to_path_buf(), export);
+    }
+
+    fn find(&self, directory: &file::Path) -> Option<&ServerExport> {
+        self.by_directory.get(directory.as_path())
+    }
+
+    fn snapshot(&self) -> Vec<ServerExport> {
+        self.by_directory.values().cloned().collect()
+    }
+}
+
+#[derive(Default)]
+struct MountRegistry {
+    by_client: BTreeMap<String, BTreeMap<PathBuf, file::Path>>,
+}
+
+impl MountRegistry {
+    fn record(&mut self, client_addr: String, directory: file::Path) {
+        self.by_client
+            .entry(client_addr)
+            .or_default()
+            .insert(directory.as_path().to_path_buf(), directory);
+    }
+
+    fn snapshot(&self) -> Vec<(String, file::Path)> {
+        self.by_client
+            .iter()
+            .flat_map(|(client_addr, directories)| {
+                directories.values().cloned().map(|directory| (client_addr.clone(), directory))
+            })
+            .collect()
+    }
+
+    fn remove(&mut self, client_addr: &str, directory: &file::Path) {
+        let should_remove_client = match self.by_client.get_mut(client_addr) {
+            Some(directories) => {
+                directories.remove(directory.as_path());
+                directories.is_empty()
+            }
+            None => false,
+        };
+
+        if should_remove_client {
+            self.by_client.remove(client_addr);
+        }
+    }
+
+    fn remove_client(&mut self, client_addr: &str) {
+        self.by_client.remove(client_addr);
+    }
+}
+
+pub fn request_span(connection: &ConnectionContext, header: RpcCallHeader) -> Span {
+    info_span!(
+        "rpc_request",
+        xid = header.xid,
+        program = header.program,
+        version = header.version,
+        procedure = header.procedure,
+        auth = ?header.auth_flavor,
+        peer = %socket_addr_label(connection.client_addr()),
+        local = %socket_addr_label(connection.local_addr()),
+    )
+}
+
+pub fn rejected_request_span(connection: &ConnectionContext, xid: u32) -> Span {
+    info_span!(
+        "rpc_request",
+        xid,
+        peer = %socket_addr_label(connection.client_addr()),
+        local = %socket_addr_label(connection.local_addr()),
+    )
+}
+
+fn socket_addr_label(socket_addr: Option<SocketAddr>) -> String {
+    socket_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "unknown".to_string())
+}
 
 pub enum RejectedReply {
     RpcMismatch = 0,
@@ -13062,27 +13289,31 @@ pub enum Error {
 
 </file>
 <file path="src/vfs_task.rs">
+use std::collections::BTreeMap;
 use std::io;
 
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
+use tokio::task::JoinSet;
+use tracing::{debug, info};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{CommandResult, RpcCommand, ServerContext, SharedVfs};
+use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
-    command_receiver: UnboundedReceiver<RpcCommand>,
-    result_sender: UnboundedSender<CommandResult>,
+    command_receiver: Receiver<RpcCommand>,
+    result_sender: Sender<ReplyEnvelope>,
     server_context: ServerContext,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        command_receiver: UnboundedReceiver<RpcCommand>,
-        result_sender: UnboundedSender<CommandResult>,
+        command_receiver: Receiver<RpcCommand>,
+        result_sender: Sender<ReplyEnvelope>,
         server_context: ServerContext,
     ) -> Self {
         Self { command_receiver, result_sender, server_context }
@@ -13093,28 +13324,90 @@ impl VfsTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(self) -> JoinHandle<()> {
+        tokio::spawn(async move { self.run().await })
     }
 
     async fn run(mut self) {
-        while let Some(command) = self.command_receiver.recv().await {
-            let xid = command.context.header.xid;
-            let result = serialize_reply(xid, self.dispatch(command).await).await;
+        let max_in_flight = self.server_context.settings().max_in_flight_requests().get();
+        let mut receiver_closed = false;
+        let mut next_sequence = 0_u64;
+        let mut next_reply_sequence = 0_u64;
+        let mut pending = BTreeMap::new();
+        let mut in_flight = JoinSet::new();
 
-            if self.result_sender.send(result).is_err() {
+        loop {
+            self.flush_ready_replies(&mut pending, &mut next_reply_sequence).await;
+
+            if receiver_closed && in_flight.is_empty() && pending.is_empty() {
+                info!("vfs task finished");
                 break;
+            }
+
+            if receiver_closed || in_flight.len() >= max_in_flight {
+                if let Some(Ok((sequence, result))) = in_flight.join_next().await {
+                    pending.insert(sequence, result);
+                }
+                continue;
+            }
+
+            tokio::select! {
+                maybe_command = self.command_receiver.recv() => {
+                    match maybe_command {
+                        Some(command) => {
+                            let sequence = next_sequence;
+                            next_sequence += 1;
+                            let server_context = self.server_context.clone();
+                            let span = command.context.span.clone();
+                            debug!(parent: &span, sequence, "queued rpc request for dispatch");
+                            in_flight.spawn(async move {
+                                let xid = command.context.header.xid;
+                                let result = serialize_reply(
+                                    xid,
+                                    Self::dispatch_with_context(server_context, command).await,
+                                )
+                                .await;
+                                debug!(parent: &span, sequence, "completed rpc dispatch");
+                                (sequence, ReplyEnvelope::new(result, span))
+                            });
+                        }
+                        None => receiver_closed = true,
+                    }
+                }
+                joined = in_flight.join_next(), if !in_flight.is_empty() => {
+                    if let Some(Ok((sequence, result))) = joined {
+                        pending.insert(sequence, result);
+                    }
+                }
             }
         }
     }
 
-    async fn dispatch(&self, command: RpcCommand) -> Result<ProcResult, crate::rpc::Error> {
-        eprintln!(
-            "rpc program={} version={} procedure={} auth={:?}",
+    async fn flush_ready_replies(
+        &self,
+        pending: &mut BTreeMap<u64, ReplyEnvelope>,
+        next_reply_sequence: &mut u64,
+    ) {
+        while let Some(reply) = pending.remove(next_reply_sequence) {
+            debug!(parent: &reply.span, sequence = *next_reply_sequence, "forwarding rpc reply to writer");
+            if self.result_sender.send(reply).await.is_err() {
+                break;
+            }
+            *next_reply_sequence += 1;
+        }
+    }
+
+    async fn dispatch_with_context(
+        server_context: ServerContext,
+        command: RpcCommand,
+    ) -> Result<ProcResult, crate::rpc::Error> {
+        debug!(
+            parent: &command.context.span,
             command.context.header.program,
             command.context.header.version,
             command.context.header.procedure,
-            command.context.connection.auth(),
+            auth = ?command.context.connection.auth(),
+            "dispatching rpc request",
         );
         match *command.arguments {
             Arguments::Null => Ok(match command.context.header.program {
@@ -13122,27 +13415,39 @@ impl VfsTask {
                 crate::mount::MOUNT_PROGRAM => ProcResult::Mount(MountRes::Null),
                 _ => return Err(crate::rpc::Error::ProgramMismatch),
             }),
-            other => self.dispatch_non_null(other, &command.context.connection).await,
+            other => {
+                Self::dispatch_non_null_with_context(
+                    server_context,
+                    other,
+                    &command.context.connection,
+                )
+                .await
+            }
         }
     }
 
-    async fn dispatch_non_null(
-        &self,
+    async fn dispatch_non_null_with_context(
+        server_context: ServerContext,
         arguments: Arguments,
         connection: &crate::rpc::ConnectionContext,
     ) -> Result<ProcResult, crate::rpc::Error> {
         match mount::MountRequest::try_from(arguments) {
             Ok(request) => {
-                mount::MountService::new(connection, &self.server_context).dispatch(request).await
+                mount::MountService::new(connection, &server_context).dispatch(request).await
             }
-            Err(other) => self.dispatch_nfs(other).await,
+            Err(other) => Self::dispatch_nfs_with_context(server_context, other).await,
         }
     }
 
-    async fn dispatch_nfs(&self, arguments: Arguments) -> Result<ProcResult, crate::rpc::Error> {
+    async fn dispatch_nfs_with_context(
+        server_context: ServerContext,
+        arguments: Arguments,
+    ) -> Result<ProcResult, crate::rpc::Error> {
         macro_rules! dispatch_backend {
             ($args:ident, $method:ident, $variant:ident) => {
-                Ok(ProcResult::Nfs3(NfsRes::$variant(self.backend()?.$method($args).await)))
+                Ok(ProcResult::Nfs3(NfsRes::$variant(
+                    Self::backend(&server_context)?.$method($args).await,
+                )))
             };
         }
 
@@ -13172,8 +13477,8 @@ impl VfsTask {
         }
     }
 
-    fn backend(&self) -> Result<&SharedVfs, crate::rpc::Error> {
-        self.server_context.backend().ok_or_else(|| {
+    fn backend(server_context: &ServerContext) -> Result<&SharedVfs, crate::rpc::Error> {
+        server_context.backend().ok_or_else(|| {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
     }
@@ -13183,22 +13488,21 @@ impl VfsTask {
 <file path="src/write_task.rs">
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
+use tokio::task::JoinHandle;
+use tracing::{debug, info, warn};
 
-use crate::rpc::{CommandResult, ReplyPayload};
+use crate::rpc::{ReplyEnvelope, ReplyPayload};
 
 /// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<CommandResult>,
+    result_receiver: Receiver<ReplyEnvelope>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(
-        writehalf: OwnedWriteHalf,
-        result_receiver: UnboundedReceiver<CommandResult>,
-    ) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: Receiver<ReplyEnvelope>) -> Self {
         Self { writehalf, result_receiver }
     }
 
@@ -13207,34 +13511,38 @@ impl WriteTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
-            eprintln!("write task finished");
-        });
+            info!("write task finished");
+        })
     }
 
     async fn run(mut self) {
-        while let Some(result) = self.result_receiver.recv().await {
-            let reply = match result {
+        while let Some(envelope) = self.result_receiver.recv().await {
+            let span = envelope.span;
+            let reply = match envelope.result {
                 Ok(reply) => reply,
-                Err(_) => continue,
+                Err(error) => {
+                    warn!(parent: &span, error = %error, "write task dropped failed reply envelope");
+                    continue;
+                }
             };
 
             match reply.payload {
                 ReplyPayload::Buffer(payload) => {
                     if payload.is_empty() {
-                        eprintln!("write task: empty payload for xid={}", reply.xid);
+                        warn!(parent: &span, xid = reply.xid, "write task skipped empty payload");
                         continue;
                     }
                     if self.writehalf.write_all(&payload).await.is_err() {
-                        eprintln!("write task: socket write failed for xid={}", reply.xid);
+                        warn!(parent: &span, xid = reply.xid, "write task socket write failed");
                         break;
                     }
                 }
                 ReplyPayload::Read { header, data, padding } => {
                     if self.writehalf.write_all(&header).await.is_err() {
-                        eprintln!("write task: socket header write failed for xid={}", reply.xid);
+                        warn!(parent: &span, xid = reply.xid, "write task socket header write failed");
                         break;
                     }
                     let mut failed = false;
@@ -13245,26 +13553,323 @@ impl WriteTask {
                         }
                     }
                     if failed {
-                        eprintln!(
-                            "write task: socket read-payload write failed for xid={}",
-                            reply.xid
-                        );
+                        warn!(parent: &span, xid = reply.xid, "write task read-payload write failed");
                         break;
                     }
                     if padding != 0 {
                         let zeros = [0u8; 4];
                         if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
-                            eprintln!(
-                                "write task: socket padding write failed for xid={}",
-                                reply.xid
-                            );
+                            warn!(parent: &span, xid = reply.xid, "write task socket padding write failed");
                             break;
                         }
                     }
                 }
             }
+
+            debug!(parent: &span, xid = reply.xid, "write task sent reply");
         }
     }
+}
+
+</file>
+<file path="tests/server_pipeline.rs">
+use std::io;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Barrier;
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
+
+use nfs_mamont::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
+use nfs_mamont::nfsv3::{NFS_PROGRAM, NFS_VERSION};
+use nfs_mamont::rpc::{
+    RpcBody, ServerContext, ServerExport, ServerSettings, SharedVfs, RPC_VERSION,
+};
+use nfs_mamont::vfs;
+use nfs_mamont::vfs::file;
+
+const RECORD_LAST_FRAGMENT_BIT: u32 = 0x8000_0000;
+const AUTH_NONE: u32 = 0;
+const NULL_PROCEDURE: u32 = 0;
+const MOUNT_PROCEDURE: u32 = 1;
+
+fn non_zero(value: usize) -> NonZeroUsize {
+    match NonZeroUsize::new(value) {
+        Some(value) => value,
+        None => panic!("test helper expects non-zero value"),
+    }
+}
+
+fn push_u32(buf: &mut Vec<u8>, value: u32) {
+    buf.extend(value.to_be_bytes());
+}
+
+fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
+    push_u32(buf, bytes.len() as u32);
+    buf.extend(bytes);
+    let padding = (4 - bytes.len() % 4) % 4;
+    buf.extend(std::iter::repeat_n(0_u8, padding));
+}
+
+fn null_call_frame(xid: u32) -> Vec<u8> {
+    let mut body = Vec::new();
+    push_u32(&mut body, xid);
+    push_u32(&mut body, RpcBody::Call as u32);
+    push_u32(&mut body, RPC_VERSION);
+    push_u32(&mut body, NFS_PROGRAM);
+    push_u32(&mut body, NFS_VERSION);
+    push_u32(&mut body, NULL_PROCEDURE);
+    push_u32(&mut body, AUTH_NONE);
+    push_u32(&mut body, 0);
+    push_u32(&mut body, AUTH_NONE);
+    push_u32(&mut body, 0);
+
+    let mut frame = Vec::with_capacity(body.len() + size_of::<u32>());
+    push_u32(&mut frame, RECORD_LAST_FRAGMENT_BIT | body.len() as u32);
+    frame.extend(body);
+    frame
+}
+
+fn mount_call_frame(xid: u32, export: &str) -> Vec<u8> {
+    let mut body = Vec::new();
+    push_u32(&mut body, xid);
+    push_u32(&mut body, RpcBody::Call as u32);
+    push_u32(&mut body, RPC_VERSION);
+    push_u32(&mut body, MOUNT_PROGRAM);
+    push_u32(&mut body, MOUNT_VERSION);
+    push_u32(&mut body, MOUNT_PROCEDURE);
+    push_u32(&mut body, AUTH_NONE);
+    push_u32(&mut body, 0);
+    push_u32(&mut body, AUTH_NONE);
+    push_u32(&mut body, 0);
+    push_opaque(&mut body, export.as_bytes());
+
+    let mut frame = Vec::with_capacity(body.len() + size_of::<u32>());
+    push_u32(&mut frame, RECORD_LAST_FRAGMENT_BIT | body.len() as u32);
+    frame.extend(body);
+    frame
+}
+
+async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+    let mut header = [0_u8; 4];
+    stream.read_exact(&mut header).await?;
+
+    let length = u32::from_be_bytes(header) & !RECORD_LAST_FRAGMENT_BIT;
+    let mut payload = vec![0_u8; length as usize];
+    stream.read_exact(&mut payload).await?;
+    Ok(payload)
+}
+
+fn reply_xid(reply: &[u8]) -> u32 {
+    u32::from_be_bytes(reply[..4].try_into().expect("reply must contain xid"))
+}
+
+async fn start_server(
+    settings: ServerSettings,
+) -> io::Result<(std::net::SocketAddr, JoinHandle<()>)> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let local_addr = listener.local_addr()?;
+    let server = tokio::spawn(async move {
+        let _ = nfs_mamont::handle_forever_with_context(
+            listener,
+            ServerContext::with_settings(settings),
+        )
+        .await;
+    });
+    Ok((local_addr, server))
+}
+
+async fn start_server_with_context(
+    server_context: ServerContext,
+) -> io::Result<(std::net::SocketAddr, JoinHandle<()>)> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let local_addr = listener.local_addr()?;
+    let server = tokio::spawn(async move {
+        let _ = nfs_mamont::handle_forever_with_context(listener, server_context).await;
+    });
+    Ok((local_addr, server))
+}
+
+struct SlowRootBackend {
+    entered_calls: AtomicUsize,
+    started_barrier: Arc<Barrier>,
+}
+
+impl SlowRootBackend {
+    fn new(started_barrier: Arc<Barrier>) -> Self {
+        Self { entered_calls: AtomicUsize::new(0), started_barrier }
+    }
+
+    fn entered_calls(&self) -> usize {
+        self.entered_calls.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl vfs::RootHandle for SlowRootBackend {
+    async fn root_handle(&self) -> file::Handle {
+        let started_calls = self.entered_calls.fetch_add(1, Ordering::SeqCst);
+        if started_calls == 0 {
+            self.started_barrier.wait().await;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        file::Handle([1_u8; nfs_mamont::nfsv3::NFS3_FHSIZE])
+    }
+}
+
+macro_rules! panic_vfs_impl {
+    ($trait_path:path, $method:ident, $args_ty:path, $result_ty:path) => {
+        #[async_trait]
+        impl $trait_path for SlowRootBackend {
+            async fn $method(&self, _args: $args_ty) -> $result_ty {
+                panic!(concat!(stringify!($method), " should not be called in this test"));
+            }
+        }
+    };
+}
+
+panic_vfs_impl!(vfs::access::Access, access, vfs::access::Args, vfs::access::Result);
+panic_vfs_impl!(vfs::commit::Commit, commit, vfs::commit::Args, vfs::commit::Result);
+panic_vfs_impl!(vfs::create::Create, create, vfs::create::Args, vfs::create::Result);
+panic_vfs_impl!(vfs::fs_info::FsInfo, fs_info, vfs::fs_info::Args, vfs::fs_info::Result);
+panic_vfs_impl!(vfs::fs_stat::FsStat, fs_stat, vfs::fs_stat::Args, vfs::fs_stat::Result);
+panic_vfs_impl!(vfs::get_attr::GetAttr, get_attr, vfs::get_attr::Args, vfs::get_attr::Result);
+panic_vfs_impl!(vfs::link::Link, link, vfs::link::Args, vfs::link::Result);
+panic_vfs_impl!(vfs::lookup::Lookup, lookup, vfs::lookup::Args, vfs::lookup::Result);
+panic_vfs_impl!(vfs::mk_dir::MkDir, mk_dir, vfs::mk_dir::Args, vfs::mk_dir::Result);
+panic_vfs_impl!(vfs::mk_node::MkNode, mk_node, vfs::mk_node::Args, vfs::mk_node::Result);
+panic_vfs_impl!(vfs::path_conf::PathConf, path_conf, vfs::path_conf::Args, vfs::path_conf::Result);
+panic_vfs_impl!(vfs::read::Read, read, vfs::read::Args, vfs::read::Result);
+panic_vfs_impl!(vfs::read_dir::ReadDir, read_dir, vfs::read_dir::Args, vfs::read_dir::Result);
+panic_vfs_impl!(
+    vfs::read_dir_plus::ReadDirPlus,
+    read_dir_plus,
+    vfs::read_dir_plus::Args,
+    vfs::read_dir_plus::Result
+);
+panic_vfs_impl!(vfs::read_link::ReadLink, read_link, vfs::read_link::Args, vfs::read_link::Result);
+panic_vfs_impl!(vfs::remove::Remove, remove, vfs::remove::Args, vfs::remove::Result);
+panic_vfs_impl!(vfs::rename::Rename, rename, vfs::rename::Args, vfs::rename::Result);
+panic_vfs_impl!(vfs::rm_dir::RmDir, rm_dir, vfs::rm_dir::Args, vfs::rm_dir::Result);
+panic_vfs_impl!(vfs::set_attr::SetAttr, set_attr, vfs::set_attr::Args, vfs::set_attr::Result);
+panic_vfs_impl!(vfs::symlink::Symlink, symlink, vfs::symlink::Args, vfs::symlink::Result);
+panic_vfs_impl!(vfs::write::Write, write, vfs::write::Args, vfs::write::Result);
+
+#[tokio::test]
+async fn server_accepts_new_connection_after_client_disconnect() {
+    let (addr, server) = start_server(ServerSettings::new()).await.expect("server should start");
+
+    let mut first_client = TcpStream::connect(addr).await.expect("first client should connect");
+    first_client.write_all(&null_call_frame(1)).await.expect("first request should be written");
+
+    let first_reply = timeout(Duration::from_secs(1), read_record(&mut first_client))
+        .await
+        .expect("first reply should arrive")
+        .expect("first reply should be readable");
+    assert_eq!(reply_xid(&first_reply), 1);
+
+    drop(first_client);
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let mut second_client = TcpStream::connect(addr).await.expect("second client should connect");
+    second_client.write_all(&null_call_frame(2)).await.expect("second request should be written");
+
+    let second_reply = timeout(Duration::from_secs(1), read_record(&mut second_client))
+        .await
+        .expect("second reply should arrive")
+        .expect("second reply should be readable");
+    assert_eq!(reply_xid(&second_reply), 2);
+
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
+async fn bounded_connection_queues_preserve_all_null_replies() {
+    let settings = ServerSettings::new()
+        .with_command_queue_size(non_zero(1))
+        .with_result_queue_size(non_zero(1))
+        .with_max_in_flight_requests(non_zero(2));
+    let (addr, server) = start_server(settings).await.expect("server should start");
+
+    let mut client = TcpStream::connect(addr).await.expect("client should connect");
+    let request_stream = (1..=8_u32).flat_map(null_call_frame).collect::<Vec<u8>>();
+
+    client.write_all(&request_stream).await.expect("requests should be written");
+
+    for expected_xid in 1..=8_u32 {
+        let reply = timeout(Duration::from_secs(1), read_record(&mut client))
+            .await
+            .expect("reply should arrive")
+            .expect("reply should be readable");
+        assert_eq!(reply_xid(&reply), expected_xid);
+    }
+
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
+async fn slow_backend_mount_requests_are_backpressured_per_connection() {
+    let settings = ServerSettings::new()
+        .with_command_queue_size(non_zero(1))
+        .with_result_queue_size(non_zero(1))
+        .with_max_in_flight_requests(non_zero(1));
+    let started_barrier = Arc::new(Barrier::new(2));
+    let backend = Arc::new(SlowRootBackend::new(started_barrier.clone()));
+    let shared_backend: SharedVfs = backend.clone();
+    let context = ServerContext::with_backend_and_settings(shared_backend, settings);
+    let export_path =
+        file::Path::new("/tmp/export".to_string()).expect("export path should be valid");
+    context.add_export(ServerExport::new(export_path.clone(), vec!["*".to_string()])).await;
+
+    let (addr, server) = start_server_with_context(context).await.expect("server should start");
+    let mut client = TcpStream::connect(addr).await.expect("client should connect");
+    let request_stream = (1..=3_u32)
+        .flat_map(|xid| {
+            mount_call_frame(xid, export_path.as_path().to_str().expect("utf8 export path"))
+        })
+        .collect::<Vec<u8>>();
+
+    client.write_all(&request_stream).await.expect("requests should be written");
+
+    timeout(Duration::from_secs(1), started_barrier.wait())
+        .await
+        .expect("first mount should enter backend");
+    assert_eq!(backend.entered_calls(), 1);
+
+    let started = tokio::time::Instant::now();
+    let first_reply = timeout(Duration::from_secs(2), read_record(&mut client))
+        .await
+        .expect("first mount reply should arrive")
+        .expect("first mount reply should be readable");
+    assert_eq!(reply_xid(&first_reply), 1);
+    assert!(started.elapsed() >= Duration::from_millis(150));
+
+    let second_reply = timeout(Duration::from_secs(2), read_record(&mut client))
+        .await
+        .expect("second mount reply should arrive")
+        .expect("second mount reply should be readable");
+    assert_eq!(reply_xid(&second_reply), 2);
+    assert!(started.elapsed() >= Duration::from_millis(350));
+
+    let third_reply = timeout(Duration::from_secs(2), read_record(&mut client))
+        .await
+        .expect("third mount reply should arrive")
+        .expect("third mount reply should be readable");
+    assert_eq!(reply_xid(&third_reply), 3);
+    assert!(started.elapsed() >= Duration::from_millis(550));
+    assert_eq!(backend.entered_calls(), 3);
+
+    server.abort();
+    let _ = server.await;
 }
 
 </file>
@@ -13278,6 +13883,15 @@ use_small_heuristics = "Max"
 # This file is automatically @generated by Cargo.
 # It is not intended for manual editing.
 version = 4
+
+[[package]]
+name = "aho-corasick"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "anyhow"
@@ -13413,6 +14027,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
+name = "lazy_static"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13446,6 +14066,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13472,6 +14101,17 @@ dependencies = [
  "num-traits",
  "tempfile",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13573,6 +14213,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-automata"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
 name = "rustix"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13640,6 +14297,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13690,6 +14356,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "tokio"
 version = "1.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13718,6 +14393,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+dependencies = [
+ "pin-project-lite",
+ "tracing-attributes",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.1.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+dependencies = [
+ "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f30143827ddab0d256fd843b7a66d164e9f271cfa0dde49142c5ca0ca291f1e"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13728,6 +14464,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "wasi"
@@ -13990,6 +14732,8 @@ tokio = { version = "1.49", features = ["full", "time"] }
 byteorder = "1.5.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
 tempfile = "3.20"
@@ -13998,6 +14742,78 @@ tempfile = "3.20"
 [[example]]
 name = "mirrorfs"
 path = "examples/mirror_fs/main.rs"
+</file>
+<file path="LICENSE">
+MIT License
+
+Copyright (c) 2025 RMamonts
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+</file>
+<file path="README.md">
+## NFS Mamont
+
+Project aiming to implement NFS3 and NFS4 user space servers.
+
+## Manual NFS server verification
+
+After starting the `mirrorfs` example and mounting the export on Linux, you can run
+a terminal-based end-to-end check script:
+
+- Full mounted-export check: [scripts/nfs_manual_full_check.sh](scripts/nfs_manual_full_check.sh)
+
+Example flow:
+
+1. Start the server:
+	- `cargo run --example mirrorfs -- /tmp/nfs-export 127.0.0.1:2049`
+2. Mount the export:
+	- `sudo mount -v -t nfs -o vers=3,tcp,proto=tcp,port=2049,mountport=2049,nolock 127.0.0.1:/tmp/nfs-export /tmp/nfs-mount`
+3. Run the manual functional check:
+	- `bash scripts/nfs_manual_full_check.sh /tmp/nfs-mount`
+
+The script verifies:
+
+- regular file create/read/overwrite/append/truncate/remove
+- file rename and chmod
+- hard links for files
+- symbolic links for files
+- directory create/rename/remove
+- nested file operations inside directories
+- symbolic links to directories
+- writes through a directory symlink
+- rejection of removing a non-empty directory
+- larger file read/write/compare flow
+- rename over an existing file
+
+To keep the generated workspace for inspection, run:
+
+- `bash scripts/nfs_manual_full_check.sh /tmp/nfs-mount --keep`
+
+## Contributing
+
+Contributions are welcome! Check issue list.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 </file>
 <file path="rust-toolchain.toml">
 [toolchain]

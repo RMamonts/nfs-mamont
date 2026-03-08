@@ -161,9 +161,10 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             }
             NfsRes::Read(res) => match res {
                 Ok(ok) => {
+                    let read_size = ok.head.count as usize;
                     usize_as_u32(&mut self.buffer, STATUS_OK)?;
                     read::result_ok_part(&mut self.buffer, ok.head)?;
-                    self.buffer.send_inner_with_slice(ok.data).await
+                    self.buffer.send_inner_with_slice(ok.data, read_size).await
                 }
                 Err(err) => {
                     error(&mut self.buffer, err.error)?;
@@ -354,8 +355,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
-        let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
+    async fn send_inner_with_slice(&mut self, slice: Slice, slice_size: usize) -> io::Result<()> {
         let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(
             self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding,
@@ -381,8 +381,8 @@ struct VecAsyncWriter {
 }
 
 impl VecAsyncWriter {
-    fn new() -> Self {
-        Self { data: Vec::new() }
+    fn with_capacity(capacity: usize) -> Self {
+        Self { data: Vec::with_capacity(capacity) }
     }
 
     fn into_inner(self) -> Vec<u8> {
@@ -416,7 +416,7 @@ pub async fn serialize_reply(
     match proc_result {
         Ok(ProcResult::Nfs3(NfsRes::Read(Ok(ok)))) => serialize_read_reply(xid, ok),
         other => {
-            let writer = VecAsyncWriter::new();
+            let writer = VecAsyncWriter::with_capacity(DEFAULT_SIZE);
             let mut serializer = Serializer::with_capacity(writer, DEFAULT_SIZE);
             serializer.form_reply(ReplyFromVfs::new(xid, other)).await?;
             Ok(RpcReply::new(xid, ReplyPayload::Buffer(serializer.buffer.socket.into_inner())))
@@ -425,6 +425,7 @@ pub async fn serialize_reply(
 }
 
 fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply> {
+    let slice_size = ok.head.count as usize;
     let mut header = Vec::with_capacity(DEFAULT_SIZE);
     header.extend_from_slice(&[0; HEADER_SIZE]);
     u32(&mut header, xid)?;
@@ -435,7 +436,6 @@ fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply
     usize_as_u32(&mut header, STATUS_OK)?;
     read::result_ok_part(&mut header, ok.head)?;
 
-    let slice_size = ok.data.iter().map(|chunk| chunk.len()).sum::<usize>();
     let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
     let fragment_size =
         header.len().saturating_sub(HEADER_SIZE).saturating_add(slice_size).saturating_add(padding);

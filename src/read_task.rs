@@ -8,7 +8,9 @@ use tracing::{debug, error, info, warn};
 
 use crate::allocator;
 use crate::parser::{ParseFailure, RpcParser};
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
+use crate::rpc::{
+    rejected_request_span, ConnectionContext, ReplyEnvelope, RpcCommand, ServerContext,
+};
 use crate::serializer::serialize_reply;
 
 /// Reads RPC commands from a network connection, parses it,
@@ -16,7 +18,7 @@ use crate::serializer::serialize_reply;
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     command_sender: Sender<RpcCommand>,
-    result_sender: Sender<CommandResult>,
+    result_sender: Sender<ReplyEnvelope>,
     server_context: ServerContext,
     connection_context: ConnectionContext,
 }
@@ -26,7 +28,7 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         command_sender: Sender<RpcCommand>,
-        result_sender: Sender<CommandResult>,
+        result_sender: Sender<ReplyEnvelope>,
         server_context: ServerContext,
         connection_context: ConnectionContext,
     ) -> Self {
@@ -75,7 +77,14 @@ impl ReadTask {
                     }
                     match serialize_reply(xid, Err(error)).await {
                         Ok(reply) => {
-                            if self.result_sender.send(Ok(reply)).await.is_err() {
+                            let span = rejected_request_span(&self.connection_context, xid);
+                            let received_at = std::time::Instant::now();
+                            if self
+                                .result_sender
+                                .send(ReplyEnvelope::new(Ok(reply), span, received_at, None))
+                                .await
+                                .is_err()
+                            {
                                 return Ok(());
                             }
                             continue;
@@ -94,6 +103,12 @@ impl ReadTask {
             };
 
             let command = request.with_connection(self.connection_context.clone());
+            let command_queue_depth = queue_depth(&self.command_sender);
+            debug!(
+                parent: &command.context.span,
+                command_queue_depth,
+                "parsed rpc request",
+            );
             if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
@@ -118,4 +133,8 @@ fn is_expected_protocol_rejection(error: &crate::rpc::Error) -> bool {
             | crate::rpc::Error::AuthError(_)
             | crate::rpc::Error::MessageTypeMismatch
     )
+}
+
+fn queue_depth<T>(sender: &Sender<T>) -> usize {
+    sender.max_capacity().saturating_sub(sender.capacity())
 }

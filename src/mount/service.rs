@@ -68,14 +68,10 @@ impl<'a> MountService<'a> {
         &self,
         requested: &crate::vfs::file::Path,
     ) -> Option<crate::rpc::ServerExport> {
-        let exports = self.server_context.exports().await;
-        exports
-            .iter()
-            .find(|export| {
-                export.directory().as_path() == requested.as_path()
-                    && self.client_allowed(export.allowed_hosts())
-            })
-            .cloned()
+        self.server_context
+            .find_export(requested)
+            .await
+            .filter(|export| self.client_allowed(export.allowed_hosts()))
     }
 
     fn client_allowed(&self, allowed_hosts: &[String]) -> bool {
@@ -99,32 +95,11 @@ impl<'a> MountService<'a> {
     }
 
     async fn dump_mounts(&self) -> dump::Success {
-        let mount_list = self
-            .server_context
-            .mount_entries()
-            .await
-            .iter()
-            .cloned()
-            .map(|(hostname, directory)| crate::mount::MountEntry { hostname, directory })
-            .collect();
-
-        dump::Success { mount_list }
+        dump::Success { mount_list: self.server_context.mount_dump_entries().await }
     }
 
     async fn export_list(&self) -> export::Success {
-        let exports = self
-            .server_context
-            .exports()
-            .await
-            .iter()
-            .cloned()
-            .map(|export| crate::mount::ExportEntry {
-                directory: export.directory().clone(),
-                names: export.allowed_hosts().to_vec(),
-            })
-            .collect();
-
-        export::Success { exports }
+        export::Success { exports: self.server_context.export_entries().await }
     }
 
     async fn unmount(&self, args: umnt::UnmountArgs) {

@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::read_task::ReadTask;
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext};
+use crate::rpc::{ConnectionContext, ReplyEnvelope, RpcCommand, ServerContext};
 use crate::vfs_task::VfsTask;
 use crate::write_task::WriteTask;
 
@@ -61,7 +61,7 @@ fn process_socket(socket: TcpStream, server_context: ServerContext) {
         let settings = server_context.settings().clone();
         // channel for result
         let (result_sender, result_receiver) =
-            mpsc::channel::<CommandResult>(settings.result_queue_size().get());
+            mpsc::channel::<ReplyEnvelope>(settings.result_queue_size().get());
         // channel for request
         let (command_sender, command_receiver) =
             mpsc::channel::<RpcCommand>(settings.command_queue_size().get());

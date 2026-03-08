@@ -1,13 +1,18 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
+use std::time::Instant;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use tokio::sync::RwLock;
+use tracing::{info_span, Span};
 
 use crate::allocator::Slice;
+use crate::mount;
 use crate::parser::Arguments;
 use crate::vfs;
 use crate::vfs::file;
@@ -187,8 +192,8 @@ pub struct ServerExport {
 pub struct ServerContext {
     settings: ServerSettings,
     backend: Option<SharedVfs>,
-    exports: Arc<RwLock<Vec<ServerExport>>>,
-    mounts: Arc<RwLock<Vec<MountedDirectory>>>,
+    exports: Arc<RwLock<ExportRegistry>>,
+    mounts: Arc<RwLock<MountRegistry>>,
 }
 
 impl Default for ServerContext {
@@ -196,8 +201,8 @@ impl Default for ServerContext {
         Self {
             settings: ServerSettings::default(),
             backend: None,
-            exports: Arc::new(RwLock::new(Vec::new())),
-            mounts: Arc::new(RwLock::new(Vec::new())),
+            exports: Arc::new(RwLock::new(ExportRegistry::default())),
+            mounts: Arc::new(RwLock::new(MountRegistry::default())),
         }
     }
 }
@@ -230,39 +235,37 @@ impl ServerContext {
 
     /// Registers an exported directory.
     pub async fn add_export(&self, export: ServerExport) {
-        self.exports.write().await.push(export);
+        self.exports.write().await.insert(export);
     }
 
     /// Returns a snapshot of configured exports.
     pub async fn exports(&self) -> Vec<ServerExport> {
-        self.exports.read().await.clone()
+        self.exports.read().await.snapshot()
+    }
+
+    /// Finds a configured export by its directory path.
+    pub async fn find_export(&self, directory: &file::Path) -> Option<ServerExport> {
+        self.exports.read().await.find(directory).cloned()
     }
 
     /// Records a mounted directory for a client.
     pub async fn record_mount(&self, client_addr: String, directory: file::Path) {
-        self.mounts.write().await.push(MountedDirectory { client_addr, directory });
+        self.mounts.write().await.record(client_addr, directory);
     }
 
     /// Returns a snapshot of active mounts.
     pub async fn mount_entries(&self) -> Vec<(String, file::Path)> {
-        self.mounts
-            .read()
-            .await
-            .iter()
-            .map(|mount| (mount.client_addr.clone(), mount.directory.clone()))
-            .collect()
+        self.mounts.read().await.snapshot()
     }
 
     /// Removes a single mounted directory for a client.
     pub async fn remove_mount(&self, client_addr: &str, directory: &file::Path) {
-        self.mounts.write().await.retain(|mount| {
-            !(mount.client_addr == client_addr && mount.directory.as_path() == directory.as_path())
-        });
+        self.mounts.write().await.remove(client_addr, directory);
     }
 
     /// Removes all mounted directories associated with a client.
     pub async fn remove_mounts_by_client(&self, client_addr: &str) {
-        self.mounts.write().await.retain(|mount| mount.client_addr != client_addr);
+        self.mounts.write().await.remove_client(client_addr);
     }
 }
 
@@ -330,6 +333,8 @@ pub struct RpcCallHeader {
 pub struct RequestContext {
     pub connection: ConnectionContext,
     pub header: RpcCallHeader,
+    pub span: Span,
+    pub received_at: Instant,
 }
 
 pub struct ParsedRpcCall {
@@ -340,8 +345,15 @@ pub struct ParsedRpcCall {
 impl ParsedRpcCall {
     pub fn with_connection(self, connection: ConnectionContext) -> RpcCommand {
         let auth = self.header.auth_flavor;
+        let connection = connection.with_auth(auth);
+        let span = request_span(&connection, self.header);
         RpcCommand {
-            context: RequestContext { connection: connection.with_auth(auth), header: self.header },
+            context: RequestContext {
+                connection,
+                header: self.header,
+                span,
+                received_at: Instant::now(),
+            },
             arguments: self.arguments,
         }
     }
@@ -364,15 +376,27 @@ impl ServerExport {
     }
 }
 
-#[derive(Debug, Clone)]
-struct MountedDirectory {
-    client_addr: String,
-    directory: file::Path,
-}
-
 pub struct RpcCommand {
     pub context: RequestContext,
     pub arguments: Box<Arguments>,
+}
+
+pub struct ReplyEnvelope {
+    pub result: CommandResult,
+    pub span: Span,
+    pub received_at: Instant,
+    pub dispatched_at: Option<Instant>,
+}
+
+impl ReplyEnvelope {
+    pub fn new(
+        result: CommandResult,
+        span: Span,
+        received_at: Instant,
+        dispatched_at: Option<Instant>,
+    ) -> Self {
+        Self { result, span, received_at, dispatched_at }
+    }
 }
 
 pub enum ReplyPayload {
@@ -392,6 +416,126 @@ impl RpcReply {
 }
 
 pub type CommandResult = io::Result<RpcReply>;
+
+#[derive(Default)]
+struct ExportRegistry {
+    by_directory: BTreeMap<PathBuf, ServerExport>,
+}
+
+impl ExportRegistry {
+    fn insert(&mut self, export: ServerExport) {
+        self.by_directory.insert(export.directory().as_path().to_path_buf(), export);
+    }
+
+    fn find(&self, directory: &file::Path) -> Option<&ServerExport> {
+        self.by_directory.get(directory.as_path())
+    }
+
+    fn snapshot(&self) -> Vec<ServerExport> {
+        self.by_directory.values().cloned().collect()
+    }
+
+    fn export_entries(&self) -> Vec<mount::ExportEntry> {
+        self.by_directory
+            .values()
+            .map(|export| mount::ExportEntry {
+                directory: export.directory().clone(),
+                names: export.allowed_hosts().to_vec(),
+            })
+            .collect()
+    }
+}
+
+#[derive(Default)]
+struct MountRegistry {
+    by_client: BTreeMap<String, BTreeMap<PathBuf, file::Path>>,
+}
+
+impl MountRegistry {
+    fn record(&mut self, client_addr: String, directory: file::Path) {
+        self.by_client
+            .entry(client_addr)
+            .or_default()
+            .insert(directory.as_path().to_path_buf(), directory);
+    }
+
+    fn snapshot(&self) -> Vec<(String, file::Path)> {
+        self.by_client
+            .iter()
+            .flat_map(|(client_addr, directories)| {
+                directories.values().cloned().map(|directory| (client_addr.clone(), directory))
+            })
+            .collect()
+    }
+
+    fn mount_entries(&self) -> Vec<mount::MountEntry> {
+        self.by_client
+            .iter()
+            .flat_map(|(client_addr, directories)| {
+                directories
+                    .values()
+                    .cloned()
+                    .map(|directory| mount::MountEntry { hostname: client_addr.clone(), directory })
+            })
+            .collect()
+    }
+
+    fn remove(&mut self, client_addr: &str, directory: &file::Path) {
+        let should_remove_client = match self.by_client.get_mut(client_addr) {
+            Some(directories) => {
+                directories.remove(directory.as_path());
+                directories.is_empty()
+            }
+            None => false,
+        };
+
+        if should_remove_client {
+            self.by_client.remove(client_addr);
+        }
+    }
+
+    fn remove_client(&mut self, client_addr: &str) {
+        self.by_client.remove(client_addr);
+    }
+}
+
+pub fn request_span(connection: &ConnectionContext, header: RpcCallHeader) -> Span {
+    info_span!(
+        "rpc_request",
+        xid = header.xid,
+        program = header.program,
+        version = header.version,
+        procedure = header.procedure,
+        auth = ?header.auth_flavor,
+        peer = %socket_addr_label(connection.client_addr()),
+        local = %socket_addr_label(connection.local_addr()),
+    )
+}
+
+pub fn rejected_request_span(connection: &ConnectionContext, xid: u32) -> Span {
+    info_span!(
+        "rpc_request",
+        xid,
+        peer = %socket_addr_label(connection.client_addr()),
+        local = %socket_addr_label(connection.local_addr()),
+    )
+}
+
+fn socket_addr_label(socket_addr: Option<SocketAddr>) -> String {
+    socket_addr.map(|addr| addr.to_string()).unwrap_or_else(|| "unknown".to_string())
+}
+
+impl ServerContext {
+    /// Returns active mounts already converted into mount protocol response entries.
+    pub async fn mount_dump_entries(&self) -> Vec<mount::MountEntry> {
+        self.mounts.read().await.mount_entries()
+    }
+
+    /// Returns exports already converted into mount protocol response entries.
+    pub async fn export_entries(&self) -> Vec<mount::ExportEntry> {
+        self.exports.read().await.export_entries()
+    }
+}
 
 pub enum RejectedReply {
     RpcMismatch = 0,

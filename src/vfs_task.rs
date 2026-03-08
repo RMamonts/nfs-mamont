@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io;
+use std::time::Instant;
 
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -8,13 +9,13 @@ use tracing::{debug, info};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{CommandResult, RpcCommand, ServerContext, SharedVfs};
+use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
 pub struct VfsTask {
     command_receiver: Receiver<RpcCommand>,
-    result_sender: Sender<CommandResult>,
+    result_sender: Sender<ReplyEnvelope>,
     server_context: ServerContext,
 }
 
@@ -22,7 +23,7 @@ impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
         command_receiver: Receiver<RpcCommand>,
-        result_sender: Sender<CommandResult>,
+        result_sender: Sender<ReplyEnvelope>,
         server_context: ServerContext,
     ) -> Self {
         Self { command_receiver, result_sender, server_context }
@@ -67,14 +68,34 @@ impl VfsTask {
                             let sequence = next_sequence;
                             next_sequence += 1;
                             let server_context = self.server_context.clone();
+                            let span = command.context.span.clone();
+                            let result_queue_depth = queue_depth(&self.result_sender);
+                            debug!(
+                                parent: &span,
+                                sequence,
+                                result_queue_depth,
+                                queue_wait_micros = command.context.received_at.elapsed().as_micros() as u64,
+                                "queued rpc request for dispatch",
+                            );
                             in_flight.spawn(async move {
                                 let xid = command.context.header.xid;
+                                let received_at = command.context.received_at;
+                                let dispatched_at = Instant::now();
                                 let result = serialize_reply(
                                     xid,
                                     Self::dispatch_with_context(server_context, command).await,
                                 )
                                 .await;
-                                (sequence, result)
+                                debug!(
+                                    parent: &span,
+                                    sequence,
+                                    dispatch_micros = dispatched_at.elapsed().as_micros() as u64,
+                                    "completed rpc dispatch",
+                                );
+                                (
+                                    sequence,
+                                    ReplyEnvelope::new(result, span, received_at, Some(dispatched_at)),
+                                )
                             });
                         }
                         None => receiver_closed = true,
@@ -91,11 +112,18 @@ impl VfsTask {
 
     async fn flush_ready_replies(
         &self,
-        pending: &mut BTreeMap<u64, CommandResult>,
+        pending: &mut BTreeMap<u64, ReplyEnvelope>,
         next_reply_sequence: &mut u64,
     ) {
-        while let Some(result) = pending.remove(next_reply_sequence) {
-            if self.result_sender.send(result).await.is_err() {
+        while let Some(reply) = pending.remove(next_reply_sequence) {
+            debug!(
+                parent: &reply.span,
+                sequence = *next_reply_sequence,
+                writer_queue_depth = queue_depth(&self.result_sender),
+                total_elapsed_micros = reply.received_at.elapsed().as_micros() as u64,
+                "forwarding rpc reply to writer",
+            );
+            if self.result_sender.send(reply).await.is_err() {
                 break;
             }
             *next_reply_sequence += 1;
@@ -107,6 +135,7 @@ impl VfsTask {
         command: RpcCommand,
     ) -> Result<ProcResult, crate::rpc::Error> {
         debug!(
+            parent: &command.context.span,
             command.context.header.program,
             command.context.header.version,
             command.context.header.procedure,
@@ -186,4 +215,8 @@ impl VfsTask {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
     }
+}
+
+fn queue_depth<T>(sender: &Sender<T>) -> usize {
+    sender.max_capacity().saturating_sub(sender.capacity())
 }
