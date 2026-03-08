@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
@@ -206,6 +207,16 @@ impl ServerMetrics {
         }
     }
 
+    /// Encodes the current metrics snapshot in Prometheus text format.
+    pub fn encode_prometheus(&self) -> String {
+        self.snapshot().encode_prometheus()
+    }
+
+    /// Encodes the current metrics snapshot in OpenMetrics text format.
+    pub fn encode_openmetrics(&self) -> String {
+        self.snapshot().encode_openmetrics()
+    }
+
     fn latency_snapshot(
         samples: &AtomicU64,
         total_micros: &AtomicU64,
@@ -288,6 +299,145 @@ impl ServerMetrics {
     pub(crate) fn record_reply_failure(&self) {
         self.reply_failures.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+impl ServerMetricsSnapshot {
+    /// Encodes the snapshot in Prometheus text format.
+    pub fn encode_prometheus(&self) -> String {
+        self.encode_metrics(false)
+    }
+
+    /// Encodes the snapshot in OpenMetrics text format.
+    pub fn encode_openmetrics(&self) -> String {
+        self.encode_metrics(true)
+    }
+
+    fn encode_metrics(&self, openmetrics: bool) -> String {
+        let mut output = String::new();
+
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_received_total",
+            "Requests accepted into the command queue.",
+            self.requests_received,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_rejected_total",
+            "Requests rejected during parsing or reply serialization.",
+            self.requests_rejected,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_requests_dispatched_total",
+            "Requests dispatched to protocol handlers.",
+            self.requests_dispatched,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_replies_sent_total",
+            "Replies successfully written to the client socket.",
+            self.replies_sent,
+        );
+        append_counter(
+            &mut output,
+            "nfs_mamont_reply_failures_total",
+            "Replies dropped before reaching the client socket.",
+            self.reply_failures,
+        );
+
+        append_gauge(
+            &mut output,
+            "nfs_mamont_command_queue_depth",
+            "Current command queue depth.",
+            self.command_queue_depth.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_command_queue_depth_peak",
+            "Peak command queue depth.",
+            self.command_queue_depth.peak,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_result_queue_depth",
+            "Current result queue depth.",
+            self.result_queue_depth.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_result_queue_depth_peak",
+            "Peak result queue depth.",
+            self.result_queue_depth.peak,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_in_flight_requests",
+            "Current number of in-flight requests.",
+            self.in_flight_requests.current,
+        );
+        append_gauge(
+            &mut output,
+            "nfs_mamont_in_flight_requests_peak",
+            "Peak number of in-flight requests.",
+            self.in_flight_requests.peak,
+        );
+
+        append_latency_metrics(&mut output, "queue_wait", &self.queue_wait);
+        append_latency_metrics(&mut output, "dispatch", &self.dispatch);
+        append_latency_metrics(&mut output, "total_latency", &self.total_latency);
+        append_latency_metrics(&mut output, "dispatch_to_write", &self.dispatch_to_write);
+
+        if openmetrics {
+            output.push_str("# EOF\n");
+        }
+
+        output
+    }
+}
+
+fn append_counter(output: &mut String, name: &str, help: &str, value: u64) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} counter");
+    let _ = writeln!(output, "{name} {value}");
+}
+
+fn append_gauge(output: &mut String, name: &str, help: &str, value: usize) {
+    let _ = writeln!(output, "# HELP {name} {help}");
+    let _ = writeln!(output, "# TYPE {name} gauge");
+    let _ = writeln!(output, "{name} {value}");
+}
+
+fn append_latency_metrics(output: &mut String, prefix: &str, latency: &LatencySnapshot) {
+    let samples_total_name = format!("nfs_mamont_{prefix}_samples_total");
+    let micros_total_name = format!("nfs_mamont_{prefix}_micros_total");
+    let average_name = format!("nfs_mamont_{prefix}_average_micros");
+    let max_name = format!("nfs_mamont_{prefix}_max_micros");
+
+    append_counter(
+        output,
+        &samples_total_name,
+        "Number of recorded latency samples.",
+        latency.samples,
+    );
+    append_counter(
+        output,
+        &micros_total_name,
+        "Total observed latency in microseconds.",
+        latency.total_micros,
+    );
+    append_gauge(
+        output,
+        &average_name,
+        "Average observed latency in microseconds.",
+        latency.average_micros as usize,
+    );
+    append_gauge(
+        output,
+        &max_name,
+        "Maximum observed latency in microseconds.",
+        latency.max_micros as usize,
+    );
 }
 
 fn record_latency(
@@ -565,6 +715,22 @@ mod tests {
         assert_eq!(snapshot.dispatch.average_micros, 20);
         assert_eq!(snapshot.total_latency.average_micros, 40);
         assert_eq!(snapshot.dispatch_to_write.average_micros, 15);
+    }
+
+    #[test]
+    fn server_metrics_snapshot_encodes_openmetrics() {
+        let metrics = ServerMetrics::new();
+        metrics.record_request_received(1);
+        metrics.record_dispatch(12, 34);
+        metrics.record_reply_sent(56, 22);
+
+        let text = metrics.encode_openmetrics();
+
+        assert!(text.contains("# TYPE nfs_mamont_requests_received_total counter"));
+        assert!(text.contains("nfs_mamont_requests_received_total 1"));
+        assert!(text.contains("nfs_mamont_dispatch_micros_total 34"));
+        assert!(text.contains("nfs_mamont_total_latency_average_micros 56"));
+        assert!(text.ends_with("# EOF\n"));
     }
 }
 

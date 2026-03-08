@@ -95,11 +95,11 @@ pub fn string(src: &mut impl Read) -> Result<String> {
 }
 
 /// Discards a counted XDR opaque field without allocating a temporary vector.
-// pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
-//     let size = u32_as_usize(src)?;
-//     discard_bytes(src, size)?;
-//     padding(src, size)
-// }
+pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
+    let size = u32_as_usize(src)?;
+    discard_bytes(src, size)?;
+    padding(src, size)
+}
 
 /// Discards a counted XDR opaque field with an explicit maximum size check.
 pub fn discard_opaque_max_size(src: &mut impl Read, max_size: usize) -> Result<()> {

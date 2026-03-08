@@ -3499,11 +3499,14 @@ mod tests;
 /// an NFS server on the specified port.
 #[tokio::main]
 async fn main() {
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_writer(std::io::stderr)
-        // .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
+    // let _ = tracing_subscriber::fmt()
+    //     .with_max_level(tracing::Level::DEBUG)
+    //     .with_writer(std::io::stderr)
+    //     .with_env_filter(
+    //         EnvFilter::try_from_default_env()
+    //             .unwrap_or_else(|_| EnvFilter::new("info,nfs_mamont=debug")),
+    //     )
+    //     .try_init();
 
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
@@ -7698,7 +7701,7 @@ use std::io::Cursor;
 
 use byteorder::{BigEndian, WriteBytesExt};
 
-use crate::parser::primitive::{array, string, string_max_size, vector};
+use crate::parser::primitive::{array, discard_opaque_max_size, string, string_max_size, vector};
 use crate::parser::Error;
 
 #[test]
@@ -7801,6 +7804,25 @@ fn test_read_error() {
     src.write_u32::<BigEndian>(10).unwrap();
     let result = vector(&mut Cursor::new(src));
     assert!(matches!(result, Err(Error::IO(_))));
+}
+
+#[test]
+fn test_discard_opaque_max_size() {
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(5).unwrap();
+    src.extend_from_slice(&[1, 2, 3, 4, 5, 0, 0, 0]);
+
+    let mut cursor = Cursor::new(src);
+    discard_opaque_max_size(&mut cursor, 8).unwrap();
+    assert_eq!(cursor.position() as usize, cursor.get_ref().len());
+}
+
+#[test]
+fn test_discard_opaque_max_size_too_long() {
+    let mut src = Vec::new();
+    src.write_u32::<BigEndian>(9).unwrap();
+    let result = discard_opaque_max_size(&mut Cursor::new(src), 8);
+    assert!(matches!(result, Err(Error::MaxElemLimit)));
 }
 
 </file>
@@ -7986,7 +8008,7 @@ use crate::parser::nfsv3::{
 };
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
-use crate::parser::rpc::{auth, RpcMessage};
+use crate::parser::rpc::{auth_flavor, RpcMessage};
 use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{
     AuthFlavor, AuthStat, ParsedRpcCall, RpcBody, RpcCallHeader, VersionMismatch, RPC_VERSION,
@@ -8162,7 +8184,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
         let auth = self.parse_authentication().await?;
-        self.buffer.parse_with_retry(crate::parser::rpc::auth).await?;
+        self.buffer.parse_with_retry(crate::parser::rpc::auth_flavor).await?;
 
         Ok(RpcMessage { xid, program, procedure, version, auth_flavor: auth.flavor })
     }
@@ -8176,10 +8198,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns parsed opaque authentication metadata if authentication succeeds,
     /// or an error if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<crate::rpc::OpaqueAuth> {
-        let auth = self.buffer.parse_with_retry(auth).await?;
+        let flavor = self.buffer.parse_with_retry(auth_flavor).await?;
 
-        match auth.flavor {
-            AuthFlavor::None | AuthFlavor::Sys => Ok(auth),
+        match flavor {
+            AuthFlavor::None | AuthFlavor::Sys => {
+                Ok(crate::rpc::OpaqueAuth { flavor, body: Vec::new() })
+            }
             _ => Err(Error::AuthError(AuthStat::BadCred)),
         }
     }
@@ -8661,6 +8685,23 @@ pub fn string(src: &mut impl Read) -> Result<String> {
     String::from_utf8(vec).map_err(Error::IncorrectString)
 }
 
+/// Discards a counted XDR opaque field without allocating a temporary vector.
+// pub fn discard_opaque(src: &mut impl Read) -> Result<()> {
+//     let size = u32_as_usize(src)?;
+//     discard_bytes(src, size)?;
+//     padding(src, size)
+// }
+
+/// Discards a counted XDR opaque field with an explicit maximum size check.
+pub fn discard_opaque_max_size(src: &mut impl Read, max_size: usize) -> Result<()> {
+    let size = u32_as_usize(src)?;
+    if size > max_size {
+        return Err(Error::MaxElemLimit);
+    }
+    discard_bytes(src, size)?;
+    padding(src, size)
+}
+
 /// Parses an XDR enum variant from the `Read` source.
 pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
     FromPrimitive::from_u32(u32(src)?).ok_or(Error::EnumDiscMismatch)
@@ -8669,6 +8710,16 @@ pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
 /// Parses a `u32` from the `Read` source and converts it to `usize`.
 pub fn u32_as_usize(src: &mut impl Read) -> Result<usize> {
     u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
+}
+
+fn discard_bytes(src: &mut impl Read, mut size: usize) -> Result<()> {
+    let mut buf = [0u8; 256];
+    while size != 0 {
+        let chunk = size.min(buf.len());
+        src.read_exact(&mut buf[..chunk]).map_err(Error::IO)?;
+        size -= chunk;
+    }
+    Ok(())
 }
 
 </file>
@@ -9044,9 +9095,9 @@ impl Read for ReadBuffer {
 <file path="src/parser/rpc.rs">
 use std::io::Read;
 
-use crate::parser::primitive::{variant, vec_max_size};
+use crate::parser::primitive::{discard_opaque_max_size, variant};
 use crate::parser::Result;
-use crate::rpc::{AuthFlavor, OpaqueAuth, MAX_AUTH_SIZE};
+use crate::rpc::{AuthFlavor, MAX_AUTH_SIZE};
 
 #[derive(Debug, Copy, Clone)]
 pub(super) struct RpcMessage {
@@ -9057,8 +9108,45 @@ pub(super) struct RpcMessage {
     pub(super) auth_flavor: AuthFlavor,
 }
 
-pub fn auth(src: &mut impl Read) -> Result<OpaqueAuth> {
-    Ok(OpaqueAuth { flavor: variant::<AuthFlavor>(src)?, body: vec_max_size(src, MAX_AUTH_SIZE)? })
+pub fn auth_flavor(src: &mut impl Read) -> Result<AuthFlavor> {
+    let flavor = variant::<AuthFlavor>(src)?;
+    discard_opaque_max_size(src, MAX_AUTH_SIZE)?;
+    Ok(flavor)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use byteorder::{BigEndian, WriteBytesExt};
+
+    use super::auth_flavor;
+    use crate::parser::Error;
+    use crate::rpc::AuthFlavor;
+
+    #[test]
+    fn auth_flavor_discards_body_and_padding() {
+        let mut src = Vec::new();
+        src.write_u32::<BigEndian>(AuthFlavor::Sys as u32).unwrap();
+        src.write_u32::<BigEndian>(3).unwrap();
+        src.extend_from_slice(&[1, 2, 3, 0]);
+
+        let mut cursor = Cursor::new(src);
+        let flavor = auth_flavor(&mut cursor).unwrap();
+
+        assert_eq!(flavor, AuthFlavor::Sys);
+        assert_eq!(cursor.position() as usize, cursor.get_ref().len());
+    }
+
+    #[test]
+    fn auth_flavor_rejects_too_large_body() {
+        let mut src = Vec::new();
+        src.write_u32::<BigEndian>(AuthFlavor::None as u32).unwrap();
+        src.write_u32::<BigEndian>((crate::rpc::MAX_AUTH_SIZE + 1) as u32).unwrap();
+
+        let error = auth_flavor(&mut Cursor::new(src)).unwrap_err();
+        assert!(matches!(error, Error::MaxElemLimit));
+    }
 }
 
 </file>
@@ -10666,6 +10754,45 @@ fn serialize_read_reply(xid: u32, ok: vfs::read::Success) -> io::Result<RpcReply
     header[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | fragment_size) as u32).to_be_bytes());
 
     Ok(RpcReply::new(xid, ReplyPayload::Read { header, data: ok.data, padding }))
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::mpsc;
+
+    use super::{serialize_reply, NfsRes, ProcResult};
+    use crate::allocator::Slice;
+    use crate::rpc::ReplyPayload;
+    use crate::vfs;
+
+    #[tokio::test]
+    async fn serialize_reply_streams_successful_read_payload() {
+        let (sender, _receiver) = mpsc::unbounded_channel();
+        let slice = Slice::new(
+            vec![vec![1u8, 2, 3].into_boxed_slice(), vec![4u8, 5].into_boxed_slice()],
+            1..5,
+            sender,
+        );
+        let reply = serialize_reply(
+            7,
+            Ok(ProcResult::Nfs3(NfsRes::Read(Ok(vfs::read::Success {
+                head: vfs::read::SuccessPartial { file_attr: None, count: 4, eof: true },
+                data: slice,
+            })))),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(reply.xid, 7);
+        match reply.payload {
+            ReplyPayload::Read { header, data, padding } => {
+                assert!(header.len() > 4);
+                assert_eq!(data.iter().flatten().copied().collect::<Vec<_>>(), vec![2, 3, 4, 5]);
+                assert_eq!(padding, 0);
+            }
+            ReplyPayload::Buffer(_) => panic!("expected streamed read reply"),
+        }
+    }
 }
 
 </file>
@@ -12529,6 +12656,7 @@ fn process_socket(socket: TcpStream, server_context: ServerContext) {
             ConnectionContext::new(socket.local_addr().ok(), socket.peer_addr().ok());
         let (readhalf, writehalf) = socket.into_split();
         let settings = server_context.settings().clone();
+        let metrics = server_context.metrics();
         // channel for result
         let (result_sender, result_receiver) =
             mpsc::channel::<ReplyEnvelope>(settings.result_queue_size().get());
@@ -12547,7 +12675,7 @@ fn process_socket(socket: TcpStream, server_context: ServerContext) {
 
         let vfs_task = VfsTask::new(command_receiver, result_sender, server_context).spawn();
 
-        let write_task = WriteTask::new(writehalf, result_receiver).spawn();
+        let write_task = WriteTask::new(writehalf, result_receiver, metrics).spawn();
 
         await_connection(write_task, read_task, vfs_task).await;
     });
@@ -12658,6 +12786,7 @@ impl ReadTask {
     }
 
     async fn run(self) -> io::Result<()> {
+        let metrics = self.server_context.metrics();
         let mut parser = RpcParser::with_capacity(
             self.readhalf,
             allocator::Impl::new(
@@ -12677,6 +12806,7 @@ impl ReadTask {
                     return Ok(());
                 }
                 Err(ParseFailure { xid: Some(xid), error }) => {
+                    metrics.record_request_rejected();
                     if is_expected_protocol_rejection(&error) {
                         warn!(xid, error = ?error, "read task rejected request");
                     } else {
@@ -12700,6 +12830,7 @@ impl ReadTask {
                     }
                 }
                 Err(ParseFailure { xid: None, error }) => {
+                    metrics.record_request_rejected();
                     if is_expected_protocol_rejection(&error) {
                         warn!(error = ?error, "read task rejected request without xid");
                     } else {
@@ -12710,7 +12841,7 @@ impl ReadTask {
             };
 
             let command = request.with_connection(self.connection_context.clone());
-            let command_queue_depth = queue_depth(&self.command_sender);
+            let command_queue_depth = queue_depth(&self.command_sender).saturating_add(1);
             debug!(
                 parent: &command.context.span,
                 command_queue_depth,
@@ -12719,6 +12850,7 @@ impl ReadTask {
             if self.command_sender.send(command).await.is_err() {
                 return Ok(());
             }
+            metrics.record_request_received(command_queue_depth);
         }
     }
 }
@@ -12754,6 +12886,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::string::FromUtf8Error;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -12825,6 +12958,249 @@ pub enum AuthFlavor {
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
+}
+
+/// Point-in-time gauge snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GaugeSnapshot {
+    /// Current observed value.
+    pub current: usize,
+    /// Highest observed value.
+    pub peak: usize,
+}
+
+/// Aggregated latency statistics measured in microseconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LatencySnapshot {
+    /// Number of recorded samples.
+    pub samples: u64,
+    /// Sum of all observed latencies.
+    pub total_micros: u64,
+    /// Integer average latency.
+    pub average_micros: u64,
+    /// Maximum observed latency.
+    pub max_micros: u64,
+}
+
+/// Snapshot of exported server metrics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerMetricsSnapshot {
+    /// Requests successfully accepted into the command queue.
+    pub requests_received: u64,
+    /// Requests rejected during parsing or reply serialization.
+    pub requests_rejected: u64,
+    /// Requests dispatched to protocol handlers.
+    pub requests_dispatched: u64,
+    /// Replies successfully written to the client socket.
+    pub replies_sent: u64,
+    /// Replies dropped before reaching the socket.
+    pub reply_failures: u64,
+    /// Command queue occupancy.
+    pub command_queue_depth: GaugeSnapshot,
+    /// Result queue occupancy.
+    pub result_queue_depth: GaugeSnapshot,
+    /// In-flight request occupancy.
+    pub in_flight_requests: GaugeSnapshot,
+    /// Time spent waiting before dispatch.
+    pub queue_wait: LatencySnapshot,
+    /// Time spent inside dispatch and serialization.
+    pub dispatch: LatencySnapshot,
+    /// End-to-end time from request acceptance to successful write.
+    pub total_latency: LatencySnapshot,
+    /// Time spent between dispatch completion and socket write completion.
+    pub dispatch_to_write: LatencySnapshot,
+}
+
+/// Shared server metrics backend backed by atomics.
+#[derive(Debug, Default)]
+pub struct ServerMetrics {
+    requests_received: AtomicU64,
+    requests_rejected: AtomicU64,
+    requests_dispatched: AtomicU64,
+    replies_sent: AtomicU64,
+    reply_failures: AtomicU64,
+    command_queue_current: AtomicUsize,
+    command_queue_peak: AtomicUsize,
+    result_queue_current: AtomicUsize,
+    result_queue_peak: AtomicUsize,
+    in_flight_current: AtomicUsize,
+    in_flight_peak: AtomicUsize,
+    queue_wait_samples: AtomicU64,
+    queue_wait_total_micros: AtomicU64,
+    queue_wait_max_micros: AtomicU64,
+    dispatch_samples: AtomicU64,
+    dispatch_total_micros: AtomicU64,
+    dispatch_max_micros: AtomicU64,
+    total_latency_samples: AtomicU64,
+    total_latency_total_micros: AtomicU64,
+    total_latency_max_micros: AtomicU64,
+    dispatch_to_write_samples: AtomicU64,
+    dispatch_to_write_total_micros: AtomicU64,
+    dispatch_to_write_max_micros: AtomicU64,
+}
+
+impl ServerMetrics {
+    /// Creates a new metrics backend.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns an atomic snapshot of all exported metrics.
+    pub fn snapshot(&self) -> ServerMetricsSnapshot {
+        ServerMetricsSnapshot {
+            requests_received: self.requests_received.load(Ordering::Relaxed),
+            requests_rejected: self.requests_rejected.load(Ordering::Relaxed),
+            requests_dispatched: self.requests_dispatched.load(Ordering::Relaxed),
+            replies_sent: self.replies_sent.load(Ordering::Relaxed),
+            reply_failures: self.reply_failures.load(Ordering::Relaxed),
+            command_queue_depth: GaugeSnapshot {
+                current: self.command_queue_current.load(Ordering::Relaxed),
+                peak: self.command_queue_peak.load(Ordering::Relaxed),
+            },
+            result_queue_depth: GaugeSnapshot {
+                current: self.result_queue_current.load(Ordering::Relaxed),
+                peak: self.result_queue_peak.load(Ordering::Relaxed),
+            },
+            in_flight_requests: GaugeSnapshot {
+                current: self.in_flight_current.load(Ordering::Relaxed),
+                peak: self.in_flight_peak.load(Ordering::Relaxed),
+            },
+            queue_wait: Self::latency_snapshot(
+                &self.queue_wait_samples,
+                &self.queue_wait_total_micros,
+                &self.queue_wait_max_micros,
+            ),
+            dispatch: Self::latency_snapshot(
+                &self.dispatch_samples,
+                &self.dispatch_total_micros,
+                &self.dispatch_max_micros,
+            ),
+            total_latency: Self::latency_snapshot(
+                &self.total_latency_samples,
+                &self.total_latency_total_micros,
+                &self.total_latency_max_micros,
+            ),
+            dispatch_to_write: Self::latency_snapshot(
+                &self.dispatch_to_write_samples,
+                &self.dispatch_to_write_total_micros,
+                &self.dispatch_to_write_max_micros,
+            ),
+        }
+    }
+
+    fn latency_snapshot(
+        samples: &AtomicU64,
+        total_micros: &AtomicU64,
+        max_micros: &AtomicU64,
+    ) -> LatencySnapshot {
+        let samples = samples.load(Ordering::Relaxed);
+        let total_micros = total_micros.load(Ordering::Relaxed);
+        LatencySnapshot {
+            samples,
+            total_micros,
+            average_micros: if samples == 0 { 0 } else { total_micros / samples },
+            max_micros: max_micros.load(Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn record_request_received(&self, command_queue_depth: usize) {
+        self.requests_received.fetch_add(1, Ordering::Relaxed);
+        self.observe_command_queue_depth(command_queue_depth);
+    }
+
+    pub(crate) fn record_request_rejected(&self) {
+        self.requests_rejected.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn observe_command_queue_depth(&self, depth: usize) {
+        self.command_queue_current.store(depth, Ordering::Relaxed);
+        update_peak_usize(&self.command_queue_peak, depth);
+    }
+
+    pub(crate) fn observe_result_queue_depth(&self, depth: usize) {
+        self.result_queue_current.store(depth, Ordering::Relaxed);
+        update_peak_usize(&self.result_queue_peak, depth);
+    }
+
+    pub(crate) fn start_in_flight_request(&self) {
+        let in_flight = self.in_flight_current.fetch_add(1, Ordering::Relaxed) + 1;
+        update_peak_usize(&self.in_flight_peak, in_flight);
+    }
+
+    pub(crate) fn finish_in_flight_request(&self) {
+        self.in_flight_current.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_dispatch(&self, queue_wait_micros: u64, dispatch_micros: u64) {
+        self.requests_dispatched.fetch_add(1, Ordering::Relaxed);
+        record_latency(
+            &self.queue_wait_samples,
+            &self.queue_wait_total_micros,
+            &self.queue_wait_max_micros,
+            queue_wait_micros,
+        );
+        record_latency(
+            &self.dispatch_samples,
+            &self.dispatch_total_micros,
+            &self.dispatch_max_micros,
+            dispatch_micros,
+        );
+    }
+
+    pub(crate) fn record_reply_sent(
+        &self,
+        total_latency_micros: u64,
+        dispatch_to_write_micros: u64,
+    ) {
+        self.replies_sent.fetch_add(1, Ordering::Relaxed);
+        record_latency(
+            &self.total_latency_samples,
+            &self.total_latency_total_micros,
+            &self.total_latency_max_micros,
+            total_latency_micros,
+        );
+        record_latency(
+            &self.dispatch_to_write_samples,
+            &self.dispatch_to_write_total_micros,
+            &self.dispatch_to_write_max_micros,
+            dispatch_to_write_micros,
+        );
+    }
+
+    pub(crate) fn record_reply_failure(&self) {
+        self.reply_failures.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn record_latency(
+    samples: &AtomicU64,
+    total_micros: &AtomicU64,
+    max_micros: &AtomicU64,
+    value: u64,
+) {
+    samples.fetch_add(1, Ordering::Relaxed);
+    total_micros.fetch_add(value, Ordering::Relaxed);
+    update_peak_u64(max_micros, value);
+}
+
+fn update_peak_usize(peak: &AtomicUsize, value: usize) {
+    let mut current = peak.load(Ordering::Relaxed);
+    while value > current {
+        match peak.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+fn update_peak_u64(peak: &AtomicU64, value: u64) {
+    let mut current = peak.load(Ordering::Relaxed);
+    while value > current {
+        match peak.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 pub type SharedVfs = Arc<dyn vfs::Vfs + Send + Sync + 'static>;
@@ -12944,6 +13320,7 @@ pub struct ServerContext {
     backend: Option<SharedVfs>,
     exports: Arc<RwLock<ExportRegistry>>,
     mounts: Arc<RwLock<MountRegistry>>,
+    metrics: Arc<ServerMetrics>,
 }
 
 impl Default for ServerContext {
@@ -12953,6 +13330,7 @@ impl Default for ServerContext {
             backend: None,
             exports: Arc::new(RwLock::new(ExportRegistry::default())),
             mounts: Arc::new(RwLock::new(MountRegistry::default())),
+            metrics: Arc::new(ServerMetrics::default()),
         }
     }
 }
@@ -12981,6 +13359,11 @@ impl ServerContext {
     /// Returns the configured backend, if any.
     pub fn backend(&self) -> Option<&SharedVfs> {
         self.backend.as_ref()
+    }
+
+    /// Returns the shared metrics backend.
+    pub fn metrics(&self) -> Arc<ServerMetrics> {
+        Arc::clone(&self.metrics)
     }
 
     /// Registers an exported directory.
@@ -13021,7 +13404,7 @@ impl ServerContext {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerSettings;
+    use super::{ServerMetrics, ServerSettings};
 
     #[test]
     fn server_settings_allow_queue_configuration() {
@@ -13033,6 +13416,37 @@ mod tests {
         assert_eq!(settings.command_queue_size().get(), 8);
         assert_eq!(settings.result_queue_size().get(), 16);
         assert_eq!(settings.max_in_flight_requests().get(), 4);
+    }
+
+    #[test]
+    fn server_metrics_snapshot_exposes_aggregates() {
+        let metrics = ServerMetrics::new();
+
+        metrics.record_request_received(3);
+        metrics.record_request_rejected();
+        metrics.observe_result_queue_depth(2);
+        metrics.start_in_flight_request();
+        metrics.record_dispatch(10, 20);
+        metrics.record_reply_sent(40, 15);
+        metrics.record_reply_failure();
+        metrics.finish_in_flight_request();
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.requests_received, 1);
+        assert_eq!(snapshot.requests_rejected, 1);
+        assert_eq!(snapshot.requests_dispatched, 1);
+        assert_eq!(snapshot.replies_sent, 1);
+        assert_eq!(snapshot.reply_failures, 1);
+        assert_eq!(snapshot.command_queue_depth.current, 3);
+        assert_eq!(snapshot.command_queue_depth.peak, 3);
+        assert_eq!(snapshot.result_queue_depth.current, 2);
+        assert_eq!(snapshot.result_queue_depth.peak, 2);
+        assert_eq!(snapshot.in_flight_requests.current, 0);
+        assert_eq!(snapshot.in_flight_requests.peak, 1);
+        assert_eq!(snapshot.queue_wait.average_micros, 10);
+        assert_eq!(snapshot.dispatch.average_micros, 20);
+        assert_eq!(snapshot.total_latency.average_micros, 40);
+        assert_eq!(snapshot.dispatch_to_write.average_micros, 15);
     }
 }
 
@@ -13335,6 +13749,7 @@ pub enum Error {
 <file path="src/vfs_task.rs">
 use std::collections::BTreeMap;
 use std::io;
+use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -13344,7 +13759,7 @@ use tracing::{debug, info};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, SharedVfs};
+use crate::rpc::{ReplyEnvelope, RpcCommand, ServerContext, ServerMetrics, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
@@ -13374,6 +13789,7 @@ impl VfsTask {
     }
 
     async fn run(mut self) {
+        let metrics = self.server_context.metrics();
         let max_in_flight = self.server_context.settings().max_in_flight_requests().get();
         let mut receiver_closed = false;
         let mut next_sequence = 0_u64;
@@ -13405,6 +13821,7 @@ impl VfsTask {
                             let server_context = self.server_context.clone();
                             let span = command.context.span.clone();
                             let result_queue_depth = queue_depth(&self.result_sender);
+                            let metrics = Arc::clone(&metrics);
                             debug!(
                                 parent: &span,
                                 sequence,
@@ -13413,18 +13830,22 @@ impl VfsTask {
                                 "queued rpc request for dispatch",
                             );
                             in_flight.spawn(async move {
+                                let _in_flight = InFlightGuard::new(Arc::clone(&metrics));
                                 let xid = command.context.header.xid;
                                 let received_at = command.context.received_at;
+                                let queue_wait_micros = received_at.elapsed().as_micros() as u64;
                                 let dispatched_at = Instant::now();
                                 let result = serialize_reply(
                                     xid,
                                     Self::dispatch_with_context(server_context, command).await,
                                 )
                                 .await;
+                                let dispatch_micros = dispatched_at.elapsed().as_micros() as u64;
+                                metrics.record_dispatch(queue_wait_micros, dispatch_micros);
                                 debug!(
                                     parent: &span,
                                     sequence,
-                                    dispatch_micros = dispatched_at.elapsed().as_micros() as u64,
+                                    dispatch_micros,
                                     "completed rpc dispatch",
                                 );
                                 (
@@ -13450,11 +13871,14 @@ impl VfsTask {
         pending: &mut BTreeMap<u64, ReplyEnvelope>,
         next_reply_sequence: &mut u64,
     ) {
+        let metrics = self.server_context.metrics();
         while let Some(reply) = pending.remove(next_reply_sequence) {
+            let writer_queue_depth = queue_depth(&self.result_sender).saturating_add(1);
+            metrics.observe_result_queue_depth(writer_queue_depth);
             debug!(
                 parent: &reply.span,
                 sequence = *next_reply_sequence,
-                writer_queue_depth = queue_depth(&self.result_sender),
+                writer_queue_depth,
                 total_elapsed_micros = reply.received_at.elapsed().as_micros() as u64,
                 "forwarding rpc reply to writer",
             );
@@ -13556,26 +13980,50 @@ fn queue_depth<T>(sender: &Sender<T>) -> usize {
     sender.max_capacity().saturating_sub(sender.capacity())
 }
 
+struct InFlightGuard {
+    metrics: Arc<ServerMetrics>,
+}
+
+impl InFlightGuard {
+    fn new(metrics: Arc<ServerMetrics>) -> Self {
+        metrics.start_in_flight_request();
+        Self { metrics }
+    }
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.metrics.finish_in_flight_request();
+    }
+}
+
 </file>
 <file path="src/write_task.rs">
+use std::sync::Arc;
+
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use crate::rpc::{ReplyEnvelope, ReplyPayload};
+use crate::rpc::{ReplyEnvelope, ReplyPayload, ServerMetrics};
 
 /// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
     result_receiver: Receiver<ReplyEnvelope>,
+    metrics: Arc<ServerMetrics>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: Receiver<ReplyEnvelope>) -> Self {
-        Self { writehalf, result_receiver }
+    pub fn new(
+        writehalf: OwnedWriteHalf,
+        result_receiver: Receiver<ReplyEnvelope>,
+        metrics: Arc<ServerMetrics>,
+    ) -> Self {
+        Self { writehalf, result_receiver, metrics }
     }
 
     /// Spawns a [`WriteTask`]  that writes command results to a socket.
@@ -13596,6 +14044,7 @@ impl WriteTask {
             let reply = match result {
                 Ok(reply) => reply,
                 Err(error) => {
+                    self.metrics.record_reply_failure();
                     warn!(parent: &span, error = %error, "write task dropped failed reply envelope");
                     continue;
                 }
@@ -13604,16 +14053,19 @@ impl WriteTask {
             match reply.payload {
                 ReplyPayload::Buffer(payload) => {
                     if payload.is_empty() {
+                        self.metrics.record_reply_failure();
                         warn!(parent: &span, xid = reply.xid, "write task skipped empty payload");
                         continue;
                     }
                     if self.writehalf.write_all(&payload).await.is_err() {
+                        self.metrics.record_reply_failure();
                         warn!(parent: &span, xid = reply.xid, "write task socket write failed");
                         break;
                     }
                 }
                 ReplyPayload::Read { header, data, padding } => {
                     if self.writehalf.write_all(&header).await.is_err() {
+                        self.metrics.record_reply_failure();
                         warn!(parent: &span, xid = reply.xid, "write task socket header write failed");
                         break;
                     }
@@ -13625,12 +14077,14 @@ impl WriteTask {
                         }
                     }
                     if failed {
+                        self.metrics.record_reply_failure();
                         warn!(parent: &span, xid = reply.xid, "write task read-payload write failed");
                         break;
                     }
                     if padding != 0 {
                         let zeros = [0u8; 4];
                         if self.writehalf.write_all(&zeros[..padding]).await.is_err() {
+                            self.metrics.record_reply_failure();
                             warn!(parent: &span, xid = reply.xid, "write task socket padding write failed");
                             break;
                         }
@@ -13638,13 +14092,17 @@ impl WriteTask {
                 }
             }
 
+            let total_latency_micros = received_at.elapsed().as_micros() as u64;
+            let dispatch_to_write_micros = dispatched_at
+                .map(|instant| instant.elapsed().as_micros() as u64)
+                .unwrap_or_default();
+            self.metrics.record_reply_sent(total_latency_micros, dispatch_to_write_micros);
+
             debug!(
                 parent: &span,
                 xid = reply.xid,
-                total_latency_micros = received_at.elapsed().as_micros() as u64,
-                dispatch_to_write_micros = dispatched_at
-                    .map(|instant| instant.elapsed().as_micros() as u64)
-                    .unwrap_or_default(),
+                total_latency_micros,
+                dispatch_to_write_micros,
                 "write task sent reply",
             );
         }

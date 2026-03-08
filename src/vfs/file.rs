@@ -1,6 +1,11 @@
 use std::io;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+use std::ffi::OsString;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
@@ -43,6 +48,19 @@ impl Name {
         Ok(Name(name))
     }
 
+    /// Creates a new [`Name`] from UTF-8 bytes after validating its contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes are not valid UTF-8 or the decoded name
+    /// violates [`MAX_NAME_LEN`] or content constraints.
+    pub fn from_utf8(bytes: Vec<u8>) -> io::Result<Self> {
+        let name = String::from_utf8(bytes).map_err(|error| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 name: {error}"))
+        })?;
+        Self::new(name)
+    }
+
     /// Consumes the wrapper and returns the inner [`String`].
     pub fn into_inner(self) -> String {
         self.0
@@ -76,6 +94,37 @@ impl Path {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
         }
         Ok(Path(PathBuf::from(path)))
+    }
+
+    /// Creates a new [`Path`] from UTF-8 bytes after validating its contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes are not valid UTF-8 or the decoded path
+    /// violates [`MAX_PATH_LEN`] or emptiness constraints.
+    pub fn from_utf8(bytes: Vec<u8>) -> io::Result<Self> {
+        if bytes.len() > MAX_PATH_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path too long"));
+        }
+        if bytes.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
+        }
+
+        #[cfg(unix)]
+        {
+            std::str::from_utf8(&bytes).map_err(|error| {
+                io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 path: {error}"))
+            })?;
+            Ok(Path(PathBuf::from(OsString::from_vec(bytes))))
+        }
+
+        #[cfg(not(unix))]
+        {
+            let path = String::from_utf8(bytes).map_err(|error| {
+                io::Error::new(io::ErrorKind::InvalidData, format!("invalid UTF-8 path: {error}"))
+            })?;
+            Ok(Path(PathBuf::from(path)))
+        }
     }
 
     /// Consumes the wrapper and returns the inner [`PathBuf`].
@@ -219,6 +268,19 @@ mod tests {
         let name = Name::new(input);
         assert!(name.is_err());
     }
+
+    #[test]
+    fn name_from_utf8_accepts_valid_input() {
+        let name = Name::from_utf8(b"valid".to_vec()).unwrap();
+        assert_eq!(name.as_str(), "valid");
+    }
+
+    #[test]
+    fn path_from_utf8_accepts_valid_input() {
+        let path = Path::from_utf8(b"/tmp/file".to_vec()).unwrap();
+        assert_eq!(path.as_path(), std::path::Path::new("/tmp/file"));
+    }
+
     #[test]
     fn name_new_rejects_too_long() {
         let input = "a".repeat(MAX_NAME_LEN + 1);
