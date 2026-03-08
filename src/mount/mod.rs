@@ -5,8 +5,11 @@ pub mod dump;
 pub mod export;
 pub mod mnt;
 pub mod null;
+mod service;
 pub mod umnt;
 pub mod umntall;
+
+pub(crate) use service::{MountRequest, MountService};
 
 use crate::vfs::file;
 
@@ -41,18 +44,3 @@ pub struct ExportEntry {
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
 }
-
-/// Composed trait for all MOUNT protocol procedures.
-pub trait MountOps:
-    null::Null + mnt::Mnt + dump::Dump + umnt::Umnt + umntall::Umntall + export::Export
-{
-}
-
-/// Composed trait for all MOUNT protocol procedure callbacks.
-pub trait MountPromises:
-    null::Promise + mnt::Promise + dump::Promise + umnt::Promise + umntall::Promise + export::Promise
-{
-}
-
-/// MOUNT v3 procedures trait.
-pub trait Mount: MountOps + MountPromises {}

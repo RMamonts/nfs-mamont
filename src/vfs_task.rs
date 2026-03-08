@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::mount;
 use crate::parser::Arguments;
-use crate::rpc::{CommandResult, ConnectionContext, RpcCommand, ServerContext, SharedVfs};
+use crate::rpc::{CommandResult, RpcCommand, ServerContext, SharedVfs};
 use crate::serializer::{serialize_reply, MountRes, NfsRes, ProcResult};
 
 /// Process RPC commands, sends operation results to [`crate::write_task::WriteTask`].
@@ -65,23 +65,13 @@ impl VfsTask {
     async fn dispatch_non_null(
         &self,
         arguments: Arguments,
-        connection: &ConnectionContext,
+        connection: &crate::rpc::ConnectionContext,
     ) -> Result<ProcResult, crate::rpc::Error> {
-        match arguments {
-            Arguments::Mount(args) => {
-                Ok(ProcResult::Mount(MountRes::Mount(self.mount(args, connection).await)))
+        match mount::MountRequest::try_from(arguments) {
+            Ok(request) => {
+                mount::MountService::new(connection, &self.server_context).dispatch(request).await
             }
-            Arguments::Dump => Ok(ProcResult::Mount(MountRes::Dump(self.dump_mounts().await))),
-            Arguments::Unmount(args) => {
-                self.unmount(args, connection).await;
-                Ok(ProcResult::Mount(MountRes::Unmount))
-            }
-            Arguments::UnmountAll => {
-                self.unmount_all(connection).await;
-                Ok(ProcResult::Mount(MountRes::UnmountAll))
-            }
-            Arguments::Export => Ok(ProcResult::Mount(MountRes::Export(self.export_list().await))),
-            other => self.dispatch_nfs(other).await,
+            Err(other) => self.dispatch_nfs(other).await,
         }
     }
 
@@ -122,117 +112,5 @@ impl VfsTask {
         self.server_context.backend.as_ref().ok_or_else(|| {
             crate::rpc::Error::IO(io::Error::other("server backend is not configured"))
         })
-    }
-
-    async fn mount(
-        &self,
-        args: mount::mnt::MountArgs,
-        connection: &ConnectionContext,
-    ) -> mount::mnt::Result {
-        let Some(export) = self.find_export(&args.0, connection).await else {
-            return Err(mount::mnt::MntError::Access);
-        };
-
-        let backend = match self.backend() {
-            Ok(backend) => backend,
-            Err(_) => return Err(mount::mnt::MntError::ServerFault),
-        };
-
-        let file_handle = backend.root_handle().await;
-        let client_addr = connection
-            .client_addr
-            .map(|addr| addr.ip().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.push(crate::rpc::ServerMount { client_addr, directory: export.directory.clone() });
-
-        Ok(mount::mnt::Success {
-            file_handle,
-            auth_flavors: vec![crate::rpc::AuthFlavor::Sys, crate::rpc::AuthFlavor::None],
-        })
-    }
-
-    async fn find_export(
-        &self,
-        requested: &crate::vfs::file::Path,
-        connection: &ConnectionContext,
-    ) -> Option<crate::rpc::ServerExport> {
-        let exports = self.server_context.exports.read().await;
-        exports
-            .iter()
-            .find(|export| {
-                export.directory.as_path() == requested.as_path()
-                    && self.client_allowed(&export.allowed_hosts, connection)
-            })
-            .cloned()
-    }
-
-    fn client_allowed(&self, allowed_hosts: &[String], connection: &ConnectionContext) -> bool {
-        if allowed_hosts.is_empty() {
-            return true;
-        }
-
-        let Some(client_addr) = connection.client_addr else {
-            return false;
-        };
-        let ip = client_addr.ip();
-        let ip_text = ip.to_string();
-        let socket_text = client_addr.to_string();
-
-        allowed_hosts.iter().any(|allowed| {
-            allowed == "*"
-                || allowed == &ip_text
-                || allowed == &socket_text
-                || (allowed == "localhost" && ip.is_loopback())
-        })
-    }
-
-    async fn dump_mounts(&self) -> mount::dump::Success {
-        let mounts = self.server_context.mounts.read().await;
-        let mount_list = mounts
-            .iter()
-            .cloned()
-            .map(|mount| mount::MountEntry {
-                hostname: mount.client_addr,
-                directory: mount.directory,
-            })
-            .collect();
-
-        mount::dump::Success { mount_list }
-    }
-
-    async fn export_list(&self) -> mount::export::Success {
-        let exports = self.server_context.exports.read().await;
-        let exports = exports
-            .iter()
-            .cloned()
-            .map(|export| mount::ExportEntry {
-                directory: export.directory,
-                names: export.allowed_hosts,
-            })
-            .collect();
-
-        mount::export::Success { exports }
-    }
-
-    async fn unmount(&self, args: mount::umnt::UnmountArgs, connection: &ConnectionContext) {
-        let Some(client_addr) = connection.client_addr.map(|addr| addr.ip().to_string()) else {
-            return;
-        };
-
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.retain(|mount| {
-            !(mount.client_addr == client_addr && mount.directory.as_path() == args.0.as_path())
-        });
-    }
-
-    async fn unmount_all(&self, connection: &ConnectionContext) {
-        let Some(client_addr) = connection.client_addr.map(|addr| addr.ip().to_string()) else {
-            return;
-        };
-
-        let mut mounts = self.server_context.mounts.write().await;
-        mounts.retain(|mount| mount.client_addr != client_addr);
     }
 }
