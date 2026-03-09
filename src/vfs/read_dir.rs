@@ -71,14 +71,6 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`ReadDir::read_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`ReadDir::read_dir`] arguments.
 pub struct Args {
     /// The file handle for the directory to be read.
@@ -107,5 +99,5 @@ pub trait ReadDir {
     /// The [`Args::count`] specified by the client in the request should be greater than or equal to
     /// the server's preferred [`ReadDir`] transfer size from
     /// [`super::fs_info::Success::read_dir_pref`].
-    async fn read_dir(&self, args: Args, promise: impl Promise);
+    async fn read_dir(&self, args: Args) -> Result<Success, Fail>;
 }
