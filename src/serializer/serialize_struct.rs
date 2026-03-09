@@ -371,7 +371,9 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
         u32(&mut self.buf, slice_size as u32)?;
         let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len() + slice_size - HEADER_SIZE + padding)?;
+        self.append_fragment_size(
+            self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding,
+        )?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
