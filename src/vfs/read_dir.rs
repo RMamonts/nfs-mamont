@@ -47,14 +47,31 @@ impl Cookie {
 pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
+    /// Creates a new `CookieVerifier` instance.
+    ///
+    /// ### Arguments
+    /// * `val` - An 8-byte array used to verify the cookie's 
+    ///   validity across multiple `READDIR` requests.
+    ///
+    /// ### Returns
+    /// * A `CookieVerifier` wrapping the byte array.
     pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
         Self(val)
     }
 
+    /// Retrieves the raw byte array of the verifier.
+    ///
+    /// ### Returns
+    /// * The internal `[u8; 8]` array.
     pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
         self.0
     }
 
+    /// Checks if the verifier is the initial zero value.
+    ///
+    /// ### Returns
+    /// * `true` if the array is all zeros. In the first `READDIR` request, the 
+    ///   verifier must be set to 0.
     pub fn is_zero(self) -> bool {
         self.0 == [0; NFS3_COOKIEVERFSIZE]
     }
