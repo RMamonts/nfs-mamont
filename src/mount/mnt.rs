@@ -1,9 +1,8 @@
-//! Defines Mount version 3 [`Mnt`] interface (Procedure 1).
+//! Defines Mount version 3 Mnt interface (Procedure 1).
 //!
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
-use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::rpc::AuthFlavor;
@@ -44,25 +43,7 @@ pub struct Success {
 
 pub type Result = std::result::Result<Success, MntError>;
 
-/// Defines callback to pass [`Mnt::mnt`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(result: Result);
-}
-
 /// Arguments for the Mount operation, containing the path to be mounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
 pub struct MountArgs(pub file::Path);
-
-#[async_trait]
-pub trait Mnt {
-    /// Maps a pathname on the server to a NFS version 3 protocol file handle.
-    ///
-    /// # Parameters:
-    /// * `dirpath` --- a server pathname of a directory.
-    ///
-    /// This procedure also results in the server adding a new entry
-    /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&self, dirpath: file::Path, promise: impl Promise);
-}
