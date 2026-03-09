@@ -34,7 +34,6 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 }
 
 /// Enumerates the different types of arguments that can be parsed.
-#[allow(dead_code)]
 pub enum Arguments {
     // NFSv3
     /// Null operation arguments.
