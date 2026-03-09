@@ -321,7 +321,9 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
 impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
-        WriteBuffer { socket, buf: Vec::with_capacity(capacity) }
+        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
+        buffer.clean();
+        buffer
     }
 
     /// Resets the internal write cursor to the start of the buffer.
