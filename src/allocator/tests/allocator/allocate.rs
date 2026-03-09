@@ -111,3 +111,14 @@ async fn reclaiming() {
         assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 }
+
+#[tokio::test]
+async fn allocate_more_than_capacity_returns_none() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+
+    let mut allocator = Impl::new(SIZE, COUNT);
+    let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
+
+    assert!(allocator.allocate(requested).await.is_none());
+}
