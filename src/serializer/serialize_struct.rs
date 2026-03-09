@@ -97,7 +97,7 @@ pub enum MountRes {
 }
 
 /// Tagged union of top-level RPC program results supported by this server.
-#[allow(dead_code, clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant)]
 pub enum ProcResult {
     Nfs3(NfsRes),
     Mount(MountRes),
@@ -150,9 +150,10 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 //special case because of Slice
                 NfsRes::Read(res) => match res {
                     Ok(ok) => {
+                        let count = ok.head.count as usize;
                         usize_as_u32(&mut self.buffer, STATUS_OK)?;
                         read::result_ok_part(&mut self.buffer, ok.head)?;
-                        self.buffer.send_inner_with_slice(ok.data).await
+                        self.buffer.send_inner_with_slice(ok.data, count).await
                     }
                     Err(err) => {
                         error(&mut self.buffer, err.error)?;
@@ -244,54 +245,56 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 u32(&mut self.buffer, AcceptStat::Success as u32)?;
                 self.process_result(proc).await
             }
-            Err(err) => match err {
-                Error::IncorrectPadding
-                | Error::ImpossibleTypeCast
-                | Error::BadFileHandle
-                | Error::MessageTypeMismatch
-                | Error::EnumDiscMismatch
-                | Error::MaxElemLimit
-                | Error::IncorrectString(_) => {
-                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                    auth(&mut self.buffer, reply.verf)?;
-                    // or maybe system error?
-                    u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)
+            Err(err) => {
+                match err {
+                    Error::IncorrectPadding
+                    | Error::ImpossibleTypeCast
+                    | Error::BadFileHandle
+                    | Error::MessageTypeMismatch
+                    | Error::EnumDiscMismatch
+                    | Error::MaxElemLimit
+                    | Error::IncorrectString(_) => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, reply.verf)?;
+                        // or maybe system error?
+                        u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
+                    }
+                    Error::RpcVersionMismatch(vers) => {
+                        u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
+                        u32(&mut self.buffer, RejectedReply::RpcMismatch as u32)?;
+                        u32(&mut self.buffer, vers.low)?;
+                        u32(&mut self.buffer, vers.high)?;
+                    }
+                    Error::AuthError(stat) => {
+                        u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
+                        u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
+                        u32(&mut self.buffer, stat as u32)?;
+                    }
+                    Error::ProgramMismatch => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, reply.verf)?;
+                        u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
+                    }
+                    Error::ProcedureMismatch => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, reply.verf)?;
+                        u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
+                    }
+                    Error::ProgramVersionMismatch(info) => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, reply.verf)?;
+                        u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
+                        u32(&mut self.buffer, info.low)?;
+                        u32(&mut self.buffer, info.high)?;
+                    }
+                    Error::IO(_) => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, reply.verf)?;
+                        u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
+                    }
                 }
-                Error::RpcVersionMismatch(vers) => {
-                    u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
-                    u32(&mut self.buffer, RejectedReply::RpcMismatch as u32)?;
-                    u32(&mut self.buffer, vers.low)?;
-                    u32(&mut self.buffer, vers.high)
-                }
-                Error::AuthError(stat) => {
-                    u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
-                    u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
-                    u32(&mut self.buffer, stat as u32)
-                }
-                Error::ProgramMismatch => {
-                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                    auth(&mut self.buffer, reply.verf)?;
-                    u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)
-                }
-                Error::ProcedureMismatch => {
-                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                    auth(&mut self.buffer, reply.verf)?;
-                    u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)
-                }
-                Error::ProgramVersionMismatch(info) => {
-                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                    auth(&mut self.buffer, reply.verf)?;
-                    u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
-                    u32(&mut self.buffer, info.low)?;
-                    u32(&mut self.buffer, info.high)
-                }
-                Error::IO(_) => {
-                    u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                    auth(&mut self.buffer, reply.verf)?;
-                    // or maybe system error?
-                    u32(&mut self.buffer, AcceptStat::SystemErr as u32)
-                }
-            },
+                self.buffer.send_inner_buffer().await
+            }
         }
     }
 }
@@ -318,7 +321,7 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
 impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
-        WriteBuffer { socket, buf: vec![0u8; capacity] }
+        WriteBuffer { socket, buf: Vec::with_capacity(capacity) }
     }
 
     /// Resets the internal write cursor to the start of the buffer.
@@ -347,17 +350,26 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len())?;
+        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice) -> io::Result<()> {
+    async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
         let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
-        // buffer size + slice size + 4 to write size of slice
-        self.append_fragment_size(self.buf.len() + slice_size + 4)?;
+
+        if slice_size != count {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Slice count does not match with it's actual size",
+            ));
+        }
+
+        u32(&mut self.buf, slice_size as u32)?;
+        let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
+        self.append_fragment_size(self.buf.len() + slice_size - HEADER_SIZE + padding)?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
@@ -366,10 +378,8 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         }
 
         // write padding directly to socket
-        let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
         let slice = [0u8; ALIGNMENT];
         self.socket.write_all(&slice[..padding]).await?;
-
         self.clean();
         Ok(())
     }
