@@ -7,7 +7,6 @@ pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
 
-#[allow(dead_code)]
 #[derive(ToPrimitive, FromPrimitive)]
 pub enum AcceptStat {
     Success = 0,
@@ -37,14 +36,12 @@ pub enum AuthStat {
     RpcSecGssCtxProblem = 14,
 }
 
-#[allow(dead_code)]
 #[derive(ToPrimitive, FromPrimitive)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
 
-#[allow(dead_code)]
 pub enum ReplyBody {
     MsgAccepted = 0,
     MsgDenied = 1,
@@ -60,13 +57,11 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-#[allow(dead_code)]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
 }
 
-#[allow(dead_code)]
 pub enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,

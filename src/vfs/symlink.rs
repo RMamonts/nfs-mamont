@@ -24,14 +24,6 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Symlink::symlink`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Symlink::symlink`] arguments.
 pub struct Args {
     /// The location of the symbolic link to be created.
@@ -52,5 +44,5 @@ pub trait Symlink {
     /// created in a single atomic operation. That is, once the symbolic link is visible,
     /// there must not be a window where a [`super::read_link::ReadLink::read_link`] would fail or
     /// return incorrect data.
-    async fn symlink(&self, args: Args, promise: impl Promise);
+    async fn symlink(&self, args: Args) -> Result<Success, Fail>;
 }
