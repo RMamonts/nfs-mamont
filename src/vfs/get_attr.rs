@@ -17,12 +17,6 @@ pub struct Fail {
     pub error: vfs::Error,
 }
 
-/// Defines callback to pass [`GetAttr::get_attr`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(attr: vfs::Result<file::Attr>);
-}
-
 /// [`GetAttr::get_attr`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
