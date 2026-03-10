@@ -1,5 +1,6 @@
 use arbitrary::{Arbitrary, Unstructured};
 use nfs_mamont::allocator::Allocator;
+use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::client::arguments;
 use nfs_mamont::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
@@ -32,8 +33,13 @@ pub struct RpcRequest {
 
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let prog = u.int_in_range(nfsv3::NFS_PROGRAM..=mount::MOUNT_PROGRAM)?;
-        let proc = u.int_in_range(0..=24)?;
+        let prog = *u.choose(&[mount::MOUNT_PROGRAM, nfsv3::NFS_PROGRAM, FAULT_PROGRAM])?;
+        let proc = match prog {
+            nfsv3::NFS_PROGRAM => u.int_in_range(0..=22)?,
+            mount::MOUNT_PROGRAM => u.int_in_range(0..=6)?,
+            FAULT_PROGRAM => u.int_in_range(0..=22)?,
+            _ => u.int_in_range(0..=22)?,
+        };
         let args = match (prog, proc) {
             (nfsv3::NFS_PROGRAM, nfsv3::NULL) => Arguments::Null,
             (nfsv3::NFS_PROGRAM, nfsv3::GETATTR) => Arguments::GetAttr(u.arbitrary()?),
@@ -69,7 +75,7 @@ impl<'a> Arbitrary<'a> for RpcRequest {
             xid: u.arbitrary()?,
             request: *u.choose(&[rpc::RpcBody::Call as u32, rpc::RpcBody::Reply as u32])?,
             //so there would be RpcVersionMismatch
-            rpc_version: *u.choose(&[mount::MOUNT_PROGRAM, nfsv3::NFS_PROGRAM, FAULT_PROGRAM])?,
+            rpc_version: *u.choose(&[rpc::RPC_VERSION, FAULT_VERSION])?,
             //so there would be ProgramMismatch
             prog,
             //so there would be ProgramVersionMismatch
@@ -95,7 +101,7 @@ impl<A: Allocator> ParserWrapper<A> {
 
     // forms completely new message
     pub fn write_new_message(&mut self, arg: RpcRequest) {
-        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE + 5000);
+        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE + TEST_SIZE);
         // place for size
         tmp_buffer.extend_from_slice(&[0, 0, 0, 0]);
         // xid
@@ -188,6 +194,7 @@ impl<A: Allocator> ParserWrapper<A> {
             Arguments::Null | Arguments::Export | Arguments::Dump | Arguments::UnmountAll => {}
         };
         let pos = tmp_buffer.len();
+        assert!(pos - RMS_HEADER_SIZE < 0x8000_0000);
         let size = ((pos - RMS_HEADER_SIZE) as u32 | 0x8000_0000).to_be_bytes();
         tmp_buffer[..RMS_HEADER_SIZE].copy_from_slice(size.as_slice());
         // there should be sending to mpsc

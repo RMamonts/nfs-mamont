@@ -144,12 +144,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Frame size must include XID",
             )));
         }
-        if self.current_frame_size > DEFAULT_SIZE {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Frame exceeds maximum supported length",
-            )));
-        }
 
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {

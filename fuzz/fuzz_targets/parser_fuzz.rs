@@ -2,14 +2,15 @@
 
 mod parser_wrapper;
 
-use std::sync::OnceLock;
-
+use arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
+use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;
 use nfs_mamont::mocks::fuzz_socket::FuzzMockSocket;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::rpc::Error;
 use parser_wrapper::ParserWrapper;
+use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
@@ -25,7 +26,7 @@ fn get_runtime() -> &'static Runtime {
 fn get_parser() -> &'static Mutex<ParserWrapper<MockAllocator>> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
-        let parser = ParserWrapper::new(RpcParser::new(sock, MockAllocator::new(1000)), hand);
+        let parser = ParserWrapper::new(RpcParser::new(sock, MockAllocator::new(TEST_SIZE)), hand);
         Mutex::new(parser)
     })
 }
