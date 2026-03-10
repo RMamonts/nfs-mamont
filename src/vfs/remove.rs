@@ -18,14 +18,6 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Remove::remove`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Remove::remove`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -37,5 +29,5 @@ pub struct Args {
 #[async_trait]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
-    async fn remove(&self, args: Args, promise: impl Promise);
+    async fn remove(&self, args: Args) -> Result<Success, Fail>;
 }

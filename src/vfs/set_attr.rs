@@ -5,19 +5,11 @@ use async_trait::async_trait;
 
 use super::file;
 
-pub type Result = std::result::Result<Success, Fail>;
-
 /// Guard used by [`SetAttr::set_attr`].
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Guard {
     pub ctime: file::Time,
-}
-
-/// Defines callback to pass [`SetAttr::set_attr`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// Strategy for updating timestamps in [`SetAttr`].
@@ -92,5 +84,5 @@ pub trait SetAttr {
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than
     ///   can be represented in 32 bit.
-    async fn set_attr(&self, args: Args, promise: impl Promise);
+    async fn set_attr(&self, args: Args) -> Result<Success, Fail>;
 }

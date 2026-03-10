@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{Result, Write};
 
 use crate::allocator::Slice;
@@ -21,6 +22,13 @@ pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
 
 /// Serializes the arguments [`Args`] for an NFSv3 `WRITE` operation to the provided `Write` destination.
 pub fn write_args(dest: &mut impl Write, arg: Args) -> Result<()> {
+    let size = arg.data.iter().map(|buf| buf.len()).sum::<usize>();
+    if size != arg.size as usize {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "size of Slice does not equal size",
+        ));
+    }
     file_handle(dest, arg.file)
         .and_then(|_| u64(dest, arg.offset))
         .and_then(|_| u32(dest, arg.size))
