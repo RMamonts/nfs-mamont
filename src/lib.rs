@@ -2,6 +2,7 @@
 
 pub mod allocator;
 pub mod client;
+#[cfg(any(feature = "arbitrary", test))]
 pub mod mocks;
 pub mod mount;
 pub mod nfsv3;

@@ -1,13 +1,15 @@
+use std::cmp::min;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, ReadBuf};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 pub struct FuzzMockSocket {
-    current: Vec<u8>,
-    pos: usize,
-    next: Option<Vec<u8>>,
+    data: Vec<u8>,
+    start: usize,
+    end: usize,
     recv: UnboundedReceiver<Vec<u8>>,
 }
 
@@ -24,34 +26,33 @@ impl FuzzSocketHandler {
 impl FuzzMockSocket {
     pub fn new() -> (Self, FuzzSocketHandler) {
         let (sender, recv) = mpsc::unbounded_channel();
-        (
-            FuzzMockSocket { current: Vec::new(), pos: 0, next: None, recv },
-            FuzzSocketHandler { sender },
-        )
+        (FuzzMockSocket { data: Vec::new(), start: 0, end: 0, recv }, FuzzSocketHandler { sender })
     }
 
-    pub fn new_with_initial(initial: Vec<u8>) -> (Self, FuzzSocketHandler) {
+    pub fn with_data(data: Vec<u8>) -> (Self, FuzzSocketHandler) {
         let (sender, recv) = mpsc::unbounded_channel();
-        (
-            FuzzMockSocket { current: initial, pos: 0, next: None, recv },
-            FuzzSocketHandler { sender },
-        )
+        (FuzzMockSocket { data, start: 0, end: 0, recv }, FuzzSocketHandler { sender })
     }
 
-    fn poll_fill_next(&mut self) {
-        if self.next.is_some() {
-            return;
-        }
-        if let Ok(data) = self.recv.try_recv() {
-            self.next = Some(data);
-        }
-    }
-
-    fn ensure_current(&mut self) {
-        if self.pos >= self.current.len() {
-            if let Some(next) = self.next.take() {
-                self.current = next;
-                self.pos = 0;
+    // actually this method should be called inside poll_read, but it is async
+    // that means, that attention should be paid, where it is used
+    pub fn add_data(&mut self) {
+        // not sure if we now need to check for Empty error
+        // for fuzz test it's alright - we will do not more, than 2 blocks at a time
+        while let Ok(new_data) = self.recv.try_recv() {
+            self.data.copy_within(self.start..self.end, 0);
+            self.end -= self.start;
+            self.start = 0;
+            let remaining = self.data.len() - self.end;
+            if remaining < new_data.len() {
+                // that branch shouldn't happen often, because it causes unbounded allocation
+                let (left, right) = new_data.split_at(remaining);
+                self.data[self.end..].copy_from_slice(left);
+                self.data.extend_from_slice(right);
+                self.end = self.data.len();
+            } else {
+                self.data[self.end..new_data.len()].copy_from_slice(&new_data);
+                self.end += self.data.len();
             }
         }
     }
@@ -64,42 +65,18 @@ impl AsyncRead for FuzzMockSocket {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         let inner = self.get_mut();
-
-        inner.poll_fill_next();
-        inner.ensure_current();
-
-        if inner.pos >= inner.current.len() {
-            return Poll::Pending;
+        if inner.end - inner.start == 0 {
+            inner.add_data();
         }
-
-        let mut read_any = false;
-
-        while buf.remaining() > 0 {
-            if inner.pos >= inner.current.len() {
-                inner.ensure_current();
-                if inner.pos >= inner.current.len() {
-                    break;
-                }
-            }
-
-            let remaining = inner.current.len() - inner.pos;
-            if remaining == 0 {
-                break;
-            }
-
-            let to_read = remaining.min(buf.remaining());
-            let start = inner.pos;
-            let end = start + to_read;
-
-            buf.put_slice(&inner.current[start..end]);
-            inner.pos += to_read;
-            read_any = true;
+        let remaining_data = inner.end - inner.start;
+        let to_read = min(buf.remaining(), remaining_data);
+        assert!(to_read > 0);
+        if to_read > 0 {
+            let start = inner.start;
+            let end = inner.start + to_read;
+            buf.put_slice(&inner.data[start..end]);
+            inner.start += to_read;
         }
-
-        if read_any {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+        Poll::Ready(Ok(()))
     }
 }

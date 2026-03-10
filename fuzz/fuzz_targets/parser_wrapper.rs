@@ -198,6 +198,7 @@ impl<A: Allocator> ParserWrapper<A> {
         let size = ((pos - RMS_HEADER_SIZE) as u32 | 0x8000_0000).to_be_bytes();
         tmp_buffer[..RMS_HEADER_SIZE].copy_from_slice(size.as_slice());
         // there should be sending to mpsc
+        println!("{} {}", arg.prog, arg.proc);
         self.sender.send_data(tmp_buffer);
     }
     pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
