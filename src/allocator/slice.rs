@@ -6,7 +6,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use tokio::sync::mpsc;
 
 #[cfg(feature = "arbitrary")]
-use crate::allocator::TEST_SIZE;
+pub const MAX_SLICE_SIZE_ARBITRARY: usize = 1000;
 
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
@@ -163,24 +163,27 @@ impl<'a> IntoIterator for &'a mut Slice {
     }
 }
 
+#[cfg(feature = "arbitrary")]
 impl PartialEq for Slice {
     fn eq(&self, other: &Self) -> bool {
-        if self.range == other.range
-            && self.buffers.iter().map(|buf| buf.len()).sum::<usize>()
-                == other.buffers.iter().map(|buf| buf.len()).sum()
-        {
+        if self.range == other.range {
             //yet we can't compare Slices
-            return true;
+            return false;
         }
-        false
+        for (left, right) in self.iter().zip(other.iter()) {
+            if left != right {
+                return false;
+            }
+        }
+        true
     }
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> Arbitrary<'a> for Slice {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+impl Arbitrary<'_> for Slice {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let (sender, _) = mpsc::unbounded_channel();
-        let length = u.int_in_range(1..=TEST_SIZE)?;
+        let length = u.int_in_range(1..=MAX_SLICE_SIZE_ARBITRARY)?;
         let mut size = 0;
         let mut bufs = Vec::new();
         while size < length {

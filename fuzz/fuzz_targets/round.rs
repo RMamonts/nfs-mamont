@@ -3,17 +3,16 @@
 use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
+use nfs_mamont::allocator::slice::MAX_SLICE_SIZE_ARBITRARY;
 use nfs_mamont::client::arguments;
 use nfs_mamont::parser::primitive::{u32_as_usize, ALIGNMENT};
 use nfs_mamont::parser::{mount, nfsv3, Arguments};
-
-const MAX_SLICE_SIZE_ARBITRARY: usize = 1000;
 
 const DEFAULT_CAPACITY: usize =
     nfs_mamont::parser::parser_struct::DEFAULT_SIZE + MAX_SLICE_SIZE_ARBITRARY;
 
 macro_rules! roundtrip {
-    ($arg:expr, $write:path, $read:path, $variant:path) => {{
+    ($arg:expr, $write:path, $read:path) => {{
         let mut buf = Cursor::new(vec![0u8; DEFAULT_CAPACITY]);
         $write(&mut buf, $arg.clone()).unwrap();
         let len = buf.position();
@@ -25,151 +24,74 @@ macro_rules! roundtrip {
 
 fuzz_target!(|data: Arguments| {
     match data {
-        Arguments::GetAttr(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::get_attr::get_attr_args,
-            nfsv3::get_attr::args,
-            Arguments::GetAttr
-        ),
-
-        Arguments::SetAttr(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::set_attr::set_attr_args,
-            nfsv3::set_attr::args,
-            Arguments::SetAttr
-        ),
-
-        Arguments::LookUp(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::lookup::lookup_args,
-            nfsv3::lookup::args,
-            Arguments::LookUp
-        ),
-
-        Arguments::Access(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::access::access_args,
-            nfsv3::access::args,
-            Arguments::Access
-        ),
-
-        Arguments::ReadLink(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::read_link::read_link_args,
-            nfsv3::read_link::args,
-            Arguments::ReadLink
-        ),
-
+        Arguments::GetAttr(arg) => {
+            roundtrip!(arg, arguments::nfsv3::get_attr::get_attr_args, nfsv3::get_attr::args)
+        }
+        Arguments::SetAttr(arg) => {
+            roundtrip!(arg, arguments::nfsv3::set_attr::set_attr_args, nfsv3::set_attr::args)
+        }
+        Arguments::LookUp(arg) => {
+            roundtrip!(arg, arguments::nfsv3::lookup::lookup_args, nfsv3::lookup::args)
+        }
+        Arguments::Access(arg) => {
+            roundtrip!(arg, arguments::nfsv3::access::access_args, nfsv3::access::args)
+        }
+        Arguments::ReadLink(arg) => {
+            roundtrip!(arg, arguments::nfsv3::read_link::read_link_args, nfsv3::read_link::args)
+        }
         Arguments::Read(arg) => {
-            roundtrip!(arg, arguments::nfsv3::read::read_args, nfsv3::read::args, Arguments::Read)
+            roundtrip!(arg, arguments::nfsv3::read::read_args, nfsv3::read::args)
         }
-
-        Arguments::Create(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::create::create_args,
-            nfsv3::create::args,
-            Arguments::Create
-        ),
-
-        Arguments::MkDir(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::mk_dir::mk_dir_args,
-            nfsv3::mk_dir::args,
-            Arguments::MkDir
-        ),
-
-        Arguments::SymLink(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::symlink::symlink_args,
-            nfsv3::symlink::args,
-            Arguments::SymLink
-        ),
-
-        Arguments::MkNod(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::mk_node::mk_node_args,
-            nfsv3::mk_node::args,
-            Arguments::MkNod
-        ),
-
-        Arguments::Remove(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::remove::remove_args,
-            nfsv3::remove::args,
-            Arguments::Remove
-        ),
-
-        Arguments::RmDir(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::rm_dir::rm_dir_args,
-            nfsv3::rm_dir::args,
-            Arguments::RmDir
-        ),
-
-        Arguments::Rename(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::rename::rename_args,
-            nfsv3::rename::args,
-            Arguments::Rename
-        ),
-
+        Arguments::Create(arg) => {
+            roundtrip!(arg, arguments::nfsv3::create::create_args, nfsv3::create::args)
+        }
+        Arguments::MkDir(arg) => {
+            roundtrip!(arg, arguments::nfsv3::mk_dir::mk_dir_args, nfsv3::mk_dir::args)
+        }
+        Arguments::SymLink(arg) => {
+            roundtrip!(arg, arguments::nfsv3::symlink::symlink_args, nfsv3::symlink::args)
+        }
+        Arguments::MkNod(arg) => {
+            roundtrip!(arg, arguments::nfsv3::mk_node::mk_node_args, nfsv3::mk_node::args)
+        }
+        Arguments::Remove(arg) => {
+            roundtrip!(arg, arguments::nfsv3::remove::remove_args, nfsv3::remove::args)
+        }
+        Arguments::RmDir(arg) => {
+            roundtrip!(arg, arguments::nfsv3::rm_dir::rm_dir_args, nfsv3::rm_dir::args)
+        }
+        Arguments::Rename(arg) => {
+            roundtrip!(arg, arguments::nfsv3::rename::rename_args, nfsv3::rename::args)
+        }
         Arguments::Link(arg) => {
-            roundtrip!(arg, arguments::nfsv3::link::link_args, nfsv3::link::args, Arguments::Link)
+            roundtrip!(arg, arguments::nfsv3::link::link_args, nfsv3::link::args)
         }
-
-        Arguments::ReadDir(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::read_dir::read_dir_args,
-            nfsv3::read_dir::args,
-            Arguments::ReadDir
-        ),
-
+        Arguments::ReadDir(arg) => {
+            roundtrip!(arg, arguments::nfsv3::read_dir::read_dir_args, nfsv3::read_dir::args)
+        }
         Arguments::ReadDirPlus(arg) => roundtrip!(
             arg,
             arguments::nfsv3::read_dir_plus::read_dir_plus_args,
-            nfsv3::read_dir_plus::args,
-            Arguments::ReadDirPlus
+            nfsv3::read_dir_plus::args
         ),
-
-        Arguments::FsStat(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::fs_stat::fs_stat_args,
-            nfsv3::fs_stat::args,
-            Arguments::FsStat
-        ),
-
-        Arguments::FsInfo(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::fs_info::fs_info_args,
-            nfsv3::fs_info::args,
-            Arguments::FsInfo
-        ),
-
-        Arguments::PathConf(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::path_conf::path_conf_args,
-            nfsv3::path_conf::args,
-            Arguments::PathConf
-        ),
-
-        Arguments::Commit(arg) => roundtrip!(
-            arg,
-            arguments::nfsv3::commit::commit_args,
-            nfsv3::commit::args,
-            Arguments::Commit
-        ),
-
-        Arguments::Mount(arg) => {
-            roundtrip!(arg, arguments::mount::mnt::mount_args, mount::mnt::mount, Arguments::Mount)
+        Arguments::FsStat(arg) => {
+            roundtrip!(arg, arguments::nfsv3::fs_stat::fs_stat_args, nfsv3::fs_stat::args)
         }
-
-        Arguments::Unmount(arg) => roundtrip!(
-            arg,
-            arguments::mount::unmnt::unmount_args,
-            mount::umnt::unmount,
-            Arguments::Unmount
-        ),
-
+        Arguments::FsInfo(arg) => {
+            roundtrip!(arg, arguments::nfsv3::fs_info::fs_info_args, nfsv3::fs_info::args)
+        }
+        Arguments::PathConf(arg) => {
+            roundtrip!(arg, arguments::nfsv3::path_conf::path_conf_args, nfsv3::path_conf::args)
+        }
+        Arguments::Commit(arg) => {
+            roundtrip!(arg, arguments::nfsv3::commit::commit_args, nfsv3::commit::args)
+        }
+        Arguments::Mount(arg) => {
+            roundtrip!(arg, arguments::mount::mnt::mount_args, mount::mnt::mount)
+        }
+        Arguments::Unmount(arg) => {
+            roundtrip!(arg, arguments::mount::unmnt::unmount_args, mount::umnt::unmount)
+        }
         Arguments::Write(args) => {
             let mut buf = Cursor::new(vec![0u8; DEFAULT_CAPACITY]);
             arguments::nfsv3::write::write_args(&mut buf, args.clone()).unwrap();
