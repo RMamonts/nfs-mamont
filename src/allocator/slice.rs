@@ -163,16 +163,19 @@ impl<'a> IntoIterator for &'a mut Slice {
     }
 }
 
+#[cfg(feature = "arbitrary")]
 impl PartialEq for Slice {
     fn eq(&self, other: &Self) -> bool {
-        if self.range == other.range
-            && self.buffers.iter().map(|buf| buf.len()).sum::<usize>()
-                == other.buffers.iter().map(|buf| buf.len()).sum()
-        {
+        if self.range == other.range {
             //yet we can't compare Slices
-            return true;
+            return false;
         }
-        false
+        for (left, right) in self.iter().zip(other.iter()) {
+            if left != right {
+                return false;
+            }
+        }
+        true
     }
 }
 

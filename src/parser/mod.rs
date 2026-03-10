@@ -34,14 +34,13 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 
 /// Enumerates the different types of arguments that can be parsed.
 #[derive(Debug)]
-#[repr(u32)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum Arguments {
     // NFSv3
     /// Null operation arguments.
-    Null = 0,
+    Null,
     /// Arguments for the [`get_attr`] operation.
-    GetAttr(get_attr::Args) = 1,
+    GetAttr(get_attr::Args),
     /// Arguments for the [`set_attr`] operation.
     SetAttr(set_attr::Args),
     /// Arguments for the [`lookup`] operation.
