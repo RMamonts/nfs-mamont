@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::net::unix::SocketAddr;
 use tokio::sync::RwLock;
 
-use crate::mount::HostName;
+use crate::mount::{ExportEntry, MountEntry};
 use crate::vfs::{self, file};
 
 pub type SharedVfs = Arc<dyn vfs::Vfs + Send + Sync + 'static>;
@@ -17,16 +17,12 @@ pub struct ServerSettings {
     allocator_buffer_count: NonZeroUsize,
 }
 
-pub struct ServerExport {
-    allowed_hosts: Vec<HostName>,
-}
-
 struct ExportRegistry {
-    by_directory: HashMap<file::Path, ServerExport>,
+    by_directory: HashMap<file::Path, Vec<ExportEntry>>,
 }
 
 struct MountRegistry {
-    by_client: HashMap<SocketAddr, HashSet<file::Path>>,
+    by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
 }
 
 pub struct ServerContext {
