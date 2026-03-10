@@ -60,14 +60,17 @@ impl Impl {
 
         Self { sender, receiver, buffer_size: size, buffer_count: count }
     }
+
+    fn capacity(&self) -> usize {
+        self.buffer_size.get() * self.buffer_count.get()
+    }
 }
 
 impl Allocator for Impl {
     async fn allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
-        assert!(
-            size.get() <= self.buffer_size.get() * self.buffer_count.get(),
-            "cannot allocate more than allocattor capacity"
-        );
+        if size.get() > self.capacity() {
+            return None;
+        }
 
         let mut remain_size = size.get();
         let mut buffers = Vec::with_capacity(remain_size.div_ceil(self.buffer_size.get()));

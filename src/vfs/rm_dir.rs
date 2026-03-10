@@ -18,14 +18,6 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`RmDir::rm_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`RmDir::rm_dir`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -44,5 +36,5 @@ pub trait RmDir {
     ///
     /// On some servers, the filename, "..", is illegal. These servers will return
     /// the error, [`vfs::Error::Exist`].
-    async fn rm_dir(&self, args: Args, promise: impl Promise);
+    async fn rm_dir(&self, args: Args) -> Result<Success, Fail>;
 }

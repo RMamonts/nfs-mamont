@@ -6,8 +6,6 @@ use crate::vfs;
 
 use super::file;
 
-pub type Result = std::result::Result<Success, Fail>;
-
 /// Success result.
 pub struct Success {
     pub object: file::Attr,
@@ -36,5 +34,5 @@ pub struct Args {
 #[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    async fn get_attr(&self, args: Args, promise: impl Promise);
+    async fn get_attr(&self, args: Args) -> Result<Success, Fail>;
 }

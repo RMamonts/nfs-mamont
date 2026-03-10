@@ -45,14 +45,6 @@ pub struct Fail {
     pub dir_wcc: vfs::WccData,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`MkNode::mk_node`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`MkNode::mk_node`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -72,5 +64,5 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args, promise: impl Promise);
+    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
 }

@@ -42,14 +42,6 @@ pub struct Fail {
     pub file_attr: Option<file::Attr>,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`PathConf::path_conf`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`PathConf::path_conf`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -61,5 +53,5 @@ pub struct Args {
 #[async_trait]
 pub trait PathConf {
     /// Retrieves the pathconf information for a file or directory.
-    async fn path_conf(&self, args: Args, promise: impl Promise);
+    async fn path_conf(&self, args: Args) -> Result<Success, Fail>;
 }

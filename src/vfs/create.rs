@@ -60,14 +60,6 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Create::create`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Create::create`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -81,5 +73,5 @@ pub struct Args {
 #[async_trait]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, args: Args, promise: impl Promise);
+    async fn create(&self, args: Args) -> Result<Success, Fail>;
 }

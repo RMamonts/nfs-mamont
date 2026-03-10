@@ -13,14 +13,31 @@ use super::file;
 pub struct Cookie(u64);
 
 impl Cookie {
+    /// Creates a new `Cookie` instance.
+    ///
+    /// ### Arguments
+    /// * `val` - A 64-bit unsigned integer representing a specific point
+    ///   in the directory, as returned by the server in a directory entry.
+    ///
+    /// ### Returns
+    /// * A `Cookie` wrapping the provided value.
     pub fn new(val: u64) -> Self {
         Self(val)
     }
 
+    /// Retrieves the raw 64-bit value of the cookie.
+    ///
+    /// ### Returns
+    /// * The internal `u64` value.
     pub fn raw(self) -> u64 {
         self.0
     }
 
+    /// Checks if the cookie is the initial zero value.
+    ///
+    /// ### Returns
+    /// * `true` if the value is 0. In the first `READDIR` request for a directory,
+    ///   this should be set to 0 to start reading from the first entry.
     pub fn is_zero(self) -> bool {
         self.0 == 0
     }
@@ -32,14 +49,31 @@ impl Cookie {
 pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
+    /// Creates a new `CookieVerifier` instance.
+    ///
+    /// ### Arguments
+    /// * `val` - An 8-byte array used to verify the cookie's
+    ///   validity across multiple `READDIR` requests.
+    ///
+    /// ### Returns
+    /// * A `CookieVerifier` wrapping the byte array.
     pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
         Self(val)
     }
 
+    /// Retrieves the raw byte array of the verifier.
+    ///
+    /// ### Returns
+    /// * The internal `[u8; 8]` array.
     pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
         self.0
     }
 
+    /// Checks if the verifier is the initial zero value.
+    ///
+    /// ### Returns
+    /// * `true` if the array is all zeros. In the first `READDIR` request, the
+    ///   verifier must be set to 0.
     pub fn is_zero(self) -> bool {
         self.0 == [0; NFS3_COOKIEVERFSIZE]
     }
@@ -73,14 +107,6 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`ReadDir::read_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`ReadDir::read_dir`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -111,5 +137,5 @@ pub trait ReadDir {
     /// The [`Args::count`] specified by the client in the request should be greater than or equal to
     /// the server's preferred [`ReadDir`] transfer size from
     /// [`super::fs_info::Success::read_dir_pref`].
-    async fn read_dir(&self, args: Args, promise: impl Promise);
+    async fn read_dir(&self, args: Args) -> Result<Success, Fail>;
 }

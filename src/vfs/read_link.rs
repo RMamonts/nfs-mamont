@@ -22,14 +22,6 @@ pub struct Fail {
     pub error: vfs::Error,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`ReadLink::read_link`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`ReadLink::read_link`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -45,5 +37,5 @@ pub trait ReadLink {
     /// The [`ReadLink::read_link`] operation is only allowed on
     /// objects of type [`file::Type::Symlink`]. The server should return the error,
     /// [`vfs::Error::InvalidArgument`], if the object is not of type, [`file::Type::Symlink`].
-    async fn read_link(&self, args: Args, promise: impl Promise);
+    async fn read_link(&self, args: Args) -> Result<Success, Fail>;
 }

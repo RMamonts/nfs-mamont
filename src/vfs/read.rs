@@ -31,14 +31,6 @@ pub struct Fail {
     pub file_attr: Option<file::Attr>,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Read::read`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Read::read`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -61,5 +53,5 @@ pub struct Args {
 #[async_trait]
 pub trait Read {
     /// Reads data from a file.
-    async fn read(&self, args: Args, promise: impl Promise);
+    async fn read(&self, args: Args) -> Result<Success, Fail>;
 }

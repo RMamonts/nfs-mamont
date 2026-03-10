@@ -21,14 +21,6 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Lookup::lookup`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Lookup::lookup`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
@@ -45,5 +37,5 @@ pub trait Lookup {
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, args: Args, promise: impl Promise);
+    async fn lookup(&self, args: Args) -> Result<Success, Fail>;
 }
