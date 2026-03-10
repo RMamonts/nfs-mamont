@@ -151,4 +151,27 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-pub trait Vfs {}
+pub trait Vfs:
+    get_attr::GetAttr
+    + set_attr::SetAttr
+    + lookup::Lookup
+    + access::Access
+    + read_link::ReadLink
+    + read::Read
+    + write::Write
+    + create::Create
+    + mk_dir::MkDir
+    + symlink::Symlink
+    + mk_node::MkNode
+    + remove::Remove
+    + rm_dir::RmDir
+    + rename::Rename
+    + link::Link
+    + read_dir::ReadDir
+    + read_dir_plus::ReadDirPlus
+    + fs_stat::FsStat
+    + fs_info::FsInfo
+    + path_conf::PathConf
+    + commit::Commit
+{
+}

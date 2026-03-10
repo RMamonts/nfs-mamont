@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-mod files;
+pub mod files;
 mod mount;
 mod nfs;
 pub mod rpc;
@@ -31,7 +31,7 @@ pub const ALIGNMENT: usize = 4;
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
 /// XDR requires 4-byte alignment; this emits zero bytes until the next multiple of [`ALIGNMENT`].
-fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
+pub fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])
