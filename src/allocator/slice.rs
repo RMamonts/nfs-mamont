@@ -5,6 +5,9 @@ use arbitrary::{Arbitrary, Unstructured};
 #[cfg(feature = "arbitrary")]
 use tokio::sync::mpsc;
 
+#[cfg(feature = "arbitrary")]
+pub const MAX_SLICE_SIZE_ARBITRARY: usize = 1000;
+
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(Clone))]
@@ -174,10 +177,10 @@ impl PartialEq for Slice {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> Arbitrary<'a> for Slice {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+impl Arbitrary<'_> for Slice {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let (sender, _) = mpsc::unbounded_channel();
-        let length = u.int_in_range(1..=1000)?;
+        let length = u.int_in_range(1..=MAX_SLICE_SIZE_ARBITRARY)?;
         let mut size = 0;
         let mut bufs = Vec::new();
         while size < length {
