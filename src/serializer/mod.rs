@@ -15,6 +15,7 @@ pub mod files;
 mod mount;
 pub mod nfs;
 pub mod rpc;
+mod serialize_struct;
 #[cfg(test)]
 mod tests;
 
