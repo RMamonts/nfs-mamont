@@ -47,20 +47,8 @@ impl FuzzMockSocket {
         // not sure if we now need to check for Empty error
         // for fuzz test it's alright - we will do not more, than 2 blocks at a time
         while let Ok(new_data) = self.recv.try_recv() {
-            let remaining = self.data.len() - self.end;
-            if remaining < new_data.len() {
-                // that branch shouldn't happen often, because it causes unbounded allocation
-                let (left, right) = new_data.split_at(remaining);
-                self.data[self.end..].copy_from_slice(left);
-                self.data.extend_from_slice(right);
-                self.end = self.data.len();
-            } else {
-                self.data[self.end..new_data.len()].copy_from_slice(&new_data);
-                self.end += self.data.len();
-            }
-            if self.data.len() % 10000 == 0 {
-                println!("{}", self.data.len())
-            }
+            self.data.extend_from_slice(&new_data);
+            self.end = self.data.len();
         }
     }
 }

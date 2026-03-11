@@ -3,13 +3,12 @@
 use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
-use nfs_mamont::allocator::slice::MAX_SLICE_SIZE_ARBITRARY;
 use nfs_mamont::client::arguments;
 use nfs_mamont::parser::primitive::{u32_as_usize, ALIGNMENT};
 use nfs_mamont::parser::{mount, nfsv3, Arguments};
 
 const DEFAULT_CAPACITY: usize =
-    nfs_mamont::parser::parser_struct::DEFAULT_SIZE + MAX_SLICE_SIZE_ARBITRARY;
+    nfs_mamont::parser::parser_struct::DEFAULT_SIZE + nfs_mamont::allocator::TEST_SIZE;
 
 macro_rules! roundtrip {
     ($arg:expr, $write:path, $read:path) => {{
