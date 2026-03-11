@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tokio::net::unix::SocketAddr;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
-use crate::allocator::Allocator;
+use crate::allocator::Impl;
 use crate::mount::{ExportEntry, MountEntry};
 use crate::vfs::{self, file};
 
@@ -22,11 +22,7 @@ struct MountRegistry {
     by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
 }
 
-pub struct ServerContext<T: Allocator> {
-    allocator: T,
+pub struct ServerContext {
+    allocator: Arc<Mutex<Impl>>,
     backend: SharedVfs,
-    // what's available to mount
-    exports: Arc<RwLock<ExportRegistry>>,
-    // who has mounted what
-    mounts: Arc<RwLock<MountRegistry>>,
 }
