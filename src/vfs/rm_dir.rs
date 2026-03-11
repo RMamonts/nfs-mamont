@@ -19,6 +19,8 @@ pub struct Fail {
 }
 
 /// [`RmDir::rm_dir`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the directory entry
     /// to be removed.

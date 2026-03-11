@@ -6,6 +6,6 @@
 use crate::vfs::file;
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
-#[cfg_attr(test, derive(Eq, PartialEq))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct UnmountArgs(pub file::Path);

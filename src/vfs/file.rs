@@ -1,6 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
@@ -10,7 +13,8 @@ use crate::nfsv3::NFS3_FHSIZE;
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Handle(pub [u8; NFS3_FHSIZE]);
 
 /// A validated wrapper around a `String` representing a name.
@@ -54,6 +58,18 @@ impl Name {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MAX_NAME_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let name = bytes.into_iter().filter(|b| *b != b'/').collect::<Vec<u8>>();
+        let s = String::from_utf8_lossy(&name).to_string();
+        Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
 /// A validated wrapper around a [`PathBuf`].
 ///
 /// [`Path`] ensures that the provided path string does not exceed
@@ -89,8 +105,20 @@ impl Path {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Path {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MAX_PATH_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Path::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
 /// Type of file.
-#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Clone, Copy, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -109,7 +137,8 @@ pub enum Type {
 }
 
 /// File attributes, also known as `fattr3` in RFC
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Attr {
     /// Type of the file, see [`Type`].
     pub file_type: Type,
@@ -150,8 +179,8 @@ pub struct Attr {
 /// It is used to pass time and date information. The times associated with files are all server
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
-#[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -160,7 +189,8 @@ pub struct Time {
 /// Major and minor device pair.
 ///
 /// Used only for [`Type::BlockDevice`] and [`Type::CharacterDevice`] file types.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Device {
     pub major: u32,
     pub minor: u32,

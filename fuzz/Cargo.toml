@@ -1,0 +1,29 @@
+[package]
+name = "nfs-mamont-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4.10", features = ["arbitrary-derive"] }
+nfs-mamont = { path = "..", features = ["arbitrary"] }
+arbitrary = "1.4.2"
+tokio = "1.49.0"
+
+
+[[bin]]
+name = "round"
+path = "fuzz_targets/round.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser_fuzz.rs"
+test = false
+doc = false
+bench = false

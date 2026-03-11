@@ -1,4 +1,6 @@
 //! Defines NFSv3 [`Write`] interface.
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
 
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -20,6 +22,7 @@ use super::file;
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
 /// commited to stable storage.
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
@@ -50,6 +53,8 @@ pub struct Fail {
 }
 
 /// [`Write::write`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].
@@ -66,6 +71,20 @@ pub struct Args {
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
     pub data: Slice,
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Args {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
+        let data = Slice::arbitrary(u)?;
+        Ok(Self {
+            file: u.arbitrary()?,
+            offset: u.arbitrary()?,
+            size: data.iter().map(|b| b.len() as u32).sum::<u32>(),
+            stable: u.arbitrary()?,
+            data,
+        })
+    }
 }
 
 /// equal to `Args` structure used to separate parsing of `Slice` from other fields

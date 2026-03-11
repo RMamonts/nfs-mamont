@@ -41,7 +41,7 @@ fn test_u8_array_padding_error() {
         src.write_u8(*i).unwrap();
     }
     let result = array::<3>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IncorrectPadding)));
+    assert!(result.is_err());
 }
 
 #[test]

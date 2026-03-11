@@ -25,6 +25,8 @@ pub struct Fail {
 }
 
 /// [`Link::link`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the existing file system object.
     pub file: file::Handle,

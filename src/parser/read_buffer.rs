@@ -12,7 +12,6 @@
 use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
-
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
@@ -82,7 +81,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
         if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
+            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed there"));
         }
 
         self.bufs[self.write].extend(bytes_read);
@@ -277,7 +276,7 @@ impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
 /// `ReadBuffer` maintains a fixed-size buffer with separate read and write
 /// positions, allowing efficient tracking of available data and available space.
 /// It implements [`Read`] to provide a standard interface for consuming data.
-struct ReadBuffer {
+pub struct ReadBuffer {
     data: Vec<u8>,
     read_pos: usize,
     write_pos: usize,

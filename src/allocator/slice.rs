@@ -1,6 +1,13 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
+#[cfg(feature = "arbitrary")]
+use tokio::sync::mpsc;
+
 /// Represents bounded by custome range list of buffers.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -150,5 +157,37 @@ impl<'a> IntoIterator for &'a mut Slice {
 
     fn into_iter(self) -> Self::IntoIter {
         IterMut { slice_iter: self.buffers.iter_mut(), range: self.range.clone() }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl PartialEq for Slice {
+    fn eq(&self, other: &Self) -> bool {
+        if self.range == other.range {
+            //yet we can't compare Slices
+            return false;
+        }
+        for (left, right) in self.iter().zip(other.iter()) {
+            if left != right {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Slice {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
+        let (sender, _) = mpsc::unbounded_channel();
+        let length = u.int_in_range(1..=super::TEST_SIZE)?;
+        let mut size = 0;
+        let mut bufs = Vec::new();
+        while size < length {
+            let n = u.int_in_range(1..=(length - size))?;
+            bufs.push(vec![8u8; n].into_boxed_slice());
+            size += n;
+        }
+        Ok(Self::new(bufs, 0..length, sender))
     }
 }

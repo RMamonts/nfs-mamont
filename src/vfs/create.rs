@@ -8,9 +8,13 @@ use crate::vfs;
 use super::file;
 
 /// Opaque byte array of `NFS3_CREATEVERFSIZE` size used in `How`
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, PartialEq))]
 pub struct Verifier(pub [u8; NFS3_CREATEVERFSIZE]);
 
 /// Describes how the server is to handle the file creation.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum How {
     /// Means that the file should be created without checking
     /// for the existence of a duplicate file in the same
@@ -57,6 +61,8 @@ pub struct Fail {
 }
 
 /// [`Create::create`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The location of the file to be created.
     pub object: vfs::DirOpArgs,

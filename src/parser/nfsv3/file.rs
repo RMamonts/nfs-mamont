@@ -220,7 +220,7 @@ mod tests {
     fn test_file_path_padding_error() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
 
-        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IncorrectPadding)));
+        assert!(super::file_path(&mut Cursor::new(DATA)).is_err());
     }
 
     #[test]

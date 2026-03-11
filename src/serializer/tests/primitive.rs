@@ -61,6 +61,13 @@ fn test_string_max() {
 }
 
 #[test]
+fn test_string_max_0() {
+    let mut init = Cursor::new([1u8; 9]);
+    string_max_size(&mut init, " ".to_string(), 7).unwrap();
+    assert_eq!(init.into_inner(), [0, 0, 0, 1, b' ', 0, 0, 0, 1])
+}
+
+#[test]
 fn test_string_max_error() {
     let mut init = Cursor::new([1u8; 13]);
     let res = string_max_size(&mut init, "test42".to_string(), 5);

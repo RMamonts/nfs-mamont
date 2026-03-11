@@ -13,6 +13,9 @@ use tokio::sync::mpsc;
 
 pub use slice::Slice;
 
+#[cfg(feature = "arbitrary")]
+pub const TEST_SIZE: usize = 5000;
+
 type Sender<T> = mpsc::UnboundedSender<T>;
 type Receiver<T> = mpsc::UnboundedReceiver<T>;
 type Buffer = Box<[u8]>;

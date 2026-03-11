@@ -22,6 +22,8 @@ pub struct Fail {
 }
 
 /// [`Lookup::lookup`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// File handle for the directory to search.
     pub parent: file::Handle,
