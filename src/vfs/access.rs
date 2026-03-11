@@ -1,5 +1,8 @@
 //! Defines NFSv3 [`Access`] interface.
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+
 use async_trait::async_trait;
 
 use super::{file, Error};
@@ -45,7 +48,16 @@ impl Mask {
     }
 }
 
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Mask {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        Ok(Self::from_wire(u.arbitrary()?))
+    }
+}
+
 /// [`Access::access`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// File handle for the file system object to which access is to be checked
     pub file: file::Handle,

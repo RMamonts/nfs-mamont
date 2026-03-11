@@ -8,7 +8,7 @@ pub mod nfsv3;
 pub mod parser;
 mod read_task;
 pub mod rpc;
-pub mod serializer;
+mod serializer;
 pub mod vfs;
 mod vfs_task;
 mod write_task;

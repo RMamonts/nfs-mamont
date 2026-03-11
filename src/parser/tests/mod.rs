@@ -1,5 +1,5 @@
-mod allocator;
+pub mod alloc;
 mod mount;
 mod parser_struct;
 mod primitive;
-mod socket;
+pub mod socket;

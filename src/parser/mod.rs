@@ -2,11 +2,10 @@
 
 pub mod mount;
 pub mod nfsv3;
-mod parser_struct;
+pub mod parser_struct;
 pub mod primitive;
-mod read_buffer;
-mod rpc;
-
+pub mod read_buffer;
+pub mod rpc;
 #[cfg(test)]
 mod tests;
 
@@ -34,6 +33,8 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 }
 
 /// Enumerates the different types of arguments that can be parsed.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum Arguments {
     // NFSv3
     /// Null operation arguments.

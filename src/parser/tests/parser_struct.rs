@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
-use crate::parser::tests::allocator::MockAllocator;
+use crate::parser::tests::alloc::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::Arguments;
 use crate::parser::Error;

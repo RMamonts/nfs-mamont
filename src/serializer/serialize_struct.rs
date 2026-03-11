@@ -257,8 +257,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             }
             Err(err) => {
                 match err {
-                    Error::IncorrectPadding
-                    | Error::ImpossibleTypeCast
+                    Error::ImpossibleTypeCast
                     | Error::BadFileHandle
                     | Error::MessageTypeMismatch
                     | Error::EnumDiscMismatch

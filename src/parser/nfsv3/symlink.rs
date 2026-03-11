@@ -8,7 +8,6 @@ use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::Result;
 use crate::vfs::symlink;
 
-/// Parses the arguments for an NFSv3 `SYMLINK` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<symlink::Args> {
     Ok(symlink::Args {
         object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },

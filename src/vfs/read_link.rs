@@ -23,6 +23,8 @@ pub struct Fail {
 }
 
 /// [`ReadLink::read_link`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for a symbolic link (file system object of type [`file::Type::Symlink`]).
     pub file: file::Handle,

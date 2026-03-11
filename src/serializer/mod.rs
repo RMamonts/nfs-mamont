@@ -9,12 +9,11 @@
 //!   big-endian (network byte order)
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
-
 #![allow(dead_code)]
 
 pub mod files;
 mod mount;
-mod nfs;
+pub mod nfs;
 pub mod rpc;
 mod serialize_struct;
 #[cfg(test)]
@@ -91,7 +90,6 @@ pub fn vec_max_size(dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::R
     vector(dest, vec)
 }
 
-/// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
 pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -> io::Result<()> {
     vec_max_size(dest, &string.into_bytes(), max_size)
 }

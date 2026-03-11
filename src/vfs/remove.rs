@@ -19,6 +19,8 @@ pub struct Fail {
 }
 
 /// [`Remove::remove`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the entry to be removed.
     pub object: vfs::DirOpArgs,

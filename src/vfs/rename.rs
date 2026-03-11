@@ -23,6 +23,8 @@ pub struct Fail {
 }
 
 /// [`Rename::rename`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the source (the file
     /// system object to be re-named)

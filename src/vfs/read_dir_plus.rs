@@ -8,6 +8,7 @@ use crate::vfs::read_dir::CookieVerifier;
 
 use super::file;
 
+// also keep in mind, that it should have some pointer to next item in list
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -28,13 +29,6 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries.
     pub entries: Vec<Entry>,
-    /// `true` if the last member of [`Self::entries`] is the last
-    /// entry in the directory or the list [`Self::entries`] is
-    /// empty and the cookie corresponded to the end of the
-    /// directory.
-    ///
-    /// If `false`, there may be more entries to read.
-    pub eof: bool,
 }
 
 /// Fail result.
@@ -46,6 +40,8 @@ pub struct Fail {
 }
 
 /// [`ReadDirPlus::read_dir_plus`] arguments
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory to be read.
     pub dir: file::Handle,
