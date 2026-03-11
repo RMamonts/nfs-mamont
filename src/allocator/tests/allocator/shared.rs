@@ -23,5 +23,5 @@ async fn clones_share_one_buffer_pool() {
     drop(slice);
 
     let slice = second.allocate(SIZE).await.unwrap();
-    assert_eq!(slice.iter().count(), COUNT.get());
+    assert_eq!(slice.iter().map(|buffer| buffer.len()).sum::<usize>(), SIZE.get());
 }
