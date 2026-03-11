@@ -3,7 +3,6 @@
 mod parser_wrapper;
 
 use crate::parser_wrapper::RpcRequest;
-use arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;
@@ -52,9 +51,7 @@ fuzz_target!(|data: RpcRequest| {
         let mut parser = get_parser().lock().await;
         parser.write_new_message(data);
         match parser.parse_message().await {
-            Ok(_) => {
-                println!("Ok")
-            }
+            Ok(_) => {}
             Err(error) => match error {
                 Error::RpcVersionMismatch(_)
                 | Error::AuthError(_)

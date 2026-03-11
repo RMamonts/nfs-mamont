@@ -6,6 +6,8 @@ use tokio::io::{AsyncRead, ReadBuf};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
+const SEPARATE: usize = 50;
+
 pub struct FuzzMockSocket {
     data: Vec<u8>,
     start: usize,
@@ -37,12 +39,14 @@ impl FuzzMockSocket {
     // actually this method should be called inside poll_read, but it is async
     // that means, that attention should be paid, where it is used
     pub fn add_data(&mut self) {
+        // just in case
+        self.start = 0;
+        self.end = 0;
+        // necessary for buffer not to grow unconditionally
+        self.data.clear();
         // not sure if we now need to check for Empty error
         // for fuzz test it's alright - we will do not more, than 2 blocks at a time
         while let Ok(new_data) = self.recv.try_recv() {
-            self.data.copy_within(self.start..self.end, 0);
-            self.end -= self.start;
-            self.start = 0;
             let remaining = self.data.len() - self.end;
             if remaining < new_data.len() {
                 // that branch shouldn't happen often, because it causes unbounded allocation
@@ -53,6 +57,9 @@ impl FuzzMockSocket {
             } else {
                 self.data[self.end..new_data.len()].copy_from_slice(&new_data);
                 self.end += self.data.len();
+            }
+            if self.data.len() % 10000 == 0 {
+                println!("{}", self.data.len())
             }
         }
     }
@@ -69,7 +76,7 @@ impl AsyncRead for FuzzMockSocket {
             inner.add_data();
         }
         let remaining_data = inner.end - inner.start;
-        let to_read = min(buf.remaining(), remaining_data);
+        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
         assert!(to_read > 0);
         if to_read > 0 {
             let start = inner.start;
