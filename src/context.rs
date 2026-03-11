@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::net::unix::SocketAddr;
 use tokio::sync::RwLock;
 
 use crate::allocator::Allocator;
@@ -23,6 +23,10 @@ struct MountRegistry {
 }
 
 pub struct ServerContext<T: Allocator> {
+    /// Shared allocator handle used by per-connection parsers.
+    ///
+    /// For a single server-wide buffer limit, use
+    /// [`crate::allocator::SharedAllocator`] here.
     allocator: T,
     backend: SharedVfs,
     // what's available to mount

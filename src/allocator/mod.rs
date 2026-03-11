@@ -8,8 +8,9 @@ mod tests;
 
 use std::future::Future;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 pub use slice::Slice;
 
@@ -30,6 +31,38 @@ pub trait Allocator {
     /// This method panics if size is greater then allocator capacity.
     fn allocate(&mut self, size: NonZeroUsize)
         -> impl Future<Output = Option<slice::Slice>> + Send;
+}
+
+/// A cheap-clone handle that shares one allocator instance across tasks.
+///
+/// This is useful when the server needs a single global buffer pool and
+/// per-connection parsers should all draw from the same resource limit.
+pub struct SharedAllocator<A>(Arc<Mutex<A>>);
+
+impl<A> SharedAllocator<A> {
+    /// Wraps an allocator so it can be cloned and shared across tasks.
+    pub fn new(allocator: A) -> Self {
+        Self(Arc::new(Mutex::new(allocator)))
+    }
+}
+
+impl<A> Clone for SharedAllocator<A> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<A> From<A> for SharedAllocator<A> {
+    fn from(value: A) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<A: Allocator + Send> Allocator for SharedAllocator<A> {
+    async fn allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
+        let mut allocator = self.0.lock().await;
+        allocator.allocate(size).await
+    }
 }
 
 pub struct Impl {
