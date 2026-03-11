@@ -92,9 +92,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: A) -> Self {
+    pub fn new(socket: S, allocator: Arc<Mutex<A>>) -> Self {
         Self {
-            allocator: Arc::new(Mutex::new(allocator)),
+            allocator,
             buffer: CountBuffer::new(DEFAULT_SIZE, socket),
             last: false,
             current_frame_size: 0,
@@ -112,9 +112,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: Arc<Mutex<A>>, size: usize) -> Self {
         Self {
-            allocator: Arc::new(Mutex::new(allocator)),
+            allocator,
             buffer: CountBuffer::new(size, socket),
             last: false,
             current_frame_size: 0,
