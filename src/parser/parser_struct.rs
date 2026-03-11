@@ -15,8 +15,10 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use tokio::io::AsyncRead;
+use tokio::sync::Mutex;
 
 use crate::allocator::{Allocator, Slice};
 use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
@@ -72,7 +74,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
-    allocator: A,
+    allocator: Arc<Mutex<A>>,
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
@@ -90,7 +92,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: A) -> Self {
+    pub fn new(socket: S, allocator: Arc<Mutex<A>>) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(DEFAULT_SIZE, socket),
@@ -110,7 +112,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: Arc<Mutex<A>>, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -257,7 +259,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     READ => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
 
                     WRITE => Arguments::Write(
-                        adapter_for_write(&mut self.allocator, &mut self.buffer).await?,
+                        adapter_for_write(&self.allocator, &mut self.buffer).await?,
                     ),
 
                     CREATE => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
@@ -450,7 +452,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &mut impl Allocator,
+    alloc: &Arc<Mutex<impl Allocator>>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     // Parse arguments for WRITE procedure.
@@ -459,7 +461,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
+    let mut slice = alloc.lock().await.allocate(non_zero_size).await.ok_or_else(|| {
         Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
     })?;
 
