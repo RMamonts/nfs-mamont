@@ -1,10 +1,13 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+use tokio::sync::OwnedSemaphorePermit;
+
 /// Represents bounded by custome range list of buffers.
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
     sender: super::Sender<Box<[u8]>>,
+    permit: Option<OwnedSemaphorePermit>,
 }
 
 impl Slice {
@@ -24,6 +27,15 @@ impl Slice {
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,
     ) -> Self {
+        Self::new_with_permit(buffers, range, sender, None)
+    }
+
+    pub(crate) fn new_with_permit(
+        buffers: Vec<Box<[u8]>>,
+        range: std::ops::Range<usize>,
+        sender: super::Sender<Box<[u8]>>,
+        permit: Option<OwnedSemaphorePermit>,
+    ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 
         let len = buffers
@@ -37,7 +49,7 @@ impl Slice {
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
 
-        Self { buffers, range, sender }
+        Self { buffers, range, sender, permit }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -56,6 +68,8 @@ impl Slice {
             // Ignore allocator drop
             let _ = self.sender.send(buffer);
         }
+
+        let _ = self.permit.take();
     }
 }
 

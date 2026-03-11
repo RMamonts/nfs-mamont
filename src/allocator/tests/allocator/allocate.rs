@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::allocator::Allocator as _;
-use crate::allocator::Impl;
+use crate::allocator::{Impl, MemoryBudget};
 
 async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_size: NonZeroUsize) {
     let mut allocator = Impl::new(buffer_size, count);
@@ -121,4 +121,54 @@ async fn allocate_more_than_capacity_returns_none() {
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
     assert!(allocator.allocate(requested).await.is_none());
+}
+
+#[tokio::test]
+async fn shared_budget_blocks_other_allocators_until_release() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(8).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(2).unwrap();
+    const REQUEST: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
+
+    let budget = MemoryBudget::new(COUNT);
+    let mut first = Impl::with_budget(SIZE, COUNT, budget.clone());
+    let mut second = Impl::with_budget(SIZE, COUNT, budget);
+
+    let slice = first.allocate(REQUEST).await.unwrap();
+    assert_eq!(slice.iter().count(), COUNT.get());
+
+    tokio::time::timeout(Duration::from_millis(120), async {
+        second.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
+        unreachable!("shared budget should block until buffers are released")
+    })
+    .await
+    .unwrap_err();
+
+    drop(slice);
+
+    let slice = second.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
+    assert_eq!(slice.iter().count(), 1);
+}
+
+#[tokio::test]
+async fn global_budget_can_be_tighter_than_local_pool() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(8).unwrap();
+    const LOCAL_COUNT: NonZeroUsize = NonZeroUsize::new(2).unwrap();
+    const GLOBAL_BUDGET: NonZeroUsize = NonZeroUsize::new(1).unwrap();
+
+    let budget = MemoryBudget::new(GLOBAL_BUDGET);
+    let mut allocator = Impl::with_budget(SIZE, LOCAL_COUNT, budget.clone());
+
+    let slice = allocator.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
+    assert_eq!(slice.iter().count(), 1);
+    assert_eq!(budget.available(), 0);
+
+    tokio::time::timeout(Duration::from_millis(120), async {
+        allocator.allocate(SIZE).await.unwrap();
+        unreachable!("global budget should apply even when local buffers exist")
+    })
+    .await
+    .unwrap_err();
+
+    drop(slice);
+    assert_eq!(budget.available(), GLOBAL_BUDGET.get());
 }
