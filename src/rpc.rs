@@ -86,8 +86,6 @@ pub enum Error {
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
     IncorrectString(FromUtf8Error),
-    /// Incorrect padding was found.
-    IncorrectPadding,
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
     /// A bad file handle was encountered.

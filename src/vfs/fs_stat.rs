@@ -45,7 +45,8 @@ pub struct Fail {
 }
 
 /// [`FsStat::fs_stat`] arguments.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     /// A file handle identifying a mount point in the file system.
     pub root: file::Handle,

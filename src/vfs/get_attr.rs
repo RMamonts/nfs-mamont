@@ -17,7 +17,9 @@ pub struct Fail {
     pub error: vfs::Error,
 }
 
-/// [`GetAttr::get_attr`] aguments.
+/// [`GetAttr::get_attr`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// File handle of an object whose attributes are to be retrieved.
     pub file: file::Handle,

@@ -19,6 +19,13 @@ pub const MOUNT_HOST_NAME_LEN: usize = 255;
 pub const MOUNT_PROGRAM: u32 = 100005;
 pub const MOUNT_VERSION: u32 = 3;
 
+pub const NULL: u32 = 0;
+pub const MOUNT: u32 = 1;
+pub const DUMP: u32 = 2;
+pub const UNMOUNT: u32 = 3;
+pub const UNMOUNTALL: u32 = 4;
+pub const EXPORT: u32 = 5;
+
 /// Client host name.
 pub type HostName = String;
 

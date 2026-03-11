@@ -2,10 +2,9 @@
 
 use async_trait::async_trait;
 
+use super::file;
 use crate::allocator::Slice;
 use crate::vfs;
-
-use super::file;
 
 /// Success result.
 pub struct Success {
@@ -33,6 +32,8 @@ pub struct Fail {
 }
 
 /// [`Read::read`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle of the file from which data is to be read.
     /// This must identify a file system object of type [`file::Type::Regular`],

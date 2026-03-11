@@ -40,12 +40,12 @@ use crate::parser::{proc_nested_errors, Arguments, Error, Result};
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
-const RMS_HEADER_SIZE: usize = size_of::<u32>();
+pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
-const DEFAULT_SIZE: usize = 2500;
+pub const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -144,12 +144,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Frame size must include XID",
-            )));
-        }
-        if self.current_frame_size > DEFAULT_SIZE {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Frame exceeds maximum supported length",
             )));
         }
 

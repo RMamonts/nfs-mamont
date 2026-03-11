@@ -25,6 +25,8 @@ pub struct Fail {
 }
 
 /// [`Symlink::symlink`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The location of the symbolic link to be created.
     pub object: vfs::DirOpArgs,

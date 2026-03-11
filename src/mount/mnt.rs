@@ -44,6 +44,6 @@ pub struct Success {
 pub type Result = std::result::Result<Success, MntError>;
 
 /// Arguments for the Mount operation, containing the path to be mounted.
-#[cfg_attr(test, derive(Eq, PartialEq))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct MountArgs(pub file::Path);

@@ -74,6 +74,8 @@ pub struct Fail {
 }
 
 /// [`FsInfo::fs_info`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// A file handle identifying a mount point in the file system.
     pub root: file::Handle,

@@ -144,6 +144,8 @@ pub struct WccData {
 /// It is used by several directory operations (for example, create, mkdir, rmdir,
 /// remove, symlink, mknod, link, and rename). See NFSv3 RFC 1813:
 /// <https://datatracker.ietf.org/doc/html/rfc1813#autoid-15>
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct DirOpArgs {
     /// The file handle for the directory.
     pub dir: file::Handle,

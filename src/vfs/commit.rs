@@ -25,6 +25,8 @@ pub struct Fail {
 }
 
 /// [`Commit::commit`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the file to which data is to be flushed.
     pub file: file::Handle,
