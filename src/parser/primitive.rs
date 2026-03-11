@@ -14,7 +14,7 @@ pub const ALIGNMENT: usize = 4;
 pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
     let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
-    src.read_exact(&mut buf[..padding]).map_err(|_| Error::IncorrectPadding)
+    src.read_exact(&mut buf[..padding]).map_err(Error::IO)
 }
 
 /// Parses a `u8` (byte) from the `Read` source.
