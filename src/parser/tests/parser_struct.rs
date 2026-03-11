@@ -283,7 +283,7 @@ async fn parse_rejects_any_non_call_message_type() {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(Mutex::new(MockAllocator::new(0))) ;
+    let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.parse_message().await;
