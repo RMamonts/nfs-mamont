@@ -15,7 +15,7 @@ async fn clones_share_one_buffer_pool() {
 
     tokio::time::timeout(Duration::from_millis(120), async {
         second.allocate(NonZeroUsize::MIN).await.unwrap();
-        unreachable!("shared allocator should wait for a buffer to be returned")
+        unreachable!("shared allocator waits for a buffer to be returned")
     })
     .await
     .unwrap_err();
