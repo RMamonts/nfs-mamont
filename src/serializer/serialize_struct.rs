@@ -58,7 +58,7 @@ macro_rules! nfs_result {
 }
 
 /// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
-#[allow(unused)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NfsRes {
     Null,
     GetAttr(Result<vfs::get_attr::Success, vfs::get_attr::Fail>),
@@ -85,7 +85,7 @@ pub enum NfsRes {
 }
 
 /// Wrapper for mount procedure result bodies.
-#[allow(unused)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum MountRes {
     Null,
     Mount(mount::mnt::Result),
@@ -97,12 +97,14 @@ pub enum MountRes {
 
 /// Tagged union of top-level RPC program results supported by this server.
 #[allow(clippy::large_enum_variant)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum ProcResult {
     Nfs3(NfsRes),
     Mount(MountRes),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct ReplyFromVfs {
     xid: u32,
     verf: OpaqueAuth,
@@ -117,12 +119,12 @@ pub struct Serializer<T: AsyncWrite + Unpin> {
 #[allow(dead_code)]
 impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
-    fn new(writer: T) -> Self {
+    pub fn new(writer: T) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    fn with_capacity(writer: T, capacity: usize) -> Self {
+    pub fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 

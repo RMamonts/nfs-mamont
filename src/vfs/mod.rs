@@ -39,6 +39,7 @@ pub const STATUS_OK: usize = 0;
 
 /// [`Vfs`] errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Error {
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
@@ -134,6 +135,7 @@ pub enum Error {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
     pub after: Option<file::Attr>,

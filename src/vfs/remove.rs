@@ -5,12 +5,14 @@ use async_trait::async_trait;
 use crate::vfs;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Weak cache consistency data for the directory.
     pub wcc_data: vfs::WccData,
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

@@ -7,6 +7,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub file: file::Handle,
     pub file_attr: Option<file::Attr>,
@@ -14,6 +15,7 @@ pub struct Success {
 }
 
 /// Failed result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

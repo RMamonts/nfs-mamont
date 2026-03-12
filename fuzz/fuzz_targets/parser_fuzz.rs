@@ -6,7 +6,7 @@ use crate::parser_wrapper::RpcRequest;
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;
-use nfs_mamont::mocks::fuzz_socket::FuzzMockSocket;
+use nfs_mamont::mocks::read_socket::FuzzMockSocket;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::Arguments;
 use nfs_mamont::rpc::{Error, RpcBody, RPC_VERSION};

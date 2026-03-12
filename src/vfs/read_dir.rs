@@ -80,6 +80,7 @@ impl CookieVerifier {
 }
 
 // not exactly as in RFC, but possible
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -90,7 +91,8 @@ pub struct Entry {
     pub cookie: Cookie,
 }
 
-// Success result.
+/// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub dir_attr: Option<file::Attr>,
     /// The cookie verifier.
@@ -100,6 +102,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

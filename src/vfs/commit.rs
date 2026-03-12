@@ -7,6 +7,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
@@ -17,6 +18,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

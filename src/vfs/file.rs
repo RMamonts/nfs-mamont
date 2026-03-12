@@ -199,6 +199,7 @@ pub struct Device {
 /// Weak cache consistency attributes.
 #[cfg_attr(test, derive(PartialEq))]
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct WccAttr {
     /// The file size in bytes of the object before the operation.
     pub size: u64,

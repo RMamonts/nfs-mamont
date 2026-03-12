@@ -7,6 +7,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
@@ -15,6 +16,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
