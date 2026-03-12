@@ -82,25 +82,17 @@ impl MountTask {
             };
 
             tokio::spawn(async move {
-                loop {
-                    // TODO:
-                    // - recieve command
-                    match rx.recv().await {
-                        Some(_) => {
-                            // - process mount request
-                            // ...
-                            // - send result back
-                            if tx.send(()).is_err() {
-                                // Receiver dropped: end this client task.
-                                break;
-                            }
-                        }
-                        None => {
-                            // Channel closed: end this client task.
-                            break;
-                        }
+                #[allow(clippy::redundant_pattern_matching)]
+                while let Some(_) = rx.recv().await {
+                    // - process mount request
+                    // ...
+                    // - send result back
+                    if tx.send(()).is_err() {
+                        // Receiver dropped: end this client task.
+                        break;
                     }
                 }
+                // Channel closed: end this client task.
             });
         }
     }
