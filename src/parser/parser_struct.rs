@@ -147,7 +147,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             )));
         }
 
-        //TODO("there might max frame check, but with valid MAX_FRAME_SIZE")
+        //TODO("https://github.com/RMamonts/nfs-mamont/issues/124")
 
         // this is temporal check, apparently this will go to separate object Validator
         if !self.last {
