@@ -1,7 +1,7 @@
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-/// Writes [`crate::vfs_task::VfsTask`] responses to a network connection.
+/// Writes [`crate::task::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     _writehalf: OwnedWriteHalf,
     _result_receiver: UnboundedReceiver<()>,
