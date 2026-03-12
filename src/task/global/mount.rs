@@ -75,14 +75,9 @@ impl MountTask {
     async fn run(self) {
         let mut receiver = self.context.receiver;
 
-        loop {
-            if let Some(command) = receiver.recv().await {
-                // Send result back. It's fine if write task is already dropped.
-                let _ = command.result_tx.send(());
-            } else {
-                // Channel closed: terminate the mount task gracefully.
-                break;
-            }
+        while let Some(command) = receiver.recv().await {
+            // Send result back. It's fine if write task is already dropped.
+            let _ = command.result_tx.send(());
         }
     }
 }
