@@ -10,9 +10,10 @@ use crate::task::global::mount::MountCommand;
 pub struct ReadTask {
     _readhalf: OwnedReadHalf,
     _command_sender: UnboundedSender<()>,
-    // to pass into mount task
+    // to send messages into mount task
     _mount_sender: UnboundedSender<MountCommand>,
-    // to pass into mount task
+    // to pass into mount task as part of message,
+    // so mount task can send result back to write task
     _result_sender: UnboundedSender<()>,
 }
 
