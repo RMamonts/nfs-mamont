@@ -2,8 +2,8 @@
 //!
 //! This module provides tasks that exist across all NFS client connections
 //!
-//! Planned global tasks:
-//! - MOUNT (TODO: <https://github.com/RMamonts/nfs-mamont/issues/115>)
+//! Global tasks:
+//! - MOUNT
 //! - NLM (TODO: TBD)
 //! - AUTH (TODO: TBD)
 
