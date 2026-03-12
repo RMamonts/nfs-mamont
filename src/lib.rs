@@ -5,6 +5,7 @@ pub mod client;
 mod context;
 pub mod mount;
 pub mod nfsv3;
+pub mod nsm;
 pub mod parser;
 mod read_task;
 pub mod rpc;
