@@ -72,28 +72,24 @@ impl MountTask {
         let mut reciever = self.context.reciever;
 
         loop {
-            let link = reciever.recv().await;
-            let (tx, mut rx) = match link {
-                Some(link) => link,
-                None => {
-                    // Channel closed: terminate the mount task gracefully.
-                    break;
-                }
-            };
+            if let Some(link) = reciever.recv().await {
+                let (tx, mut rx) = link;
 
-            tokio::spawn(async move {
-                #[allow(clippy::redundant_pattern_matching)]
-                while let Some(_) = rx.recv().await {
-                    // - process mount request
-                    // ...
-                    // - send result back
-                    if tx.send(()).is_err() {
-                        // Receiver dropped: end this client task.
-                        break;
+                tokio::spawn(async move {
+                    #[allow(clippy::redundant_pattern_matching)]
+                    while let Some(_) = rx.recv().await {
+                        // - process mount request
+                        // ...
+                        // - send result back
+                        if tx.send(()).is_err() {
+                            // Receiver dropped: end this client task.
+                            break;
+                        }
                     }
-                }
-                // Channel closed: end this client task.
-            });
+                    // Channel closed: end this client task.
+                });
+            }
+            // Channel closed: terminate the mount task gracefully.
         }
     }
 }
