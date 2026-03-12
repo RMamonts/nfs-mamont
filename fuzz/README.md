@@ -18,7 +18,8 @@ cargo +nightly fuzz list
 ```
 
 * `round` - round-trip tests for functions from `parser::nfsv3` and `parser::mount`
-* `parser` - continuous test of parser::parser_struct for inner structure consistency
+* `parser` - continuous test of `parser::parser_struct` for inner structure consistency
+* `serializer` - continuous test of `serializer::serializer_struct` for inner structure consistency
 
 ## Run target
 
