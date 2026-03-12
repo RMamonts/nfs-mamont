@@ -4,7 +4,7 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// Reads RPC commands from a network connection, parses it,
-/// and forwards them to a [`crate::vfs_task::VfsTask`].
+/// and forwards them to a [`crate::task::connection::vfs::VfsTask`].
 pub struct ReadTask {
     _readhalf: OwnedReadHalf,
     _command_sender: UnboundedSender<()>,

@@ -6,20 +6,18 @@ mod context;
 pub mod mount;
 pub mod nfsv3;
 pub mod parser;
-mod read_task;
 pub mod rpc;
 pub mod serializer;
+pub mod task;
 pub mod vfs;
-mod vfs_task;
-mod write_task;
 
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::read_task::ReadTask;
-use crate::vfs_task::VfsTask;
-use crate::write_task::WriteTask;
+use crate::task::connection::read::ReadTask;
+use crate::task::connection::vfs::VfsTask;
+use crate::task::connection::write::WriteTask;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
