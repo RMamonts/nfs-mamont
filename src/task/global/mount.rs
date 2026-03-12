@@ -7,9 +7,13 @@ use tokio::sync::RwLock;
 use crate::mount::{ExportEntry, MountEntry};
 use crate::vfs::file;
 
-// sender - to send to the WriteTask
-// reciever to recieve from ReadTask
-type Link = (UnboundedSender<()>, UnboundedReceiver<()>);
+/// Command sent to [`MountTask`] from connection read tasks.
+pub struct MountCommand {
+    /// Channel used to pass the result to write task.
+    pub result_tx: UnboundedSender<()>,
+    /// Placeholder for mount procedure args.
+    pub args: (),
+}
 
 #[derive(Default)]
 struct ExportRegistry {
@@ -32,8 +36,8 @@ struct MountContext {
     // who has mounted what
     #[allow(dead_code)]
     mounts: Arc<RwLock<MountRegistry>>,
-    // to send chenels for client connections
-    reciever: UnboundedReceiver<Link>,
+    // channel for commands from client connection tasks
+    receiver: UnboundedReceiver<MountCommand>,
 }
 
 pub struct MountTask {
@@ -43,14 +47,14 @@ pub struct MountTask {
 
 impl MountTask {
     /// Creates new instance of [`MountTask`]
-    pub fn new() -> (Self, UnboundedSender<Link>) {
-        let (sender, reciever) = mpsc::unbounded_channel::<Link>();
+    pub fn new() -> (Self, UnboundedSender<MountCommand>) {
+        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
         let task = Self {
             context: MountContext {
                 exports: Arc::new(RwLock::new(ExportRegistry::default())),
                 mounts: Arc::new(RwLock::new(MountRegistry::default())),
-                reciever,
+                receiver,
             },
         };
 
@@ -69,27 +73,16 @@ impl MountTask {
     }
 
     async fn run(self) {
-        let mut reciever = self.context.reciever;
+        let mut receiver = self.context.receiver;
 
         loop {
-            if let Some(link) = reciever.recv().await {
-                let (tx, mut rx) = link;
-
-                tokio::spawn(async move {
-                    #[allow(clippy::redundant_pattern_matching)]
-                    while let Some(_) = rx.recv().await {
-                        // - process mount request
-                        // ...
-                        // - send result back
-                        if tx.send(()).is_err() {
-                            // Receiver dropped: end this client task.
-                            break;
-                        }
-                    }
-                    // Channel closed: end this client task.
-                });
+            if let Some(command) = receiver.recv().await {
+                // Send result back. It's fine if write task is already dropped.
+                let _ = command.result_tx.send(());
+            } else {
+                // Channel closed: terminate the mount task gracefully.
+                break;
             }
-            // Channel closed: terminate the mount task gracefully.
         }
     }
 }
