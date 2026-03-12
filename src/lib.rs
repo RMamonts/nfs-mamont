@@ -15,9 +15,9 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::task::read::ReadTask;
-use crate::task::vfs::VfsTask;
-use crate::task::write::WriteTask;
+use crate::task::connection::read::ReadTask;
+use crate::task::connection::vfs::VfsTask;
+use crate::task::connection::write::WriteTask;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
