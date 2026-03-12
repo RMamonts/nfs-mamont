@@ -57,7 +57,7 @@ impl MountTask {
         (task, sender)
     }
 
-    /// Spawns a [`MountTask`]  that processes mount commands recieved from
+    /// Spawns a [`MountTask`]  that processes mount commands received from
     /// [`crate::task::connection::read::ReadTask`] and returns results to
     /// [`crate::task::connection::write::WriteTask`].
     ///
@@ -72,19 +72,34 @@ impl MountTask {
         let mut reciever = self.context.reciever;
 
         loop {
-            // get onehot tx
-            let (tx, mut rx) = reciever.recv().await.unwrap();
+            let link = reciever.recv().await;
+            let (tx, mut rx) = match link {
+                Some(link) => link,
+                None => {
+                    // Channel closed: terminate the mount task gracefully.
+                    break;
+                }
+            };
 
-            // TODO: cancelation token or notify if client session ends
             tokio::spawn(async move {
                 loop {
                     // TODO:
                     // - recieve command
-                    rx.recv().await.unwrap();
-                    // - process mount request
-                    // ...
-                    // - send result back
-                    tx.send(()).unwrap();
+                    match rx.recv().await {
+                        Some(_) => {
+                            // - process mount request
+                            // ...
+                            // - send result back
+                            if tx.send(()).is_err() {
+                                // Receiver dropped: end this client task.
+                                break;
+                            }
+                        }
+                        None => {
+                            // Channel closed: end this client task.
+                            break;
+                        }
+                    }
                 }
             });
         }
