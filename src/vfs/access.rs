@@ -8,12 +8,14 @@ use async_trait::async_trait;
 use super::{file, Error};
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub object_attr: Option<file::Attr>,
     pub access: Mask,
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: Error,

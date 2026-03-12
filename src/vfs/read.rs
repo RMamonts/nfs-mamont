@@ -7,6 +7,7 @@ use crate::allocator::Slice;
 use crate::vfs;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct Success {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
@@ -14,6 +15,7 @@ pub struct Success {
     pub data: Slice,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct SuccessPartial {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
@@ -23,7 +25,25 @@ pub struct SuccessPartial {
     pub eof: bool,
 }
 
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for Success {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let data = Slice::arbitrary(u)?;
+        let count = data.iter().map(|block| block.len()).sum::<usize>();
+        assert!(count < u32::MAX as usize);
+        Ok(Self {
+            head: SuccessPartial {
+                file_attr: u.arbitrary::<Option<file::Attr>>()?,
+                count: count as u32,
+                eof: u.arbitrary::<bool>()?,
+            },
+            data,
+        })
+    }
+}
+
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

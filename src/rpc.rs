@@ -2,6 +2,7 @@ use std::io;
 use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
+use crate::nfsv3::NFS_VERSION;
 
 pub const RPC_VERSION: u32 = 2;
 
@@ -18,6 +19,7 @@ pub enum AcceptStat {
 }
 
 #[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AuthStat {
     Ok = 0,
     BadCred = 1,
@@ -49,6 +51,7 @@ pub enum ReplyBody {
 
 /// Authentication flavors.
 #[derive(ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,
@@ -57,9 +60,23 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
+}
+
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for OpaqueAuth {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MAX_AUTH_SIZE)?;
+        let mut body = vec![0u8; size];
+        u.fill_buffer(&mut body)?;
+        Ok(Self {
+            flavor: u.arbitrary::<AuthFlavor>()?,
+            body,
+        })
+    }
 }
 
 pub enum RejectedReply {
@@ -70,6 +87,7 @@ pub enum RejectedReply {
 /// Represents a mismatch in program/protocol versions.
 /// Returns highest and lowest versions of available versions of requested program
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
@@ -77,6 +95,7 @@ pub struct VersionMismatch {
 
 /// Errors that can occur during parsing.
 #[derive(Debug)]
+
 pub enum Error {
     /// The maximum element limit was exceeded.
     MaxElemLimit,
@@ -102,4 +121,31 @@ pub enum Error {
     ProcedureMismatch,
     /// A program version mismatch occurred.
     ProgramVersionMismatch(VersionMismatch),
+}
+
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for Error {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let idx = u.int_in_range(0..=11)?;
+        Ok(match idx {
+            0 => Error::EnumDiscMismatch,
+            1 => Error::BadFileHandle,
+            2 => Error::ImpossibleTypeCast,
+            3 => Error::MaxElemLimit,
+            4 => Error::MessageTypeMismatch,
+            5 => Error::ProcedureMismatch,
+            6 => Error::ProgramMismatch,
+            7 => Error::IncorrectString(String::from_utf8(vec![0xFF]).unwrap_err()),
+            8 => Error::AuthError(AuthStat::BadCred),
+            9 => Error::IO(io::Error::from_raw_os_error(22)),
+            10 => {
+                Error::RpcVersionMismatch(VersionMismatch { low: RPC_VERSION, high: RPC_VERSION })
+            }
+            11 => Error::ProgramVersionMismatch(VersionMismatch {
+                low: NFS_VERSION,
+                high: NFS_VERSION,
+            }),
+            _ => unreachable!(),
+        })
+    }
 }

@@ -1,3 +1,4 @@
 pub mod alloc;
-pub mod fuzz_socket;
+pub mod read_socket;
 pub mod socket;
+pub mod write_socket;

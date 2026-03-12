@@ -9,6 +9,7 @@ use crate::vfs::read_dir::CookieVerifier;
 use super::file;
 
 // also keep in mind, that it should have some pointer to next item in list
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -22,6 +23,7 @@ pub struct Entry {
 }
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
@@ -32,6 +34,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

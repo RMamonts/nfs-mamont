@@ -11,7 +11,7 @@ pub fn export_entry(dest: &mut impl Write, arg: mount::ExportEntry) -> io::Resul
     file_path(dest, arg.directory)?;
     for item in arg.names {
         bool(dest, true)?;
-        string_max_size(dest, item, MOUNT_HOST_NAME_LEN)?;
+        string_max_size(dest, item.as_str().to_string(), MOUNT_HOST_NAME_LEN)?;
     }
     bool(dest, false)
 }

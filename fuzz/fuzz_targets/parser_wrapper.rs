@@ -6,7 +6,7 @@ use nfs_mamont::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::mocks::fuzz_socket::{FuzzMockSocket, FuzzSocketHandler};
+use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 use nfs_mamont::nfsv3;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};

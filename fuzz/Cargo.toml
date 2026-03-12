@@ -27,3 +27,10 @@ path = "fuzz_targets/parser_fuzz.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "serializer"
+path = "fuzz_targets/serializer.rs"
+test = false
+doc = false
+bench = false
