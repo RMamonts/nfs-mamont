@@ -244,10 +244,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - The program version doesn't match
     /// - The procedure number is invalid
     /// - Parsing the procedure arguments fails
-    async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<ProcArguments>> {
+    async fn parse_proc(&mut self, head: RpcMessage) -> Result<ProcArguments> {
         match head.program {
             NFS_PROGRAM => match head.version {
-                NFS_VERSION => Ok(Box::new(ProcArguments::Nfs3(Box::new(match head.procedure {
+                NFS_VERSION => Ok(ProcArguments::Nfs3(Box::new(match head.procedure {
                     NULL => NfsArguments::Null,
                     GETATTR => {
                         NfsArguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
@@ -307,7 +307,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         NfsArguments::Commit(self.buffer.parse_with_retry(commit::args).await?)
                     }
                     _ => return Err(Error::ProcedureMismatch),
-                })))),
+                }))),
                 _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
                     low: NFS_VERSION,
                     high: NFS_VERSION,
@@ -321,7 +321,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         high: MOUNT_VERSION,
                     }));
                 }
-                Ok(Box::new(ProcArguments::Mount(Box::new(match head.procedure {
+                Ok(ProcArguments::Mount(Box::new(match head.procedure {
                     0 => MountArguments::Null,
                     1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
                     2 => MountArguments::Dump,
@@ -329,7 +329,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     4 => MountArguments::UnmountAll,
                     5 => MountArguments::Export,
                     _ => return Err(Error::ProcedureMismatch),
-                }))))
+                })))
             }
             _ => Err(Error::ProgramMismatch),
         }
@@ -351,7 +351,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns a boxed [`ProcArguments`] enum variant containing the parsed procedure arguments,
     /// or an error if parsing fails at any stage.
-    pub async fn parse_message(&mut self) -> Result<Box<ProcArguments>> {
+    pub async fn parse_message(&mut self) -> Result<ProcArguments> {
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
