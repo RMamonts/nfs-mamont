@@ -349,7 +349,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns a boxed [`ProcArguments`] enum variant containing the parsed procedure arguments,
+    /// Returns a [`ProcArguments`] enum variant containing the parsed procedure arguments,
     /// or an error if parsing fails at any stage.
     pub async fn parse_message(&mut self) -> Result<ProcArguments> {
         self.read_message_header().await?;
