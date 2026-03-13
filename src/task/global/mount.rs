@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::sync::Arc;
+
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use tokio::sync::RwLock;
 
 use crate::mount::{ExportEntry, MountEntry};
 use crate::vfs::file;
@@ -32,10 +31,10 @@ struct MountRegistry {
 struct MountContext {
     // what's available to mount
     #[allow(dead_code)]
-    exports: Arc<RwLock<ExportRegistry>>,
+    exports: ExportRegistry,
     // who has mounted what
     #[allow(dead_code)]
-    mounts: Arc<RwLock<MountRegistry>>,
+    mounts: MountRegistry,
     // channel for commands from client connection tasks
     receiver: UnboundedReceiver<MountCommand>,
 }
@@ -52,8 +51,8 @@ impl MountTask {
 
         let task = Self {
             context: MountContext {
-                exports: Arc::new(RwLock::new(ExportRegistry::default())),
-                mounts: Arc::new(RwLock::new(MountRegistry::default())),
+                exports: ExportRegistry::default(),
+                mounts: MountRegistry::default(),
                 receiver,
             },
         };
