@@ -96,10 +96,9 @@ pub enum MountRes {
 }
 
 /// Tagged union of top-level RPC program results supported by this server.
-#[allow(clippy::large_enum_variant)]
 pub enum ProcResult {
-    Nfs3(NfsRes),
-    Mount(MountRes),
+    Nfs3(Box<NfsRes>),
+    Mount(Box<MountRes>),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
@@ -135,8 +134,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: NfsRes) -> io::Result<()> {
-        match data {
+    async fn process_nfs3(&mut self, data: Box<NfsRes>) -> io::Result<()> {
+        match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
                 nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
@@ -216,8 +215,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Serializes a [`ProcResult::Mount`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_mount(&mut self, data: MountRes) -> io::Result<()> {
-        match data {
+    async fn process_mount(&mut self, data: Box<MountRes>) -> io::Result<()> {
+        match *data {
             MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
                 self.buffer.send_inner_buffer().await
             }
