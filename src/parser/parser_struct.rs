@@ -238,7 +238,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns a boxed [`ProcArguments`] enum variant containing the parsed procedure arguments,
+    /// Returns a [`ProcArguments`] enum variant containing the parsed procedure arguments,
     /// or an error if:
     /// - The program is not recognized (NFS or MOUNT)
     /// - The program version doesn't match

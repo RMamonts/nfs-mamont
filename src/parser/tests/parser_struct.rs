@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
+use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{Error, NfsArguments, ProcArguments};
+use crate::parser::{Error, MountArguments, NfsArguments, ProcArguments};
 use crate::rpc::{RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.
@@ -99,6 +100,40 @@ fn nfs_call_frame(
     frame
 }
 
+/// Constructs a complete MOUNT RPC call frame for the given procedure and arguments.
+fn mount_call_frame(
+    msg_type: u32,
+    rpc_version: u32,
+    auth_flavor: u32,
+    procedure: u32,
+    args_builder: impl FnOnce(&mut Vec<u8>),
+) -> Vec<u8> {
+    let mut payload = Vec::new();
+    // RPC call header fields
+    push_u32(&mut payload, XID);
+    push_u32(&mut payload, msg_type);
+    push_u32(&mut payload, rpc_version);
+    push_u32(&mut payload, MOUNT_PROGRAM);
+    push_u32(&mut payload, MOUNT_VERSION);
+    push_u32(&mut payload, procedure);
+    push_u32(&mut payload, auth_flavor);
+    // Auth body length (0 for AUTH_NONE/SYS in tests)
+    push_u32(&mut payload, 0);
+
+    // Append procedure-specific arguments
+    args_builder(&mut payload);
+
+    let mut frame = Vec::with_capacity(payload.len());
+
+    // Construct fragment header: set last fragment flag and include header size
+    let payload_len: u32 = payload.len().try_into().unwrap();
+    let fragment_header = FRAGMENT_HEADER_MASK | payload_len;
+
+    push_u32(&mut frame, fragment_header);
+    frame.extend_from_slice(&payload);
+    frame
+}
+
 /// Serializes fsstat (NFS procedure 18) arguments: just a root file handle.
 fn fsstat_args(root: [u8; 8]) -> Vec<u8> {
     let mut args = Vec::new();
@@ -128,16 +163,56 @@ fn write_args(offset: u64, count: u32, stable: u32, data: &[u8]) -> Vec<u8> {
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
 fn assert_fsstat_result(result: &ProcArguments, expected_root: [u8; 8]) {
-    match result {
-        ProcArguments::Nfs3(boxed_args) => {
-            if let NfsArguments::FsStat(args) = boxed_args.as_ref() {
-                assert_eq!(args.root.0, expected_root);
-            } else {
-                panic!("Wrong NFS argument type");
-            }
-        }
-        _ => panic!("Wrong result type"),
-    }
+    let ProcArguments::Nfs3(boxed_args) = result else {
+        panic!("Wrong result type");
+    };
+    let NfsArguments::FsStat(args) = boxed_args.as_ref() else {
+        panic!("Wrong NFS argument type");
+    };
+    assert_eq!(args.root.0, expected_root);
+}
+
+/// Test: Parses a valid MOUNT call and returns mount-specific arguments.
+#[tokio::test]
+async fn parse_mount_call() {
+    let frame = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, 1, |buf| {
+        push_opaque(buf, b"/mnt/vol");
+    });
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.parse_message().await.unwrap();
+    let ProcArguments::Mount(mount_args) = result else {
+        panic!("Expected mount protocol arguments");
+    };
+    assert!(matches!(mount_args.as_ref(), MountArguments::Mount(_)));
+}
+
+/// Test: After a MOUNT procedure mismatch, parser can parse the next valid MOUNT call.
+#[tokio::test]
+async fn parse_mount_after_error() {
+    let first = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, 99, |_| {});
+    let second = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, AUTH_NONE, 1, |buf| {
+        push_opaque(buf, b"/mnt/vol");
+    });
+
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&first);
+    buf.extend_from_slice(&second);
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+
+    let first_result = parser.parse_message().await;
+    assert!(matches!(first_result, Err(Error::ProcedureMismatch)));
+
+    let second_result = parser.parse_message().await.unwrap();
+    let ProcArguments::Mount(mount_args) = second_result else {
+        panic!("Expected mount protocol arguments");
+    };
+    assert!(matches!(mount_args.as_ref(), MountArguments::Mount(_)));
 }
 
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
