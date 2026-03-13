@@ -33,9 +33,13 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
+pub enum ProcArguments {
+    Nfs3(Box<NfsArguments>),
+    Mount(Box<MountArguments>),
+}
+
 /// Enumerates the different types of arguments that can be parsed.
-pub enum Arguments {
-    // NFSv3
+pub enum NfsArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -80,7 +84,10 @@ pub enum Arguments {
     PathConf(path_conf::Args),
     /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
-    // MOUNT
+}
+pub enum MountArguments {
+    /// Null operation arguments.
+    Null,
     /// Arguments for the Mount operation.
     Mount(MountArgs),
     /// Arguments for the Unmount operation.

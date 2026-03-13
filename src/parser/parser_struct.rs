@@ -36,7 +36,9 @@ use crate::parser::nfsv3::{
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
-use crate::parser::{proc_nested_errors, Arguments, Error, Result};
+use crate::parser::{
+    proc_nested_errors, Error, MountArguments, NfsArguments, ProcArguments, Result,
+};
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
@@ -236,58 +238,76 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns a boxed [`Arguments`] enum variant containing the parsed procedure arguments,
+    /// Returns a boxed [`ProcArguments`] enum variant containing the parsed procedure arguments,
     /// or an error if:
     /// - The program is not recognized (NFS or MOUNT)
     /// - The program version doesn't match
     /// - The procedure number is invalid
     /// - Parsing the procedure arguments fails
-    async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<Arguments>> {
+    async fn parse_proc(&mut self, head: RpcMessage) -> Result<Box<ProcArguments>> {
         match head.program {
             NFS_PROGRAM => match head.version {
-                NFS_VERSION => Ok(Box::new(match head.procedure {
-                    NULL => Arguments::Null,
+                NFS_VERSION => Ok(Box::new(ProcArguments::Nfs3(Box::new(match head.procedure {
+                    NULL => NfsArguments::Null,
                     GETATTR => {
-                        Arguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
+                        NfsArguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
                     }
                     SETATTR => {
-                        Arguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
+                        NfsArguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
                     }
-                    LOOKUP => Arguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
-                    ACCESS => Arguments::Access(self.buffer.parse_with_retry(access::args).await?),
+                    LOOKUP => {
+                        NfsArguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?)
+                    }
+                    ACCESS => {
+                        NfsArguments::Access(self.buffer.parse_with_retry(access::args).await?)
+                    }
                     READLINK => {
-                        Arguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
+                        NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
                     }
-                    READ => Arguments::Read(self.buffer.parse_with_retry(read::args).await?),
+                    READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
 
-                    WRITE => Arguments::Write(
+                    WRITE => NfsArguments::Write(
                         adapter_for_write(&self.allocator, &mut self.buffer).await?,
                     ),
 
-                    CREATE => Arguments::Create(self.buffer.parse_with_retry(create::args).await?),
-                    MKDIR => Arguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
+                    CREATE => {
+                        NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?)
+                    }
+                    MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
                     SYMLINK => {
-                        Arguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
+                        NfsArguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
                     }
-                    MKNOD => Arguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
-                    REMOVE => Arguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
-                    RMDIR => Arguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
-                    RENAME => Arguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
-                    LINK => Arguments::Link(self.buffer.parse_with_retry(link::args).await?),
+                    MKNOD => {
+                        NfsArguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?)
+                    }
+                    REMOVE => {
+                        NfsArguments::Remove(self.buffer.parse_with_retry(remove::args).await?)
+                    }
+                    RMDIR => NfsArguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
+                    RENAME => {
+                        NfsArguments::Rename(self.buffer.parse_with_retry(rename::args).await?)
+                    }
+                    LINK => NfsArguments::Link(self.buffer.parse_with_retry(link::args).await?),
                     READDIR => {
-                        Arguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
+                        NfsArguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
                     }
-                    READDIRPLUS => Arguments::ReadDirPlus(
+                    READDIRPLUS => NfsArguments::ReadDirPlus(
                         self.buffer.parse_with_retry(read_dir_plus::args).await?,
                     ),
-                    FSSTAT => Arguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
-                    FSINFO => Arguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
-                    PATHCONF => {
-                        Arguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
+                    FSSTAT => {
+                        NfsArguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?)
                     }
-                    COMMIT => Arguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
+                    FSINFO => {
+                        NfsArguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?)
+                    }
+                    PATHCONF => {
+                        NfsArguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
+                    }
+                    COMMIT => {
+                        NfsArguments::Commit(self.buffer.parse_with_retry(commit::args).await?)
+                    }
                     _ => return Err(Error::ProcedureMismatch),
-                })),
+                })))),
                 _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
                     low: NFS_VERSION,
                     high: NFS_VERSION,
@@ -301,15 +321,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         high: MOUNT_VERSION,
                     }));
                 }
-                Ok(Box::new(match head.procedure {
-                    0 => Arguments::Null,
-                    1 => Arguments::Mount(self.buffer.parse_with_retry(mount).await?),
-                    2 => Arguments::Dump,
-                    3 => Arguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
-                    4 => Arguments::UnmountAll,
-                    5 => Arguments::Export,
+                Ok(Box::new(ProcArguments::Mount(Box::new(match head.procedure {
+                    0 => MountArguments::Null,
+                    1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
+                    2 => MountArguments::Dump,
+                    3 => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
+                    4 => MountArguments::UnmountAll,
+                    5 => MountArguments::Export,
                     _ => return Err(Error::ProcedureMismatch),
-                }))
+                }))))
             }
             _ => Err(Error::ProgramMismatch),
         }
@@ -329,9 +349,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns a boxed [`Arguments`] enum variant containing the parsed procedure arguments,
+    /// Returns a boxed [`ProcArguments`] enum variant containing the parsed procedure arguments,
     /// or an error if parsing fails at any stage.
-    pub async fn parse_message(&mut self) -> Result<Box<Arguments>> {
+    pub async fn parse_message(&mut self) -> Result<Box<ProcArguments>> {
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
