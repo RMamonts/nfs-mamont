@@ -3,17 +3,34 @@ use std::io;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 
-/// Reads RPC commands from a network connection, parses it,
-/// and forwards them to a [`crate::task::connection::vfs::VfsTask`].
+use crate::task::global::mount::MountCommand;
+
+/// Reads RPC commands from a network connection, parses them,
+/// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
 pub struct ReadTask {
     _readhalf: OwnedReadHalf,
     _command_sender: UnboundedSender<()>,
+    // to send messages into mount task
+    _mount_sender: UnboundedSender<MountCommand>,
+    // to pass into mount task as part of message,
+    // so mount task can send result back to write task
+    _result_sender: UnboundedSender<()>,
 }
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub fn new(readhalf: OwnedReadHalf, command_sender: UnboundedSender<()>) -> Self {
-        Self { _readhalf: readhalf, _command_sender: command_sender }
+    pub fn new(
+        readhalf: OwnedReadHalf,
+        command_sender: UnboundedSender<()>,
+        mount_sender: UnboundedSender<MountCommand>,
+        result_sender: UnboundedSender<()>,
+    ) -> Self {
+        Self {
+            _readhalf: readhalf,
+            _command_sender: command_sender,
+            _mount_sender: mount_sender,
+            _result_sender: result_sender,
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
