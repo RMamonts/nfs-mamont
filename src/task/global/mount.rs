@@ -4,12 +4,13 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::mount::{ExportEntry, MountEntry};
+use crate::task::ProcReply;
 use crate::vfs::file;
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<()>,
+    pub result_tx: UnboundedSender<ProcReply>,
     /// Placeholder for mount procedure args.
     pub args: (),
 }
@@ -74,9 +75,10 @@ impl MountTask {
     async fn run(self) {
         let mut receiver = self.context.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Some(_command) = receiver.recv().await {
             // Send result back. It's fine if write task is already dropped.
-            let _ = command.result_tx.send(());
+            // TODO("https://github.com/RMamonts/nfs-mamont/issues/123"
+            //let _ = command.result_tx.send();
         }
     }
 }
