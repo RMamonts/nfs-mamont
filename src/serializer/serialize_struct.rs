@@ -199,6 +199,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// *   `reply` - procedure result of [`ProcReply`] type
     /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
     ///                  order to validate itself to the client
+    /// TODO:(https://github.com/RMamonts/nfs-mamont/issues/137)
     pub async fn form_reply(&mut self, reply: ProcReply, verifier: OpaqueAuth) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
