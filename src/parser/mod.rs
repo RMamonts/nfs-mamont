@@ -33,16 +33,7 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Procedure arguments grouped by RPC program.
-///
-/// Variants keep protocol-specific argument enums in boxes to avoid inflating
-/// the top-level enum size.
-pub enum ProcArguments {
-    Nfs3(Box<NfsArguments>),
-    Mount(Box<MountArguments>),
-}
-
-/// Enumerates the different types of arguments that can be parsed.
+/// Enumerates supported NFS protocol procedure arguments.
 pub enum NfsArguments {
     /// Null operation arguments.
     Null,

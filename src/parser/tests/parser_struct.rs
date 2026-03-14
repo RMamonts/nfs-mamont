@@ -6,7 +6,7 @@ use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{Error, NfsArguments, ProcArguments};
+use crate::parser::{Error, NfsArguments};
 use crate::rpc::{RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.
@@ -127,11 +127,8 @@ fn write_args(offset: u64, count: u32, stable: u32, data: &[u8]) -> Vec<u8> {
 }
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
-fn assert_fsstat_result(result: &ProcArguments, expected_root: [u8; 8]) {
-    let ProcArguments::Nfs3(boxed_args) = result else {
-        panic!("Wrong result type");
-    };
-    let NfsArguments::FsStat(args) = boxed_args.as_ref() else {
+fn assert_fsstat_result(result: &NfsArguments, expected_root: [u8; 8]) {
+    let NfsArguments::FsStat(args) = result else {
         panic!("Wrong NFS argument type");
     };
     assert_eq!(args.root.0, expected_root);
@@ -152,8 +149,8 @@ async fn parse_two_correct() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
-    let _ = parser.parse_message().await;
-    let result = parser.parse_message().await.unwrap();
+    let _ = parser.parse_nfs_message().await;
+    let result = parser.parse_nfs_message().await.unwrap();
     assert_fsstat_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
@@ -172,9 +169,9 @@ async fn parse_after_error() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_err());
-    let result = parser.parse_message().await.unwrap();
+    let result = parser.parse_nfs_message().await.unwrap();
     assert_fsstat_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
@@ -199,9 +196,9 @@ async fn parse_write() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0x24)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_ok());
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_ok());
 }
 
@@ -226,9 +223,9 @@ async fn parse_write_after_error() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0x24)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 80);
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_err());
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_ok());
 }
 
@@ -245,7 +242,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
 
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     let error = result.err().unwrap();
     assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
 }
@@ -264,7 +261,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 32);
 
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(matches!(result, Err(Error::IO(_))));
 }
 
@@ -288,7 +285,7 @@ async fn parse_rejects_any_non_call_message_type() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(matches!(result, Err(Error::MessageTypeMismatch)));
 }
 
@@ -303,7 +300,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
 
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     let error = result.err().unwrap();
     assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
 }
@@ -333,6 +330,6 @@ async fn parse_write_with_empty_payload() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(1)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 68);
-    let result = parser.parse_message().await;
+    let result = parser.parse_nfs_message().await;
     assert!(result.is_ok());
 }
