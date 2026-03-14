@@ -19,6 +19,7 @@ use crate::task::connection::read::ReadTask;
 use crate::task::connection::vfs::VfsTask;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::{MountCommand, MountTask};
+use crate::task::ProcReply;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
@@ -37,7 +38,7 @@ pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
 async fn process_socket(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCommand>) {
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<()>();
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<()>();
 

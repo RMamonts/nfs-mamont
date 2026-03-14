@@ -4,7 +4,7 @@
 //! including connection-specific tasks and global task coordination.
 
 use crate::mount::MountRes;
-use crate::rpc::{Error, OpaqueAuth};
+use crate::rpc::Error;
 use crate::vfs::NfsRes;
 
 pub mod connection;
@@ -17,8 +17,7 @@ pub enum ProcResult {
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
-pub struct ReplyFromVfs {
+pub struct ProcReply {
     pub xid: u32,
-    pub verf: OpaqueAuth,
     pub proc_result: Result<ProcResult, Error>,
 }

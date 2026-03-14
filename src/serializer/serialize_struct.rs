@@ -12,7 +12,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
 use crate::mount::MountRes;
-use crate::rpc::{AcceptStat, Error, RejectedReply, ReplyBody, RpcBody};
+use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
@@ -21,7 +21,7 @@ use crate::serializer::nfs::{
 };
 use crate::serializer::rpc::auth;
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcResult, ReplyFromVfs};
+use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 use crate::{serializer, vfs};
 
@@ -193,14 +193,19 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         }
     }
 
-    /// Serializes [`ReplyFromVfs`] into a complete XDR RPC reply and writes it to the underlying writer.
-    pub async fn form_reply(&mut self, reply: ReplyFromVfs) -> io::Result<()> {
+    /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.
+    ///
+    /// ## Arguments:
+    /// *   `reply` - procedure result of [`ProcReply`] type
+    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
+    ///                  order to validate itself to the client
+    pub async fn form_reply(&mut self, reply: ProcReply, verifier: OpaqueAuth) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
         match reply.proc_result {
             Ok(proc) => {
                 u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                auth(&mut self.buffer, reply.verf)?;
+                auth(&mut self.buffer, verifier)?;
                 u32(&mut self.buffer, AcceptStat::Success as u32)?;
                 self.process_result(proc).await
             }
@@ -213,7 +218,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     | Error::MaxElemLimit
                     | Error::IncorrectString(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
                         self.buffer.send_inner_buffer().await
@@ -233,19 +238,19 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
                         u32(&mut self.buffer, info.high)?;
@@ -253,7 +258,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
