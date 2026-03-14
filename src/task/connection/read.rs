@@ -4,6 +4,7 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::task::global::mount::MountCommand;
+use crate::task::ProcReply;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
@@ -14,7 +15,9 @@ pub struct ReadTask {
     _mount_sender: UnboundedSender<MountCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
-    _result_sender: UnboundedSender<()>,
+    // and
+    // to bypass vfs with null procedure
+    _result_sender: UnboundedSender<ProcReply>,
 }
 
 impl ReadTask {
@@ -23,7 +26,7 @@ impl ReadTask {
         readhalf: OwnedReadHalf,
         command_sender: UnboundedSender<()>,
         mount_sender: UnboundedSender<MountCommand>,
-        result_sender: UnboundedSender<()>,
+        result_sender: UnboundedSender<ProcReply>,
     ) -> Self {
         Self {
             _readhalf: readhalf,
@@ -43,6 +46,6 @@ impl ReadTask {
     }
 
     async fn run(self) -> io::Result<()> {
-        todo!("Implement ReadTask")
+        todo!("https://github.com/RMamonts/nfs-mamont/issues/120")
     }
 }

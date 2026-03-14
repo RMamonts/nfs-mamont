@@ -1,15 +1,16 @@
+use crate::task::ProcReply;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 /// Writes [`crate::task::connection::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     _writehalf: OwnedWriteHalf,
-    _result_receiver: UnboundedReceiver<()>,
+    _result_receiver: UnboundedReceiver<ProcReply>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<()>) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<ProcReply>) -> Self {
         Self { _writehalf: writehalf, _result_receiver: result_receiver }
     }
 
@@ -23,6 +24,6 @@ impl WriteTask {
     }
 
     async fn run(self) {
-        todo!("Implement WriteTask")
+        todo!("https://github.com/RMamonts/nfs-mamont/issues/121")
     }
 }
