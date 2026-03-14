@@ -300,7 +300,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             Err(err) => return Err(self.match_errors(err).await),
         };
 
-        // that's done after normal parsing without errors
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
         Ok(proc)
     }
@@ -317,7 +317,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             Err(err) => return Err(self.match_errors(err).await),
         };
 
-        // that's done after normal parsing without errors
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
         Ok(proc)
     }
