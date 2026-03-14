@@ -72,7 +72,7 @@ const DEFAULT_SIZE: usize = 2500;
 ///
 /// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
 /// let mut parser = RpcParser::new(socket, alloc);
-/// let args = parser.parse_nfs_message().await?;
+/// let args = parser.next_message().await?;
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
