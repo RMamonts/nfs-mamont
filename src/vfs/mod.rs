@@ -1,6 +1,5 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-use crate::vfs;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
@@ -177,7 +176,7 @@ pub trait Vfs:
 {
 }
 
-/// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
+/// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
 pub enum NfsRes {
     Null,
     GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),

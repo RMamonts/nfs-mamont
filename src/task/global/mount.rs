@@ -75,10 +75,10 @@ impl MountTask {
     async fn run(self) {
         let mut receiver = self.context.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Some(_command) = receiver.recv().await {
             // Send result back. It's fine if write task is already dropped.
-            let _ =
-                command.result_tx.send(todo!("https://github.com/RMamonts/nfs-mamont/issues/123"));
+            // TODO("https://github.com/RMamonts/nfs-mamont/issues/123"
+            //let _ = command.result_tx.send();
         }
     }
 }

@@ -13,6 +13,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Slice;
 use crate::mount::MountRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
+use crate::serializer;
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
@@ -23,11 +24,10 @@ use crate::serializer::rpc::auth;
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
-use crate::{serializer, vfs};
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data
@@ -198,8 +198,9 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// ## Arguments:
     /// *   `reply` - procedure result of [`ProcReply`] type
     /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
-    ///                  order to validate itself to the client
-    /// TODO:(https://github.com/RMamonts/nfs-mamont/issues/137)
+    ///     order to validate itself to the client
+    ///
+    /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
     pub async fn form_reply(&mut self, reply: ProcReply, verifier: OpaqueAuth) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
