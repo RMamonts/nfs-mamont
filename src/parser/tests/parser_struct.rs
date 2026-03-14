@@ -6,7 +6,7 @@ use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{Error, NfsArguments};
+use crate::parser::{Error, NfsArguments, ProcArguments};
 use crate::rpc::{RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.
@@ -134,6 +134,13 @@ fn assert_fsstat_result(result: &NfsArguments, expected_root: [u8; 8]) {
     assert_eq!(args.root.0, expected_root);
 }
 
+fn assert_fsstat_proc_result(result: &ProcArguments, expected_root: [u8; 8]) {
+    let ProcArguments::Nfs3(args) = result else {
+        panic!("Wrong program argument type");
+    };
+    assert_fsstat_result(args.as_ref(), expected_root);
+}
+
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
 #[tokio::test]
 async fn parse_two_correct() {
@@ -149,9 +156,9 @@ async fn parse_two_correct() {
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
-    let _ = parser.parse_nfs_message().await;
-    let result = parser.parse_nfs_message().await.unwrap();
-    assert_fsstat_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
+    let _ = parser.next_message().await;
+    let result = parser.next_message().await.unwrap();
+    assert_fsstat_proc_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.

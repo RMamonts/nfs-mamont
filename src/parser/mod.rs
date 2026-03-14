@@ -33,6 +33,15 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
+/// Parsed RPC message grouped by top-level RPC program.
+///
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
+pub enum ProcArguments {
+    Nfs3(Box<NfsArguments>),
+    Mount(Box<MountArguments>),
+}
+
 /// Enumerates supported NFS protocol procedure arguments.
 pub enum NfsArguments {
     /// Null operation arguments.

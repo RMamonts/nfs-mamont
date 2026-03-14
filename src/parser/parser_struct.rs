@@ -36,7 +36,9 @@ use crate::parser::nfsv3::{
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
-use crate::parser::{proc_nested_errors, Error, MountArguments, NfsArguments, Result};
+use crate::parser::{
+    proc_nested_errors, Error, MountArguments, NfsArguments, ProcArguments, Result,
+};
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
@@ -305,6 +307,26 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(proc)
     }
 
+    /// Parses the next RPC message and returns typed arguments for its program.
+    ///
+    /// This is the generic entry point for call sites that do not know in advance
+    /// whether the next frame contains NFSv3 or MOUNT data.
+    pub async fn next_message(&mut self) -> Result<ProcArguments> {
+        self.read_message_header().await?;
+        let rpc_header = match self.parse_rpc_header().await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+        let proc = match self.parse_next_message_with_header(rpc_header).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
+        self.finalize_parsing()?;
+        Ok(proc)
+    }
+
     /// Parses a complete MOUNT RPC message from the stream.
     pub async fn parse_mount_message(&mut self) -> Result<MountArguments> {
         self.read_message_header().await?;
@@ -320,6 +342,20 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
         Ok(proc)
+    }
+
+    async fn parse_next_message_with_header(&mut self, head: RpcMessage) -> Result<ProcArguments> {
+        match head.program {
+            NFS_PROGRAM => {
+                let args = self.parse_nfs_message_with_header(head).await?;
+                Ok(ProcArguments::Nfs3(Box::new(args)))
+            }
+            MOUNT_PROGRAM => {
+                let args = self.parse_mount_message_with_header(head).await?;
+                Ok(ProcArguments::Mount(Box::new(args)))
+            }
+            _ => Err(Error::ProgramMismatch),
+        }
     }
 
     async fn parse_nfs_message_with_header(&mut self, head: RpcMessage) -> Result<NfsArguments> {
