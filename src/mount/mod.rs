@@ -42,3 +42,13 @@ pub struct ExportEntry {
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
 }
+
+/// Wrapper for mount procedure result bodies.
+pub enum MountRes {
+    Null,
+    Mount(mnt::Result),
+    Unmount,
+    Export(export::Success),
+    Dump(dump::Success),
+    UnmountAll,
+}

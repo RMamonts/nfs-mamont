@@ -103,3 +103,5 @@ pub enum Error {
     /// A program version mismatch occurred.
     ProgramVersionMismatch(VersionMismatch),
 }
+
+pub struct ProcReply {}

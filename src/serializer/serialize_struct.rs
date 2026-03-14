@@ -11,8 +11,8 @@ use std::io::{ErrorKind, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
-use crate::mount::{dump, export};
-use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
+use crate::mount::MountRes;
+use crate::rpc::{AcceptStat, Error, RejectedReply, ReplyBody, RpcBody};
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
@@ -21,8 +21,9 @@ use crate::serializer::nfs::{
 };
 use crate::serializer::rpc::auth;
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::vfs::STATUS_OK;
-use crate::{mount, serializer, vfs};
+use crate::task::{ProcResult, ReplyFromVfs};
+use crate::vfs::{NfsRes, STATUS_OK};
+use crate::{serializer, vfs};
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
@@ -55,57 +56,6 @@ macro_rules! nfs_result {
         };
         $self.buffer.send_inner_buffer().await
     }};
-}
-
-/// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
-#[allow(unused)]
-pub enum NfsRes {
-    Null,
-    GetAttr(Result<vfs::get_attr::Success, vfs::get_attr::Fail>),
-    SetAttr(Result<vfs::set_attr::Success, vfs::set_attr::Fail>),
-    LookUp(Result<vfs::lookup::Success, vfs::lookup::Fail>),
-    Access(Result<vfs::access::Success, vfs::access::Fail>),
-    ReadLink(Result<vfs::read_link::Success, vfs::read_link::Fail>),
-    Read(Result<vfs::read::Success, vfs::read::Fail>),
-    Write(Result<vfs::write::Success, vfs::write::Fail>),
-    Create(Result<vfs::create::Success, vfs::create::Fail>),
-    MkDir(Result<vfs::mk_dir::Success, vfs::mk_dir::Fail>),
-    SymLink(Result<vfs::symlink::Success, vfs::symlink::Fail>),
-    MkNod(Result<vfs::mk_node::Success, vfs::mk_node::Fail>),
-    Remove(Result<vfs::remove::Success, vfs::remove::Fail>),
-    RmDir(Result<vfs::rm_dir::Success, vfs::rm_dir::Fail>),
-    Rename(Result<vfs::rename::Success, vfs::rename::Fail>),
-    Link(Result<vfs::link::Success, vfs::link::Fail>),
-    ReadDir(Result<vfs::read_dir::Success, vfs::read_dir::Fail>),
-    ReadDirPlus(Result<vfs::read_dir_plus::Success, vfs::read_dir_plus::Fail>),
-    FsStat(Result<vfs::fs_stat::Success, vfs::fs_stat::Fail>),
-    FsInfo(Result<vfs::fs_info::Success, vfs::fs_info::Fail>),
-    PathConf(Result<vfs::path_conf::Success, vfs::path_conf::Fail>),
-    Commit(Result<vfs::commit::Success, vfs::commit::Fail>),
-}
-
-/// Wrapper for mount procedure result bodies.
-#[allow(unused)]
-pub enum MountRes {
-    Null,
-    Mount(mount::mnt::Result),
-    Unmount,
-    Export(export::Success),
-    Dump(dump::Success),
-    UnmountAll,
-}
-
-/// Tagged union of top-level RPC program results supported by this server.
-pub enum ProcResult {
-    Nfs3(Box<NfsRes>),
-    Mount(Box<MountRes>),
-}
-
-/// RPC reply metadata plus a typed result to be serialized.
-pub struct ReplyFromVfs {
-    xid: u32,
-    verf: OpaqueAuth,
-    proc_result: Result<ProcResult, Error>,
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
