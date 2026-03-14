@@ -6,8 +6,7 @@ use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::Arguments;
-use crate::parser::Error;
+use crate::parser::{Error, NfsArguments, ProcArguments};
 use crate::rpc::{RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.
@@ -128,11 +127,14 @@ fn write_args(offset: u64, count: u32, stable: u32, data: &[u8]) -> Vec<u8> {
 }
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
-fn assert_fsstat_result(result: &Arguments, expected_root: [u8; 8]) {
-    match result {
-        Arguments::FsStat(args) => assert_eq!(args.root.0, expected_root),
-        _ => panic!("Wrong result type"),
-    }
+fn assert_fsstat_result(result: &ProcArguments, expected_root: [u8; 8]) {
+    let ProcArguments::Nfs3(boxed_args) = result else {
+        panic!("Wrong result type");
+    };
+    let NfsArguments::FsStat(args) = boxed_args.as_ref() else {
+        panic!("Wrong NFS argument type");
+    };
+    assert_eq!(args.root.0, expected_root);
 }
 
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
