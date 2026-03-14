@@ -72,7 +72,7 @@ const DEFAULT_SIZE: usize = 2500;
 ///
 /// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
 /// let mut parser = RpcParser::new(socket, alloc);
-/// let args = parser.parse_message().await?;
+/// let args = parser.next_message().await?;
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
@@ -223,124 +223,64 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    /// Parses procedure-specific arguments based on the RPC message header.
-    ///
-    /// This method dispatches to the appropriate parser based on the program
-    /// (NFS or MOUNT) and procedure number. It supports all NFSv3 procedures
-    /// (0-21) and MOUNT procedures (0-5).
-    ///
-    /// For the WRITE procedure (NFS procedure 7), this uses a special adapter
-    /// that allocates memory for the write data.
-    ///
-    /// # Arguments
-    ///
-    /// * `head` - The parsed RPC message header containing program, version, and procedure
-    ///
-    /// # Returns
-    ///
-    /// Returns a [`ProcArguments`] enum variant containing the parsed procedure arguments,
-    /// or an error if:
-    /// - The program is not recognized (NFS or MOUNT)
-    /// - The program version doesn't match
-    /// - The procedure number is invalid
-    /// - Parsing the procedure arguments fails
-    async fn parse_proc(&mut self, head: RpcMessage) -> Result<ProcArguments> {
-        match head.program {
-            NFS_PROGRAM => match head.version {
-                NFS_VERSION => Ok(ProcArguments::Nfs3(Box::new(match head.procedure {
-                    NULL => NfsArguments::Null,
-                    GETATTR => {
-                        NfsArguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?)
-                    }
-                    SETATTR => {
-                        NfsArguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?)
-                    }
-                    LOOKUP => {
-                        NfsArguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?)
-                    }
-                    ACCESS => {
-                        NfsArguments::Access(self.buffer.parse_with_retry(access::args).await?)
-                    }
-                    READLINK => {
-                        NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
-                    }
-                    READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
-
-                    WRITE => NfsArguments::Write(
-                        adapter_for_write(&self.allocator, &mut self.buffer).await?,
-                    ),
-
-                    CREATE => {
-                        NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?)
-                    }
-                    MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
-                    SYMLINK => {
-                        NfsArguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?)
-                    }
-                    MKNOD => {
-                        NfsArguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?)
-                    }
-                    REMOVE => {
-                        NfsArguments::Remove(self.buffer.parse_with_retry(remove::args).await?)
-                    }
-                    RMDIR => NfsArguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
-                    RENAME => {
-                        NfsArguments::Rename(self.buffer.parse_with_retry(rename::args).await?)
-                    }
-                    LINK => NfsArguments::Link(self.buffer.parse_with_retry(link::args).await?),
-                    READDIR => {
-                        NfsArguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?)
-                    }
-                    READDIRPLUS => NfsArguments::ReadDirPlus(
-                        self.buffer.parse_with_retry(read_dir_plus::args).await?,
-                    ),
-                    FSSTAT => {
-                        NfsArguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?)
-                    }
-                    FSINFO => {
-                        NfsArguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?)
-                    }
-                    PATHCONF => {
-                        NfsArguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
-                    }
-                    COMMIT => {
-                        NfsArguments::Commit(self.buffer.parse_with_retry(commit::args).await?)
-                    }
-                    _ => return Err(Error::ProcedureMismatch),
-                }))),
-                _ => Err(Error::ProgramVersionMismatch(VersionMismatch {
-                    low: NFS_VERSION,
-                    high: NFS_VERSION,
-                })),
-            },
-
-            MOUNT_PROGRAM => {
-                if head.version != MOUNT_VERSION {
-                    return Err(Error::ProgramVersionMismatch(VersionMismatch {
-                        low: MOUNT_VERSION,
-                        high: MOUNT_VERSION,
-                    }));
-                }
-                Ok(ProcArguments::Mount(Box::new(match head.procedure {
-                    0 => MountArguments::Null,
-                    1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
-                    2 => MountArguments::Dump,
-                    3 => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
-                    4 => MountArguments::UnmountAll,
-                    5 => MountArguments::Export,
-                    _ => return Err(Error::ProcedureMismatch),
-                })))
+    /// Parses NFSv3 procedure arguments from the current frame.
+    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments> {
+        let args = match procedure {
+            NULL => NfsArguments::Null,
+            GETATTR => NfsArguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?),
+            SETATTR => NfsArguments::SetAttr(self.buffer.parse_with_retry(set_attr::args).await?),
+            LOOKUP => NfsArguments::LookUp(self.buffer.parse_with_retry(lookup::args).await?),
+            ACCESS => NfsArguments::Access(self.buffer.parse_with_retry(access::args).await?),
+            READLINK => {
+                NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
             }
-            _ => Err(Error::ProgramMismatch),
-        }
+            READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
+            WRITE => {
+                NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
+            }
+            CREATE => NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?),
+            MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
+            SYMLINK => NfsArguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?),
+            MKNOD => NfsArguments::MkNod(self.buffer.parse_with_retry(mk_node::args).await?),
+            REMOVE => NfsArguments::Remove(self.buffer.parse_with_retry(remove::args).await?),
+            RMDIR => NfsArguments::RmDir(self.buffer.parse_with_retry(rm_dir::args).await?),
+            RENAME => NfsArguments::Rename(self.buffer.parse_with_retry(rename::args).await?),
+            LINK => NfsArguments::Link(self.buffer.parse_with_retry(link::args).await?),
+            READDIR => NfsArguments::ReadDir(self.buffer.parse_with_retry(read_dir::args).await?),
+            READDIRPLUS => {
+                NfsArguments::ReadDirPlus(self.buffer.parse_with_retry(read_dir_plus::args).await?)
+            }
+            FSSTAT => NfsArguments::FsStat(self.buffer.parse_with_retry(fs_stat::args).await?),
+            FSINFO => NfsArguments::FsInfo(self.buffer.parse_with_retry(fs_info::args).await?),
+            PATHCONF => {
+                NfsArguments::PathConf(self.buffer.parse_with_retry(path_conf::args).await?)
+            }
+            COMMIT => NfsArguments::Commit(self.buffer.parse_with_retry(commit::args).await?),
+            _ => return Err(Error::ProcedureMismatch),
+        };
+        Ok(args)
     }
 
-    /// Parses a complete RPC message from the stream.
+    /// Parses MOUNT procedure arguments from the current frame.
+    async fn parse_mount_proc(&mut self, procedure: u32) -> Result<MountArguments> {
+        let args = match procedure {
+            0 => MountArguments::Null,
+            1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
+            2 => MountArguments::Dump,
+            3 => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
+            4 => MountArguments::UnmountAll,
+            5 => MountArguments::Export,
+            _ => return Err(Error::ProcedureMismatch),
+        };
+        Ok(args)
+    }
+
+    /// Parses a complete NFSv3 RPC message from the stream.
     ///
     /// This is the main entry point for parsing. It performs the following steps:
     /// 1. Reads the message header (framing)
     /// 2. Parses the RPC call header
-    /// 3. Parses procedure-specific arguments
+    /// 3. Parses NFSv3 procedure-specific arguments
     /// 4. Validates that all data in the frame was consumed
     /// 5. Cleans up internal state for the next message
     ///
@@ -349,22 +289,102 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns a [`ProcArguments`] enum variant containing the parsed procedure arguments,
+    /// Returns parsed NFSv3 procedure arguments,
     /// or an error if parsing fails at any stage.
-    pub async fn parse_message(&mut self) -> Result<ProcArguments> {
+    pub async fn parse_nfs_message(&mut self) -> Result<NfsArguments> {
         self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
-        let proc = match self.parse_proc(rpc_header).await {
+        let proc = match self.parse_nfs_message_with_header(rpc_header).await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
 
-        // that's done after normal parsing without errors
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
         Ok(proc)
+    }
+
+    /// Parses the next RPC message and returns typed arguments for its program.
+    ///
+    /// This is the generic entry point for call sites that do not know in advance
+    /// whether the next frame contains NFSv3 or MOUNT data.
+    pub async fn next_message(&mut self) -> Result<ProcArguments> {
+        self.read_message_header().await?;
+        let rpc_header = match self.parse_rpc_header().await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+        let proc = match self.parse_next_message_with_header(rpc_header).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
+        self.finalize_parsing()?;
+        Ok(proc)
+    }
+
+    /// Parses a complete MOUNT RPC message from the stream.
+    pub async fn parse_mount_message(&mut self) -> Result<MountArguments> {
+        self.read_message_header().await?;
+        let rpc_header = match self.parse_rpc_header().await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+        let proc = match self.parse_mount_message_with_header(rpc_header).await {
+            Ok(arg) => arg,
+            Err(err) => return Err(self.match_errors(err).await),
+        };
+
+        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
+        self.finalize_parsing()?;
+        Ok(proc)
+    }
+
+    async fn parse_next_message_with_header(&mut self, head: RpcMessage) -> Result<ProcArguments> {
+        match head.program {
+            NFS_PROGRAM => {
+                let args = self.parse_nfs_message_with_header(head).await?;
+                Ok(ProcArguments::Nfs3(Box::new(args)))
+            }
+            MOUNT_PROGRAM => {
+                let args = self.parse_mount_message_with_header(head).await?;
+                Ok(ProcArguments::Mount(Box::new(args)))
+            }
+            _ => Err(Error::ProgramMismatch),
+        }
+    }
+
+    async fn parse_nfs_message_with_header(&mut self, head: RpcMessage) -> Result<NfsArguments> {
+        if head.program != NFS_PROGRAM {
+            return Err(Error::ProgramMismatch);
+        }
+        if head.version != NFS_VERSION {
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: NFS_VERSION,
+                high: NFS_VERSION,
+            }));
+        }
+        self.parse_nfs_proc(head.procedure).await
+    }
+
+    async fn parse_mount_message_with_header(
+        &mut self,
+        head: RpcMessage,
+    ) -> Result<MountArguments> {
+        if head.program != MOUNT_PROGRAM {
+            return Err(Error::ProgramMismatch);
+        }
+        if head.version != MOUNT_VERSION {
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: MOUNT_VERSION,
+                high: MOUNT_VERSION,
+            }));
+        }
+        self.parse_mount_proc(head.procedure).await
     }
 
     /// Finalizes parsing by validating that all frame data was consumed.
