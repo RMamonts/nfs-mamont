@@ -33,16 +33,16 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Procedure arguments grouped by RPC program.
+/// Parsed RPC message grouped by top-level RPC program.
 ///
-/// Variants keep protocol-specific argument enums in boxes to avoid inflating
-/// the top-level enum size.
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
 pub enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
 }
 
-/// Enumerates the different types of arguments that can be parsed.
+/// Enumerates supported NFS protocol procedure arguments.
 pub enum NfsArguments {
     /// Null operation arguments.
     Null,
