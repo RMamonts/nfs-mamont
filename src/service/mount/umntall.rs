@@ -1,3 +1,5 @@
+//! Service implementation for the MOUNT v3 `UMNTALL` procedure.
+
 use async_trait::async_trait;
 
 use crate::mount::umntall::Umntall;

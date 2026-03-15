@@ -1,3 +1,5 @@
+//! Service implementation for the MOUNT v3 `MNT` procedure.
+
 use async_trait::async_trait;
 
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
