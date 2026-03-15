@@ -1,7 +1,6 @@
 use std::io::Cursor;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
+use crate::mount::{mnt, umnt};
 use crate::mount::MOUNT_DIRPATH_LEN;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
@@ -13,7 +12,7 @@ fn test_mount_basic() {
         Cursor::new(vec![0x00, 0x00, 0x00, 0x06, b'/', b'm', b'n', b't', b'/', b'1', 0x00, 0x00]);
 
     let result = mount(&mut data).unwrap();
-    let expected = MountArgs(file::Path::new(String::from("/mnt/1")).unwrap());
+    let expected = mnt::Args { dirpath: file::Path::new(String::from("/mnt/1")).unwrap() };
     assert_eq!(result, expected);
 }
 
@@ -23,7 +22,7 @@ fn test_unmount_basic() {
         Cursor::new(vec![0x00, 0x00, 0x00, 0x08, b'/', b't', b'm', b'p', b'/', b't', b'e', b's']);
 
     let result = unmount(&mut data).unwrap();
-    let expected = UnmountArgs(file::Path::new(String::from("/tmp/tes")).unwrap());
+    let expected = umnt::Args { dirpath: file::Path::new(String::from("/tmp/tes")).unwrap() };
     assert_eq!(result, expected);
 }
 

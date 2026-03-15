@@ -1,7 +1,9 @@
-//! Defines Mount version 3 Dump interface (Procedure 2).
+//! Defines Mount version 3 [`Dump`] interface (Procedure 2).
 //!
 //! as defined in RFC 1813 section 5.2.2.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
+
+use async_trait::async_trait;
 
 use super::MountEntry;
 
@@ -12,4 +14,12 @@ pub struct Success {
     /// The list is derived from a list maintained on the server
     /// of clients that have requested file handles with the MNT procedure.
     pub mount_list: Vec<MountEntry>,
+}
+
+#[async_trait]
+pub trait Dump {
+    /// Retrieves the list of remotely mounted file systems.
+    ///
+    /// There are no MOUNT protocol errors which can be returned from this procedure.
+    async fn dump(&self) -> Success;
 }

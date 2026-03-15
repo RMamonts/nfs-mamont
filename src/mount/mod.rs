@@ -5,7 +5,6 @@
 pub mod dump;
 pub mod export;
 pub mod mnt;
-pub mod null;
 pub mod umnt;
 pub mod umntall;
 
@@ -46,7 +45,7 @@ pub struct ExportEntry {
 /// Wrapper for mount procedure result bodies.
 pub enum MountRes {
     Null,
-    Mount(mnt::Result),
+    Mount(Result<mnt::Success, mnt::Fail>),
     Unmount,
     Export(export::Success),
     Dump(dump::Success),
