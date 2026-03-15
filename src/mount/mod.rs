@@ -53,3 +53,9 @@ pub enum MountRes {
 }
 
 pub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
+
+impl<T> Mount for T
+where
+    T: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump,
+{
+}
