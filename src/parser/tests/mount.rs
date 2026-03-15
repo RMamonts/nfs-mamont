@@ -61,7 +61,7 @@ fn test_unmount_insufficient_data() {
     let mut data = Cursor::new(vec![
         // String length (u32, Big Endian) = 5
         0x00, 0x00, 0x00, 0x05,
-        // String contents (6 bytes) = /tmp
+        // String contents (4 bytes) = /tmp
         b'/', b't', b'm', b'p',
     ]);
 
@@ -75,7 +75,7 @@ fn test_mount_unaligned_path() {
     let mut data = Cursor::new(vec![
         // String length (u32, Big Endian) = 3
         0x00, 0x00, 0x00, 0x03,
-        // String contents (6 bytes) = /vm
+        // String contents (3 bytes) = /vm
         b'/', b'v', b'm',
     ]);
 
