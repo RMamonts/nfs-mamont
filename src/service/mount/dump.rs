@@ -4,10 +4,10 @@ use async_trait::async_trait;
 
 use crate::mount::dump::{Dump, Success};
 
-use super::Service;
+use super::MountService;
 
 #[async_trait]
-impl Dump for Service {
+impl Dump for MountService {
     async fn dump(&self) -> Success {
         todo!()
     }

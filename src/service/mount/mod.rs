@@ -36,7 +36,7 @@ struct MountRegistry {
 
 /// In-memory state backing the MOUNT v3 service implementation
 #[allow(dead_code)]
-struct Service {
+struct MountService {
     /// Exported directories that are available for mounting
     #[allow(dead_code)]
     exports: ExportRegistry,

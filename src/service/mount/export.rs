@@ -4,10 +4,10 @@ use async_trait::async_trait;
 
 use crate::mount::export::{Export, Success};
 
-use super::Service;
+use super::MountService;
 
 #[async_trait]
-impl Export for Service {
+impl Export for MountService {
     async fn export(&self) -> Success {
         todo!()
     }
