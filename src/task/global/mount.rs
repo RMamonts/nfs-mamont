@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::mount::{ExportEntry, MountEntry};
+use crate::parser::MountArguments;
 use crate::task::ProcReply;
 use crate::vfs::file;
 
@@ -12,7 +13,7 @@ pub struct MountCommand {
     /// Channel used to pass the result to write task.
     pub result_tx: UnboundedSender<ProcReply>,
     /// Placeholder for mount procedure args.
-    pub args: (),
+    pub args: MountArguments,
 }
 
 #[derive(Default)]
