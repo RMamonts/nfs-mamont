@@ -11,7 +11,7 @@ use crate::vfs::file;
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
 pub struct Args {
-    pub dirpath: file::Path
+    pub dirpath: file::Path,
 }
 
 #[async_trait]

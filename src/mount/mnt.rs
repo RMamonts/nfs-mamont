@@ -46,9 +46,9 @@ pub struct Success {
 /// Arguments for the Mount operation, containing the path to be mounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct Args{
+pub struct Args {
     /// a server pathname of a directory
-    pub dirpath: file::Path
+    pub dirpath: file::Path,
 }
 
 #[async_trait]
