@@ -12,8 +12,7 @@ mod tests;
 
 use std::future::Future;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
+use crate::mount::{mnt, umnt};
 use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
@@ -95,9 +94,9 @@ pub enum MountArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the Mount operation.
-    Mount(MountArgs),
+    Mount(mnt::Args),
     /// Arguments for the Unmount operation.
-    Unmount(UnmountArgs),
+    Unmount(umnt::Args),
     /// Arguments for the Export operation.
     Export,
     /// Arguments for the Dump operation.

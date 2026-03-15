@@ -6,14 +6,14 @@
 use std::io;
 use std::io::Write;
 
-use crate::mount::mnt::MntError;
+use crate::mount::mnt::Fail;
 use crate::serializer::variant;
 
 pub mod dump;
 pub mod export;
 pub mod mnt;
 
-/// Serializes [`MntError`] as the XDR `mountstat3` enum discriminant.
-pub fn mount_stat(dest: &mut impl Write, status: MntError) -> io::Result<()> {
-    variant::<MntError>(dest, status)
+/// Serializes [`Fail`] as the XDR `mountstat3` enum discriminant.
+pub fn mount_stat(dest: &mut impl Write, status: Fail) -> io::Result<()> {
+    variant::<Fail>(dest, status)
 }
