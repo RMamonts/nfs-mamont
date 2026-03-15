@@ -12,8 +12,7 @@ mod tests;
 
 use std::future::Future;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
+use crate::mount::{mnt, umnt};
 use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
@@ -33,16 +32,16 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Procedure arguments grouped by RPC program.
+/// Parsed RPC message grouped by top-level RPC program.
 ///
-/// Variants keep protocol-specific argument enums in boxes to avoid inflating
-/// the top-level enum size.
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
 pub enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
 }
 
-/// Enumerates the different types of arguments that can be parsed.
+/// Enumerates supported NFS protocol procedure arguments.
 pub enum NfsArguments {
     /// Null operation arguments.
     Null,
@@ -95,9 +94,9 @@ pub enum MountArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the Mount operation.
-    Mount(MountArgs),
+    Mount(mnt::Args),
     /// Arguments for the Unmount operation.
-    Unmount(UnmountArgs),
+    Unmount(umnt::Args),
     /// Arguments for the Export operation.
     Export,
     /// Arguments for the Dump operation.

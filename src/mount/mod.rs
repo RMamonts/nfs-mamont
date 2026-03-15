@@ -5,7 +5,6 @@
 pub mod dump;
 pub mod export;
 pub mod mnt;
-pub mod null;
 pub mod umnt;
 pub mod umntall;
 
@@ -41,4 +40,14 @@ pub struct ExportEntry {
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
+}
+
+/// Wrapper for mount procedure result bodies.
+pub enum MountRes {
+    Null,
+    Mount(Result<mnt::Success, mnt::Fail>),
+    Unmount,
+    Export(export::Success),
+    Dump(dump::Success),
+    UnmountAll,
 }
