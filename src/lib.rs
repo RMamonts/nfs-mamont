@@ -8,6 +8,7 @@ pub mod nfsv3;
 pub mod parser;
 pub mod rpc;
 pub mod serializer;
+pub mod service;
 pub mod task;
 pub mod vfs;
 
