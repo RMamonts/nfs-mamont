@@ -15,9 +15,9 @@ use tokio::sync::mpsc;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 
-mod read;
-mod vfs;
-mod write;
+pub mod read;
+pub mod vfs;
+pub mod write;
 
 // Creates all connection tasks with their inner connections
 pub fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCommand>) {
