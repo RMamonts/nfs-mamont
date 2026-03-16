@@ -3,9 +3,9 @@
 use std::io;
 use std::io::Write;
 
+use crate::interface::vfs::symlink;
 use crate::serializer::files::{file_attr, file_handle, wcc_data};
 use crate::serializer::option;
-use crate::vfs::symlink;
 
 /// Serializes [`symlink::Success`] (SYMLINK3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: symlink::Success) -> io::Result<()> {

@@ -1,10 +1,10 @@
 use std::io::Cursor;
 
-use crate::mount::MOUNT_DIRPATH_LEN;
-use crate::mount::{mnt, umnt};
+use crate::interface::mount::MOUNT_DIRPATH_LEN;
+use crate::interface::mount::{mnt, umnt};
+use crate::interface::vfs::file;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
-use crate::vfs::file;
 
 #[test]
 fn test_mount_basic() {

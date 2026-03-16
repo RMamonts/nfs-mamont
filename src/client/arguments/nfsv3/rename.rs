@@ -1,7 +1,7 @@
 use std::io::{Result, Write};
 
+use crate::interface::vfs::rename::Args;
 use crate::serializer::files::dir_op_arg;
-use crate::vfs::rename::Args;
 
 /// Serializes the arguments [`Args`] for an NFSv3 `RENAME` operation to the provided `Write` destination.
 pub fn rename_args(dest: &mut impl Write, arg: Args) -> Result<()> {

@@ -7,8 +7,8 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
-use crate::mount::{ExportEntry, MountEntry};
-use crate::vfs::file;
+use crate::interface::mount::{ExportEntry, MountEntry};
+use crate::interface::vfs::file;
 
 mod dump;
 mod export;

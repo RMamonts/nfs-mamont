@@ -119,7 +119,7 @@ pub enum Error {
     /// UNIX clients may choose to translate this to EIO.
     ServerFault = 10006,
     /// An attempt was made to create an object of a type not
-    /// supported by the [`crate::vfs`] implementation.
+    /// supported by the [`crate::interface::vfs`] implementation.
     BadType = 10007,
     /// The server initiated the request, but was not able to
     /// complete it in a timely fashion. The client should wait

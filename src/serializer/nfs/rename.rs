@@ -3,8 +3,8 @@
 use std::io;
 use std::io::Write;
 
+use crate::interface::vfs::rename;
 use crate::serializer::files::wcc_data;
-use crate::vfs::rename;
 
 /// Serializes [`rename::Success`] (RENAME3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: rename::Success) -> io::Result<()> {

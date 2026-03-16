@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::{allocator::Impl, vfs};
+use crate::{allocator::Impl, interface::vfs};
 
 pub struct ServerContext {
     allocator: Arc<Mutex<Impl>>,

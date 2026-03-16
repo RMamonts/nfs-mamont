@@ -2,12 +2,12 @@
 
 use std::io::Read;
 
+use crate::interface::vfs::set_attr;
+use crate::interface::vfs::set_attr::Guard;
 pub(crate) use crate::parser::nfsv3::create::{new_attr, nfs_time};
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::bool;
 use crate::parser::Result;
-use crate::vfs::set_attr;
-use crate::vfs::set_attr::Guard;
 
 /// Parses an optional [`set_attr::Guard`] structure from the provided `Read` source.
 pub fn guard(src: &mut impl Read) -> Result<Option<set_attr::Guard>> {
@@ -26,10 +26,10 @@ pub fn args(src: &mut impl Read) -> Result<set_attr::Args> {
 mod tests {
     use std::io::Cursor;
 
+    use crate::interface::vfs::file;
+    use crate::interface::vfs::set_attr;
     use crate::parser::nfsv3::create::set_time;
     use crate::parser::Error;
-    use crate::vfs::file;
-    use crate::vfs::set_attr;
 
     use super::args;
 

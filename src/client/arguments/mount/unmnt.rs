@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::mount::umnt;
+use crate::interface::mount::umnt;
 use crate::serializer::files::file_path;
 
 /// Serializes the arguments [`umnt::Args`] for a Mount `UNMOUNT` operation to the provided `Write` destination.

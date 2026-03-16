@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs::file;
+use crate::interface::vfs::file;
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]

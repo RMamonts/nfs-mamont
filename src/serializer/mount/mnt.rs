@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::mount::mnt;
+use crate::interface::mount::mnt;
 use crate::rpc::AuthFlavor;
 use crate::serializer::files::file_handle;
 use crate::serializer::{usize_as_u32, variant};

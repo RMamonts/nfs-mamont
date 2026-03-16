@@ -2,12 +2,12 @@
 
 use std::io::Read;
 
+use crate::interface::vfs::read_dir;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::read_dir_plus::cookie;
 use crate::parser::nfsv3::read_dir_plus::cookie_verifier;
 use crate::parser::primitive::u32;
 use crate::parser::Result;
-use crate::vfs::read_dir;
 
 /// Parses the arguments for an NFSv3 `READDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<read_dir::Args> {
@@ -23,7 +23,7 @@ pub fn args(src: &mut impl Read) -> Result<read_dir::Args> {
 mod tests {
     use std::io::Cursor;
 
-    use crate::vfs::read_dir;
+    use crate::interface::vfs::read_dir;
 
     #[test]
     fn test_readdir() {

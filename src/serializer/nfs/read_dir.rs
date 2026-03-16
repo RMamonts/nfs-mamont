@@ -3,10 +3,10 @@
 use std::io;
 use std::io::Write;
 
+use crate::interface::vfs::read_dir;
+use crate::interface::vfs::read_dir::Entry;
 use crate::serializer::files::{file_attr, file_name};
 use crate::serializer::{array, bool, option, u64};
-use crate::vfs::read_dir;
-use crate::vfs::read_dir::Entry;
 
 /// Serializes a single [`Entry`] (READDIR3 entry) into XDR.
 fn entry(dest: &mut impl Write, entry: Entry) -> io::Result<()> {

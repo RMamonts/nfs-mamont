@@ -1,14 +1,14 @@
 //! Implements parsing for [`create::Args`] structure.
 use std::io::Read;
 
+use crate::interface::vfs::create;
+use crate::interface::vfs::create::Verifier;
+use crate::interface::vfs::file::Time;
+use crate::interface::vfs::set_attr::{NewAttr, SetTime};
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::primitive::{array, option, u32, u64};
 use crate::parser::{Error, Result};
-use crate::vfs::create;
-use crate::vfs::create::Verifier;
-use crate::vfs::file::Time;
-use crate::vfs::set_attr::{NewAttr, SetTime};
 
 use crate::nfsv3::NFS3_CREATEVERFSIZE;
 
@@ -52,7 +52,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
 /// Parses the arguments for an NFSv3 `CREATE` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
     Ok(create::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::interface::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         how: how(src)?,
     })
 }
@@ -61,9 +61,9 @@ pub fn args(src: &mut impl Read) -> Result<create::Args> {
 mod tests {
     use std::io::Cursor;
 
+    use crate::interface::vfs::create;
+    use crate::interface::vfs::set_attr;
     use crate::parser::Error;
-    use crate::vfs::create;
-    use crate::vfs::set_attr;
 
     #[test]
     fn test_create() {

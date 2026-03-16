@@ -1,8 +1,8 @@
 use std::io;
 use std::io::Write;
 
-use crate::mount;
-use crate::mount::dump;
+use crate::interface::mount;
+use crate::interface::mount::dump;
 use crate::serializer::files::file_path;
 use crate::serializer::{bool, string_max_size};
 

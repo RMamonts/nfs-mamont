@@ -1,11 +1,11 @@
 use std::io::Read;
 
-use crate::mount::umnt::Args;
-use crate::mount::MOUNT_DIRPATH_LEN;
+use crate::interface::mount::umnt::Args;
+use crate::interface::mount::MOUNT_DIRPATH_LEN;
+use crate::interface::vfs::file;
 use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::rpc::Error;
-use crate::vfs::file;
 
 /// Parses the arguments for an Unmount operation.
 pub fn unmount(src: &mut impl Read) -> Result<Args> {

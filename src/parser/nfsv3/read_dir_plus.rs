@@ -2,10 +2,10 @@
 
 use std::io::Read;
 
+use crate::interface::vfs::{read_dir, read_dir_plus};
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{array, u32, u64};
 use crate::parser::Result;
-use crate::vfs::{read_dir, read_dir_plus};
 
 /// Parses a [`read_dir::Cookie`] from the provided `Read` source.
 pub fn cookie(src: &mut impl Read) -> Result<read_dir::Cookie> {
@@ -32,7 +32,7 @@ pub fn args(src: &mut impl Read) -> Result<read_dir_plus::Args> {
 mod tests {
     use std::io::Cursor;
 
-    use crate::vfs::read_dir;
+    use crate::interface::vfs::read_dir;
 
     #[test]
     fn test_readdir_plus() {

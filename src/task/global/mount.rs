@@ -3,10 +3,10 @@ use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::mount::{ExportEntry, MountEntry};
+use crate::interface::mount::{ExportEntry, MountEntry};
+use crate::interface::vfs::file;
 use crate::parser::MountArguments;
 use crate::task::ProcReply;
-use crate::vfs::file;
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {

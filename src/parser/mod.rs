@@ -12,12 +12,12 @@ mod tests;
 
 use std::future::Future;
 
-use crate::mount::{mnt, umnt};
-use crate::rpc::Error;
-use crate::vfs::{
+use crate::interface::mount::{mnt, umnt};
+use crate::interface::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
+use crate::rpc::Error;
 
 /// Result of parsing operations with errors type [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

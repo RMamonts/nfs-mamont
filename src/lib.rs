@@ -3,14 +3,13 @@
 pub mod allocator;
 pub mod client;
 mod context;
-pub mod mount;
+pub mod interface;
 pub mod nfsv3;
 pub mod parser;
 pub mod rpc;
 pub mod serializer;
 pub mod service;
 pub mod task;
-pub mod vfs;
 
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;

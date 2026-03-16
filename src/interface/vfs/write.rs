@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
+use crate::interface::vfs;
 use crate::nfsv3::NFS3_WRITEVERFSIZE;
-use crate::vfs;
 
 use super::file;
 

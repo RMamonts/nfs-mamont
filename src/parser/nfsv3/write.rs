@@ -2,11 +2,11 @@
 
 use std::io::Read;
 
+use crate::interface::vfs::write;
+use crate::interface::vfs::write::StableHow;
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{u32, u64, variant};
 use crate::parser::Result;
-use crate::vfs::write;
-use crate::vfs::write::StableHow;
 
 /// Parses `write::StableHow`
 fn stable_how(src: &mut impl Read) -> Result<write::StableHow> {
@@ -30,7 +30,7 @@ pub fn args(src: &mut impl Read) -> Result<write::ArgsPartial> {
 mod tests {
     use std::io::Cursor;
 
-    use crate::vfs::write;
+    use crate::interface::vfs::write;
 
     #[test]
     fn test_write() {

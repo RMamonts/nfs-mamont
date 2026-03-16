@@ -1,6 +1,6 @@
 //! High-level XDR serializer for complete RPC/NFS replies.
 //!
-//! This module bridges `crate::vfs` results to the wire format by selecting the
+//! This module bridges `crate::interface::vfs` results to the wire format by selecting the
 //! appropriate per-procedure serializer from `crate::serializer::nfs` (and
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
@@ -11,7 +11,8 @@ use std::io::{ErrorKind, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
-use crate::mount::MountRes;
+use crate::interface::mount::MountRes;
+use crate::interface::vfs::{NfsRes, STATUS_OK};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 use crate::serializer;
 use crate::serializer::mount::mnt;
@@ -23,11 +24,10 @@ use crate::serializer::nfs::{
 use crate::serializer::rpc::auth;
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{NfsRes, STATUS_OK};
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::interface::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data

@@ -3,9 +3,9 @@
 use std::io;
 use std::io::Write;
 
+use crate::interface::vfs::write;
 use crate::serializer::files::wcc_data;
 use crate::serializer::{array, u32, variant};
-use crate::vfs::write;
 
 /// Serializes [`write::StableHow`] as the XDR `stable_how` enum discriminant.
 fn stable_how(dest: &mut impl Write, how: write::StableHow) -> io::Result<()> {

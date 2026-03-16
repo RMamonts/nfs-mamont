@@ -2,16 +2,16 @@
 
 use std::io::Read;
 
+use crate::interface::vfs::mk_dir;
 use crate::parser::nfsv3::create::new_attr;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::Result;
-use crate::vfs::mk_dir;
 
 /// Parses the arguments for an NFSv3 `MKDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
     Ok(mk_dir::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::interface::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         attr: new_attr(src)?,
     })
 }
@@ -20,7 +20,7 @@ pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
 mod tests {
     use std::io::Cursor;
 
-    use crate::vfs::set_attr;
+    use crate::interface::vfs::set_attr;
 
     #[test]
     fn test_mkdir() {

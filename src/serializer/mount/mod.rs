@@ -6,7 +6,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::mount::mnt::Fail;
+use crate::interface::mount::mnt::Fail;
 use crate::serializer::variant;
 
 pub mod dump;

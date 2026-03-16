@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 
 use crate::allocator::Slice;
-use crate::vfs;
+use crate::interface::vfs;
 
 use super::file;
 

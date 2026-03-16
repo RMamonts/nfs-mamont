@@ -3,9 +3,9 @@
 use std::io;
 use std::io::Write;
 
+use crate::interface::vfs::access;
 use crate::serializer::files::file_attr;
 use crate::serializer::{option, u32};
-use crate::vfs::access;
 
 /// Serializes [`access::Success`] (ACCESS3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: access::Success) -> io::Result<()> {

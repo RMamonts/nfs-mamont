@@ -1,9 +1,9 @@
 use std::io::{Result, Write};
 
+use crate::interface::vfs::file::{Device, Type};
+use crate::interface::vfs::mk_node::{Args, What};
 use crate::serializer::files::dir_op_arg;
 use crate::serializer::u32;
-use crate::vfs::file::{Device, Type};
-use crate::vfs::mk_node::{Args, What};
 
 use crate::client::arguments::nfsv3::set_attr::serialize_new_attr;
 

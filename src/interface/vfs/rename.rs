@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
+use crate::interface::vfs;
 
 /// Success result.
 pub struct Success {

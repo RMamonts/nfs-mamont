@@ -8,7 +8,7 @@ pub mod mnt;
 pub mod umnt;
 pub mod umntall;
 
-use crate::vfs::file;
+use crate::interface::vfs::file;
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;

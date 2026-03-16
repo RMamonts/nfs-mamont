@@ -2,9 +2,9 @@
 
 use async_trait::async_trait;
 
-use crate::vfs;
-use crate::vfs::read_dir::Cookie;
-use crate::vfs::read_dir::CookieVerifier;
+use crate::interface::vfs;
+use crate::interface::vfs::read_dir::Cookie;
+use crate::interface::vfs::read_dir::CookieVerifier;
 
 use super::file;
 

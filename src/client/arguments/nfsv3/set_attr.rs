@@ -1,9 +1,9 @@
 use std::io::{Result, Write};
 
+use crate::interface::vfs::file::Time;
+use crate::interface::vfs::set_attr::{Args, Guard, NewAttr, SetTime};
 use crate::serializer::files::file_handle;
 use crate::serializer::{option, u32, u64};
-use crate::vfs::file::Time;
-use crate::vfs::set_attr::{Args, Guard, NewAttr, SetTime};
 
 /// Serializes [`Time`].
 fn serialize_nfs_time(dest: &mut impl Write, time: Time) -> Result<()> {

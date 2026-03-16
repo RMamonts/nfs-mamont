@@ -1,8 +1,8 @@
 use std::io::{Result, Write};
 
+use crate::interface::vfs::access::Args;
 use crate::serializer;
 use crate::serializer::files::file_handle;
-use crate::vfs::access::Args;
 
 /// Serializes the arguments [`Args`] for an NFSv3 `ACCESS` operation to the provided `Write` destination.
 pub fn access_args(dest: &mut impl Write, arg: Args) -> Result<()> {

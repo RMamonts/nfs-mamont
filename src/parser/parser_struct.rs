@@ -21,7 +21,8 @@ use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
 
 use crate::allocator::{Allocator, Slice};
-use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
+use crate::interface::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
+use crate::interface::vfs;
 use crate::nfsv3::{
     ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
@@ -40,7 +41,6 @@ use crate::parser::{
     proc_nested_errors, Error, MountArguments, NfsArguments, ProcArguments, Result,
 };
 use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
-use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
 

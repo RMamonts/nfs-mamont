@@ -1,14 +1,14 @@
 //! Implements parsing for [`mk_node::Args`] structure.
 use std::io::Read;
 
+use crate::interface::vfs::file::Device;
+use crate::interface::vfs::mk_node;
+use crate::interface::vfs::mk_node::What;
 use crate::parser::nfsv3::create::new_attr;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::primitive::u32;
 use crate::parser::{Error, Result};
-use crate::vfs::file::Device;
-use crate::vfs::mk_node;
-use crate::vfs::mk_node::What;
 
 fn what(src: &mut impl Read) -> Result<mk_node::What> {
     match u32(src)? {
@@ -26,7 +26,7 @@ fn what(src: &mut impl Read) -> Result<mk_node::What> {
 /// Parses the arguments for an NFSv3 `MKNOD` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
     Ok(mk_node::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::interface::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         what: what(src)?,
     })
 }

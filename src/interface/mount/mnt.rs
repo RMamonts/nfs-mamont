@@ -7,8 +7,8 @@ use async_trait::async_trait;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::interface::vfs::file;
 use crate::rpc::AuthFlavor;
-use crate::vfs::file;
 
 #[derive(ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors

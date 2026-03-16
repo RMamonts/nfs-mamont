@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::mount::umnt::{Args, Umnt};
+use crate::interface::mount::umnt::{Args, Umnt};
 
 use super::MountService;
 

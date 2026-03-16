@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+use crate::interface::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 use crate::nfsv3::NFS3_FHSIZE;
 
@@ -181,8 +181,8 @@ pub struct WccAttr {
 #[cfg(test)]
 mod tests {
     use super::{Name, MAX_PATH_LEN};
-    use crate::vfs::file::Path;
-    use crate::vfs::MAX_NAME_LEN;
+    use crate::interface::vfs::file::Path;
+    use crate::interface::vfs::MAX_NAME_LEN;
 
     #[test]
     fn path_new_rejects_too_long() {

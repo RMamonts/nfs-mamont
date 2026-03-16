@@ -3,9 +3,9 @@
 //! This module provides the task infrastructure for handling NFS server operations,
 //! including connection-specific tasks and global task coordination.
 
-use crate::mount::MountRes;
+use crate::interface::mount::MountRes;
+use crate::interface::vfs::NfsRes;
 use crate::rpc::Error;
-use crate::vfs::NfsRes;
 
 pub mod connection;
 pub mod global;

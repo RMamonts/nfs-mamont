@@ -1,3 +1,3 @@
-//! Serialization functions for [`crate::vfs`] module.
+//! Serialization functions for [`crate::interface::vfs`] module.
 
 pub mod arguments;

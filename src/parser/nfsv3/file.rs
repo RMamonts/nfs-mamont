@@ -1,13 +1,13 @@
-//! Implements [`crate::vfs::file`] structures parsing
+//! Implements [`crate::interface::vfs::file`] structures parsing
 
 use std::io::{self, Read};
 
+use crate::interface::vfs;
+use crate::interface::vfs::file::{Name, Path};
+use crate::interface::vfs::{file, MAX_PATH_LEN};
 use crate::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
-use crate::vfs;
-use crate::vfs::file::{Name, Path};
-use crate::vfs::{file, MAX_PATH_LEN};
 
 fn map_validation_error(err: io::Error) -> Error {
     if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
@@ -91,9 +91,9 @@ mod tests {
     use std::io::Cursor;
 
     use super::device;
+    use crate::interface::vfs::file;
+    use crate::interface::vfs::file::Time;
     use crate::parser::Error;
-    use crate::vfs::file;
-    use crate::vfs::file::Time;
 
     #[test]
     fn test_parse_device_success() {

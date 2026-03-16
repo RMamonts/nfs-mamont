@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::mount::mnt::{Args, Fail, Mnt, Success};
+use crate::interface::mount::mnt::{Args, Fail, Mnt, Success};
 
 use super::MountService;
 
