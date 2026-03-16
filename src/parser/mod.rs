@@ -13,7 +13,7 @@ mod tests;
 use std::future::Future;
 
 use crate::mount::{mnt, umnt};
-use crate::rpc::Error;
+use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -30,6 +30,34 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
         Ok(_) => error,
         Err(err) => err,
     }
+}
+
+/// Represents the RPC request header extracted during message parsing.
+/// Contains metadata required for identifying and authenticating an RPC call.
+pub struct RpcHeader {
+    pub xid: u32,
+    pub cred: OpaqueAuth,
+    pub verf: OpaqueAuth,
+}
+
+/// Wrapper for NFS procedure arguments along with the parsed RPC header.
+/// Used to pass fully decoded request data into NFS service handlers.
+pub struct NfsArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NfsArguments>,
+}
+
+/// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
+pub struct MountArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<MountArguments>,
+}
+
+/// Generic wrapper for RPC arguments used when the protocol type
+/// (NFS, MOUNT, or others) is already resolved at a higher layer.
+pub struct ArgWrapper {
+    pub header: RpcHeader,
+    pub proc: ProcArguments,
 }
 
 /// Parsed RPC message grouped by top-level RPC program.
