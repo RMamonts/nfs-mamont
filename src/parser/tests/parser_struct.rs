@@ -6,14 +6,7 @@ use crate::mocks::alloc::MockAllocator;
 use crate::mocks::socket::MockSocket;
 use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
-<<<<<<< HEAD
-use crate::parser::Arguments;
-use crate::parser::Error;
-=======
-use crate::parser::tests::allocator::MockAllocator;
-use crate::parser::tests::socket::MockSocket;
 use crate::parser::{Error, NfsArguments, ProcArguments};
->>>>>>> svmk17/fix_auth_parsing
 use crate::rpc::{RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.

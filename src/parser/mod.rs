@@ -56,12 +56,14 @@ pub struct ArgWrapper {
 ///
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept both NFSv3 and MOUNT calls from the same connection.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum NfsArguments {
     /// Null operation arguments.
     Null,
@@ -109,6 +111,7 @@ pub enum NfsArguments {
     Commit(commit::Args),
 }
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 /// Enumerates supported MOUNT protocol procedure arguments.
 pub enum MountArguments {
     /// Null operation arguments.

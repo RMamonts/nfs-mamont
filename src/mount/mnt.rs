@@ -46,13 +46,9 @@ pub struct Success {
 }
 
 /// Arguments for the Mount operation, containing the path to be mounted.
-<<<<<<< HEAD
-#[derive(Debug, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
-pub struct MountArgs(pub file::Path);
-=======
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     /// a server pathname of a directory
     pub dirpath: file::Path,
@@ -69,4 +65,3 @@ pub trait Mnt {
     /// to its mount list recording that this client has mounted the directory.
     async fn mnt(&self, args: Args) -> Result<Success, Fail>;
 }
->>>>>>> svmk17/fix_auth_parsing

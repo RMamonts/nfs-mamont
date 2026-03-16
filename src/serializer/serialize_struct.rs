@@ -58,63 +58,6 @@ macro_rules! nfs_result {
     }};
 }
 
-<<<<<<< HEAD
-/// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub enum NfsRes {
-    Null,
-    GetAttr(Result<vfs::get_attr::Success, vfs::get_attr::Fail>),
-    SetAttr(Result<vfs::set_attr::Success, vfs::set_attr::Fail>),
-    LookUp(Result<vfs::lookup::Success, vfs::lookup::Fail>),
-    Access(Result<vfs::access::Success, vfs::access::Fail>),
-    ReadLink(Result<vfs::read_link::Success, vfs::read_link::Fail>),
-    Read(Result<vfs::read::Success, vfs::read::Fail>),
-    Write(Result<vfs::write::Success, vfs::write::Fail>),
-    Create(Result<vfs::create::Success, vfs::create::Fail>),
-    MkDir(Result<vfs::mk_dir::Success, vfs::mk_dir::Fail>),
-    SymLink(Result<vfs::symlink::Success, vfs::symlink::Fail>),
-    MkNod(Result<vfs::mk_node::Success, vfs::mk_node::Fail>),
-    Remove(Result<vfs::remove::Success, vfs::remove::Fail>),
-    RmDir(Result<vfs::rm_dir::Success, vfs::rm_dir::Fail>),
-    Rename(Result<vfs::rename::Success, vfs::rename::Fail>),
-    Link(Result<vfs::link::Success, vfs::link::Fail>),
-    ReadDir(Result<vfs::read_dir::Success, vfs::read_dir::Fail>),
-    ReadDirPlus(Result<vfs::read_dir_plus::Success, vfs::read_dir_plus::Fail>),
-    FsStat(Result<vfs::fs_stat::Success, vfs::fs_stat::Fail>),
-    FsInfo(Result<vfs::fs_info::Success, vfs::fs_info::Fail>),
-    PathConf(Result<vfs::path_conf::Success, vfs::path_conf::Fail>),
-    Commit(Result<vfs::commit::Success, vfs::commit::Fail>),
-}
-
-/// Wrapper for mount procedure result bodies.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub enum MountRes {
-    Null,
-    Mount(mount::mnt::Result),
-    Unmount,
-    Export(export::Success),
-    Dump(dump::Success),
-    UnmountAll,
-}
-
-/// Tagged union of top-level RPC program results supported by this server.
-#[allow(clippy::large_enum_variant)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub enum ProcResult {
-    Nfs3(NfsRes),
-    Mount(MountRes),
-}
-
-/// RPC reply metadata plus a typed result to be serialized.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub struct ReplyFromVfs {
-    xid: u32,
-    verf: OpaqueAuth,
-    proc_result: Result<ProcResult, Error>,
-}
-
-=======
->>>>>>> svmk17/fix_auth_parsing
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
 pub struct Serializer<T: AsyncWrite + Unpin> {
     buffer: WriteBuffer<T>,
