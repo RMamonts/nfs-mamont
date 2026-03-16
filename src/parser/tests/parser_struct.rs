@@ -8,6 +8,7 @@ use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::{ArgWrapper, Error, NfsArguments, ProcArguments, RpcHeader};
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, RPC_VERSION};
+use crate::vfs::write;
 
 /// Constants for mock RPC/NFS test input construction.
 const XID: u32 = 1;
@@ -142,6 +143,25 @@ fn assert_fsstat_proc_result(result: &ProcArguments, expected_root: &[u8]) {
         panic!("Wrong program argument type");
     };
     assert_fsstat_result(args.as_ref(), expected_root);
+}
+
+/// Helper to assert parsed WRITE arguments are as expected.
+fn assert_write_result(result: &NfsArguments, expected_write: &write::Args) {
+    let NfsArguments::Write(args) = result else {
+        panic!("Wrong NFS argument type");
+    };
+    assert_eq!(expected_write.size, args.size);
+    assert_eq!(expected_write.file, args.file);
+    assert_eq!(expected_write.stable, args.stable);
+    assert_eq!(expected_write.offset, args.offset);
+    assert_eq!(expected_write.data, args.data);
+}
+
+fn assert_write_proc_result(result: &ProcArguments, expected_write: &write::Args) {
+    let ProcArguments::Nfs3(args) = result else {
+        panic!("Wrong program argument type");
+    };
+    assert_write_result(args.as_ref(), expected_write);
 }
 
 fn assert_arg_wrapper<T: Fn(&ProcArguments, &[u8])>(
