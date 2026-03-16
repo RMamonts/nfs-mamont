@@ -5,4 +5,6 @@ use super::{file, Error};
 #[async_trait]
 pub trait Utils {
     async fn path_to_handle(&self, path: &file::Path) -> Result<file::Handle, Error>;
+
+    async fn root_handle(&self) -> Result<file::Handle, Error>;
 }

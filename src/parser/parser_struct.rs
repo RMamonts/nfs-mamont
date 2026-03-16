@@ -85,7 +85,7 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 
 #[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
-    /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
+    /// Creates a new `RpcParser` with `DEFAULT_SIZE` buffer size.
     ///
     /// # Arguments
     ///
