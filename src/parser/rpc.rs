@@ -9,8 +9,6 @@ pub struct RpcMessage {
     pub program: u32,
     pub procedure: u32,
     pub version: u32,
-    pub cred: OpaqueAuth,
-    pub verf: OpaqueAuth,
 }
 
 pub fn auth(src: &mut impl Read) -> Result<OpaqueAuth> {
