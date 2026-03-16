@@ -14,7 +14,7 @@ pub struct Entry {
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::Name,
     pub cookie: Cookie,
     pub file_attr: Option<file::Attr>,
     pub file_handle: Option<file::Handle>,
@@ -45,14 +45,6 @@ pub struct Fail {
     pub dir_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`ReadDirPlus::read_dir_plus`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`ReadDirPlus::read_dir_plus`] arguments
 pub struct Args {
     /// The file handle for the directory to be read.
@@ -77,5 +69,5 @@ pub struct Args {
 pub trait ReadDirPlus {
     /// Retrieves a variable number of entries from a file system directory and returns complete
     /// information about each.
-    async fn read_dir_plus(&self, args: Args, promise: impl Promise);
+    async fn read_dir_plus(&self, args: Args) -> Result<Success, Fail>;
 }

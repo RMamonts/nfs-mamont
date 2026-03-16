@@ -44,14 +44,6 @@ pub struct Fail {
     pub root_attr: Option<file::Attr>,
 }
 
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`FsStat::fs_stat`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`FsStat::fs_stat`] arguments.
 #[derive(PartialEq)]
 pub struct Args {
@@ -62,5 +54,5 @@ pub struct Args {
 #[async_trait]
 pub trait FsStat {
     /// Retrieves volatile file system state information.
-    async fn fs_stat(&self, args: Args, promise: impl Promise);
+    async fn fs_stat(&self, args: Args) -> Result<Success, Fail>;
 }

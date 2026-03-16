@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 
+use crate::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::vfs;
 
 use super::file;
@@ -11,14 +12,31 @@ use super::file;
 pub struct Cookie(u64);
 
 impl Cookie {
+    /// Creates a new `Cookie` instance.
+    ///
+    /// ### Arguments
+    /// * `val` - A 64-bit unsigned integer representing a specific point
+    ///   in the directory, as returned by the server in a directory entry.
+    ///
+    /// ### Returns
+    /// * A `Cookie` wrapping the provided value.
     pub fn new(val: u64) -> Self {
         Self(val)
     }
 
+    /// Retrieves the raw 64-bit value of the cookie.
+    ///
+    /// ### Returns
+    /// * The internal `u64` value.
     pub fn raw(self) -> u64 {
         self.0
     }
 
+    /// Checks if the cookie is the initial zero value.
+    ///
+    /// ### Returns
+    /// * `true` if the value is 0. In the first `READDIR` request for a directory,
+    ///   this should be set to 0 to start reading from the first entry.
     pub fn is_zero(self) -> bool {
         self.0 == 0
     }
@@ -26,47 +44,57 @@ impl Cookie {
 
 /// Verifies that point identified by [`Cookie`] is still valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CookieVerifier([u8; 8]);
+pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
-    pub fn new(val: [u8; 8]) -> Self {
+    /// Creates a new `CookieVerifier` instance.
+    ///
+    /// ### Arguments
+    /// * `val` - An 8-byte array used to verify the cookie's
+    ///   validity across multiple `READDIR` requests.
+    ///
+    /// ### Returns
+    /// * A `CookieVerifier` wrapping the byte array.
+    pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
         Self(val)
     }
 
-    pub fn raw(self) -> [u8; 8] {
+    /// Retrieves the raw byte array of the verifier.
+    ///
+    /// ### Returns
+    /// * The internal `[u8; 8]` array.
+    pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
         self.0
     }
 
+    /// Checks if the verifier is the initial zero value.
+    ///
+    /// ### Returns
+    /// * `true` if the array is all zeros. In the first `READDIR` request, the
+    ///   verifier must be set to 0.
     pub fn is_zero(self) -> bool {
-        self.0 == [0; 8]
+        self.0 == [0; NFS3_COOKIEVERFSIZE]
     }
 }
 
+// not exactly as in RFC, but possible
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
     /// fileid values to some other value and servers should try
     /// to avoid sending a zero fileid.
     pub file_id: u64,
-    pub file_name: String,
+    pub file_name: file::Name,
     pub cookie: Cookie,
 }
 
-/// Success result.
+// Success result.
 pub struct Success {
-    /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
     /// The cookie verifier.
     pub cookie_verifier: CookieVerifier,
-    /// Zero or more directory [`Entry`] entries.
+    /// Zero or more directory [`Entry`] entries. Represent linked list of [`Entry`]
     pub entries: Vec<Entry>,
-    /// `true` if the last member of [`Self::entries`] is the last
-    /// entry in the directory or the list [`Self::entries`] is
-    /// empty and the cookie corresponded to the end of the
-    /// directory.
-    ///
-    /// If `false`, there may be more entries to read.
-    pub eof: bool,
 }
 
 /// Fail result.
@@ -75,14 +103,6 @@ pub struct Fail {
     pub error: vfs::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
-}
-
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`ReadDir::read_dir`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
 }
 
 /// [`ReadDir::read_dir`] arguments.
@@ -109,8 +129,9 @@ pub trait ReadDir {
     /// If the server detects that the cookie is no longer valid, the server will reject the
     /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
     ///
-    /// The server may return fewer than `count`` bytes of XDR-encoded entries.
-    /// The `count` specified by the client in the request should be greater than or equal to
-    /// TODO(FSINFO dtpref).
-    async fn read_dir(&self, args: Args, promise: impl Promise);
+    /// The server may return fewer than [`Args::count`] bytes of XDR-encoded entries.
+    /// The [`Args::count`] specified by the client in the request should be greater than or equal to
+    /// the server's preferred [`ReadDir`] transfer size from
+    /// [`super::fs_info::Success::read_dir_pref`].
+    async fn read_dir(&self, args: Args) -> Result<Success, Fail>;
 }

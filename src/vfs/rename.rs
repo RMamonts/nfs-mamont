@@ -22,14 +22,6 @@ pub struct Fail {
     pub to_dir_wcc: vfs::WccData,
 }
 
-type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Rename::rename`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 /// [`Rename::rename`] arguments.
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the source (the file
@@ -70,5 +62,5 @@ pub trait Rename {
     ///
     /// If arguments pairs refer to the same file (they might be hard links of each other), then
     /// [`Rename::rename`] should perform no action and return [`Success`].
-    async fn rename(&self, args: Args, promise: impl Promise);
+    async fn rename(&self, args: Args) -> Result<Success, Fail>;
 }

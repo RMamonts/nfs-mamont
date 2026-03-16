@@ -11,11 +11,9 @@ mod rpc;
 mod tests;
 
 use std::future::Future;
-use std::io;
-use std::string::FromUtf8Error;
 
-use crate::parser::mount::{MountArgs, UnmountArgs};
-use crate::parser::rpc::AuthStat;
+use crate::mount::{mnt, umnt};
+use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -34,22 +32,17 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Represents a mismatch in program versions.
-/// Returns highest and lowest versions of available versions of requested program
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct ProgramVersionMismatch(u32, u32);
+/// Parsed RPC message grouped by top-level RPC program.
+///
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
+pub enum ProcArguments {
+    Nfs3(Box<NfsArguments>),
+    Mount(Box<MountArguments>),
+}
 
-/// Represents a mismatch in RPC versions.
-/// Returns highest and lowest versions of available versions of RPC
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct RPCVersionMismatch(u32, u32);
-
-/// Enumerates the different types of arguments that can be parsed.
-#[allow(dead_code)]
-pub enum Arguments {
-    // NFSv3
+/// Enumerates supported NFS protocol procedure arguments.
+pub enum NfsArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -94,47 +87,20 @@ pub enum Arguments {
     PathConf(path_conf::Args),
     /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
-    // MOUNT
+}
+
+/// Enumerates supported MOUNT protocol procedure arguments.
+pub enum MountArguments {
+    /// Null operation arguments.
+    Null,
     /// Arguments for the Mount operation.
-    Mount(MountArgs),
+    Mount(mnt::Args),
     /// Arguments for the Unmount operation.
-    Unmount(UnmountArgs),
+    Unmount(umnt::Args),
     /// Arguments for the Export operation.
     Export,
     /// Arguments for the Dump operation.
     Dump,
     /// Arguments for the UnmountAll operation.
     UnmountAll,
-}
-
-/// Errors that can occur during parsing.
-#[derive(Debug)]
-#[allow(unused)]
-pub enum Error {
-    /// The maximum element limit was exceeded.
-    MaxELemLimit,
-    /// An I/O error occurred.
-    IO(io::Error),
-    /// An enum discriminant mismatch occurred.
-    EnumDiscMismatch,
-    /// An incorrect string was encountered during UTF-8 conversion.
-    IncorrectString(FromUtf8Error),
-    /// Incorrect padding was found.
-    IncorrectPadding,
-    /// An impossible type cast was attempted.
-    ImpossibleTypeCast,
-    /// A bad file handle was encountered.
-    BadFileHandle,
-    /// A message type mismatch occurred.
-    MessageTypeMismatch,
-    /// An RPC version mismatch occurred.
-    RpcVersionMismatch(RPCVersionMismatch),
-    /// An authentication error occurred.
-    AuthError(AuthStat),
-    /// A program mismatch occurred.
-    ProgramMismatch,
-    /// A procedure mismatch occurred.
-    ProcedureMismatch,
-    /// A program version mismatch occurred.
-    ProgramVersionMismatch(ProgramVersionMismatch),
 }

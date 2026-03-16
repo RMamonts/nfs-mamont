@@ -41,7 +41,7 @@ fn test_u8_array_padding_error() {
         src.write_u8(*i).unwrap();
     }
     let result = array::<3>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IncorrectPadding)));
+    assert!(matches!(result, Err(Error::IO(_))));
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_string_with_max_len_too_long() {
     src.extend(vec![0u8; padding_len]);
 
     let result = string_max_size(&mut Cursor::new(src), 10);
-    assert!(matches!(result, Err(Error::MaxELemLimit)));
+    assert!(matches!(result, Err(Error::MaxElemLimit)));
 }
 
 #[test]

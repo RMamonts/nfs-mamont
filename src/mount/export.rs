@@ -15,17 +15,11 @@ pub struct Success {
     pub exports: Vec<ExportEntry>,
 }
 
-/// Defines callback to pass [`Export::export`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(result: Success);
-}
-
 #[async_trait]
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.
     ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn export(&self, promise: impl Promise);
+    async fn export(&self) -> Success;
 }

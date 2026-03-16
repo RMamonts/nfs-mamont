@@ -1,17 +1,28 @@
 //! Implements [`crate::vfs::file`] structures parsing
 
-use std::io::Read;
+use std::io::{self, Read};
 
-use crate::parser::primitive::{array, option, u32, u32_as_usize, u64};
+use crate::nfsv3::NFS3_FHSIZE;
+use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
-use crate::vfs::file;
+use crate::vfs;
+use crate::vfs::file::{Name, Path};
+use crate::vfs::{file, MAX_PATH_LEN};
+
+fn map_validation_error(err: io::Error) -> Error {
+    if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
+        Error::MaxElemLimit
+    } else {
+        Error::IO(err)
+    }
+}
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
-    if u32_as_usize(src)? != file::HANDLE_SIZE {
+    if u32_as_usize(src)? != NFS3_FHSIZE {
         return Err(Error::BadFileHandle);
     }
-    let array = array::<{ file::HANDLE_SIZE }>(src)?;
+    let array = array::<{ NFS3_FHSIZE }>(src)?;
     Ok(file::Handle(array))
 }
 
@@ -41,7 +52,7 @@ pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
         gid: u32(src)?,
         size: u64(src)?,
         used: u64(src)?,
-        device: option(src, |s| device(s))?,
+        device: device(src)?,
         fs_id: u64(src)?,
         file_id: u64(src)?,
         atime: time(src)?,
@@ -65,14 +76,24 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
 }
 
+/// Parses a [`file::Name`] structure from the provided `Read` source.
+pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(map_validation_error)
+}
+
+/// Parses a [`file::Path`] structure from the provided `Read` source.
+pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(map_validation_error)
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
+    use super::device;
     use crate::parser::Error;
     use crate::vfs::file;
-
-    use super::device;
+    use crate::vfs::file::Time;
 
     #[test]
     fn test_parse_device_success() {
@@ -186,5 +207,43 @@ mod tests {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x08];
 
         assert!(matches!(super::r#type(&mut Cursor::new(DATA)), Err(Error::EnumDiscMismatch)));
+    }
+
+    #[test]
+    fn test_file_path_success() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
+        let file = file::Path::new("file".to_string()).unwrap();
+        assert_eq!(super::file_path(&mut Cursor::new(DATA)).unwrap(), file);
+    }
+
+    #[test]
+    fn test_file_path_padding_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
+        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_file_name_success() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
+        let file = file::Name::new("file".to_string()).unwrap();
+        assert_eq!(super::file_name(&mut Cursor::new(DATA)).unwrap(), file);
+    }
+
+    #[test]
+    fn test_wcc_attr_success() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52,
+            0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0xA0, 0x00, 0x00, 0x05, 0x23,
+        ];
+
+        let expected = file::WccAttr {
+            size: 82,
+            mtime: Time { seconds: 15, nanos: 257 },
+            ctime: Time { seconds: 160, nanos: 1315 },
+        };
+
+        assert_eq!(super::wcc_attr(&mut Cursor::new(DATA)).unwrap(), expected);
     }
 }
