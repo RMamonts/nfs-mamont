@@ -13,7 +13,7 @@ mod tests;
 use std::future::Future;
 
 use crate::mount::{mnt, umnt};
-use crate::rpc::Error;
+use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -30,6 +30,27 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
         Ok(_) => error,
         Err(err) => err,
     }
+}
+
+pub struct RpcHeader {
+    pub xid: u32,
+    pub cred: OpaqueAuth,
+    pub verf: OpaqueAuth,
+}
+
+pub struct NfsArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NfsArguments>,
+}
+
+pub struct MountArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<MountArguments>,
+}
+
+pub struct ArgWrapper {
+    pub header: RpcHeader,
+    pub proc: ProcArguments,
 }
 
 /// Parsed RPC message grouped by top-level RPC program.
