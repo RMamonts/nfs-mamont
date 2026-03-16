@@ -18,14 +18,14 @@ impl Mnt for MountService {
             return Err(Fail::Access);
         }
 
+        let Ok(file_handle) = self.vfs.path_to_handle(&args.dirpath).await else {
+            return Err(Fail::NoEnt);
+        };
+
         let mount_entry =
             MountEntry { hostname: client_addr.ip().to_string(), directory: args.dirpath.clone() };
 
         self.mounts.by_client.entry(client_addr).or_default().insert(mount_entry);
-
-        let Ok(file_handle) = self.vfs.path_to_handle(&args.dirpath).await else {
-            return Err(Fail::NoEnt);
-        };
 
         // TODO: take auth_flavors from config
         Ok(Success { file_handle, auth_flavors: vec![AuthFlavor::None] })
