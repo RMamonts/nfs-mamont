@@ -34,6 +34,7 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 
 /// Represents the RPC request header extracted during message parsing.
 /// Contains metadata required for identifying and authenticating an RPC call.
+#[cfg_attr(test, derive(PartialEq, Debug, Clone))]
 pub struct RpcHeader {
     pub xid: u32,
     pub cred: OpaqueAuth,

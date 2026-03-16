@@ -6,7 +6,7 @@ use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{Error, NfsArguments, ProcArguments};
+use crate::parser::{ArgWrapper, Error, NfsArguments, ProcArguments, RpcHeader};
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, RPC_VERSION};
 
 /// Constants for mock RPC/NFS test input construction.
@@ -68,8 +68,7 @@ fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
 fn nfs_call_frame(
     msg_type: u32,
     rpc_version: u32,
-    cred: OpaqueAuth,
-    verf: OpaqueAuth,
+    header: &RpcHeader,
     procedure: u32,
     args_builder: impl FnOnce(&mut Vec<u8>),
 ) -> Vec<u8> {
@@ -83,12 +82,12 @@ fn nfs_call_frame(
     push_u32(&mut payload, procedure);
     // cred
     // Auth body length (0 for AUTH_NONE/SYS in tests)
-    push_u32(&mut payload, cred.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &cred.body);
+    push_u32(&mut payload, header.cred.flavor.to_u32().unwrap());
+    push_opaque(&mut payload, &header.cred.body);
 
     // verf
-    push_u32(&mut payload, verf.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &verf.body);
+    push_u32(&mut payload, header.verf.flavor.to_u32().unwrap());
+    push_opaque(&mut payload, &header.verf.body);
     // Append procedure-specific arguments
     args_builder(&mut payload);
 
@@ -131,107 +130,123 @@ fn write_args(offset: u64, count: u32, stable: u32, data: &[u8]) -> Vec<u8> {
 }
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
-fn assert_fsstat_result(result: &NfsArguments, expected_root: [u8; 8]) {
+fn assert_fsstat_result(result: &NfsArguments, expected_root: &[u8]) {
     let NfsArguments::FsStat(args) = result else {
         panic!("Wrong NFS argument type");
     };
     assert_eq!(args.root.0, expected_root);
 }
 
-fn assert_fsstat_proc_result(result: &ProcArguments, expected_root: [u8; 8]) {
+fn assert_fsstat_proc_result(result: &ProcArguments, expected_root: &[u8]) {
     let ProcArguments::Nfs3(args) = result else {
         panic!("Wrong program argument type");
     };
     assert_fsstat_result(args.as_ref(), expected_root);
 }
 
+fn assert_arg_wrapper<T: Fn(&ProcArguments, &[u8])>(
+    arg_wrapper: ArgWrapper,
+    expected_header: RpcHeader,
+    assert_func: T,
+    opaque_bytes: &[u8],
+) {
+    assert_eq!(arg_wrapper.header, expected_header);
+    assert_func(&arg_wrapper.proc, opaque_bytes);
+}
+
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
 #[tokio::test]
 async fn parse_two_correct() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let first = nfs_call_frame(
-        RpcBody::Call as u32,
-        RPC_VERSION,
-        auth.clone(),
-        auth.clone(),
-        FSSTAT,
-        |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        },
-    );
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, FSSTAT, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
+
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
-    let _ = parser.next_message().await;
+
     let result = parser.next_message().await.unwrap();
-    assert_fsstat_proc_result(&result.proc, [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_arg_wrapper(
+        result,
+        header.clone(),
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    );
 }
 
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
 #[tokio::test]
 async fn parse_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let first =
-        nfs_call_frame(RpcBody::Call as u32, 3, auth.clone(), auth.clone(), FSSTAT, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, FSSTAT, |buf| {
-            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-        });
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let first = nfs_call_frame(RpcBody::Call as u32, 3, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
+
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
+
     let result = parser.next_message().await;
     assert!(result.is_err());
     let result = parser.next_message().await.unwrap();
-
-    let ProcArguments::Nfs3(args) = result.proc else {
-        panic!("Wrong program argument type");
-    };
-    assert_fsstat_result(args.as_ref(), [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_arg_wrapper(
+        result,
+        header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    );
 }
 
 /// Test: Parses two correct NFS WRITE frames with data.
 #[tokio::test]
 async fn parse_write() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
     #[rustfmt::skip]
     let data = [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
         0x01, 0x02,
     ];
-    let first = nfs_call_frame(
-        RpcBody::Call as u32,
-        RPC_VERSION,
-        auth.clone(),
-        auth.clone(),
-        WRITE,
-        |buf| {
-            buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
-        },
-    );
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, WRITE, |buf| {
-            buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
-        });
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
+
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0x24)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
+
     let result = parser.next_message().await;
 
     let ProcArguments::Nfs3(args) = result.unwrap().proc else {
@@ -255,25 +270,28 @@ async fn parse_write() {
 #[tokio::test]
 async fn parse_write_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
     #[rustfmt::skip]
     let data = [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
         0x01, 0x02,
     ];
-    let first = nfs_call_frame(RpcBody::Call as u32, 5, auth.clone(), auth.clone(), WRITE, |buf| {
+    let first = nfs_call_frame(RpcBody::Call as u32, 5, &header, WRITE, |buf| {
         buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
     });
-    let second =
-        nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, WRITE, |buf| {
-            buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
-        });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(0x8000, 0xFF, 0, &data));
+    });
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
+
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(0x24)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 80);
+
     let result = parser.next_message().await;
     assert!(result.is_err());
     let result = parser.next_message().await;
@@ -392,7 +410,8 @@ async fn parse_write_with_empty_payload() {
 async fn parse_rejects_non_none_cred_auth() {
     let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![0, 1, 3] };
     let cred = OpaqueAuth { flavor: AuthFlavor::Sys, body: vec![] };
-    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, cred, verf, FSSTAT, |buf| {
+    let header = RpcHeader { xid: XID, cred, verf };
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
     });
     let socket = MockSocket::new(frame.as_slice());
@@ -407,7 +426,8 @@ async fn parse_rejects_non_none_cred_auth() {
 async fn parse_rejects_non_none_verf_auth() {
     let cred = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![0, 1, 3] };
-    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, cred, verf, FSSTAT, |buf| {
+    let header = RpcHeader { xid: XID, cred, verf };
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
     });
     let socket = MockSocket::new(frame.as_slice());
