@@ -23,7 +23,7 @@ pub type HostName = String;
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
     pub hostname: HostName,

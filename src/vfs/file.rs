@@ -59,7 +59,7 @@ impl Name {
 /// [`Path`] ensures that the provided path string does not exceed
 /// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
 /// conversion back into the owned [`PathBuf`].
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Path(PathBuf);
 
 impl Path {

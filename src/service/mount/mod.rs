@@ -17,30 +17,40 @@ mod umnt;
 mod umntall;
 
 /// Registry of exported directories advertised by the server
-#[allow(dead_code)]
 #[derive(Default)]
 struct ExportRegistry {
     /// A single directory has at most one export entry
-    #[allow(dead_code)]
     by_directory: HashMap<file::Path, ExportEntry>,
 }
 
+impl ExportRegistry {
+    fn from_entries(entries: Vec<ExportEntry>) -> Self {
+        let mut by_directory = HashMap::new();
+        for entry in entries {
+            by_directory.insert(entry.directory.clone(), entry);
+        }
+        Self { by_directory }
+    }
+}
+
 /// Registry of active mounts grouped by client endpoint
-#[allow(dead_code)]
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
-    #[allow(dead_code)]
     by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
 }
 
 /// In-memory state backing the MOUNT v3 service implementation
-#[allow(dead_code)]
-struct MountService {
+pub struct MountService {
     /// Exported directories that are available for mounting
-    #[allow(dead_code)]
     exports: ExportRegistry,
     /// Active mounts keyed by client.
-    #[allow(dead_code)]
     mounts: MountRegistry,
+}
+
+impl MountService {
+    #[allow(dead_code)]
+    pub fn with_exports(entries: Vec<ExportEntry>) -> Self {
+        Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
+    }
 }
