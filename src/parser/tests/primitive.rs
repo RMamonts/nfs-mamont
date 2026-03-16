@@ -41,11 +41,7 @@ fn test_u8_array_padding_error() {
         src.write_u8(*i).unwrap();
     }
     let result = array::<3>(&mut Cursor::new(src));
-<<<<<<< HEAD
-    assert!(result.is_err());
-=======
     assert!(matches!(result, Err(Error::IO(_))));
->>>>>>> svmk17/fix_auth_parsing
 }
 
 #[test]

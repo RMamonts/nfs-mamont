@@ -51,7 +51,7 @@ pub enum ReplyBody {
 
 /// Authentication flavors.
 #[derive(Debug, ToPrimitive, FromPrimitive)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,
@@ -61,7 +61,6 @@ pub enum AuthFlavor {
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,

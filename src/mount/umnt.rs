@@ -8,13 +8,9 @@ use async_trait::async_trait;
 use crate::vfs::file;
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
-<<<<<<< HEAD
-#[derive(Debug, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
-pub struct UnmountArgs(pub file::Path);
-=======
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     pub dirpath: file::Path,
 }
@@ -31,4 +27,3 @@ pub trait Umnt {
     /// There are no MOUNT protocol errors which can be returned from this procedure.
     async fn umnt(&self, args: Args);
 }
->>>>>>> svmk17/fix_auth_parsing

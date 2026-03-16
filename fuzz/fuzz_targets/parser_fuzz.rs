@@ -8,7 +8,7 @@ use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;
 use nfs_mamont::mocks::read_socket::FuzzMockSocket;
 use nfs_mamont::parser::parser_struct::RpcParser;
-use nfs_mamont::parser::Arguments;
+use nfs_mamont::parser::{NfsArguments, ProcArguments};
 use nfs_mamont::rpc::{Error, RpcBody, RPC_VERSION};
 use parser_wrapper::ParserWrapper;
 use std::sync::{Arc, OnceLock};
@@ -38,7 +38,7 @@ fn get_parser() -> &'static Mutex<ParserWrapper<MockAllocator>> {
             proc: nfs_mamont::nfsv3::NULL,
             auth: 0,
             auth_verf: 0,
-            args: Arguments::Null,
+            args: ProcArguments::Nfs3(Box::new(NfsArguments::Null)),
         };
         parser.write_new_message(initial_value);
         Mutex::new(parser)
