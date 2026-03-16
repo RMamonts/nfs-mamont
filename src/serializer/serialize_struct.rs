@@ -11,8 +11,9 @@ use std::io::{ErrorKind, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
-use crate::mount::{dump, export};
+use crate::mount::MountRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
+use crate::serializer;
 use crate::serializer::mount::mnt;
 use crate::serializer::nfs::{
     access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
@@ -21,12 +22,12 @@ use crate::serializer::nfs::{
 };
 use crate::serializer::rpc::auth;
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::vfs::STATUS_OK;
-use crate::{mount, serializer, vfs};
+use crate::task::{ProcReply, ProcResult};
+use crate::vfs::{NfsRes, STATUS_OK};
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data
@@ -57,6 +58,7 @@ macro_rules! nfs_result {
     }};
 }
 
+<<<<<<< HEAD
 /// Wrapper for all supported NFSv3 procedure result types coming from [`vfs`].
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NfsRes {
@@ -111,6 +113,8 @@ pub struct ReplyFromVfs {
     proc_result: Result<ProcResult, Error>,
 }
 
+=======
+>>>>>>> svmk17/fix_auth_parsing
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
 pub struct Serializer<T: AsyncWrite + Unpin> {
     buffer: WriteBuffer<T>,
@@ -137,8 +141,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: NfsRes) -> io::Result<()> {
-        match data {
+    async fn process_nfs3(&mut self, data: Box<NfsRes>) -> io::Result<()> {
+        match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
                 nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
@@ -218,8 +222,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Serializes a [`ProcResult::Mount`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_mount(&mut self, data: MountRes) -> io::Result<()> {
-        match data {
+    async fn process_mount(&mut self, data: Box<MountRes>) -> io::Result<()> {
+        match *data {
             MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
                 self.buffer.send_inner_buffer().await
             }
@@ -246,14 +250,21 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         }
     }
 
-    /// Serializes [`ReplyFromVfs`] into a complete XDR RPC reply and writes it to the underlying writer.
-    pub async fn form_reply(&mut self, reply: ReplyFromVfs) -> io::Result<()> {
+    /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.
+    ///
+    /// ## Arguments:
+    /// *   `reply` - procedure result of [`ProcReply`] type
+    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
+    ///     order to validate itself to the client
+    ///
+    /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
+    pub async fn form_reply(&mut self, reply: ProcReply, verifier: OpaqueAuth) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
         match reply.proc_result {
             Ok(proc) => {
                 u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                auth(&mut self.buffer, reply.verf)?;
+                auth(&mut self.buffer, verifier)?;
                 u32(&mut self.buffer, AcceptStat::Success as u32)?;
                 self.process_result(proc).await
             }
@@ -266,7 +277,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     | Error::MaxElemLimit
                     | Error::IncorrectString(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
                         self.buffer.send_inner_buffer().await
@@ -286,19 +297,19 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
                         u32(&mut self.buffer, info.high)?;
@@ -306,7 +317,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, reply.verf)?;
+                        auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
                         self.buffer.send_inner_buffer().await
                     }

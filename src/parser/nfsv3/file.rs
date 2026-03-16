@@ -219,8 +219,12 @@ mod tests {
     #[test]
     fn test_file_path_padding_error() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
+<<<<<<< HEAD
 
         assert!(super::file_path(&mut Cursor::new(DATA)).is_err());
+=======
+        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+>>>>>>> svmk17/fix_auth_parsing
     }
 
     #[test]
