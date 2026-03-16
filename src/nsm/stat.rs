@@ -21,14 +21,6 @@ pub struct Fail {
     pub state: State,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Stat::stat`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 #[async_trait]
 pub trait Stat {
     /// Tests to see whether the NSM agrees to monitor the given host.
@@ -38,5 +30,5 @@ pub trait Stat {
     ///
     /// Note: implementations should not rely on this procedure being operative.
     /// In many current implementations of the NSM it will always return a `Fail` status.
-    async fn stat(&self, host_name: HostName, promise: impl Promise);
+    async fn stat(&self, host_name: HostName) -> Result<Success, Fail>;
 }

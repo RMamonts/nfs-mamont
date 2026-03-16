@@ -19,12 +19,6 @@ pub struct StatusMessage {
     pub cookie: Cookie,
 }
 
-/// Defines callback to pass [`Notify::notify`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep();
-}
-
 #[async_trait]
 pub trait Notify {
     /// Notifies each watcher from the notify list of some monitored host
@@ -40,5 +34,5 @@ pub trait Notify {
     /// [`Notify::notify`] saves the name of the host to monitor in a notify list on stable storage.
     /// If the host running the NSM crashes, on reboot it must send out a notify call
     /// to each host in the notify list.
-    async fn notify(&self, host_name: HostName, state: State, promise: impl Promise);
+    async fn notify(&self, host_name: HostName, state: State);
 }

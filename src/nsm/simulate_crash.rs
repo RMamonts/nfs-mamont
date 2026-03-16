@@ -5,12 +5,6 @@
 
 use async_trait::async_trait;
 
-/// Defines callback to pass [`SimulateCrash::simulate_crash`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep();
-}
-
 #[async_trait]
 pub trait SimulateCrash {
     /// Simulates a crash of the NSM server.
@@ -24,5 +18,5 @@ pub trait SimulateCrash {
     ///
     /// This procedure should only be accessible to privileged local users,
     /// as it disrupts all active monitoring state.
-    async fn simulate_crash(&self, promise: impl Promise);
+    async fn simulate_crash(&self);
 }

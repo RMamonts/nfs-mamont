@@ -3,7 +3,6 @@
 
 pub mod monitor;
 pub mod notify;
-pub mod null;
 pub mod simulate_crash;
 pub mod stat;
 pub mod unmonitor;
@@ -67,12 +66,21 @@ pub struct MonitorPair {
 /// NSM service trait.
 #[async_trait]
 pub trait Nsm:
-    null::Null
-    + stat::Stat
+    stat::Stat
     + monitor::Monitor
     + unmonitor::Unmonitor
     + unmonitor_all::UnmonitorAll
     + simulate_crash::SimulateCrash
     + notify::Notify
+{
+}
+
+impl<T> Nsm for T where
+    T: stat::Stat
+        + monitor::Monitor
+        + unmonitor::Unmonitor
+        + unmonitor_all::UnmonitorAll
+        + simulate_crash::SimulateCrash
+        + notify::Notify
 {
 }

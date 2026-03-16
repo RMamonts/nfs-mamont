@@ -21,14 +21,6 @@ pub struct Fail {
     pub state: State,
 }
 
-pub type Result = std::result::Result<Success, Fail>;
-
-/// Defines callback to pass [`Monitor::monitor`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Result);
-}
-
 #[async_trait]
 pub trait Monitor {
     /// Initiates the monitoring of the given host.
@@ -42,5 +34,5 @@ pub trait Monitor {
     /// [`Monitor::monitor`] saves the name of the host to monitor in a notify list on stable storage.
     /// If the host running the NSM crashes, on reboot it must send out a notify call
     /// to each host in the notify list.
-    async fn monitor(&self, monitor_pair: MonitorPair, cookie: Cookie, promise: impl Promise);
+    async fn monitor(&self, monitor_pair: MonitorPair, cookie: Cookie) -> Result<Success, Fail>;
 }

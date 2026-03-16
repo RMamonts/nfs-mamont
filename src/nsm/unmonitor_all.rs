@@ -14,12 +14,6 @@ pub struct Status {
     pub state: State,
 }
 
-/// Defines callback to pass [`UnmonitorAll::unmonitor_all`] result into.
-#[async_trait]
-pub trait Promise {
-    async fn keep(promise: Status);
-}
-
 #[async_trait]
 pub trait UnmonitorAll {
     /// Stops monitoring all hosts for which monitoring was requested by the specified watcher.
@@ -27,5 +21,5 @@ pub trait UnmonitorAll {
     /// # Parameters:
     /// * `watcher_id` --- identifier of watcher. It must exactly match the information
     /// given in the corresponding `monitor` call.
-    async fn unmonitor_all(&self, watcher_id: WatcherId, promise: impl Promise);
+    async fn unmonitor_all(&self, watcher_id: WatcherId);
 }
