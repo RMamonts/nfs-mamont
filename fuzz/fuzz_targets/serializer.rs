@@ -2,10 +2,12 @@
 
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::mocks::write_socket::MockWriter;
-use nfs_mamont::serializer::serialize_struct::{ReplyFromVfs, Serializer};
+use nfs_mamont::serializer::serialize_struct::{Serializer};
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+use nfs_mamont::rpc::{AuthFlavor, OpaqueAuth};
+use nfs_mamont::task::ProcReply;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PARSER: OnceLock<Mutex<Serializer<MockWriter>>> = OnceLock::new();
@@ -18,12 +20,12 @@ fn get_serializer() -> &'static Mutex<Serializer<MockWriter>> {
     PARSER.get_or_init(|| Mutex::new(Serializer::new(MockWriter)))
 }
 
-fuzz_target!(|data: ReplyFromVfs| {
+fuzz_target!(|data: ProcReply| {
     // fuzzed code goes here
     let runtime = get_runtime();
-
+    let auth = OpaqueAuth {flavor: AuthFlavor::None,body: vec![]};
     runtime.block_on(async {
         let mut ser = get_serializer().lock().await;
-        ser.form_reply(data).await.unwrap();
+        ser.form_reply(data, auth).await.unwrap();
     });
 });
