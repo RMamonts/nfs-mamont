@@ -81,10 +81,14 @@ fn nfs_call_frame(
     push_u32(&mut payload, NFS_PROGRAM);
     push_u32(&mut payload, NFS_VERSION);
     push_u32(&mut payload, procedure);
-    push_u32(&mut payload, auth_flavor);
+    // cred
     // Auth body length (0 for AUTH_NONE/SYS in tests)
+    push_u32(&mut payload, auth_flavor);
     push_u32(&mut payload, 0);
 
+    // verf
+    push_u32(&mut payload, auth_flavor);
+    push_u32(&mut payload, 0);
     // Append procedure-specific arguments
     args_builder(&mut payload);
 
@@ -293,15 +297,17 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
 async fn parse_rejects_any_non_call_message_type() {
     #[rustfmt::skip]
     let buf = vec![
-        0x80, 0x00, 0x00, 0x28, // head
+        0x80, 0x00, 0x00, 0x30, // head
         0x00, 0x00, 0x00, 0x01, // xid
         0x00, 0x00, 0x00, 0x02, // invalid msg type (must be CALL = 0)
         0x00, 0x00, 0x00, 0x02, // rpc version
         0x00, 0x01, 0x86, 0xA3, // program
         0x00, 0x00, 0x00, 0x03, // prog vers
         0x00, 0x00, 0x00, 0x12, // proc
-        0x00, 0x00, 0x00, 0x00, // auth
-        0x00, 0x00, 0x00, 0x00, // auth
+        0x00, 0x00, 0x00, 0x00, // auth cred - stat
+        0x00, 0x00, 0x00, 0x00, // auth cred - opaque (size - 0)
+        0x00, 0x00, 0x00, 0x00, // auth verf - stat
+        0x00, 0x00, 0x00, 0x00, // auth verf - opaque (size - 0)
         0x00, 0x00, 0x00, 0x08, // nfs_fh3
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
@@ -334,15 +340,17 @@ async fn parse_rejects_frame_smaller_than_xid() {
 async fn parse_write_with_empty_payload() {
     #[rustfmt::skip]
     let buf = vec![
-        0x80, 0x00, 0x00, 64, // head
+        0x80, 0x00, 0x00, 72, // head
         0x00, 0x00, 0x00, 0x01, // xid
         0x00, 0x00, 0x00, 0x00, // request
         0x00, 0x00, 0x00, 0x02, // rpc version
         0x00, 0x01, 0x86, 0xA3, // program
         0x00, 0x00, 0x00, 0x03, // prog vers
         0x00, 0x00, 0x00, 7, // proc
-        0x00, 0x00, 0x00, 0x00, // auth
-        0x00, 0x00, 0x00, 0x00, //auth
+        0x00, 0x00, 0x00, 0x00, // auth cred - stat
+        0x00, 0x00, 0x00, 0x00, // auth cred - opaque (size - 0)
+        0x00, 0x00, 0x00, 0x00, // auth verf - stat
+        0x00, 0x00, 0x00, 0x00, // auth verf - opaque (size - 0)
         0x00, 0x00, 0x00, 0x08, // nfs_fh3
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x00, 0x00, 0x00, 0x00, // offset
@@ -353,7 +361,7 @@ async fn parse_write_with_empty_payload() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(Mutex::new(MockAllocator::new(1)));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 68);
-    let result = parser.next_message().await;
-    assert!(result.is_ok());
+    let mut parser = RpcParser::with_capacity(socket, alloc, 72);
+    parser.next_message().await.unwrap();
+
 }
