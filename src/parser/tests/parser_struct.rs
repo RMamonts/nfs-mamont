@@ -162,7 +162,7 @@ async fn parse_two_correct() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
     let _ = parser.next_message().await;
     let result = parser.next_message().await.unwrap();
-    assert_fsstat_proc_result(&result.proc, [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_fsstat_proc_result(&result, [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
@@ -184,7 +184,7 @@ async fn parse_after_error() {
     assert!(result.is_err());
     let result = parser.next_message().await.unwrap();
 
-    let ProcArguments::Nfs3(args) = result.proc else {
+    let ProcArguments::Nfs3(args) = result else {
         panic!("Wrong program argument type");
     };
     assert_fsstat_result(args.as_ref(), [1, 2, 3, 4, 5, 6, 7, 8]);
@@ -213,7 +213,7 @@ async fn parse_write() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     let result = parser.next_message().await;
 
-    let ProcArguments::Nfs3(args) = result.unwrap().proc else {
+    let ProcArguments::Nfs3(args) = result.unwrap() else {
         panic!("Wrong program argument type");
     };
     let NfsArguments::Write(_write_args) = args.as_ref() else {
@@ -222,7 +222,7 @@ async fn parse_write() {
 
     let result = parser.next_message().await;
 
-    let ProcArguments::Nfs3(args) = result.unwrap().proc else {
+    let ProcArguments::Nfs3(args) = result.unwrap() else {
         panic!("Wrong program argument type");
     };
     let NfsArguments::Write(_write_args) = args.as_ref() else {
@@ -363,5 +363,4 @@ async fn parse_write_with_empty_payload() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(1)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     parser.next_message().await.unwrap();
-
 }
