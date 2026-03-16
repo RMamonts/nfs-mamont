@@ -203,6 +203,7 @@ impl<T> Vfs for T where
 }
 
 /// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NfsRes {
     Null,
     GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),

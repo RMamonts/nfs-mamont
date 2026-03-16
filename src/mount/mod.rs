@@ -4,14 +4,13 @@
 
 use std::io;
 
-use crate::vfs::{file};
+use crate::vfs::file;
 
 pub mod dump;
 pub mod export;
 pub mod mnt;
 pub mod umnt;
 pub mod umntall;
-
 
 /// Maximum bytes in a path name.
 pub const MOUNT_DIRPATH_LEN: usize = 1024;
@@ -79,6 +78,7 @@ pub struct ExportEntry {
 }
 
 /// Wrapper for mount procedure result bodies.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum MountRes {
     Null,
     Mount(Result<mnt::Success, mnt::Fail>),

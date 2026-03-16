@@ -2,7 +2,6 @@ use std::io;
 use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
-use crate::nfsv3::NFS_VERSION;
 
 pub const RPC_VERSION: u32 = 2;
 
@@ -72,10 +71,7 @@ impl arbitrary::Arbitrary<'_> for OpaqueAuth {
         let size = u.int_in_range(1..=MAX_AUTH_SIZE)?;
         let mut body = vec![0u8; size];
         u.fill_buffer(&mut body)?;
-        Ok(Self {
-            flavor: u.arbitrary::<AuthFlavor>()?,
-            body,
-        })
+        Ok(Self { flavor: u.arbitrary::<AuthFlavor>()?, body })
     }
 }
 
