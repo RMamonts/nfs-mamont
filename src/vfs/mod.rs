@@ -25,9 +25,6 @@ pub mod set_attr;
 pub mod symlink;
 pub mod write;
 
-/// Result of [`Vfs`] operations.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Maximum length of name passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
 
