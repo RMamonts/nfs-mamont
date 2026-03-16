@@ -37,8 +37,7 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, Error, MountArguments,
-    NfsArguments, ProcArguments, Result,
+    proc_nested_errors, Error, MountArguments, NfsArguments, ProcArguments, Result,
 };
 use crate::rpc::{OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
