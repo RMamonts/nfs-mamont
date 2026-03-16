@@ -11,9 +11,8 @@ mod tests;
 
 use std::future::Future;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
-use crate::rpc::Error;
+use crate::mount::{mnt, umnt};
+use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -32,11 +31,38 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Enumerates the different types of arguments that can be parsed.
-#[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
-pub enum Arguments {
-    // NFSv3
+pub struct RpcHeader {
+    pub xid: u32,
+    pub cred: OpaqueAuth,
+    pub verf: OpaqueAuth,
+}
+
+pub struct NfsArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NfsArguments>,
+}
+
+pub struct MountArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<MountArguments>,
+}
+
+pub struct ArgWrapper {
+    pub header: RpcHeader,
+    pub proc: ProcArguments,
+}
+
+/// Parsed RPC message grouped by top-level RPC program.
+///
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
+pub enum ProcArguments {
+    Nfs3(Box<NfsArguments>),
+    Mount(Box<MountArguments>),
+}
+
+/// Enumerates supported NFS protocol procedure arguments.
+pub enum NfsArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -81,11 +107,16 @@ pub enum Arguments {
     PathConf(path_conf::Args),
     /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
-    // MOUNT
+}
+
+/// Enumerates supported MOUNT protocol procedure arguments.
+pub enum MountArguments {
+    /// Null operation arguments.
+    Null,
     /// Arguments for the Mount operation.
-    Mount(MountArgs),
+    Mount(mnt::Args),
     /// Arguments for the Unmount operation.
-    Unmount(UnmountArgs),
+    Unmount(umnt::Args),
     /// Arguments for the Export operation.
     Export,
     /// Arguments for the Dump operation.

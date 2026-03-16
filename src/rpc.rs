@@ -50,7 +50,7 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-#[derive(ToPrimitive, FromPrimitive)]
+#[derive(Debug, ToPrimitive, FromPrimitive)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum AuthFlavor {
     None = 0,
@@ -60,6 +60,7 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
+#[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,

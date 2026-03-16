@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Rmamonts"]
 description = "A Rust NFS Server implementation"
 publish = false
-rust-version = "1.83.0"
+rust-version = "1.75.0"
 
 [lib]
 doctest = false
