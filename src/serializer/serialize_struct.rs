@@ -63,7 +63,6 @@ pub struct Serializer<T: AsyncWrite + Unpin> {
     buffer: WriteBuffer<T>,
 }
 
-#[allow(dead_code)]
 impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {

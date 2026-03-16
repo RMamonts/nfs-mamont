@@ -1,17 +1,17 @@
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-
+use crate::parser::NfsArgWrapper;
 use crate::task::ProcReply;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
-    _command_receiver: UnboundedReceiver<()>,
+    _command_receiver: UnboundedReceiver<NfsArgWrapper>,
     _result_sender: UnboundedSender<ProcReply>,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        command_receiver: UnboundedReceiver<()>,
+        command_receiver: UnboundedReceiver<NfsArgWrapper>,
         result_sender: UnboundedSender<ProcReply>,
     ) -> Self {
         Self { _command_receiver: command_receiver, _result_sender: result_sender }

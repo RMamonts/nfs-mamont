@@ -25,9 +25,6 @@ pub mod set_attr;
 pub mod symlink;
 pub mod write;
 
-/// Result of [`Vfs`] operations.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Maximum length of name passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
 
@@ -177,6 +174,31 @@ pub trait Vfs:
     + fs_info::FsInfo
     + path_conf::PathConf
     + commit::Commit
+{
+}
+
+impl<T> Vfs for T where
+    T: get_attr::GetAttr
+        + set_attr::SetAttr
+        + lookup::Lookup
+        + access::Access
+        + read_link::ReadLink
+        + read::Read
+        + write::Write
+        + create::Create
+        + mk_dir::MkDir
+        + symlink::Symlink
+        + mk_node::MkNode
+        + remove::Remove
+        + rm_dir::RmDir
+        + rename::Rename
+        + link::Link
+        + read_dir::ReadDir
+        + read_dir_plus::ReadDirPlus
+        + fs_stat::FsStat
+        + fs_info::FsInfo
+        + path_conf::PathConf
+        + commit::Commit
 {
 }
 
