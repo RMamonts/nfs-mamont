@@ -209,7 +209,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns [`AuthStat::Ok`] if authentication succeeds, or an error
+    /// Returns a pair of [`OpaqueAuth`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
         Ok((self.buffer.parse_with_retry(auth).await?, self.buffer.parse_with_retry(auth).await?))
