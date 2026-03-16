@@ -9,11 +9,11 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
-
+use crate::parser::NfsArgWrapper;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 
 pub mod read;
 pub mod vfs;
@@ -25,7 +25,7 @@ pub async fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCom
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
     // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<()>();
+    let (command_sender, command_receiver) = mpsc::unbounded_channel::<NfsArgWrapper>();
 
     read::ReadTask::new(readhalf, command_sender, mount_sender, result_sender.clone()).spawn();
 
