@@ -155,43 +155,50 @@ impl<'a> IntoIterator for &'a mut Slice {
 }
 
 #[cfg(test)]
-impl PartialEq for Slice {
-    fn eq(&self, other: &Self) -> bool {
-        if self.range.len() != other.range.len() {
+impl PartialEq<[u8]> for Slice {
+    fn eq(&self, other: &[u8]) -> bool {
+        if self.range.len() == 1 && other.len() == 0 {
+            return true;
+        }
+
+        if self.range.len() != other.len() {
             return false;
         }
 
         let mut self_iter = self.iter();
-        let mut it_b = other.iter();
-
         let mut block_self = self_iter.next();
-        let mut block_other = it_b.next();
+
+        let mut other = other;
 
         loop {
-            match (block_self, block_other) {
-                (None, None) => return true,
-                (Some(mut cur_self), Some(mut cur_other)) => {
+            match block_self {
+                None => return other.is_empty(),
+                Some(mut cur_self) => {
                     loop {
-                        let take = cur_self.len().min(cur_other.len());
+                        let take = cur_self.len().min(other.len());
 
-                        if cur_self[..take] != cur_other[..take] {
+                        if cur_self[..take] != other[..take] {
                             return false;
                         }
 
                         cur_self = &cur_self[take..];
-                        cur_other = &cur_other[take..];
+                        other = &other[take..];
 
-                        if cur_self.is_empty() || cur_other.is_empty() {
+                        if cur_self.is_empty() || other.is_empty() {
                             break;
                         }
                     }
 
                     block_self =
                         if cur_self.is_empty() { self_iter.next() } else { Some(cur_self) };
-                    block_other = if cur_other.is_empty() { it_b.next() } else { Some(cur_other) };
                 }
-                _ => return false,
             }
         }
+    }
+}
+#[cfg(test)]
+impl PartialEq<Slice> for [u8] {
+    fn eq(&self, other: &Slice) -> bool {
+        other == self
     }
 }
