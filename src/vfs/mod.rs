@@ -176,6 +176,31 @@ pub trait Vfs:
 {
 }
 
+impl<T> Vfs for T where
+    T: get_attr::GetAttr
+        + set_attr::SetAttr
+        + lookup::Lookup
+        + access::Access
+        + read_link::ReadLink
+        + read::Read
+        + write::Write
+        + create::Create
+        + mk_dir::MkDir
+        + symlink::Symlink
+        + mk_node::MkNode
+        + remove::Remove
+        + rm_dir::RmDir
+        + rename::Rename
+        + link::Link
+        + read_dir::ReadDir
+        + read_dir_plus::ReadDirPlus
+        + fs_stat::FsStat
+        + fs_info::FsInfo
+        + path_conf::PathConf
+        + commit::Commit
+{
+}
+
 /// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
 pub enum NfsRes {
     Null,
