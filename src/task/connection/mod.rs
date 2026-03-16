@@ -20,7 +20,7 @@ pub mod vfs;
 pub mod write;
 
 // Creates all connection tasks with their inner connections
-pub fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCommand>) {
+pub async fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCommand>) {
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
