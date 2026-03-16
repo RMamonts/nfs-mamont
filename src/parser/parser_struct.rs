@@ -40,7 +40,7 @@ use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, MountArgWrapper, MountArguments, NfsArgWrapper,
     NfsArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
