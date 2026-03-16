@@ -5,10 +5,10 @@ use crate::parser::Result;
 use crate::rpc::{AuthFlavor, OpaqueAuth, MAX_AUTH_SIZE};
 
 #[derive(Debug)]
-pub(super) struct RpcMessage {
-    pub(super) program: u32,
-    pub(super) procedure: u32,
-    pub(super) version: u32,
+pub struct RpcMessage {
+    pub program: u32,
+    pub procedure: u32,
+    pub version: u32,
 }
 
 pub fn auth(src: &mut impl Read) -> Result<OpaqueAuth> {
