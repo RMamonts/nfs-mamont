@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
+use crate::context::SharedVfs;
 use crate::mount::{ExportEntry, MountEntry};
 use crate::vfs::file;
 
@@ -46,11 +47,17 @@ pub struct MountService {
     exports: ExportRegistry,
     /// Active mounts keyed by client.
     mounts: MountRegistry,
+
+    vfs: SharedVfs,
 }
 
 impl MountService {
     #[allow(dead_code)]
-    pub fn with_exports(entries: Vec<ExportEntry>) -> Self {
-        Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
+    pub fn with_exports(entries: Vec<ExportEntry>, vfs: SharedVfs) -> Self {
+        Self {
+            exports: ExportRegistry::from_entries(entries),
+            mounts: MountRegistry::default(),
+            vfs,
+        }
     }
 }
