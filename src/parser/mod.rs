@@ -13,7 +13,7 @@ mod tests;
 use std::future::Future;
 
 use crate::mount::{mnt, umnt};
-use crate::rpc::{Error};
+use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
