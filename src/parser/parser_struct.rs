@@ -40,7 +40,7 @@ use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, MountArgWrapper, MountArguments, NfsArgWrapper,
     NfsArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -198,6 +198,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
+        //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
         let (cred, verf) = self.parse_authentication().await?;
 
         Ok(RpcMessage { program, procedure, version, cred, verf })
@@ -212,7 +213,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns a pair of [`OpaqueAuth`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
-        Ok((self.buffer.parse_with_retry(auth).await?, self.buffer.parse_with_retry(auth).await?))
+        let cred = self.buffer.parse_with_retry(auth).await?;
+        let verf = self.buffer.parse_with_retry(auth).await?;
+        if !matches!(cred.flavor, AuthFlavor::None) || !cred.body.is_empty() {
+            return Err(Error::AuthError(AuthStat::BadCred));
+        }
+        if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
+            return Err(Error::AuthError(AuthStat::BadVerf));
+        }
+        Ok((cred, verf))
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
