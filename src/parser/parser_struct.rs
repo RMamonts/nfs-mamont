@@ -37,9 +37,10 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, Error, MountArguments, NfsArguments, ProcArguments, Result,
+    proc_nested_errors, ArgWrapper, Error, MountArgWrapper, MountArguments, NfsArgWrapper,
+    NfsArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{AuthFlavor, AuthStat, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -137,7 +138,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns `Ok(())` if the header was successfully parsed, or an error if:
     /// - The message is fragmented (not supported)
     /// - An I/O error occurs
-    async fn read_message_header(&mut self) -> Result<()> {
+    async fn read_message_header(&mut self) -> Result<u32> {
         let header = self.buffer.parse_with_retry(u32).await?;
         self.last = header & 0x8000_0000 != 0;
         self.current_frame_size = (header & 0x7FFF_FFFF) as usize;
@@ -158,8 +159,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 "Fragmented messages not supported",
             )));
         }
-        let _xid = self.buffer.parse_with_retry(u32).await?;
-        Ok(())
+        self.buffer.parse_with_retry(u32).await
     }
 
     /// Parses the RPC call header.
@@ -198,12 +198,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
 
-        let auth_status = self.parse_authentication().await?;
-        if auth_status != AuthStat::Ok {
-            return Err(Error::AuthError(auth_status));
-        }
+        //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
+        let (cred, verf) = self.parse_authentication().await?;
 
-        Ok(RpcMessage { program, procedure, version })
+        Ok(RpcMessage { program, procedure, version, cred, verf })
     }
 
     /// Parses and validates RPC authentication.
@@ -212,15 +210,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns [`AuthStat::Ok`] if authentication succeeds, or an error
+    /// Returns a pair of [`OpaqueAuth`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
-    async fn parse_authentication(&mut self) -> Result<AuthStat> {
-        match self.buffer.parse_with_retry(auth).await?.flavor {
-            AuthFlavor::None => Ok(AuthStat::Ok),
-            _ => {
-                unimplemented!()
-            }
+    async fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
+        let cred = self.buffer.parse_with_retry(auth).await?;
+        let verf = self.buffer.parse_with_retry(auth).await?;
+        if !matches!(cred.flavor, AuthFlavor::None) || !cred.body.is_empty() {
+            return Err(Error::AuthError(AuthStat::BadCred));
         }
+        if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
+            return Err(Error::AuthError(AuthStat::BadVerf));
+        }
+        Ok((cred, verf))
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
@@ -291,60 +292,69 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns parsed NFSv3 procedure arguments,
     /// or an error if parsing fails at any stage.
-    pub async fn parse_nfs_message(&mut self) -> Result<NfsArguments> {
-        self.read_message_header().await?;
+    pub async fn parse_nfs_message(&mut self) -> Result<NfsArgWrapper> {
+        let xid = self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
-        let proc = match self.parse_nfs_message_with_header(rpc_header).await {
-            Ok(arg) => arg,
+        let proc = match self.parse_nfs_message_with_header(&rpc_header).await {
+            Ok(arg) => Box::new(arg),
             Err(err) => return Err(self.match_errors(err).await),
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
-        Ok(proc)
+        Ok(NfsArgWrapper {
+            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
+            proc,
+        })
     }
 
     /// Parses the next RPC message and returns typed arguments for its program.
     ///
     /// This is the generic entry point for call sites that do not know in advance
     /// whether the next frame contains NFSv3 or MOUNT data.
-    pub async fn next_message(&mut self) -> Result<ProcArguments> {
-        self.read_message_header().await?;
+    pub async fn next_message(&mut self) -> Result<ArgWrapper> {
+        let xid = self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
-        let proc = match self.parse_next_message_with_header(rpc_header).await {
+        let proc = match self.parse_next_message_with_header(&rpc_header).await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
-        Ok(proc)
+        Ok(ArgWrapper {
+            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
+            proc,
+        })
     }
 
     /// Parses a complete MOUNT RPC message from the stream.
-    pub async fn parse_mount_message(&mut self) -> Result<MountArguments> {
-        self.read_message_header().await?;
+    pub async fn parse_mount_message(&mut self) -> Result<MountArgWrapper> {
+        let xid = self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
             Err(err) => return Err(self.match_errors(err).await),
         };
-        let proc = match self.parse_mount_message_with_header(rpc_header).await {
-            Ok(arg) => arg,
+        let proc = match self.parse_mount_message_with_header(&rpc_header).await {
+            Ok(arg) => Box::new(arg),
             Err(err) => return Err(self.match_errors(err).await),
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
-        Ok(proc)
+        Ok(MountArgWrapper {
+            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
+            proc,
+        })
     }
 
-    async fn parse_next_message_with_header(&mut self, head: RpcMessage) -> Result<ProcArguments> {
+    async fn parse_next_message_with_header(&mut self, head: &RpcMessage) -> Result<ProcArguments> {
         match head.program {
             NFS_PROGRAM => {
                 let args = self.parse_nfs_message_with_header(head).await?;
@@ -358,7 +368,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    async fn parse_nfs_message_with_header(&mut self, head: RpcMessage) -> Result<NfsArguments> {
+    async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
             return Err(Error::ProgramMismatch);
         }
@@ -373,7 +383,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     async fn parse_mount_message_with_header(
         &mut self,
-        head: RpcMessage,
+        head: &RpcMessage,
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
             return Err(Error::ProgramMismatch);
