@@ -2,7 +2,7 @@ use std::io;
 
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
-
+use crate::parser::NfsArgWrapper;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 
@@ -10,7 +10,7 @@ use crate::task::ProcReply;
 /// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
 pub struct ReadTask {
     _readhalf: OwnedReadHalf,
-    _command_sender: UnboundedSender<()>,
+    _command_sender: UnboundedSender<NfsArgWrapper>,
     // to send messages into mount task
     _mount_sender: UnboundedSender<MountCommand>,
     // to pass into mount task as part of message,
@@ -24,7 +24,7 @@ impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
-        command_sender: UnboundedSender<()>,
+        command_sender: UnboundedSender<NfsArgWrapper>,
         mount_sender: UnboundedSender<MountCommand>,
         result_sender: UnboundedSender<ProcReply>,
     ) -> Self {
