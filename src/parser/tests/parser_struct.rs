@@ -363,5 +363,4 @@ async fn parse_write_with_empty_payload() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(1)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     parser.next_message().await.unwrap();
-
 }

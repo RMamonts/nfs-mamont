@@ -32,22 +32,29 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
+/// Represents the RPC request header extracted during message parsing.
+/// Contains metadata required for identifying and authenticating an RPC call.
 pub struct RpcHeader {
     pub xid: u32,
     pub cred: OpaqueAuth,
     pub verf: OpaqueAuth,
 }
 
+/// Wrapper for NFS procedure arguments along with the parsed RPC header.
+/// Used to pass fully decoded request data into NFS service handlers.
 pub struct NfsArgWrapper {
     pub header: RpcHeader,
     pub proc: Box<NfsArguments>,
 }
 
+/// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
 pub struct MountArgWrapper {
     pub header: RpcHeader,
     pub proc: Box<MountArguments>,
 }
 
+/// Generic wrapper for RPC arguments used when the protocol type
+/// (NFS, MOUNT, or others) is already resolved at a higher layer.
 pub struct ArgWrapper {
     pub header: RpcHeader,
     pub proc: ProcArguments,
