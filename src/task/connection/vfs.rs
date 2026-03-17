@@ -1,14 +1,18 @@
-use crate::parser::NfsArgWrapper;
-use crate::parser::NfsArguments;
-use crate::task::ProcReply;
-use crate::task::ProcResult;
-use crate::vfs::{NfsRes, Vfs};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::Mutex;
+
+use crate::allocator::{Allocator, Impl, Slice};
+use crate::context::ServerContext;
+use crate::parser::{NfsArgWrapper, NfsArguments};
+use crate::task::{ProcReply, ProcResult};
+use crate::vfs::{self, NfsRes, Vfs};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
+    allocator: Arc<Mutex<Impl>>,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
     result_sender: UnboundedSender<ProcReply>,
 }
@@ -16,11 +20,16 @@ pub struct VfsTask {
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
+        context: &ServerContext,
         command_receiver: UnboundedReceiver<NfsArgWrapper>,
         result_sender: UnboundedSender<ProcReply>,
     ) -> Self {
-        Self { backend, command_receiver, result_sender }
+        Self {
+            backend: context.get_backend(),
+            allocator: context.get_allocator(),
+            command_receiver,
+            result_sender,
+        }
     }
 
     /// Spawns a [`VfsTask`].
@@ -39,9 +48,7 @@ impl VfsTask {
             let NfsArgWrapper { header, proc } = command;
 
             let response = match *proc {
-                NfsArguments::Null => {
-                    unreachable!()
-                }
+                NfsArguments::Null => NfsRes::Null,
                 NfsArguments::GetAttr(args) => NfsRes::GetAttr(self.backend.get_attr(args).await),
                 NfsArguments::SetAttr(args) => NfsRes::SetAttr(self.backend.set_attr(args).await),
                 NfsArguments::LookUp(args) => NfsRes::LookUp(self.backend.lookup(args).await),
@@ -49,7 +56,24 @@ impl VfsTask {
                 NfsArguments::ReadLink(args) => {
                     NfsRes::ReadLink(self.backend.read_link(args).await)
                 }
-                NfsArguments::Read(args) => NfsRes::Read(self.backend.read(args).await),
+                NfsArguments::Read(args) => {
+                    let data_result = if args.count == 0 {
+                        Ok(Slice::empty())
+                    } else {
+                        let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+
+                        let mut allocator = self.allocator.lock().await;
+                        allocator
+                            .allocate(requested_size)
+                            .await
+                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
+                    };
+
+                    match data_result {
+                        Ok(data) => NfsRes::Read(self.backend.read(args, data).await),
+                        Err(err) => NfsRes::Read(Err(err)),
+                    }
+                }
                 NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
                 NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),
                 NfsArguments::MkDir(args) => NfsRes::MkDir(self.backend.mk_dir(args).await),

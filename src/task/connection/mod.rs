@@ -34,7 +34,7 @@ pub async fn new(
 
     read::ReadTask::new(readhalf, command_sender, mount_sender, result_sender.clone()).spawn();
 
-    vfs::VfsTask::new(context.backend.clone(), command_receiver, result_sender).spawn();
+    vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }

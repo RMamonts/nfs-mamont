@@ -1,5 +1,7 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+use tokio::sync::mpsc;
+
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
@@ -20,7 +22,7 @@ impl Slice {
     /// # Panics
     ///
     /// This function will panics if called if length range bound greater then length of `buffers`.
-    pub fn new(
+    pub(crate) fn new(
         buffers: Vec<Box<[u8]>>,
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,
@@ -39,6 +41,12 @@ impl Slice {
         assert!(range.end <= len, "cannot index list as slice to end");
 
         Self { buffers, range, sender }
+    }
+
+    // /// Returns an empty slice that owns no buffers.
+    pub fn empty() -> Self {
+        let (sender, _receiver) = mpsc::unbounded_channel::<Box<[u8]>>();
+        Self { buffers: Vec::new(), range: 0..0, sender }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
