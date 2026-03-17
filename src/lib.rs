@@ -14,11 +14,15 @@ pub mod vfs;
 
 use tokio::net::TcpListener;
 
+use crate::context::ServerContext;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
 
 /// Starts the NFS server and processes client connections.
-pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
+pub async fn handle_forever(
+    listener: TcpListener,
+    context: ServerContext,
+) -> std::io::Result<()> {
     let (mount_task, mount_sender) = MountTask::new();
     mount_task.spawn();
 
@@ -27,6 +31,6 @@ pub async fn handle_forever(listener: TcpListener) -> std::io::Result<()> {
 
         socket.set_nodelay(true)?;
 
-        connection::new(socket, mount_sender.clone()).await;
+        connection::new(socket, mount_sender.clone(), &context).await;
     }
 }

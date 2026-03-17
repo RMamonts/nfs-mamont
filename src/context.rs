@@ -8,5 +8,5 @@ use crate::{allocator::Impl, vfs};
 
 pub struct ServerContext {
     allocator: Arc<Mutex<Impl>>,
-    backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+    pub backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
 }
