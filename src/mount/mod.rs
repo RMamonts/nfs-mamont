@@ -10,14 +10,6 @@ pub mod umntall;
 
 use crate::vfs::file;
 
-/// Maximum bytes in a path name.
-pub const MOUNT_DIRPATH_LEN: usize = 1024;
-/// Maximum bytes in a name.
-pub const MOUNT_HOST_NAME_LEN: usize = 255;
-
-pub const MOUNT_PROGRAM: u32 = 100005;
-pub const MOUNT_VERSION: u32 = 3;
-
 /// Client host name.
 pub type HostName = String;
 
