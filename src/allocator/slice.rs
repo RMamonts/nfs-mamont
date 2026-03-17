@@ -157,7 +157,7 @@ impl<'a> IntoIterator for &'a mut Slice {
 #[cfg(test)]
 impl PartialEq<[u8]> for Slice {
     fn eq(&self, other: &[u8]) -> bool {
-        if self.range.len() == 1 && other.len() == 0 {
+        if self.range.len() == 1 && other.is_empty() {
             return true;
         }
 

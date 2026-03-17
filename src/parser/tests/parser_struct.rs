@@ -131,11 +131,8 @@ fn write_args(arg: &WriteWrapper) -> Vec<u8> {
     push_u32(&mut args, arg.part.size);
     push_u32(&mut args, arg.part.stable.to_u32().unwrap());
     push_u32(&mut args, arg.data.len().to_u32().unwrap());
-    push_bytes(&mut args, &arg.data);
-    println!("{:?}", arg.data);
-    println!("{}", args.len());
+    push_bytes(&mut args, arg.data);
     pad_to_alignment(&mut args, arg.data.len());
-    println!("{}", args.len());
     args
 }
 
