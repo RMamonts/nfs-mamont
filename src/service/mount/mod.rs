@@ -3,6 +3,21 @@
 //! The structures in this module keep track of two related views:
 //! exported directories available for mounting and currently active mounts
 //! reported by clients.
+//!
+//! Mount/filehandle resolution decision:
+//! - MOUNT `MNT` returns only initial filehandles for explicitly exported paths;
+//! - path traversal inside mounted subtree is expected to go through NFS `LOOKUP`;
+//! - therefore MOUNT service owns mapping only for mountable roots, while regular
+//!   filename-to-filehandle resolution belongs to VFS/NFS layer;
+//! - this mirrors common access policy where clients are granted a specific export
+//!   subtree and should not rely on walking to upper directories via MOUNT.
+//!
+//! State structure follows this split:
+//! - exports are keyed by directory path for direct `MNT` lookup;
+//! - active mounts are keyed by client socket address because one client can
+//!   mount multiple directories and `UMNT`/`UMNTALL` are client-scoped;
+//! - each export keeps server policy metadata (file handle + auth flavors)
+//!   next to user-visible export data.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
