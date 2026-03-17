@@ -13,6 +13,7 @@ use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
 
+/// Wrapper around [`write::ArgsPartial`] for tests to avoid using of `Slice`
 struct WriteWrapper<'a> {
     part: write::ArgsPartial,
     data: &'a [u8],
@@ -158,13 +159,6 @@ fn fsstat_args(root: [u8; 8]) -> Vec<u8> {
 }
 
 /// Serializes write (NFS procedure 7) arguments, including count, offset, stable, and data.
-///
-/// # Parameters
-///
-/// * `offset` - File offset to write to.
-/// * `count` - Number of bytes to write.
-/// * `stable` - Write stability.
-/// * `data` - Data to write.
 fn write_args(arg: &WriteWrapper) -> Vec<u8> {
     let mut args = Vec::new();
     push_opaque(&mut args, &arg.part.file.0);
