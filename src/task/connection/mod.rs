@@ -41,7 +41,7 @@ pub async fn new(
     )
     .spawn();
 
-    vfs::VfsTask::new(command_receiver, result_sender).spawn();
+    vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }
