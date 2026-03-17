@@ -84,7 +84,7 @@ fn nfs_call_frame(
 ) -> Vec<u8> {
     let mut payload = Vec::new();
     // RPC call header fields
-    push_u32(&mut payload, XID);
+    push_u32(&mut payload, header.xid);
     push_u32(&mut payload, msg_type);
     push_u32(&mut payload, rpc_version);
     push_u32(&mut payload, NFS_PROGRAM);
@@ -116,26 +116,25 @@ fn nfs_call_frame(
 fn mount_call_frame(
     msg_type: u32,
     rpc_version: u32,
-    cred: OpaqueAuth,
-    verf: OpaqueAuth,
+    header: &RpcHeader,
     procedure: u32,
     args_builder: impl FnOnce(&mut Vec<u8>),
 ) -> Vec<u8> {
     let mut payload = Vec::new();
     // RPC call header fields
-    push_u32(&mut payload, XID);
+    push_u32(&mut payload, header.xid);
     push_u32(&mut payload, msg_type);
     push_u32(&mut payload, rpc_version);
     push_u32(&mut payload, MOUNT_PROGRAM);
     push_u32(&mut payload, MOUNT_VERSION);
     push_u32(&mut payload, procedure);
     // cred
-    push_u32(&mut payload, cred.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &cred.body);
+    push_u32(&mut payload, header.cred.flavor.to_u32().unwrap());
+    push_opaque(&mut payload, &header.cred.body);
 
     // verf
-    push_u32(&mut payload, verf.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &verf.body);
+    push_u32(&mut payload, header.verf.flavor.to_u32().unwrap());
+    push_opaque(&mut payload, &header.verf.body);
 
     // Append procedure-specific arguments
     args_builder(&mut payload);
@@ -207,11 +206,11 @@ fn assert_write_proc_result(result: &ProcArguments, expected_write: &WriteWrappe
 
 fn assert_arg_wrapper<F, T: Fn(&ProcArguments, F)>(
     arg_wrapper: ArgWrapper,
-    expected_header: RpcHeader,
+    expected_header: &RpcHeader,
     assert_func: T,
     opaque: F,
 ) {
-    assert_eq!(arg_wrapper.header, expected_header);
+    assert_eq!(arg_wrapper.header, *expected_header);
     assert_func(&arg_wrapper.proc, opaque);
 }
 
@@ -219,8 +218,9 @@ fn assert_arg_wrapper<F, T: Fn(&ProcArguments, F)>(
 #[tokio::test]
 async fn parse_mount_call() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
 
-    let frame = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, 1, |buf| {
+    let frame = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 1, |buf| {
         push_opaque(buf, b"/mnt/vol");
     });
     let socket = MockSocket::new(frame.as_slice());
@@ -239,12 +239,12 @@ async fn parse_mount_call() {
 #[tokio::test]
 async fn parse_mount_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let first =
-        mount_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth.clone(), 99, |_| {});
-    let second =
-        mount_call_frame(RpcBody::Call as u32, RPC_VERSION, auth.clone(), auth, 1, |buf| {
-            push_opaque(buf, b"/mnt/vol");
-        });
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let first = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 99, |_| {});
+    let second = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 1, |buf| {
+        push_opaque(buf, b"/mnt/vol");
+    });
 
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
@@ -287,14 +287,14 @@ async fn parse_two_correct() {
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
-        header.clone(),
+        &header,
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[1, 2, 3, 4, 5, 6, 7, 8],
     );
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
-        header,
+        &header,
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[1, 2, 3, 4, 5, 6, 7, 8],
     );
@@ -325,7 +325,7 @@ async fn parse_after_error() {
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
-        header,
+        &header,
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[1, 2, 3, 4, 5, 6, 7, 8],
     );
@@ -369,16 +369,11 @@ async fn parse_write() {
 
     let result = parser.next_message().await.unwrap();
 
-    assert_arg_wrapper(
-        result,
-        header.clone(),
-        |proc, arg| assert_write_proc_result(proc, arg),
-        &write,
-    );
+    assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 
     let result = parser.next_message().await.unwrap();
 
-    assert_arg_wrapper(result, header, |proc, arg| assert_write_proc_result(proc, arg), &write);
+    assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.
@@ -421,7 +416,7 @@ async fn parse_write_after_error() {
     let result = parser.next_message().await;
     assert!(matches!(result, Err(Error::RpcVersionMismatch(_))));
     let result = parser.next_message().await.unwrap();
-    assert_arg_wrapper(result, header, |proc, arg| assert_write_proc_result(proc, arg), &write);
+    assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
 #[tokio::test]
@@ -527,7 +522,7 @@ async fn parse_write_with_empty_payload() {
     let alloc = Arc::new(Mutex::new(MockAllocator::new(2)));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     let result = parser.next_message().await.unwrap();
-    assert_arg_wrapper(result, header, |proc, arg| assert_write_proc_result(proc, arg), &write);
+    assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
 #[tokio::test]
