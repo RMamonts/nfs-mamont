@@ -4,7 +4,7 @@ pub mod mount;
 pub mod nfsv3;
 pub mod parser_struct;
 pub mod primitive;
-mod read_buffer;
+pub mod read_buffer;
 mod rpc;
 
 #[cfg(test)]
