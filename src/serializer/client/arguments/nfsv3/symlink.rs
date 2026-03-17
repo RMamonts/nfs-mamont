@@ -1,6 +1,6 @@
 use std::io::{Result, Write};
 
-use crate::client::arguments::nfsv3::set_attr::serialize_new_attr;
+use crate::serializer::client::arguments::nfsv3::set_attr::serialize_new_attr;
 use crate::serializer::files::dir_op_arg;
 use crate::serializer::files::file_path;
 use crate::vfs::symlink::Args;

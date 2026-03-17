@@ -28,7 +28,7 @@ impl WriteTask {
 
     async fn run(self) {
         let mut result_receiver = self.result_receiver;
-        let mut serializer = serializer::serialize_struct::Serializer::new(self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
         while let Some(reply) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>

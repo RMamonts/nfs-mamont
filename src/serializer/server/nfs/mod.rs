@@ -27,7 +27,7 @@ pub mod write;
 
 use std::io::{Result, Write};
 
-use super::variant;
+use super::super::variant;
 use crate::vfs;
 
 /// Serializes `vfs::Error` as an XDR enum discriminant (NFS status).
