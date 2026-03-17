@@ -40,8 +40,8 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, MountArgWrapper, MountArguments, NfsArgWrapper,
-    NfsArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
+    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -51,7 +51,7 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
-const DEFAULT_SIZE: usize = 2500;
+pub const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
 ///
@@ -318,23 +318,32 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// This is the generic entry point for call sites that do not know in advance
     /// whether the next frame contains NFSv3 or MOUNT data.
-    pub async fn next_message(&mut self) -> Result<ArgWrapper> {
-        let xid = self.read_message_header().await?;
+    pub async fn next_message(&mut self) -> core::result::Result<ArgWrapper, ErrorWrapper> {
+        let xid = match self.read_message_header().await {
+            Ok(xid) => xid,
+            Err(error) => return Err(ErrorWrapper { xid: None, error }),
+        };
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+            }
         };
         let proc = match self.parse_next_message_with_header(&rpc_header).await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+            }
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
-        self.finalize_parsing()?;
-        Ok(ArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
+        match self.finalize_parsing() {
+            Ok(_) => Ok(ArgWrapper {
+                header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
+                proc,
+            }),
+            Err(error) => Err(ErrorWrapper { xid: Some(xid), error }),
+        }
     }
 
     /// Parses a complete MOUNT RPC message from the stream.
