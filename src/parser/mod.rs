@@ -61,6 +61,13 @@ pub struct ArgWrapper {
     pub proc: ProcArguments,
 }
 
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
+}
+
 /// Parsed RPC message grouped by top-level RPC program.
 ///
 /// This is used by generic message consumers (for example, read tasks) that
