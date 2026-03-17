@@ -19,7 +19,7 @@ use crate::task::global::mount::MountTask;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener, context: ServerContext) -> std::io::Result<()> {
-    let (mount_task, mount_sender) = MountTask::new();
+    let (mount_task, mount_sender) = MountTask::new(Vec::new());
     mount_task.spawn();
 
     loop {

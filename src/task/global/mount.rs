@@ -1,63 +1,35 @@
-use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::mount::{ExportEntry, MountEntry};
+use crate::mount::ExportEntry;
 use crate::parser::MountArgWrapper;
+use crate::service::mount::MountService;
 use crate::task::ProcReply;
-use crate::vfs::file;
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {
     /// Channel used to pass the result to write task.
     pub result_tx: UnboundedSender<ProcReply>,
+    /// Client socket address from connection task.
+    pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
 
-#[derive(Default)]
-struct ExportRegistry {
-    // one dir can have only one export
+pub struct MountTask {
     #[allow(dead_code)]
-    by_directory: HashMap<file::Path, ExportEntry>,
-}
-
-#[derive(Default)]
-struct MountRegistry {
-    // one client can mount multiple dirs
-    #[allow(dead_code)]
-    by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
-}
-
-struct MountContext {
-    // what's available to mount
-    #[allow(dead_code)]
-    exports: ExportRegistry,
-    // who has mounted what
-    #[allow(dead_code)]
-    mounts: MountRegistry,
+    mount_service: MountService,
     // channel for commands from client connection tasks
     receiver: UnboundedReceiver<MountCommand>,
 }
 
-pub struct MountTask {
-    #[allow(dead_code)]
-    context: MountContext,
-}
-
 impl MountTask {
     /// Creates new instance of [`MountTask`]
-    pub fn new() -> (Self, UnboundedSender<MountCommand>) {
+    pub fn new(exports: Vec<ExportEntry>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
-        let task = Self {
-            context: MountContext {
-                exports: ExportRegistry::default(),
-                mounts: MountRegistry::default(),
-                receiver,
-            },
-        };
+        let task = Self { mount_service: MountService::with_exports(exports), receiver };
 
         (task, sender)
     }
@@ -74,7 +46,7 @@ impl MountTask {
     }
 
     async fn run(self) {
-        let mut receiver = self.context.receiver;
+        let mut receiver = self.receiver;
 
         while let Some(_command) = receiver.recv().await {
             // Send result back. It's fine if write task is already dropped.

@@ -3,14 +3,16 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
+use std::net::SocketAddr;
+
 use async_trait::async_trait;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::rpc::AuthFlavor;
+use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::vfs::file;
 
-#[derive(ToPrimitive, FromPrimitive)]
+#[derive(Debug, ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
 pub enum Fail {
     /// Not owner
@@ -60,5 +62,10 @@ pub trait Mnt {
     ///
     /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&self, args: Args) -> Result<Success, Fail>;
+    async fn mnt(
+        &mut self,
+        args: Args,
+        client_addr: SocketAddr,
+        cred: OpaqueAuth,
+    ) -> Result<Success, Fail>;
 }
