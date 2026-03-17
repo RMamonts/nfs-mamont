@@ -1,6 +1,7 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
 /// Represents bounded by custome range list of buffers.
+#[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
@@ -150,5 +151,54 @@ impl<'a> IntoIterator for &'a mut Slice {
 
     fn into_iter(self) -> Self::IntoIter {
         IterMut { slice_iter: self.buffers.iter_mut(), range: self.range.clone() }
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<[u8]> for Slice {
+    fn eq(&self, other: &[u8]) -> bool {
+        if self.range.len() == 1 && other.is_empty() {
+            return true;
+        }
+
+        if self.range.len() != other.len() {
+            return false;
+        }
+
+        let mut self_iter = self.iter();
+        let mut block_self = self_iter.next();
+
+        let mut other = other;
+
+        loop {
+            match block_self {
+                None => return other.is_empty(),
+                Some(mut cur_self) => {
+                    loop {
+                        let take = cur_self.len().min(other.len());
+
+                        if cur_self[..take] != other[..take] {
+                            return false;
+                        }
+
+                        cur_self = &cur_self[take..];
+                        other = &other[take..];
+
+                        if cur_self.is_empty() || other.is_empty() {
+                            break;
+                        }
+                    }
+
+                    block_self =
+                        if cur_self.is_empty() { self_iter.next() } else { Some(cur_self) };
+                }
+            }
+        }
+    }
+}
+#[cfg(test)]
+impl PartialEq<Slice> for [u8] {
+    fn eq(&self, other: &Slice) -> bool {
+        other == self
     }
 }
