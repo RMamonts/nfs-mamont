@@ -12,13 +12,12 @@
 
 #![allow(dead_code)]
 
-pub mod files;
-mod mount;
-mod nfs;
-pub mod rpc;
-pub mod serialize_struct;
 #[cfg(test)]
-mod tests;
+pub mod client;
+
+pub mod server;
+
+mod files;
 
 use std::io::{self, Error, ErrorKind, Write};
 
