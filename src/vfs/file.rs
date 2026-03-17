@@ -5,7 +5,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 
 /// Unique file identifier.
 ///

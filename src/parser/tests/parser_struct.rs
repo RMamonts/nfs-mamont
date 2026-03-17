@@ -2,8 +2,8 @@ use num_traits::ToPrimitive;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
+use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
+use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;

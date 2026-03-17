@@ -21,8 +21,11 @@ use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
 
 use crate::allocator::{Allocator, Slice};
-use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::nfsv3::{
+use crate::consts::mount::{
+    MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
+    MOUNT_VERSION,
+};
+use crate::consts::nfsv3::{
     ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
@@ -265,12 +268,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Parses MOUNT procedure arguments from the current frame.
     async fn parse_mount_proc(&mut self, procedure: u32) -> Result<MountArguments> {
         let args = match procedure {
-            0 => MountArguments::Null,
-            1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
-            2 => MountArguments::Dump,
-            3 => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
-            4 => MountArguments::UnmountAll,
-            5 => MountArguments::Export,
+            MOUNT_NULL => MountArguments::Null,
+            MOUNT_MNT => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
+            MOUNT_DUMP => MountArguments::Dump,
+            MOUNT_UMNT => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
+            MOUNT_UMNTALL => MountArguments::UnmountAll,
+            MOUNT_EXPORT => MountArguments::Export,
             _ => return Err(Error::ProcedureMismatch),
         };
         Ok(args)

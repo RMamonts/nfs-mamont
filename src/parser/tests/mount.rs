@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use crate::mount::MOUNT_DIRPATH_LEN;
+use crate::consts::mount::MOUNT_DIRPATH_LEN;
 use crate::mount::{mnt, umnt};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;

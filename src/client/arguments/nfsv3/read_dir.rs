@@ -1,6 +1,6 @@
 use std::io::{Result, Write};
 
-use crate::nfsv3::NFS3_COOKIEVERFSIZE;
+use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::serializer::array;
 use crate::serializer::files::file_handle;
 use crate::serializer::{u32, u64};

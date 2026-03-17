@@ -2,7 +2,7 @@
 
 use std::io::{self, Read};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
