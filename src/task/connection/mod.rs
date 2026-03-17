@@ -26,6 +26,13 @@ pub async fn new(
     mount_sender: mpsc::UnboundedSender<MountCommand>,
     context: &ServerContext,
 ) {
+    let peer_addr = match socket.peer_addr() {
+        Ok(addr) => addr,
+        Err(err) => {
+            eprintln!("failed to determine peer address: {err}");
+            return;
+        }
+    };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
@@ -34,6 +41,7 @@ pub async fn new(
 
     read::ReadTask::new(
         readhalf,
+        peer_addr,
         command_sender,
         mount_sender,
         result_sender.clone(),

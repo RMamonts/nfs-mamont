@@ -3,6 +3,8 @@
 //! as defined in RFC 1813 section 5.2.4.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
 
+use std::net::SocketAddr;
+
 use async_trait::async_trait;
 
 #[async_trait]
@@ -12,5 +14,5 @@ pub trait Umntall {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umntall(&self);
+    async fn umntall(&mut self, client_addr: SocketAddr);
 }

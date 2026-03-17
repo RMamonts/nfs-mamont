@@ -9,6 +9,7 @@ use super::MountService;
 #[async_trait]
 impl Export for MountService {
     async fn export(&self) -> Success {
-        todo!()
+        let exports = self.exports.export_list();
+        Success { exports }
     }
 }
