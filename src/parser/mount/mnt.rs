@@ -1,7 +1,7 @@
 use std::io::Read;
 
+use crate::consts::mount::MOUNT_DIRPATH_LEN;
 use crate::mount::mnt::Args;
-use crate::mount::MOUNT_DIRPATH_LEN;
 use crate::parser::primitive::string_max_size;
 use crate::parser::Result;
 use crate::rpc::Error;
