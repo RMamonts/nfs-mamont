@@ -9,7 +9,7 @@ use async_trait::async_trait;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::rpc::AuthFlavor;
+use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::vfs::file;
 
 #[derive(Debug, ToPrimitive, FromPrimitive)]
@@ -62,5 +62,10 @@ pub trait Mnt {
     ///
     /// This procedure also results in the server adding a new entry
     /// to its mount list recording that this client has mounted the directory.
-    async fn mnt(&mut self, args: Args, client_addr: SocketAddr) -> Result<Success, Fail>;
+    async fn mnt(
+        &mut self,
+        args: Args,
+        client_addr: SocketAddr,
+        cred: OpaqueAuth,
+    ) -> Result<Success, Fail>;
 }

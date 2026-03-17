@@ -2,7 +2,6 @@ use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::context::SharedVfs;
 use crate::mount::ExportEntry;
 use crate::parser::MountArgWrapper;
 use crate::service::mount::MountService;
@@ -27,10 +26,10 @@ pub struct MountTask {
 
 impl MountTask {
     /// Creates new instance of [`MountTask`]
-    pub fn new(exports: Vec<ExportEntry>, vfs: SharedVfs) -> (Self, UnboundedSender<MountCommand>) {
+    pub fn new(exports: Vec<ExportEntry>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
-        let task = Self { mount_service: MountService::with_exports(exports, vfs), receiver };
+        let task = Self { mount_service: MountService::with_exports(exports), receiver };
 
         (task, sender)
     }

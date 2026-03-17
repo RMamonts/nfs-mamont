@@ -23,7 +23,6 @@ pub mod rename;
 pub mod rm_dir;
 pub mod set_attr;
 pub mod symlink;
-pub mod utils;
 pub mod write;
 
 /// Maximum length of name passed into [`Vfs`] methods.
@@ -150,8 +149,7 @@ pub struct DirOpArgs {
 }
 
 pub trait Vfs:
-    utils::Utils
-    + get_attr::GetAttr
+    get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
     + access::Access
@@ -176,8 +174,7 @@ pub trait Vfs:
 }
 
 impl<T> Vfs for T where
-    T: utils::Utils
-        + get_attr::GetAttr
+    T: get_attr::GetAttr
         + set_attr::SetAttr
         + lookup::Lookup
         + access::Access

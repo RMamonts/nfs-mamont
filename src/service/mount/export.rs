@@ -9,7 +9,7 @@ use super::MountService;
 #[async_trait]
 impl Export for MountService {
     async fn export(&self) -> Success {
-        let exports = self.exports.by_directory.values().cloned().collect();
+        let exports = self.exports.export_list();
         Success { exports }
     }
 }

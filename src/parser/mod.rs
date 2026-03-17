@@ -7,8 +7,6 @@ pub mod primitive;
 mod read_buffer;
 mod rpc;
 
-pub use parser_struct::RpcParser;
-
 #[cfg(test)]
 mod tests;
 

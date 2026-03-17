@@ -5,21 +5,27 @@ use std::net::SocketAddr;
 
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
 use crate::mount::MountEntry;
-use crate::rpc::AuthFlavor;
+use crate::rpc::{AuthFlavor, OpaqueAuth};
 
 use super::MountService;
 
 #[async_trait]
 impl Mnt for MountService {
-    async fn mnt(&mut self, args: Args, client_addr: SocketAddr) -> Result<Success, Fail> {
-        let is_exported = self.exports.by_directory.contains_key(&args.dirpath);
-
-        if !is_exported {
+    async fn mnt(
+        &mut self,
+        args: Args,
+        client_addr: SocketAddr,
+        _cred: OpaqueAuth,
+    ) -> Result<Success, Fail> {
+        let Some(export) = self.export_entry(&args.dirpath) else {
             return Err(Fail::Access);
-        }
+        };
 
-        let Ok(file_handle) = self.vfs.path_to_handle(&args.dirpath).await else {
-            return Err(Fail::NoEnt);
+        let file_handle = export.file_handle.clone();
+        let auth_flavors = if export.auth_flavors.is_empty() {
+            vec![AuthFlavor::None]
+        } else {
+            export.auth_flavors.clone()
         };
 
         let mount_entry =
@@ -27,7 +33,6 @@ impl Mnt for MountService {
 
         self.mounts.by_client.entry(client_addr).or_default().insert(mount_entry);
 
-        // TODO: take auth_flavors from config
-        Ok(Success { file_handle, auth_flavors: vec![AuthFlavor::None] })
+        Ok(Success { file_handle, auth_flavors })
     }
 }
