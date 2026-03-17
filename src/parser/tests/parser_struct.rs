@@ -7,7 +7,9 @@ use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{ArgWrapper, Error, MountArguments, NfsArguments, ProcArguments, RpcHeader};
+use crate::parser::{
+    ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
+};
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, RPC_VERSION};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
@@ -255,7 +257,10 @@ async fn parse_mount_after_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
 
     let first_result = parser.next_message().await;
-    assert!(matches!(first_result, Err(Error::ProcedureMismatch)));
+    assert!(matches!(
+        first_result,
+        Err(ErrorWrapper { error: Error::ProcedureMismatch, xid: Some(XID) })
+    ));
 
     let second_result = parser.next_message().await.unwrap();
     let ProcArguments::Mount(mount_args) = second_result.proc else {
@@ -414,7 +419,11 @@ async fn parse_write_after_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 80);
 
     let result = parser.next_message().await;
-    assert!(matches!(result, Err(Error::RpcVersionMismatch(_))));
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::RpcVersionMismatch(_), xid: Some(XID) })
+    ));
+
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
@@ -433,7 +442,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
 
     let result = parser.next_message().await;
-    let error = result.err().unwrap();
+    let ErrorWrapper { error, .. } = result.err().unwrap();
     assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
 }
 
@@ -452,7 +461,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 32);
 
     let result = parser.next_message().await;
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(ErrorWrapper { error: Error::IO(_), xid: None })));
 }
 
 #[tokio::test]
@@ -478,7 +487,10 @@ async fn parse_rejects_any_non_call_message_type() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.next_message().await;
-    assert!(matches!(result, Err(Error::MessageTypeMismatch)));
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::MessageTypeMismatch, xid: Some(XID) })
+    ));
 }
 
 /// Ensures parser rejects fragments with size below XID width.
@@ -493,7 +505,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
 
     let result = parser.next_message().await;
-    let error = result.err().unwrap();
+    let ErrorWrapper { error, .. } = result.err().unwrap();
     assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
 }
 
@@ -538,7 +550,10 @@ async fn parse_rejects_non_none_cred_auth() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
-    assert!(matches!(result, Err(Error::AuthError(AuthStat::BadCred))));
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::AuthError(AuthStat::BadCred), xid: Some(XID) })
+    ));
 }
 
 #[tokio::test]
@@ -554,5 +569,8 @@ async fn parse_rejects_non_none_verf_auth() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
-    assert!(matches!(result, Err(Error::AuthError(AuthStat::BadVerf))));
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::AuthError(AuthStat::BadVerf), xid: Some(XID) })
+    ));
 }

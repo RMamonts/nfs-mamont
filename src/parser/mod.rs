@@ -2,9 +2,9 @@
 
 pub mod mount;
 pub mod nfsv3;
-mod parser_struct;
+pub mod parser_struct;
 pub mod primitive;
-mod read_buffer;
+pub mod read_buffer;
 mod rpc;
 
 #[cfg(test)]
@@ -59,6 +59,14 @@ pub struct MountArgWrapper {
 pub struct ArgWrapper {
     pub header: RpcHeader,
     pub proc: ProcArguments,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 /// Parsed RPC message grouped by top-level RPC program.

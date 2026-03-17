@@ -32,7 +32,14 @@ pub async fn new(
     // channel for request
     let (command_sender, command_receiver) = mpsc::unbounded_channel::<NfsArgWrapper>();
 
-    read::ReadTask::new(readhalf, command_sender, mount_sender, result_sender.clone()).spawn();
+    read::ReadTask::new(
+        readhalf,
+        command_sender,
+        mount_sender,
+        result_sender.clone(),
+        context.get_allocator(),
+    )
+    .spawn();
 
     vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
