@@ -9,6 +9,7 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
+use crate::context::ServerContext;
 use crate::parser::NfsArgWrapper;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
@@ -20,7 +21,11 @@ pub mod vfs;
 pub mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCommand>) {
+pub async fn new(
+    socket: TcpStream,
+    mount_sender: mpsc::UnboundedSender<MountCommand>,
+    context: &ServerContext,
+) {
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
@@ -29,7 +34,7 @@ pub async fn new(socket: TcpStream, mount_sender: mpsc::UnboundedSender<MountCom
 
     read::ReadTask::new(readhalf, command_sender, mount_sender, result_sender.clone()).spawn();
 
-    vfs::VfsTask::new(command_receiver, result_sender).spawn();
+    vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }
