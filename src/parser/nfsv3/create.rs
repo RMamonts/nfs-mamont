@@ -10,7 +10,7 @@ use crate::vfs::create::Verifier;
 use crate::vfs::file::Time;
 use crate::vfs::set_attr::{NewAttr, SetTime};
 
-use crate::nfsv3::NFS3_CREATEVERFSIZE;
+use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {

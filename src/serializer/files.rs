@@ -3,7 +3,7 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
 use crate::vfs;
 use crate::vfs::{file, DirOpArgs, MAX_PATH_LEN};
