@@ -63,6 +63,7 @@ pub struct ArgWrapper {
 
 /// Wrapper for [`Error`] to pass `xid` of procedure, this error
 /// is associated with
+#[derive(Debug)]
 pub struct ErrorWrapper {
     pub xid: Option<u32>,
     pub error: Error,
