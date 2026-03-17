@@ -2,7 +2,7 @@
 
 pub mod mount;
 pub mod nfsv3;
-mod parser_struct;
+pub mod parser_struct;
 pub mod primitive;
 mod read_buffer;
 mod rpc;
