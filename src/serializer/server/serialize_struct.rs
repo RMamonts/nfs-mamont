@@ -13,17 +13,18 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Slice;
 use crate::mount::MountRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
-use crate::serializer;
-use crate::serializer::mount::mnt;
-use crate::serializer::nfs::{
-    access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
-    path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
-    write,
-};
-use crate::serializer::rpc::auth;
+
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
+
+use super::rpc::auth;
+use super::mount::mnt;
+use super::nfs::{
+access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
+path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
+    write,
+};
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
@@ -176,17 +177,17 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         mnt::result_ok(&mut self.buffer, ok)?;
                     }
                     Err(stat) => {
-                        serializer::mount::mount_stat(&mut self.buffer, stat)?;
+                        super::mount::mount_stat(&mut self.buffer, stat)?;
                     }
                 };
                 self.buffer.send_inner_buffer().await
             }
             MountRes::Export(node) => {
-                serializer::mount::export::result_ok(&mut self.buffer, node)?;
+                super::mount::export::result_ok(&mut self.buffer, node)?;
                 self.buffer.send_inner_buffer().await
             }
             MountRes::Dump(body) => {
-                serializer::mount::dump::result_ok(&mut self.buffer, body)?;
+                super::mount::dump::result_ok(&mut self.buffer, body)?;
                 self.buffer.send_inner_buffer().await
             }
         }
