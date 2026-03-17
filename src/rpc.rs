@@ -49,6 +49,7 @@ pub enum ReplyBody {
 
 /// Authentication flavors.
 #[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,
@@ -58,6 +59,7 @@ pub enum AuthFlavor {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
