@@ -4,7 +4,7 @@ use crate::serializer::files::file_handle;
 use crate::serializer::{u32, u64};
 use crate::vfs::read_dir_plus::Args;
 
-use crate::client::arguments::nfsv3::read_dir::serialize_cookie_verifier;
+use crate::serializer::client::arguments::nfsv3::read_dir::serialize_cookie_verifier;
 
 /// Serializes the arguments [`Args`] for an NFSv3 `READDIRPLUS` operation to the provided `Write` destination.
 pub fn read_dir_plus_args(dest: &mut impl Write, arg: Args) -> Result<()> {

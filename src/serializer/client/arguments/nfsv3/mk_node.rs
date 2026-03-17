@@ -5,7 +5,7 @@ use crate::serializer::u32;
 use crate::vfs::file::{Device, Type};
 use crate::vfs::mk_node::{Args, What};
 
-use crate::client::arguments::nfsv3::set_attr::serialize_new_attr;
+use crate::serializer::client::arguments::nfsv3::set_attr::serialize_new_attr;
 
 /// Serializes [`Device`].
 fn serialize_device(dest: &mut impl Write, arg: Device) -> Result<()> {
