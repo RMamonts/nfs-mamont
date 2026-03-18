@@ -67,7 +67,8 @@ impl ReadTask {
                 {
                     crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NULL",
-                        self.client_addr, header.xid
+                        self.client_addr,
+                        header.xid
                     );
                     let result = ProcReply {
                         xid: header.xid,
@@ -83,7 +84,8 @@ impl ReadTask {
                     let xid = header.xid;
                     crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NON_NULL",
-                        self.client_addr, xid
+                        self.client_addr,
+                        xid
                     );
                     let command = NfsArgWrapper { header, proc };
 
@@ -98,7 +100,8 @@ impl ReadTask {
                     let xid = header.xid;
                     crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NULL",
-                        self.client_addr, xid
+                        self.client_addr,
+                        xid
                     );
 
                     let result = ProcReply {
@@ -115,7 +118,8 @@ impl ReadTask {
                     let xid = header.xid;
                     crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NON_NULL",
-                        self.client_addr, xid
+                        self.client_addr,
+                        xid
                     );
                     let command = MountCommand {
                         result_tx: self.result_sender.clone(),
@@ -130,7 +134,9 @@ impl ReadTask {
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
                     crate::debug_log!(
                         "rpc parse error: client={} xid={} error={:?}",
-                        self.client_addr, xid, error
+                        self.client_addr,
+                        xid,
+                        error
                     );
                     let result = ProcReply { xid, proc_result: Err(error) };
                     if let Err(err) = self.result_sender.send(result) {

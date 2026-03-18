@@ -57,7 +57,11 @@ impl MountTask {
         while let Some(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
-            crate::debug_log!("mount task: client={} xid={} command received", client_addr, header.xid);
+            crate::debug_log!(
+                "mount task: client={} xid={} command received",
+                client_addr,
+                header.xid
+            );
 
             let mount_result = match *proc {
                 MountArguments::Null => MountRes::Null,
@@ -69,11 +73,14 @@ impl MountTask {
                     );
                     let res = mount_service.mnt(args, client_addr, header.cred).await;
                     match &res {
-                        Ok(_) => crate::debug_log!("mount task: xid={} proc=MNT result=OK", header.xid),
+                        Ok(_) => {
+                            crate::debug_log!("mount task: xid={} proc=MNT result=OK", header.xid)
+                        }
                         Err(status) => {
                             crate::debug_log!(
                                 "mount task: xid={} proc=MNT result=ERR {:?}",
-                                header.xid, status
+                                header.xid,
+                                status
                             )
                         }
                     }

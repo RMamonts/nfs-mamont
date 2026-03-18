@@ -62,10 +62,7 @@ impl rename::Rename for MirrorFS {
             Err(error) => {
                 return Err(rename::Fail {
                     error,
-                    from_dir_wcc: vfs::WccData {
-                        before: from_before,
-                        after: from_before_after,
-                    },
+                    from_dir_wcc: vfs::WccData { before: from_before, after: from_before_after },
                     to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                 });
             }
@@ -76,10 +73,7 @@ impl rename::Rename for MirrorFS {
             if !compatible {
                 return Err(rename::Fail {
                     error: vfs::Error::Exist,
-                    from_dir_wcc: vfs::WccData {
-                        before: from_before,
-                        after: from_before_after,
-                    },
+                    from_dir_wcc: vfs::WccData { before: from_before, after: from_before_after },
                     to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                 });
             }
@@ -92,10 +86,7 @@ impl rename::Rename for MirrorFS {
                                 before: from_before,
                                 after: from_before_after,
                             },
-                            to_dir_wcc: vfs::WccData {
-                                before: to_before,
-                                after: to_before_after,
-                            },
+                            to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                         });
                     }
                 }

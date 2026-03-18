@@ -192,7 +192,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            crate::debug_log!("rpc parse reject: rpc_version={rpc_version}, expected={RPC_VERSION}");
+            crate::debug_log!(
+                "rpc parse reject: rpc_version={rpc_version}, expected={RPC_VERSION}"
+            );
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -415,7 +417,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if head.program != NFS_PROGRAM {
             crate::debug_log!(
                 "rpc parse reject: nfs parser got program={}, expected={}",
-                head.program, NFS_PROGRAM
+                head.program,
+                NFS_PROGRAM
             );
             return Err(Error::ProgramMismatch);
         }
@@ -440,14 +443,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if head.program != MOUNT_PROGRAM {
             crate::debug_log!(
                 "rpc parse reject: mount parser got program={}, expected={}",
-                head.program, MOUNT_PROGRAM
+                head.program,
+                MOUNT_PROGRAM
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
             crate::debug_log!(
                 "rpc parse reject: mount version={}, expected={}",
-                head.version, MOUNT_VERSION
+                head.version,
+                MOUNT_VERSION
             );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: MOUNT_VERSION,
