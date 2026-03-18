@@ -2,10 +2,15 @@ use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::mount::ExportEntry;
-use crate::parser::MountArgWrapper;
+use crate::mount::dump::Dump;
+use crate::mount::export::Export;
+use crate::mount::mnt::Mnt;
+use crate::mount::umnt::Umnt;
+use crate::mount::umntall::Umntall;
+use crate::mount::{ExportEntry, MountRes};
+use crate::parser::{MountArgWrapper, MountArguments};
 use crate::service::mount::MountService;
-use crate::task::ProcReply;
+use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {
@@ -46,12 +51,45 @@ impl MountTask {
     }
 
     async fn run(self) {
+        let mut mount_service = self.mount_service;
         let mut receiver = self.receiver;
 
-        while let Some(_command) = receiver.recv().await {
-            // Send result back. It's fine if write task is already dropped.
-            // TODO("https://github.com/RMamonts/nfs-mamont/issues/123"
-            //let _ = command.result_tx.send();
+        while let Some(command) = receiver.recv().await {
+            let MountCommand { result_tx, client_addr, args } = command;
+            let MountArgWrapper { header, proc } = args;
+
+            let mount_result = match *proc {
+                MountArguments::Null => MountRes::Null,
+                MountArguments::Mount(args) => {
+                    let res = mount_service.mnt(args, client_addr, header.cred).await;
+                    MountRes::Mount(res)
+                }
+                MountArguments::Unmount(args) => {
+                    mount_service.umnt(args, client_addr).await;
+                    MountRes::Unmount
+                }
+                MountArguments::Export => {
+                    let res = mount_service.export().await;
+                    MountRes::Export(res)
+                }
+                MountArguments::Dump => {
+                    let res = mount_service.dump().await;
+                    MountRes::Dump(res)
+                }
+                MountArguments::UnmountAll => {
+                    mount_service.umntall(client_addr).await;
+                    MountRes::UnmountAll
+                }
+            };
+
+            // TODO:
+            // - some logs when occurred error
+            // - or retry with fail
+            // * but don't stop task
+            let _ = result_tx.send(ProcReply {
+                xid: header.xid,
+                proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
+            });
         }
     }
 }
