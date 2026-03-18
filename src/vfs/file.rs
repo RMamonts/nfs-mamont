@@ -5,12 +5,12 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Handle(pub [u8; NFS3_FHSIZE]);
 
 /// A validated wrapper around a `String` representing a name.
@@ -59,7 +59,7 @@ impl Name {
 /// [`Path`] ensures that the provided path string does not exceed
 /// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
 /// conversion back into the owned [`PathBuf`].
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Path(PathBuf);
 
 impl Path {

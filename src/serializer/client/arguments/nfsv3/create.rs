@@ -1,11 +1,11 @@
 use std::io::{Result, Write};
 
-use crate::nfsv3::NFS3_CREATEVERFSIZE;
+use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::serializer::files::dir_op_arg;
 use crate::serializer::{array, u32};
 use crate::vfs::create::{Args, How, HowMode, Verifier};
 
-use crate::client::arguments::nfsv3::set_attr::serialize_new_attr;
+use crate::serializer::client::arguments::nfsv3::set_attr::serialize_new_attr;
 
 /// Serializes [`Verifier`].
 fn serialize_verifier(dest: &mut impl Write, verf: Verifier) -> Result<()> {

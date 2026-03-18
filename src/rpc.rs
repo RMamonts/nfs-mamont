@@ -48,7 +48,8 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-#[derive(ToPrimitive, FromPrimitive)]
+#[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,
@@ -57,6 +58,8 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
@@ -86,8 +89,6 @@ pub enum Error {
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
     IncorrectString(FromUtf8Error),
-    /// Incorrect padding was found.
-    IncorrectPadding,
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
     /// A bad file handle was encountered.

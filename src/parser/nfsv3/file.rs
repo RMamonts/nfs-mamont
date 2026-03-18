@@ -2,7 +2,7 @@
 
 use std::io::{self, Read};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
@@ -219,8 +219,7 @@ mod tests {
     #[test]
     fn test_file_path_padding_error() {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
-
-        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IncorrectPadding)));
+        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
     }
 
     #[test]

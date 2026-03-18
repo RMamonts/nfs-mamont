@@ -277,7 +277,7 @@ impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
 /// `ReadBuffer` maintains a fixed-size buffer with separate read and write
 /// positions, allowing efficient tracking of available data and available space.
 /// It implements [`Read`] to provide a standard interface for consuming data.
-struct ReadBuffer {
+pub struct ReadBuffer {
     data: Vec<u8>,
     read_pos: usize,
     write_pos: usize,

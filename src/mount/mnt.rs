@@ -3,14 +3,18 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
+use std::net::SocketAddr;
+
+use async_trait::async_trait;
+
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::rpc::AuthFlavor;
+use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::vfs::file;
 
-#[derive(ToPrimitive, FromPrimitive)]
+#[derive(Debug, ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
-pub enum MntError {
+pub enum Fail {
     /// Not owner
     Perm = 1,
     /// No such file or directory
@@ -41,9 +45,27 @@ pub struct Success {
     pub auth_flavors: Vec<AuthFlavor>,
 }
 
-pub type Result = std::result::Result<Success, MntError>;
-
 /// Arguments for the Mount operation, containing the path to be mounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[derive(Debug)]
-pub struct MountArgs(pub file::Path);
+pub struct Args {
+    /// a server pathname of a directory
+    pub dirpath: file::Path,
+}
+
+#[async_trait]
+pub trait Mnt {
+    /// Maps a pathname on the server to a NFS version 3 protocol file handle.
+    ///
+    /// # Parameters:
+    /// * `args` --- the arguments for the Mount operation.
+    ///
+    /// This procedure also results in the server adding a new entry
+    /// to its mount list recording that this client has mounted the directory.
+    async fn mnt(
+        &mut self,
+        args: Args,
+        client_addr: SocketAddr,
+        cred: OpaqueAuth,
+    ) -> Result<Success, Fail>;
+}

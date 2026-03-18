@@ -1,29 +1,40 @@
 use std::io::Cursor;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
-use crate::mount::MOUNT_DIRPATH_LEN;
+use crate::consts::mount::MOUNT_DIRPATH_LEN;
+use crate::mount::{mnt, umnt};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::vfs::file;
 
 #[test]
 fn test_mount_basic() {
-    let mut data =
-        Cursor::new(vec![0x00, 0x00, 0x00, 0x06, b'/', b'm', b'n', b't', b'/', b'1', 0x00, 0x00]);
+    #[rustfmt::skip]
+    let mut data = Cursor::new(vec![
+        // String length (u32, Big Endian) = 6
+        0x00, 0x00, 0x00, 0x06,
+        // String contents (6 bytes) = /mnt/1
+        b'/', b'm', b'n', b't', b'/', b'1',
+        // Padding (alignment up to 4 bytes)
+        0x00, 0x00,
+    ]);
 
     let result = mount(&mut data).unwrap();
-    let expected = MountArgs(file::Path::new(String::from("/mnt/1")).unwrap());
+    let expected = mnt::Args { dirpath: file::Path::new(String::from("/mnt/1")).unwrap() };
     assert_eq!(result, expected);
 }
 
 #[test]
 fn test_unmount_basic() {
-    let mut data =
-        Cursor::new(vec![0x00, 0x00, 0x00, 0x08, b'/', b't', b'm', b'p', b'/', b't', b'e', b's']);
+    #[rustfmt::skip]
+    let mut data = Cursor::new(vec![
+        // String length (u32, Big Endian) = 8
+        0x00, 0x00, 0x00, 0x08,
+        // String contents (8 bytes) = /tmp/tes
+        b'/', b't', b'm', b'p', b'/', b't', b'e', b's',
+    ]);
 
     let result = unmount(&mut data).unwrap();
-    let expected = UnmountArgs(file::Path::new(String::from("/tmp/tes")).unwrap());
+    let expected = umnt::Args { dirpath: file::Path::new(String::from("/tmp/tes")).unwrap() };
     assert_eq!(result, expected);
 }
 
@@ -45,7 +56,13 @@ fn test_mount_exceeds_max_length() {
 
 #[test]
 fn test_unmount_insufficient_data() {
-    let mut data = Cursor::new(vec![0x00, 0x00, 0x00, 0x05, b'/', b't', b'm', b'p']);
+    #[rustfmt::skip]
+    let mut data = Cursor::new(vec![
+        // String length (u32, Big Endian) = 5
+        0x00, 0x00, 0x00, 0x05,
+        // String contents (4 bytes) = /tmp
+        b'/', b't', b'm', b'p',
+    ]);
 
     let result = unmount(&mut data);
     assert!(result.is_err());
@@ -53,7 +70,13 @@ fn test_unmount_insufficient_data() {
 
 #[test]
 fn test_mount_unaligned_path() {
-    let mut data = Cursor::new(vec![0x00, 0x00, 0x00, 0x03, b'/', b'v', b'm']);
+    #[rustfmt::skip]
+    let mut data = Cursor::new(vec![
+        // String length (u32, Big Endian) = 3
+        0x00, 0x00, 0x00, 0x03,
+        // String contents (3 bytes) = /vm
+        b'/', b'v', b'm',
+    ]);
 
     let result = mount(&mut data);
     assert!(result.is_err());

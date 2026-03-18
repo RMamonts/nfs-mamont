@@ -26,9 +26,6 @@ pub mod set_attr;
 pub mod symlink;
 pub mod write;
 
-/// Result of [`Vfs`] operations.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Maximum length of name passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
 
@@ -182,4 +179,55 @@ pub trait Vfs:
     + path_conf::PathConf
     + commit::Commit
 {
+}
+
+impl<T> Vfs for T where
+    T: get_attr::GetAttr
+        + set_attr::SetAttr
+        + lookup::Lookup
+        + access::Access
+        + read_link::ReadLink
+        + read::Read
+        + write::Write
+        + create::Create
+        + mk_dir::MkDir
+        + symlink::Symlink
+        + mk_node::MkNode
+        + remove::Remove
+        + rm_dir::RmDir
+        + rename::Rename
+        + link::Link
+        + read_dir::ReadDir
+        + read_dir_plus::ReadDirPlus
+        + fs_stat::FsStat
+        + fs_info::FsInfo
+        + path_conf::PathConf
+        + commit::Commit
+{
+}
+
+/// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
+pub enum NfsRes {
+    Null,
+    GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),
+    SetAttr(std::result::Result<set_attr::Success, set_attr::Fail>),
+    LookUp(std::result::Result<lookup::Success, lookup::Fail>),
+    Access(std::result::Result<access::Success, access::Fail>),
+    ReadLink(std::result::Result<read_link::Success, read_link::Fail>),
+    Read(std::result::Result<read::Success, read::Fail>),
+    Write(std::result::Result<write::Success, write::Fail>),
+    Create(std::result::Result<create::Success, create::Fail>),
+    MkDir(std::result::Result<mk_dir::Success, mk_dir::Fail>),
+    SymLink(std::result::Result<symlink::Success, symlink::Fail>),
+    MkNod(std::result::Result<mk_node::Success, mk_node::Fail>),
+    Remove(std::result::Result<remove::Success, remove::Fail>),
+    RmDir(std::result::Result<rm_dir::Success, rm_dir::Fail>),
+    Rename(std::result::Result<rename::Success, rename::Fail>),
+    Link(std::result::Result<link::Success, link::Fail>),
+    ReadDir(std::result::Result<read_dir::Success, read_dir::Fail>),
+    ReadDirPlus(std::result::Result<read_dir_plus::Success, read_dir_plus::Fail>),
+    FsStat(std::result::Result<fs_stat::Success, fs_stat::Fail>),
+    FsInfo(std::result::Result<fs_info::Success, fs_info::Fail>),
+    PathConf(std::result::Result<path_conf::Success, path_conf::Fail>),
+    Commit(std::result::Result<commit::Success, commit::Fail>),
 }

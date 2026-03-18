@@ -2,9 +2,9 @@
 
 pub mod mount;
 pub mod nfsv3;
-mod parser_struct;
+pub mod parser_struct;
 pub mod primitive;
-mod read_buffer;
+pub mod read_buffer;
 mod rpc;
 
 #[cfg(test)]
@@ -12,9 +12,8 @@ mod tests;
 
 use std::future::Future;
 
-use crate::mount::mnt::MountArgs;
-use crate::mount::umnt::UnmountArgs;
-use crate::rpc::Error;
+use crate::mount::{mnt, umnt};
+use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -33,9 +32,54 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     }
 }
 
-/// Enumerates the different types of arguments that can be parsed.
-pub enum Arguments {
-    // NFSv3
+/// Represents the RPC request header extracted during message parsing.
+/// Contains metadata required for identifying and authenticating an RPC call.
+#[cfg_attr(test, derive(PartialEq, Debug, Clone))]
+pub struct RpcHeader {
+    pub xid: u32,
+    pub cred: OpaqueAuth,
+    pub verf: OpaqueAuth,
+}
+
+/// Wrapper for NFS procedure arguments along with the parsed RPC header.
+/// Used to pass fully decoded request data into NFS service handlers.
+pub struct NfsArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NfsArguments>,
+}
+
+/// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
+pub struct MountArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<MountArguments>,
+}
+
+/// Generic wrapper for RPC arguments used when the protocol type
+/// (NFS, MOUNT, or others) is already resolved at a higher layer.
+pub struct ArgWrapper {
+    pub header: RpcHeader,
+    pub proc: ProcArguments,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
+}
+
+/// Parsed RPC message grouped by top-level RPC program.
+///
+/// This is used by generic message consumers (for example, read tasks) that
+/// accept both NFSv3 and MOUNT calls from the same connection.
+pub enum ProcArguments {
+    Nfs3(Box<NfsArguments>),
+    Mount(Box<MountArguments>),
+}
+
+/// Enumerates supported NFS protocol procedure arguments.
+pub enum NfsArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -80,11 +124,16 @@ pub enum Arguments {
     PathConf(path_conf::Args),
     /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
-    // MOUNT
+}
+
+/// Enumerates supported MOUNT protocol procedure arguments.
+pub enum MountArguments {
+    /// Null operation arguments.
+    Null,
     /// Arguments for the Mount operation.
-    Mount(MountArgs),
+    Mount(mnt::Args),
     /// Arguments for the Unmount operation.
-    Unmount(UnmountArgs),
+    Unmount(umnt::Args),
     /// Arguments for the Export operation.
     Export,
     /// Arguments for the Dump operation.
