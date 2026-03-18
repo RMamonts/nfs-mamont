@@ -24,15 +24,16 @@ impl create::Create for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path)
-            .ok()
-            .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let dir_meta = match Self::metadata(&dir_path) {
             Ok(meta) => meta,
             Err(error) => {
-                return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
+                return Err(create::Fail {
+                    error,
+                    wcc_data: vfs::WccData { before: None, after: None },
+                });
             }
         };
+        let before = Some(Self::wcc_attr_from_metadata(&dir_meta));
         let dir_attr = Self::attr_from_metadata(&dir_meta);
         if let Err(error) = Self::validate_directory(&dir_attr) {
             return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });

@@ -32,7 +32,7 @@ impl set_attr::SetAttr for MirrorFS {
             if !Self::same_time(current_attr.ctime, guard.ctime) {
                 return Err(set_attr::Fail {
                     error: vfs::Error::NotSync,
-                    wcc_data: Self::wcc_data(&path, before),
+                    wcc_data: vfs::WccData { before, after: Some(current_attr) },
                 });
             }
         }

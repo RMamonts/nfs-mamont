@@ -20,10 +20,10 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let before =
-            std::fs::symlink_metadata(&path).ok().map(|meta| Self::wcc_attr_from_metadata(&meta));
-        if let Some(ref attr) = Self::file_attr(&path) {
-            if let Err(error) = Self::validate_regular(attr) {
+        let before_meta = std::fs::symlink_metadata(&path).ok();
+        let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
+        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
+            if let Err(error) = Self::validate_regular(&attr) {
                 return Err(write::Fail { error, wcc_data: Self::wcc_data(&path, before) });
             }
         }

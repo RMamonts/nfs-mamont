@@ -38,12 +38,12 @@ impl rename::Rename for MirrorFS {
                 });
             }
         };
-        let from_before = std::fs::symlink_metadata(&from_dir_path)
-            .ok()
-            .map(|meta| Self::wcc_attr_from_metadata(&meta));
-        let to_before = std::fs::symlink_metadata(&to_dir_path)
-            .ok()
-            .map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let from_before_meta = std::fs::symlink_metadata(&from_dir_path).ok();
+        let to_before_meta = std::fs::symlink_metadata(&to_dir_path).ok();
+        let from_before = from_before_meta.as_ref().map(Self::wcc_attr_from_metadata);
+        let to_before = to_before_meta.as_ref().map(Self::wcc_attr_from_metadata);
+        let from_before_after = from_before_meta.as_ref().map(Self::attr_from_metadata);
+        let to_before_after = to_before_meta.as_ref().map(Self::attr_from_metadata);
 
         let mut from_path = from_dir_path.clone();
         from_path.push(args.from.name.as_str());
@@ -52,8 +52,8 @@ impl rename::Rename for MirrorFS {
 
         if from_path == to_path {
             return Ok(rename::Success {
-                from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                from_dir_wcc: vfs::WccData { before: from_before, after: from_before_after },
+                to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
             });
         }
 
@@ -62,8 +62,11 @@ impl rename::Rename for MirrorFS {
             Err(error) => {
                 return Err(rename::Fail {
                     error,
-                    from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                    to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                    from_dir_wcc: vfs::WccData {
+                        before: from_before,
+                        after: from_before_after,
+                    },
+                    to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                 });
             }
         };
@@ -73,8 +76,11 @@ impl rename::Rename for MirrorFS {
             if !compatible {
                 return Err(rename::Fail {
                     error: vfs::Error::Exist,
-                    from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                    to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                    from_dir_wcc: vfs::WccData {
+                        before: from_before,
+                        after: from_before_after,
+                    },
+                    to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                 });
             }
             if target_meta.is_dir() {
@@ -82,8 +88,14 @@ impl rename::Rename for MirrorFS {
                     if iter.next().is_some() {
                         return Err(rename::Fail {
                             error: vfs::Error::Exist,
-                            from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                            to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                            from_dir_wcc: vfs::WccData {
+                                before: from_before,
+                                after: from_before_after,
+                            },
+                            to_dir_wcc: vfs::WccData {
+                                before: to_before,
+                                after: to_before_after,
+                            },
                         });
                     }
                 }
