@@ -4,7 +4,7 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use nfs_mamont::allocator::Slice;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
@@ -52,7 +52,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 /// A file system implementation that mirrors a local directory.
 #[derive(Debug)]
 pub struct MirrorFS {
-    fsmap: Mutex<FsMap>,
+    fsmap: RwLock<FsMap>,
     generation: u64,
 }
 
@@ -63,12 +63,12 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: Mutex::new(FsMap::new(root)), generation }
+        Self { fsmap: RwLock::new(FsMap::new(root)), generation }
     }
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.lock().await.root_handle()
+        self.fsmap.read().await.root_handle()
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -83,20 +83,20 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let mut fsmap = self.fsmap.lock().await;
+        let fsmap = self.fsmap.read().await;
         fsmap.path_for_handle(handle)
     }
 
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        self.fsmap.lock().await.ensure_handle_for_path(path)
+        self.fsmap.write().await.ensure_handle_for_path(path)
     }
 
     async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.lock().await.remove_path(path);
+        self.fsmap.write().await.remove_path(path);
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.lock().await.rename_path(from, to)
+        self.fsmap.write().await.rename_path(from, to)
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {

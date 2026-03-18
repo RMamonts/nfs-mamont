@@ -38,7 +38,7 @@ impl FsMap {
         Self::encode_handle(1)
     }
 
-    pub fn path_for_handle(&mut self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
+    pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
         let id = Self::decode_handle(handle)?;
         if id == 1 {
             return Ok(self.root.clone());
