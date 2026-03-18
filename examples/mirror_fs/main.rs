@@ -44,7 +44,7 @@ async fn main() -> std::io::Result<()> {
             directory: file::Path::new(export_root.to_string_lossy().into_owned()).unwrap(),
             names: Vec::new(),
         },
-        root_handle: root_handle,
+        root_handle,
     };
 
     handle_forever_with_exports(listener, context, vec![export]).await
