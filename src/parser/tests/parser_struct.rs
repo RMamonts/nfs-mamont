@@ -539,8 +539,8 @@ async fn parse_write_with_empty_payload() {
 
 #[tokio::test]
 async fn parse_rejects_non_none_cred_auth() {
-    let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![0, 1, 3] };
-    let cred = OpaqueAuth { flavor: AuthFlavor::Sys, body: vec![] };
+    let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let cred = OpaqueAuth { flavor: AuthFlavor::Short, body: vec![] };
     let header = RpcHeader { xid: XID, cred, verf };
     let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));

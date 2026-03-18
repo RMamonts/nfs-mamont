@@ -2,7 +2,7 @@ use std::fs as stdfs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
 
-use nfs_mamont::nfsv3::NFS3_CREATEVERFSIZE;
+use nfs_mamont::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::commit;
 use nfs_mamont::vfs::create;
@@ -18,8 +18,8 @@ use nfs_mamont::vfs::symlink;
 use nfs_mamont::vfs::write;
 
 use super::helpers::{
-    assert_wcc_present, create_dir, default_new_attr, dir_op, expect_err, expect_ok, file_path,
-    sized_attr, slice_from_bytes, slice_to_vec, write_file, TestContext,
+    alloc_slice, assert_wcc_present, create_dir, default_new_attr, dir_op, expect_err, expect_ok,
+    file_path, sized_attr, slice_from_bytes, slice_to_vec, write_file, TestContext,
 };
 
 #[tokio::test]
@@ -323,7 +323,7 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
                 offset: 2,
                 size: 3,
                 stable: write::StableHow::DataSync,
-                data: slice_from_bytes(b"xyz"),
+                data: slice_from_bytes(b"xyz").await,
             },
         )
         .await,
@@ -370,7 +370,7 @@ async fn file_lifecycle_create_edit_read_and_remove() {
                 offset: 0,
                 size: 11,
                 stable: write::StableHow::FileSync,
-                data: slice_from_bytes(b"hello world"),
+                data: slice_from_bytes(b"hello world").await,
             },
         )
         .await,
@@ -379,7 +379,12 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     assert_eq!(write_result.count, 11);
 
     let read_result = expect_ok(
-        read::Read::read(&ctx.fs, read::Args { file: handle.clone(), offset: 0, count: 11 }).await,
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: handle.clone(), offset: 0, count: 11 },
+            alloc_slice(11).await,
+        )
+        .await,
         "file read should succeed",
     );
     assert_eq!(read_result.head.count, 11);

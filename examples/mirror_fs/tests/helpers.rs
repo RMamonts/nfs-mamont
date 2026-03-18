@@ -3,9 +3,8 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use tokio::sync::mpsc;
 
-use nfs_mamont::allocator::Slice;
+use nfs_mamont::allocator::{Allocator, Impl, Slice};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::lookup;
@@ -87,13 +86,32 @@ pub(crate) fn sized_attr(mode: Option<u32>, size: Option<u64>) -> set_attr::NewA
     set_attr::NewAttr { mode, size, ..default_new_attr() }
 }
 
-pub(crate) fn slice_from_bytes(bytes: &[u8]) -> Slice {
-    let len = bytes.len();
-    let buffer_len = NonZeroUsize::new(len.max(1)).unwrap();
-    let mut buffer = vec![0u8; buffer_len.get()].into_boxed_slice();
-    buffer[..len].copy_from_slice(bytes);
-    let (sender, _receiver) = mpsc::unbounded_channel();
-    Slice::new(vec![buffer], 0..len, sender)
+pub(crate) async fn alloc_slice(len: usize) -> Slice {
+    if len == 0 {
+        return Slice::empty();
+    }
+
+    let len = NonZeroUsize::new(len).unwrap();
+    let mut allocator = Impl::new(len, NonZeroUsize::new(1).unwrap());
+
+    allocator.allocate(len).await.expect("allocator must return a slice")
+}
+
+pub(crate) async fn slice_from_bytes(bytes: &[u8]) -> Slice {
+    let mut slice = alloc_slice(bytes.len()).await;
+    let mut remaining = bytes;
+
+    for chunk in slice.iter_mut() {
+        if remaining.is_empty() {
+            break;
+        }
+
+        let to_copy = chunk.len().min(remaining.len());
+        chunk[..to_copy].copy_from_slice(&remaining[..to_copy]);
+        remaining = &remaining[to_copy..];
+    }
+
+    slice
 }
 
 pub(crate) fn slice_to_vec(slice: &Slice) -> Vec<u8> {

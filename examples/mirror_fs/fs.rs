@@ -1,16 +1,13 @@
-use async_trait::async_trait;
 use std::fs::Metadata;
 use std::io::ErrorKind;
-use std::num::NonZeroUsize;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
 use nfs_mamont::allocator::Slice;
-use nfs_mamont::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
+use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
@@ -86,7 +83,8 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        self.fsmap.lock().await.path_for_handle(handle)
+        let mut fsmap = self.fsmap.lock().await;
+        fsmap.path_for_handle(handle)
     }
 
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
@@ -222,15 +220,6 @@ impl MirrorFS {
         data
     }
 
-    fn slice_from_bytes(bytes: Vec<u8>) -> Slice {
-        let length = bytes.len();
-        let buffer_len = NonZeroUsize::new(length.max(1)).unwrap();
-        let mut buffer = vec![0u8; buffer_len.get()].into_boxed_slice();
-        buffer[..length].copy_from_slice(&bytes);
-        let (sender, _receiver) = mpsc::unbounded_channel();
-        Slice::new(vec![buffer], 0..length, sender)
-    }
-
     fn file_attr(path: &Path) -> Option<file::Attr> {
         std::fs::symlink_metadata(path).ok().map(|meta| Self::attr_from_metadata(&meta))
     }
@@ -339,12 +328,5 @@ impl MirrorFS {
     async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
         let root = self.root_handle().await;
         self.path_for_handle(&root).await
-    }
-}
-
-#[async_trait]
-impl vfs::RootHandle for MirrorFS {
-    async fn root_handle(&self) -> file::Handle {
-        MirrorFS::root_handle(self).await
     }
 }

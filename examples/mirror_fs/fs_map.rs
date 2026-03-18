@@ -38,19 +38,26 @@ impl FsMap {
         Self::encode_handle(1)
     }
 
-    pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
+    pub fn path_for_handle(&mut self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
         let id = Self::decode_handle(handle)?;
         if id == 1 {
             return Ok(self.root.clone());
         }
 
         let key = self.id_to_key.get(&id).ok_or(vfs::Error::StaleFile)?;
-        let relative = self
-            .key_to_paths
-            .get(key)
-            .and_then(|paths| paths.first())
-            .ok_or(vfs::Error::StaleFile)?;
-        Ok(self.to_full_path(relative))
+        let paths = self.key_to_paths.get(key).ok_or(vfs::Error::StaleFile)?;
+
+        // Prefer a live path, but do not mutate mappings here.
+        // During in-flight rename/unlink operations another task may still update
+        // aliases; eager pruning here can invalidate a valid handle and cause EIO.
+        for relative in paths {
+            let full = self.to_full_path(relative);
+            if std::fs::symlink_metadata(&full).is_ok() {
+                return Ok(full);
+            }
+        }
+
+        Err(vfs::Error::StaleFile)
     }
 
     pub fn ensure_handle_for_path(&mut self, path: &Path) -> Result<file::Handle, vfs::Error> {

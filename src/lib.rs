@@ -10,16 +10,32 @@ pub mod serializer;
 pub mod service;
 pub mod task;
 pub mod vfs;
+pub use context::ServerContext;
 
 use tokio::net::TcpListener;
 
-use crate::context::ServerContext;
+use crate::service::mount::ExportEntryWrapper;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener, context: ServerContext) -> std::io::Result<()> {
-    let (mount_task, mount_sender) = MountTask::new(Vec::new());
+    handle_forever_with_exports(listener, context, Vec::new()).await
+}
+
+/// Starts the NFS server and processes client connections with explicit MOUNT exports.
+pub async fn handle_forever_with_exports(
+    listener: TcpListener,
+    context: ServerContext,
+    exports: Vec<ExportEntryWrapper>,
+) -> std::io::Result<()> {
+    let export_paths = exports
+        .iter()
+        .map(|entry| entry.export.directory.as_path().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    eprintln!("server start: configured MOUNT exports={export_paths:?}");
+
+    let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();
 
     loop {

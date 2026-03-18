@@ -7,9 +7,9 @@ use crate::mount::export::Export;
 use crate::mount::mnt::Mnt;
 use crate::mount::umnt::Umnt;
 use crate::mount::umntall::Umntall;
-use crate::mount::{ExportEntry, MountRes};
+use crate::mount::MountRes;
 use crate::parser::{MountArgWrapper, MountArguments};
-use crate::service::mount::MountService;
+use crate::service::mount::{ExportEntryWrapper, MountService};
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
@@ -31,7 +31,7 @@ pub struct MountTask {
 
 impl MountTask {
     /// Creates new instance of [`MountTask`]
-    pub fn new(exports: Vec<ExportEntry>) -> (Self, UnboundedSender<MountCommand>) {
+    pub fn new(exports: Vec<ExportEntryWrapper>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
         let task = Self { mount_service: MountService::with_exports(exports), receiver };
@@ -57,26 +57,59 @@ impl MountTask {
         while let Some(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
+            eprintln!("mount task: client={} xid={} command received", client_addr, header.xid);
 
             let mount_result = match *proc {
                 MountArguments::Null => MountRes::Null,
                 MountArguments::Mount(args) => {
+                    eprintln!(
+                        "mount task: xid={} proc=MNT dirpath='{}'",
+                        header.xid,
+                        args.dirpath.as_path().to_string_lossy()
+                    );
                     let res = mount_service.mnt(args, client_addr, header.cred).await;
+                    match &res {
+                        Ok(_) => eprintln!("mount task: xid={} proc=MNT result=OK", header.xid),
+                        Err(status) => {
+                            eprintln!(
+                                "mount task: xid={} proc=MNT result=ERR {:?}",
+                                header.xid, status
+                            )
+                        }
+                    }
                     MountRes::Mount(res)
                 }
                 MountArguments::Unmount(args) => {
+                    eprintln!(
+                        "mount task: xid={} proc=UMNT dirpath='{}'",
+                        header.xid,
+                        args.dirpath.as_path().to_string_lossy()
+                    );
                     mount_service.umnt(args, client_addr).await;
                     MountRes::Unmount
                 }
                 MountArguments::Export => {
+                    eprintln!("mount task: xid={} proc=EXPORT", header.xid);
                     let res = mount_service.export().await;
+                    eprintln!(
+                        "mount task: xid={} proc=EXPORT entries={}",
+                        header.xid,
+                        res.exports.len()
+                    );
                     MountRes::Export(res)
                 }
                 MountArguments::Dump => {
+                    eprintln!("mount task: xid={} proc=DUMP", header.xid);
                     let res = mount_service.dump().await;
+                    eprintln!(
+                        "mount task: xid={} proc=DUMP entries={}",
+                        header.xid,
+                        res.mount_list.len()
+                    );
                     MountRes::Dump(res)
                 }
                 MountArguments::UnmountAll => {
+                    eprintln!("mount task: xid={} proc=UMNTALL", header.xid);
                     mount_service.umntall(client_addr).await;
                     MountRes::UnmountAll
                 }
@@ -90,6 +123,7 @@ impl MountTask {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
             });
+            eprintln!("mount task: xid={} reply queued", header.xid);
         }
     }
 }

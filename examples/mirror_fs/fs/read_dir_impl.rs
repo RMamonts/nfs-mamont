@@ -30,6 +30,7 @@ impl read_dir::ReadDir for MirrorFS {
             Err(error) => return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) }),
         };
 
+        let total_entries = entries.len();
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
@@ -47,11 +48,13 @@ impl read_dir::ReadDir for MirrorFS {
             });
             used = used.saturating_add(estimated);
         }
+        let eof = start >= total_entries || start.saturating_add(result.len()) >= total_entries;
 
         Ok(read_dir::Success {
             dir_attr: Some(dir_attr),
             cookie_verifier: verifier,
             entries: result,
+            eof,
         })
     }
 }

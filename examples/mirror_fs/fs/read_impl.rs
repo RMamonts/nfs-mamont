@@ -3,13 +3,14 @@ use std::io::SeekFrom;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
+use nfs_mamont::allocator::Slice;
 use nfs_mamont::vfs::read;
 
 use super::MirrorFS;
 
 #[async_trait]
 impl read::Read for MirrorFS {
-    async fn read(&self, args: read::Args) -> Result<read::Success, read::Fail> {
+    async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
@@ -40,28 +41,56 @@ impl read::Read for MirrorFS {
         let file_len = meta.len();
         let start = args.offset.min(file_len);
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
-        let count = end.saturating_sub(start) as usize;
+        let requested = end.saturating_sub(start) as usize;
+        let mut remaining = requested;
+        let mut read_count = 0usize;
         if let Err(error) = file.seek(SeekFrom::Start(start)).await {
             return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
         }
 
-        let mut bytes = vec![0u8; count];
-        if count > 0 {
-            if let Err(error) = file.read_exact(&mut bytes).await {
-                return Err(read::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_attr: Some(attr),
-                });
+        if remaining > 0 {
+            for chunk in data.iter_mut() {
+                if remaining == 0 {
+                    break;
+                }
+
+                let to_read = chunk.len().min(remaining);
+                let mut chunk_offset = 0usize;
+
+                while chunk_offset < to_read {
+                    match file.read(&mut chunk[chunk_offset..to_read]).await {
+                        Ok(0) => {
+                            remaining = 0;
+                            break;
+                        }
+                        Ok(bytes) => {
+                            chunk_offset += bytes;
+                            read_count += bytes;
+                        }
+                        Err(error) => {
+                            return Err(read::Fail {
+                                error: Self::io_error_to_vfs(&error),
+                                file_attr: Some(attr),
+                            });
+                        }
+                    }
+                }
+
+                if chunk_offset < to_read {
+                    break;
+                }
+
+                remaining -= to_read;
             }
         }
 
         Ok(read::Success {
             head: read::SuccessPartial {
                 file_attr: Some(attr),
-                count: count as u32,
-                eof: end >= file_len,
+                count: read_count as u32,
+                eof: start.saturating_add(read_count as u64) >= file_len,
             },
-            data: Self::slice_from_bytes(bytes),
+            data,
         })
     }
 }

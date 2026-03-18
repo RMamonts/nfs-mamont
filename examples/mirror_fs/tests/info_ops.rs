@@ -1,7 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use nfs_mamont::nfsv3::NFS3_COOKIEVERFSIZE;
+use nfs_mamont::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::access;
 use nfs_mamont::vfs::commit;
@@ -16,7 +16,8 @@ use nfs_mamont::vfs::read_dir_plus;
 use nfs_mamont::vfs::read_link;
 
 use super::helpers::{
-    create_dir, create_symlink, expect_err, expect_ok, slice_to_vec, write_file, TestContext,
+    alloc_slice, create_dir, create_symlink, expect_err, expect_ok, slice_to_vec, write_file,
+    TestContext,
 };
 
 #[tokio::test]
@@ -179,7 +180,12 @@ async fn read_reads_requested_window_and_rejects_directories() {
     let dir_handle = ctx.lookup_handle(root, "dir").await;
 
     let success = expect_ok(
-        read::Read::read(&ctx.fs, read::Args { file: file_handle, offset: 2, count: 3 }).await,
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: file_handle, offset: 2, count: 3 },
+            alloc_slice(3).await,
+        )
+        .await,
         "read should succeed",
     );
     assert_eq!(success.head.count, 3);
@@ -194,6 +200,7 @@ async fn read_reads_requested_window_and_rejects_directories() {
                 offset: 99,
                 count: 5,
             },
+            alloc_slice(5).await,
         )
         .await,
         "read past eof should succeed",
@@ -202,7 +209,12 @@ async fn read_reads_requested_window_and_rejects_directories() {
     assert!(eof.head.eof);
 
     let fail = expect_err(
-        read::Read::read(&ctx.fs, read::Args { file: dir_handle, offset: 0, count: 1 }).await,
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: dir_handle, offset: 0, count: 1 },
+            alloc_slice(1).await,
+        )
+        .await,
         "read on directory should fail",
     );
     assert_eq!(fail.error, vfs::Error::InvalidArgument);

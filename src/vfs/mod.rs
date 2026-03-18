@@ -1,6 +1,5 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
@@ -149,15 +148,8 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-#[async_trait]
-pub trait RootHandle {
-    /// Returns the file handle for the exported root directory.
-    async fn root_handle(&self) -> file::Handle;
-}
-
 pub trait Vfs:
-    RootHandle
-    + get_attr::GetAttr
+    get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
     + access::Access

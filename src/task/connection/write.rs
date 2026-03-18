@@ -39,7 +39,8 @@ impl WriteTask {
                 Ok(_) => {
                     // Reply successfully written to socket
                 }
-                Err(_e) => {
+                Err(e) => {
+                    eprintln!("write task: failed to serialize/send reply: {e}");
                     // TODO: Consider closing connection or continuing based on error type
                     // For now, continue processing other replies
                 }
