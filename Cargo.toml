@@ -18,6 +18,7 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 
 [dev-dependencies]
+[package.metadata.cargo-udeps.ignore]
 tempfile = "3.26.0"
 
 [[example]]
