@@ -7,9 +7,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 use crate::allocator::Impl;
+use crate::mount::MountRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
-    ArgWrapper, ErrorWrapper, MountArgWrapper, NfsArgWrapper, NfsArguments, ProcArguments,
+    ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
+    ProcArguments,
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
@@ -82,6 +84,21 @@ impl ReadTask {
                     }
                 }
 
+                Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header })
+                    if matches!(*proc, MountArguments::Null) =>
+                {
+                    let xid = header.xid;
+
+                    let result = ProcReply {
+                        xid: header.xid,
+                        proc_result: Ok(ProcResult::Mount(Box::new(MountRes::Null))),
+                    };
+
+                    if let Err(err) = self.result_sender.send(result) {
+                        return send_broken_pipe(&self.result_sender, xid, err);
+                    }
+                }
+
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
                     let command = MountCommand {
@@ -93,6 +110,7 @@ impl ReadTask {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
+
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
                     let result = ProcReply { xid, proc_result: Err(error) };
                     if let Err(err) = self.result_sender.send(result) {
