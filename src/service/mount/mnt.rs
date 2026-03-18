@@ -25,7 +25,7 @@ impl Mnt for MountService {
                 .into_iter()
                 .map(|entry| entry.directory.as_path().to_string_lossy().into_owned())
                 .collect::<Vec<_>>();
-            eprintln!(
+            crate::debug_log!(
                 "mount denied: requested='{}' client={} configured_exports={configured:?}",
                 args.dirpath.as_path().to_string_lossy(),
                 client_addr,

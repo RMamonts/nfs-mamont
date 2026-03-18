@@ -186,13 +186,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type != RpcBody::Call as u32 {
-            eprintln!("rpc parse reject: unexpected msg_type={msg_type}");
+            crate::debug_log!("rpc parse reject: unexpected msg_type={msg_type}");
             return Err(Error::MessageTypeMismatch);
         }
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            eprintln!("rpc parse reject: rpc_version={rpc_version}, expected={RPC_VERSION}");
+            crate::debug_log!("rpc parse reject: rpc_version={rpc_version}, expected={RPC_VERSION}");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -202,7 +202,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let program = self.buffer.parse_with_retry(u32).await?;
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
-        eprintln!("rpc header parsed: program={program} version={version} procedure={procedure}");
+        crate::debug_log!(
+            "rpc header parsed: program={program} version={version} procedure={procedure}"
+        );
 
         //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
         let (cred, verf) = self.parse_authentication().await?;
@@ -228,7 +230,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             _ => false,
         };
         if !cred_ok {
-            eprintln!(
+            crate::debug_log!(
                 "rpc auth reject: cred_flavor={:?} cred_len={} (supported: AUTH_NONE, AUTH_SYS)",
                 cred.flavor,
                 cred.body.len()
@@ -236,14 +238,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             return Err(Error::AuthError(AuthStat::BadCred));
         }
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
-            eprintln!(
+            crate::debug_log!(
                 "rpc auth reject: verf_flavor={:?} verf_len={} (verifier must be AUTH_NONE)",
                 verf.flavor,
                 verf.body.len()
             );
             return Err(Error::AuthError(AuthStat::BadVerf));
         }
-        eprintln!(
+        crate::debug_log!(
             "rpc auth accepted: cred={:?}(len={}) verf={:?}(len={})",
             cred.flavor,
             cred.body.len(),
@@ -403,7 +405,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
             _ => {
-                eprintln!("rpc parse reject: unknown program={}", head.program);
+                crate::debug_log!("rpc parse reject: unknown program={}", head.program);
                 Err(Error::ProgramMismatch)
             }
         }
@@ -411,14 +413,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
-            eprintln!(
+            crate::debug_log!(
                 "rpc parse reject: nfs parser got program={}, expected={}",
                 head.program, NFS_PROGRAM
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
-            eprintln!("rpc parse reject: nfs version={}, expected={}", head.version, NFS_VERSION);
+            crate::debug_log!(
+                "rpc parse reject: nfs version={}, expected={}",
+                head.version,
+                NFS_VERSION
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: NFS_VERSION,
                 high: NFS_VERSION,
@@ -432,14 +438,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         head: &RpcMessage,
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
-            eprintln!(
+            crate::debug_log!(
                 "rpc parse reject: mount parser got program={}, expected={}",
                 head.program, MOUNT_PROGRAM
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
-            eprintln!(
+            crate::debug_log!(
                 "rpc parse reject: mount version={}, expected={}",
                 head.version, MOUNT_VERSION
             );

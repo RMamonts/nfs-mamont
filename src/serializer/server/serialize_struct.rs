@@ -331,14 +331,6 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
-        let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
-        if count > slice_size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Read count exceeds allocated slice size",
-            ));
-        }
-
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Slice in vfs::read::Success) from XDR
@@ -362,6 +354,13 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
             let to_write = buf.len().min(remaining);
             self.socket.write_all(&buf[..to_write]).await?;
             remaining -= to_write;
+        }
+
+        if remaining != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Read count exceeds allocated slice size",
+            ));
         }
 
         // write padding directly to socket

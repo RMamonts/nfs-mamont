@@ -29,7 +29,7 @@ pub async fn new(
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
-            eprintln!("failed to determine peer address: {err}");
+            crate::debug_log!("failed to determine peer address: {err}");
             return;
         }
     };

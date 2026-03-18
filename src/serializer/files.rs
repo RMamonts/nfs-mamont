@@ -61,20 +61,18 @@ pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
 
 /// Serializes [`file::Name`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: file::Name) -> io::Result<()> {
-    string_max_size(dest, file_name.into_inner(), vfs::MAX_NAME_LEN)
+    let file_name = file_name.into_inner();
+    string_max_size(dest, &file_name, vfs::MAX_NAME_LEN)
 }
 
 /// Serializes [`file::Path`] as XDR `path` (bounded string).
 pub fn file_path(dest: &mut impl Write, file_name: file::Path) -> io::Result<()> {
-    string_max_size(
-        dest,
-        file_name
-            .into_inner()
-            .into_os_string()
-            .into_string()
-            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?,
-        MAX_PATH_LEN,
-    )
+    let path = file_name
+        .into_inner()
+        .into_os_string()
+        .into_string()
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid path"))?;
+    string_max_size(dest, &path, MAX_PATH_LEN)
 }
 
 /// Serializes [`DirOpArgs`] as XDR `diroparg3`.

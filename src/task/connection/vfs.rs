@@ -97,7 +97,12 @@ impl VfsTask {
             };
 
             if let Some(error) = Self::error_from_response(&response) {
-                eprintln!("nfs op failed: xid={} proc={} error={:?}", header.xid, proc_name, error);
+                crate::debug_log!(
+                    "nfs op failed: xid={} proc={} error={:?}",
+                    header.xid,
+                    proc_name,
+                    error
+                );
             }
 
             let reply = ProcReply {

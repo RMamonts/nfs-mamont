@@ -12,6 +12,16 @@ pub mod task;
 pub mod vfs;
 pub use context::ServerContext;
 
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {{
+        #[cfg(debug_assertions)]
+        {
+            eprintln!($($arg)*);
+        }
+    }};
+}
+
 use tokio::net::TcpListener;
 
 use crate::service::mount::ExportEntryWrapper;
@@ -33,7 +43,7 @@ pub async fn handle_forever_with_exports(
         .iter()
         .map(|entry| entry.export.directory.as_path().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    eprintln!("server start: configured MOUNT exports={export_paths:?}");
+    debug_log!("server start: configured MOUNT exports={export_paths:?}");
 
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();

@@ -57,21 +57,21 @@ impl MountTask {
         while let Some(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
-            eprintln!("mount task: client={} xid={} command received", client_addr, header.xid);
+            crate::debug_log!("mount task: client={} xid={} command received", client_addr, header.xid);
 
             let mount_result = match *proc {
                 MountArguments::Null => MountRes::Null,
                 MountArguments::Mount(args) => {
-                    eprintln!(
+                    crate::debug_log!(
                         "mount task: xid={} proc=MNT dirpath='{}'",
                         header.xid,
                         args.dirpath.as_path().to_string_lossy()
                     );
                     let res = mount_service.mnt(args, client_addr, header.cred).await;
                     match &res {
-                        Ok(_) => eprintln!("mount task: xid={} proc=MNT result=OK", header.xid),
+                        Ok(_) => crate::debug_log!("mount task: xid={} proc=MNT result=OK", header.xid),
                         Err(status) => {
-                            eprintln!(
+                            crate::debug_log!(
                                 "mount task: xid={} proc=MNT result=ERR {:?}",
                                 header.xid, status
                             )
@@ -80,7 +80,7 @@ impl MountTask {
                     MountRes::Mount(res)
                 }
                 MountArguments::Unmount(args) => {
-                    eprintln!(
+                    crate::debug_log!(
                         "mount task: xid={} proc=UMNT dirpath='{}'",
                         header.xid,
                         args.dirpath.as_path().to_string_lossy()
@@ -89,9 +89,9 @@ impl MountTask {
                     MountRes::Unmount
                 }
                 MountArguments::Export => {
-                    eprintln!("mount task: xid={} proc=EXPORT", header.xid);
+                    crate::debug_log!("mount task: xid={} proc=EXPORT", header.xid);
                     let res = mount_service.export().await;
-                    eprintln!(
+                    crate::debug_log!(
                         "mount task: xid={} proc=EXPORT entries={}",
                         header.xid,
                         res.exports.len()
@@ -99,9 +99,9 @@ impl MountTask {
                     MountRes::Export(res)
                 }
                 MountArguments::Dump => {
-                    eprintln!("mount task: xid={} proc=DUMP", header.xid);
+                    crate::debug_log!("mount task: xid={} proc=DUMP", header.xid);
                     let res = mount_service.dump().await;
-                    eprintln!(
+                    crate::debug_log!(
                         "mount task: xid={} proc=DUMP entries={}",
                         header.xid,
                         res.mount_list.len()
@@ -109,7 +109,7 @@ impl MountTask {
                     MountRes::Dump(res)
                 }
                 MountArguments::UnmountAll => {
-                    eprintln!("mount task: xid={} proc=UMNTALL", header.xid);
+                    crate::debug_log!("mount task: xid={} proc=UMNTALL", header.xid);
                     mount_service.umntall(client_addr).await;
                     MountRes::UnmountAll
                 }
@@ -123,7 +123,7 @@ impl MountTask {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
             });
-            eprintln!("mount task: xid={} reply queued", header.xid);
+            crate::debug_log!("mount task: xid={} reply queued", header.xid);
         }
     }
 }

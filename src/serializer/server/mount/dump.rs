@@ -9,7 +9,7 @@ use crate::serializer::{bool, string_max_size};
 
 /// Serializes [`mount::MountEntry`] as an XDR `mountbody` linked list node.
 pub fn mount_entry(dest: &mut impl Write, arg: mount::MountEntry) -> io::Result<()> {
-    string_max_size(dest, arg.hostname, MOUNT_HOST_NAME_LEN)?;
+    string_max_size(dest, &arg.hostname, MOUNT_HOST_NAME_LEN)?;
     file_path(dest, arg.directory)
 }
 

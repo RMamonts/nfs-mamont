@@ -65,7 +65,7 @@ impl ReadTask {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    eprintln!(
+                    crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NULL",
                         self.client_addr, header.xid
                     );
@@ -81,7 +81,7 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    eprintln!(
+                    crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NON_NULL",
                         self.client_addr, xid
                     );
@@ -96,7 +96,7 @@ impl ReadTask {
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    eprintln!(
+                    crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NULL",
                         self.client_addr, xid
                     );
@@ -113,7 +113,7 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    eprintln!(
+                    crate::debug_log!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NON_NULL",
                         self.client_addr, xid
                     );
@@ -128,7 +128,7 @@ impl ReadTask {
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
-                    eprintln!(
+                    crate::debug_log!(
                         "rpc parse error: client={} xid={} error={:?}",
                         self.client_addr, xid, error
                     );
@@ -140,7 +140,7 @@ impl ReadTask {
 
                 // specific case when we couldn't parser xid, which means that we can't send reply
                 Err(ErrorWrapper { xid: None, .. }) => {
-                    eprintln!("rpc parse error: client={} xid=<none>", self.client_addr);
+                    crate::debug_log!("rpc parse error: client={} xid=<none>", self.client_addr);
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }
