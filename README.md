@@ -4,7 +4,7 @@ Project aiming to implement NFS3 and NFS4 user space servers.
 
 ## Contributing
 
-Contributions are welcome! Check issue list.
+Contributions are welcome! Check issues in TODO list of our [kanban](https://github.com/orgs/RMamonts/projects/1/views/1).
 
 ## License
 
