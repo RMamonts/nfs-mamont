@@ -20,6 +20,7 @@ use tracing::{debug, error, warn};
 
 use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
+use tokio::time::{timeout, Duration};
 
 use crate::allocator::{Allocator, Slice};
 use crate::consts::mount::{
@@ -193,7 +194,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            error!(rpc_version, expected=RPC_VERSION, "rpc parse reject: rpc_version mismatch");
+            error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -404,7 +405,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
             _ => {
-                warn!(program=head.program, "rpc parse reject: unknown program");
+                warn!(program = head.program, "rpc parse reject: unknown program");
                 Err(Error::ProgramMismatch)
             }
         }
@@ -413,16 +414,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
             error!(
-                got=head.program,
-                expected=NFS_PROGRAM,
+                got = head.program,
+                expected = NFS_PROGRAM,
                 "rpc parse reject: nfs parser got unexpected program",
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
             error!(
-                got=head.version,
-                expected=NFS_VERSION,
+                got = head.version,
+                expected = NFS_VERSION,
                 "rpc parse reject: nfs version mismatch",
             );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
@@ -439,16 +440,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
             error!(
-                got=head.program,
-                expected=MOUNT_PROGRAM,
+                got = head.program,
+                expected = MOUNT_PROGRAM,
                 "rpc parse reject: mount parser got unexpected program",
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
             error!(
-                got=head.version,
-                expected=MOUNT_VERSION,
+                got = head.version,
+                expected = MOUNT_VERSION,
                 "rpc parse reject: mount version mismatch",
             );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
@@ -575,9 +576,13 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.lock().await.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
+    let mut slice = timeout(Duration::from_secs(5), async {
+        let mut allocator = alloc.lock().await;
+        allocator.allocate(non_zero_size).await
+    })
+    .await
+    .map_err(|_| Error::IO(io::Error::new(ErrorKind::TimedOut, "allocator timeout")))?
+    .ok_or_else(|| Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory")))?;
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;

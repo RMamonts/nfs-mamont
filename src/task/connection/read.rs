@@ -1,7 +1,9 @@
 use std::io;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use crate::allocator::Allocator;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
@@ -19,6 +21,37 @@ use crate::task::global::mount::MountCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
+const LOCAL_ALLOCATOR_BUFFER_SIZE: usize = 64 * 1024;
+const LOCAL_ALLOCATOR_BUFFER_COUNT: usize = 4;
+
+struct ParserAllocator {
+    local: Impl,
+    shared: Arc<Mutex<Impl>>,
+}
+
+impl ParserAllocator {
+    fn new(shared: Arc<Mutex<Impl>>) -> Self {
+        Self {
+            local: Impl::new(
+                NonZeroUsize::new(LOCAL_ALLOCATOR_BUFFER_SIZE).unwrap(),
+                NonZeroUsize::new(LOCAL_ALLOCATOR_BUFFER_COUNT).unwrap(),
+            ),
+            shared,
+        }
+    }
+}
+
+impl Allocator for ParserAllocator {
+    async fn allocate(&mut self, size: NonZeroUsize) -> Option<crate::allocator::Slice> {
+        if let Some(slice) = self.local.try_allocate(size) {
+            return Some(slice);
+        }
+
+        let mut shared = self.shared.lock().await;
+        shared.allocate(size).await
+    }
+}
+
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
 #[allow(dead_code)]
@@ -33,7 +66,7 @@ pub struct ReadTask {
     // and
     // to bypass vfs with null procedure
     result_sender: UnboundedSender<ProcReply>,
-    allocator: Arc<Mutex<Impl>>,
+    allocator: Arc<Mutex<ParserAllocator>>,
 }
 
 impl ReadTask {
@@ -46,7 +79,14 @@ impl ReadTask {
         result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<Mutex<Impl>>,
     ) -> Self {
-        Self { readhalf, client_addr, command_sender, mount_sender, result_sender, allocator }
+        Self {
+            readhalf,
+            client_addr,
+            command_sender,
+            mount_sender,
+            result_sender,
+            allocator: Arc::new(Mutex::new(ParserAllocator::new(allocator))),
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.

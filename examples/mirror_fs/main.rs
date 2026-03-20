@@ -17,9 +17,21 @@ mod tests;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    init_tracing();
+
     let path = std::env::args().nth(1).expect("must supply directory to mirror");
     let path = PathBuf::from(path);
     let bind = std::env::args().nth(2).unwrap_or_else(|| "0.0.0.0:2049".to_string());
+    let allocator_buffer_size = std::env::var("MIRRORFS_ALLOC_BUFFER_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .and_then(NonZeroUsize::new)
+        .unwrap_or_else(|| NonZeroUsize::new(1024 * 1024).unwrap());
+    let allocator_buffer_count = std::env::var("MIRRORFS_ALLOC_BUFFER_COUNT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .and_then(NonZeroUsize::new)
+        .unwrap_or_else(|| NonZeroUsize::new(64).unwrap());
     let export_root = std::fs::canonicalize(&path).unwrap_or_else(|error| {
         panic!("failed to resolve export root {}: {error}", path.display())
     });
@@ -30,14 +42,15 @@ async fn main() -> std::io::Result<()> {
 
     let fs = Arc::new(fs::MirrorFS::new(export_root.clone()));
     let root_handle = fs.root_handle().await;
-    let context = ServerContext::new(
-        fs.clone(),
-        NonZeroUsize::new(64 * 1024).unwrap(),
-        NonZeroUsize::new(8).unwrap(),
-    );
+    let context = ServerContext::new(fs.clone(), allocator_buffer_size, allocator_buffer_count);
 
-    init_tracing();
-    info!(export_root = %export_root.display(), bind = %bind, "mirrorfs startup");
+    info!(
+        export_root = %export_root.display(),
+        bind = %bind,
+        allocator_buffer_size = allocator_buffer_size.get(),
+        allocator_buffer_count = allocator_buffer_count.get(),
+        "mirrorfs startup",
+    );
 
     let listener = TcpListener::bind(&bind).await?;
     let export = ExportEntryWrapper {

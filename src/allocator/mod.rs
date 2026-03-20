@@ -61,6 +61,34 @@ impl Impl {
     fn capacity(&self) -> usize {
         self.buffer_size.get() * self.buffer_count.get()
     }
+
+    /// Attempts to allocate immediately without waiting for new buffers.
+    pub fn try_allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
+        if size.get() > self.capacity() {
+            return None;
+        }
+
+        let mut remain_size = size.get();
+        let mut buffers = Vec::with_capacity(remain_size.div_ceil(self.buffer_size.get()));
+
+        while remain_size > 0 {
+            match self.receiver.try_recv() {
+                Ok(buffer) => {
+                    assert_eq!(buffer.len(), self.buffer_size.get());
+                    remain_size = remain_size.saturating_sub(buffer.len());
+                    buffers.push(buffer);
+                }
+                Err(_) => {
+                    for buffer in buffers {
+                        let _ = self.sender.send(buffer);
+                    }
+                    return None;
+                }
+            }
+        }
+
+        Some(Slice::new(buffers, 0..size.get(), self.sender.clone()))
+    }
 }
 
 impl Allocator for Impl {

@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
+use tokio::time::{timeout, Duration};
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -13,10 +14,14 @@ use crate::vfs::{self, NfsRes, Vfs};
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
-    allocator: Arc<Mutex<Impl>>,
+    shared_allocator: Arc<Mutex<Impl>>,
+    local_allocator: Impl,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
     result_sender: UnboundedSender<ProcReply>,
 }
+
+const LOCAL_ALLOCATOR_BUFFER_SIZE: usize = 64 * 1024;
+const LOCAL_ALLOCATOR_BUFFER_COUNT: usize = 4;
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
@@ -27,7 +32,11 @@ impl VfsTask {
     ) -> Self {
         Self {
             backend: context.get_backend(),
-            allocator: context.get_allocator(),
+            shared_allocator: context.get_allocator(),
+            local_allocator: Impl::new(
+                NonZeroUsize::new(LOCAL_ALLOCATOR_BUFFER_SIZE).unwrap(),
+                NonZeroUsize::new(LOCAL_ALLOCATOR_BUFFER_COUNT).unwrap(),
+            ),
             command_receiver,
             result_sender,
         }
@@ -43,6 +52,7 @@ impl VfsTask {
     }
 
     async fn run(self) {
+        let mut local_allocator = self.local_allocator;
         let mut command_receiver = self.command_receiver;
 
         while let Some(command) = command_receiver.recv().await {
@@ -64,11 +74,25 @@ impl VfsTask {
                     } else {
                         let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
-                        let mut allocator = self.allocator.lock().await;
-                        allocator
-                            .allocate(requested_size)
+                        if let Some(data) = local_allocator.try_allocate(requested_size) {
+                            Ok(data)
+                        } else {
+                            match timeout(Duration::from_secs(5), async {
+                                let mut allocator = self.shared_allocator.lock().await;
+                                allocator.allocate(requested_size).await
+                            })
                             .await
-                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
+                            {
+                                Ok(Some(data)) => Ok(data),
+                                Ok(None) => Err(vfs::read::Fail {
+                                    error: vfs::Error::TooSmall,
+                                    file_attr: None,
+                                }),
+                                Err(_) => {
+                                    Err(vfs::read::Fail { error: vfs::Error::IO, file_attr: None })
+                                }
+                            }
+                        }
                     };
 
                     match data_result {
