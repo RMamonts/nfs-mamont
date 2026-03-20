@@ -61,8 +61,7 @@ pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
 
 /// Serializes [`file::Name`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: file::Name) -> io::Result<()> {
-    let file_name = file_name.into_inner();
-    string_max_size(dest, &file_name, vfs::MAX_NAME_LEN)
+    string_max_size(dest, file_name.as_str(), vfs::MAX_NAME_LEN)
 }
 
 /// Serializes [`file::Path`] as XDR `path` (bounded string).
