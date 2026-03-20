@@ -346,21 +346,8 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
-        let mut remaining = count;
         for buf in slice.iter() {
-            if remaining == 0 {
-                break;
-            }
-            let to_write = buf.len().min(remaining);
-            self.socket.write_all(&buf[..to_write]).await?;
-            remaining -= to_write;
-        }
-
-        if remaining != 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Read count exceeds allocated slice size",
-            ));
+            self.socket.write_all(buf).await?;
         }
 
         // write padding directly to socket
