@@ -193,7 +193,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            error!(rpc_version, expected=RPC_VERSION, "rpc parse reject: rpc_version mismatch");
+            error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -404,7 +404,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
             _ => {
-                warn!(program=head.program, "rpc parse reject: unknown program");
+                warn!(program = head.program, "rpc parse reject: unknown program");
                 Err(Error::ProgramMismatch)
             }
         }
@@ -413,16 +413,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
             error!(
-                got=head.program,
-                expected=NFS_PROGRAM,
+                got = head.program,
+                expected = NFS_PROGRAM,
                 "rpc parse reject: nfs parser got unexpected program",
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
             error!(
-                got=head.version,
-                expected=NFS_VERSION,
+                got = head.version,
+                expected = NFS_VERSION,
                 "rpc parse reject: nfs version mismatch",
             );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
@@ -439,16 +439,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
             error!(
-                got=head.program,
-                expected=MOUNT_PROGRAM,
+                got = head.program,
+                expected = MOUNT_PROGRAM,
                 "rpc parse reject: mount parser got unexpected program",
             );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
             error!(
-                got=head.version,
-                expected=MOUNT_VERSION,
+                got = head.version,
+                expected = MOUNT_VERSION,
                 "rpc parse reject: mount version mismatch",
             );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
