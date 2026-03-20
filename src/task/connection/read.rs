@@ -65,11 +65,10 @@ impl ReadTask {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    crate::debug_log!(
+                    dbg!(&format!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NULL",
-                        self.client_addr,
-                        header.xid
-                    );
+                        self.client_addr, header.xid
+                    ));
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
@@ -82,11 +81,10 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    crate::debug_log!(
+                    dbg!(&format!(
                         "rpc dispatch: client={} xid={} program=NFS proc=NON_NULL",
-                        self.client_addr,
-                        xid
-                    );
+                        self.client_addr, xid
+                    ));
                     let command = NfsArgWrapper { header, proc };
 
                     if let Err(err) = self.command_sender.send(command) {
@@ -98,11 +96,10 @@ impl ReadTask {
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    crate::debug_log!(
+                    dbg!(&format!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NULL",
-                        self.client_addr,
-                        xid
-                    );
+                        self.client_addr, xid
+                    ));
 
                     let result = ProcReply {
                         xid: header.xid,
@@ -116,11 +113,10 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    crate::debug_log!(
+                    dbg!(&format!(
                         "rpc dispatch: client={} xid={} program=MOUNT proc=NON_NULL",
-                        self.client_addr,
-                        xid
-                    );
+                        self.client_addr, xid
+                    ));
                     let command = MountCommand {
                         result_tx: self.result_sender.clone(),
                         args: MountArgWrapper { header, proc },
@@ -132,12 +128,10 @@ impl ReadTask {
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
-                    crate::debug_log!(
+                    dbg!(&format!(
                         "rpc parse error: client={} xid={} error={:?}",
-                        self.client_addr,
-                        xid,
-                        error
-                    );
+                        self.client_addr, xid, error
+                    ));
                     let result = ProcReply { xid, proc_result: Err(error) };
                     if let Err(err) = self.result_sender.send(result) {
                         return send_broken_pipe(&self.result_sender, xid, err);
@@ -146,7 +140,7 @@ impl ReadTask {
 
                 // specific case when we couldn't parser xid, which means that we can't send reply
                 Err(ErrorWrapper { xid: None, .. }) => {
-                    crate::debug_log!("rpc parse error: client={} xid=<none>", self.client_addr);
+                    dbg!(&format!("rpc parse error: client={} xid=<none>", self.client_addr));
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }

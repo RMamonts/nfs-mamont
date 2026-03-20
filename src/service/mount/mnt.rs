@@ -25,11 +25,11 @@ impl Mnt for MountService {
                 .into_iter()
                 .map(|entry| entry.directory.as_path().to_string_lossy().into_owned())
                 .collect::<Vec<_>>();
-            crate::debug_log!(
+            dbg!(&format!(
                 "mount denied: requested='{}' client={} configured_exports={configured:?}",
                 args.dirpath.as_path().to_string_lossy(),
                 client_addr,
-            );
+            ));
             return Err(Fail::Access);
         };
 
