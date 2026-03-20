@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
+use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
@@ -97,10 +98,7 @@ impl VfsTask {
             };
 
             if let Some(error) = Self::error_from_response(&response) {
-                dbg!(&format!(
-                    "nfs op failed: xid={} proc={} error={:?}",
-                    header.xid, proc_name, error
-                ));
+                error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
             }
 
             let reply = ProcReply {

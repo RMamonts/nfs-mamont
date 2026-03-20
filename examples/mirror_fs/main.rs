@@ -5,8 +5,9 @@ use std::sync::Arc;
 use nfs_mamont::mount::ExportEntry;
 use nfs_mamont::service::mount::ExportEntryWrapper;
 use nfs_mamont::vfs::file;
-use nfs_mamont::{handle_forever_with_exports, ServerContext};
+use nfs_mamont::{handle_forever_with_exports, init_tracing, ServerContext};
 use tokio::net::TcpListener;
+use tracing::info;
 
 pub mod fs;
 pub mod fs_map;
@@ -35,8 +36,8 @@ async fn main() -> std::io::Result<()> {
         NonZeroUsize::new(8).unwrap(),
     );
 
-    eprintln!("mirrorfs export root: {}", export_root.display());
-    eprintln!("mirrorfs listening on: {bind}");
+    init_tracing();
+    info!(export_root = %export_root.display(), bind = %bind, "mirrorfs startup");
 
     let listener = TcpListener::bind(&bind).await?;
     let export = ExportEntryWrapper {

@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tracing::debug;
 
 use crate::mount::dump::Dump;
 use crate::mount::export::Export;
@@ -57,64 +58,42 @@ impl MountTask {
         while let Some(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
-            dbg!(&format!(
-                "mount task: client={} xid={} command received",
-                client_addr, header.xid
-            ));
+            debug!(client=%client_addr, xid=header.xid, "mount task: command received");
 
             let mount_result = match *proc {
                 MountArguments::Null => MountRes::Null,
                 MountArguments::Mount(args) => {
-                    dbg!(&format!(
-                        "mount task: xid={} proc=MNT dirpath='{}'",
-                        header.xid,
-                        args.dirpath.as_path().to_string_lossy()
-                    ));
+                    debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=MNT");
                     let res = mount_service.mnt(args, client_addr, header.cred).await;
                     match &res {
                         Ok(_) => {
-                            dbg!(&format!("mount task: xid={} proc=MNT result=OK", header.xid));
+                            debug!(xid=header.xid, "mount task: proc=MNT result=OK");
                         }
                         Err(status) => {
-                            dbg!(&format!(
-                                "mount task: xid={} proc=MNT result=ERR {:?}",
-                                header.xid, status
-                            ));
+                            debug!(xid=header.xid, status=?status, "mount task: proc=MNT result=ERR");
                         }
                     }
                     MountRes::Mount(res)
                 }
                 MountArguments::Unmount(args) => {
-                    dbg!(&format!(
-                        "mount task: xid={} proc=UMNT dirpath='{}'",
-                        header.xid,
-                        args.dirpath.as_path().to_string_lossy()
-                    ));
+                    debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=UMNT");
                     mount_service.umnt(args, client_addr).await;
                     MountRes::Unmount
                 }
                 MountArguments::Export => {
-                    dbg!(&format!("mount task: xid={} proc=EXPORT", header.xid));
+                    debug!(xid=header.xid, "mount task: proc=EXPORT");
                     let res = mount_service.export().await;
-                    dbg!(&format!(
-                        "mount task: xid={} proc=EXPORT entries={}",
-                        header.xid,
-                        res.exports.len()
-                    ));
+                    debug!(xid=header.xid, entries=res.exports.len(), "mount task: proc=EXPORT");
                     MountRes::Export(res)
                 }
                 MountArguments::Dump => {
-                    dbg!(&format!("mount task: xid={} proc=DUMP", header.xid));
+                    debug!(xid=header.xid, "mount task: proc=DUMP");
                     let res = mount_service.dump().await;
-                    dbg!(&format!(
-                        "mount task: xid={} proc=DUMP entries={}",
-                        header.xid,
-                        res.mount_list.len()
-                    ));
+                    debug!(xid=header.xid, entries=res.mount_list.len(), "mount task: proc=DUMP");
                     MountRes::Dump(res)
                 }
                 MountArguments::UnmountAll => {
-                    dbg!(&format!("mount task: xid={} proc=UMNTALL", header.xid));
+                    debug!(xid=header.xid, "mount task: proc=UMNTALL");
                     mount_service.umntall(client_addr).await;
                     MountRes::UnmountAll
                 }
@@ -128,7 +107,7 @@ impl MountTask {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
             });
-            dbg!(&format!("mount task: xid={} reply queued", header.xid));
+            debug!(xid=header.xid, "mount task: reply queued");
         }
     }
 }

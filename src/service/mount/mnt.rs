@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use std::net::SocketAddr;
+use tracing::warn;
 
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
 use crate::mount::MountEntry;
@@ -25,11 +26,12 @@ impl Mnt for MountService {
                 .into_iter()
                 .map(|entry| entry.directory.as_path().to_string_lossy().into_owned())
                 .collect::<Vec<_>>();
-            dbg!(&format!(
-                "mount denied: requested='{}' client={} configured_exports={configured:?}",
-                args.dirpath.as_path().to_string_lossy(),
-                client_addr,
-            ));
+            warn!(
+                requested=%args.dirpath.as_path().to_string_lossy(),
+                client=%client_addr,
+                configured_exports=?configured,
+                "mount denied",
+            );
             return Err(Fail::Access);
         };
 

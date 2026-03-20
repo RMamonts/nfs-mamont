@@ -16,6 +16,7 @@ use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tracing::{debug, error, warn};
 
 use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
@@ -186,13 +187,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type != RpcBody::Call as u32 {
-            dbg!(&format!("rpc parse reject: unexpected msg_type={msg_type}"));
+            error!(msg_type, "rpc parse reject: unexpected msg_type");
             return Err(Error::MessageTypeMismatch);
         }
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
-            dbg!(&format!("rpc parse reject: rpc_version={rpc_version}, expected={RPC_VERSION}"));
+            error!(rpc_version, expected=RPC_VERSION, "rpc parse reject: rpc_version mismatch");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -202,9 +203,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let program = self.buffer.parse_with_retry(u32).await?;
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
-        dbg!(&format!(
-            "rpc header parsed: program={program} version={version} procedure={procedure}"
-        ));
+        debug!(program, version, procedure, "rpc header parsed");
 
         //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
         let (cred, verf) = self.parse_authentication().await?;
@@ -230,28 +229,28 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             _ => false,
         };
         if !cred_ok {
-            dbg!(&format!(
-                "rpc auth reject: cred_flavor={:?} cred_len={} (supported: AUTH_NONE, AUTH_SYS)",
-                cred.flavor,
-                cred.body.len()
-            ));
+            error!(
+                cred_flavor=?cred.flavor,
+                cred_len=%cred.body.len(),
+                "rpc auth reject: unsupported credential flavor",
+            );
             return Err(Error::AuthError(AuthStat::BadCred));
         }
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
-            dbg!(&format!(
-                "rpc auth reject: verf_flavor={:?} verf_len={} (verifier must be AUTH_NONE)",
-                verf.flavor,
-                verf.body.len()
-            ));
+            error!(
+                verf_flavor=?verf.flavor,
+                verf_len=%verf.body.len(),
+                "rpc auth reject: invalid verifier",
+            );
             return Err(Error::AuthError(AuthStat::BadVerf));
         }
-        dbg!(&format!(
-            "rpc auth accepted: cred={:?}(len={}) verf={:?}(len={})",
-            cred.flavor,
-            cred.body.len(),
-            verf.flavor,
-            verf.body.len()
-        ));
+        debug!(
+            cred_flavor=?cred.flavor,
+            cred_len=%cred.body.len(),
+            verf_flavor=?verf.flavor,
+            verf_len=%verf.body.len(),
+            "rpc auth accepted",
+        );
         Ok((cred, verf))
     }
 
@@ -405,7 +404,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
             _ => {
-                dbg!(&format!("rpc parse reject: unknown program={}", head.program));
+                warn!(program=head.program, "rpc parse reject: unknown program");
                 Err(Error::ProgramMismatch)
             }
         }
@@ -413,17 +412,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
-            dbg!(&format!(
-                "rpc parse reject: nfs parser got program={}, expected={}",
-                head.program, NFS_PROGRAM
-            ));
+            error!(
+                got=head.program,
+                expected=NFS_PROGRAM,
+                "rpc parse reject: nfs parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
-            dbg!(&format!(
-                "rpc parse reject: nfs version={}, expected={}",
-                head.version, NFS_VERSION
-            ));
+            error!(
+                got=head.version,
+                expected=NFS_VERSION,
+                "rpc parse reject: nfs version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: NFS_VERSION,
                 high: NFS_VERSION,
@@ -437,17 +438,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         head: &RpcMessage,
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
-            dbg!(&format!(
-                "rpc parse reject: mount parser got program={}, expected={}",
-                head.program, MOUNT_PROGRAM
-            ));
+            error!(
+                got=head.program,
+                expected=MOUNT_PROGRAM,
+                "rpc parse reject: mount parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
-            dbg!(&format!(
-                "rpc parse reject: mount version={}, expected={}",
-                head.version, MOUNT_VERSION
-            ));
+            error!(
+                got=head.version,
+                expected=MOUNT_VERSION,
+                "rpc parse reject: mount version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: MOUNT_VERSION,
                 high: MOUNT_VERSION,

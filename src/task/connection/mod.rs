@@ -15,6 +15,7 @@ use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tracing::error;
 
 pub mod read;
 pub mod vfs;
@@ -29,7 +30,7 @@ pub async fn new(
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
-            dbg!(&format!("failed to determine peer address: {err}"));
+            error!(error=%err, "failed to determine peer address");
             return;
         }
     };
