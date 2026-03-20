@@ -62,38 +62,7 @@ impl ExportRegistry {
     }
 
     fn by_path(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
-        if let Some(entry) = self.by_directory.get(path) {
-            return Some(entry);
-        }
-
-        let requested = Self::normalize(path.as_path());
-        let requested_canon = std::fs::canonicalize(path.as_path()).ok();
-
-        self.by_directory.iter().find_map(|(export_path, entry)| {
-            let export_norm = Self::normalize(export_path.as_path());
-            if export_norm == requested {
-                return Some(entry);
-            }
-
-            let export_canon = std::fs::canonicalize(export_path.as_path()).ok();
-            if requested_canon.is_some()
-                && export_canon.is_some()
-                && requested_canon == export_canon
-            {
-                return Some(entry);
-            }
-
-            None
-        })
-    }
-
-    fn normalize(path: &std::path::Path) -> String {
-        let text = path.to_string_lossy();
-        if text == "/" {
-            return "/".to_string();
-        }
-
-        text.trim_end_matches('/').to_string()
+        self.by_directory.get(path)
     }
 
     fn export_list(&self) -> Vec<ExportEntry> {
