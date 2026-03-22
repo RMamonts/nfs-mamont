@@ -46,7 +46,7 @@ pub async fn new(
         command_sender,
         mount_sender,
         result_sender.clone(),
-        context.get_allocator(),
+        context.get_write_allocator(),
     )
     .spawn();
 
