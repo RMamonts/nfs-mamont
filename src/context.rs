@@ -9,6 +9,8 @@ use crate::allocator::multilevel::alloc::Level;
 use crate::allocator::multilevel::constr_two_level;
 use crate::vfs;
 
+const MULTIPLICITY: usize = 4;
+
 pub struct ServerContext {
     read_allocator: Arc<Mutex<Level>>,
     write_allocator: Arc<Mutex<Level>>,
@@ -28,10 +30,16 @@ impl ServerContext {
         write_buffer_size: NonZeroUsize,
         write_buffer_count: NonZeroUsize,
     ) -> Self {
-        let read_allocator =
-            Arc::new(Mutex::new(Level::new(read_buffer_size, read_buffer_count, None)));
-        let write_allocator =
-            Arc::new(Mutex::new(Level::new(write_buffer_size, write_buffer_count, None)));
+        let read_allocator = Arc::new(Mutex::new(Level::new(
+            read_buffer_size,
+            read_buffer_count.checked_mul(NonZeroUsize::new(MULTIPLICITY).unwrap()).unwrap(),
+            None,
+        )));
+        let write_allocator = Arc::new(Mutex::new(Level::new(
+            write_buffer_size,
+            write_buffer_count.checked_mul(NonZeroUsize::new(MULTIPLICITY).unwrap()).unwrap(),
+            None,
+        )));
 
         Self {
             read_allocator,

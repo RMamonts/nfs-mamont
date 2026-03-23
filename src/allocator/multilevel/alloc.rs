@@ -26,7 +26,7 @@ impl Level {
 impl MultiAllocator for Level {
     async fn allocate_multi(&mut self, size: NonZeroUsize) -> Option<MultiSlice> {
         let cur_level = min(size.get(), self.local.capacity());
-        let from_current = NonZeroUsize::new(cur_level).unwrap_or(NonZeroUsize::MIN);
+        let from_current = NonZeroUsize::new(cur_level)?;
         let current = self.local.allocate(from_current).await?;
 
         let remain = size.get().checked_sub(cur_level)?;
