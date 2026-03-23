@@ -14,16 +14,16 @@ use crate::service::mount::{ExportEntryWrapper, MountService};
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
-pub struct MountCommand {
+pub(crate) struct MountCommand {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
+    pub(crate) result_tx: UnboundedSender<ProcReply>,
     /// Client socket address from connection task.
-    pub client_addr: SocketAddr,
+    pub(crate) client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
-    pub args: MountArgWrapper,
+    pub(crate) args: MountArgWrapper,
 }
 
-pub struct MountTask {
+pub(crate) struct MountTask {
     #[allow(dead_code)]
     mount_service: MountService,
     // channel for commands from client connection tasks
@@ -32,7 +32,7 @@ pub struct MountTask {
 
 impl MountTask {
     /// Creates new instance of [`MountTask`]
-    pub fn new(exports: Vec<ExportEntryWrapper>) -> (Self, UnboundedSender<MountCommand>) {
+    pub(crate) fn new(exports: Vec<ExportEntryWrapper>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
         let task = Self { mount_service: MountService::with_exports(exports), receiver };
@@ -47,7 +47,7 @@ impl MountTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub(crate) fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 

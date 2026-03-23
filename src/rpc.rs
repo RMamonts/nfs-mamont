@@ -8,7 +8,7 @@ pub const RPC_VERSION: u32 = 2;
 pub const MAX_AUTH_SIZE: usize = 400;
 
 #[derive(ToPrimitive, FromPrimitive)]
-pub enum AcceptStat {
+pub(crate) enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
     ProgMismatch = 2,
@@ -18,7 +18,7 @@ pub enum AcceptStat {
 }
 
 #[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
-pub enum AuthStat {
+pub(crate) enum AuthStat {
     Ok = 0,
     BadCred = 1,
     RejectedCred = 2,
@@ -37,7 +37,7 @@ pub enum AuthStat {
 }
 
 #[derive(ToPrimitive, FromPrimitive)]
-pub enum RpcBody {
+pub(crate) enum RpcBody {
     Call = 0,
     Reply = 1,
 }
@@ -50,7 +50,7 @@ pub enum ReplyBody {
 /// Authentication flavors.
 #[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum AuthFlavor {
+pub(crate) enum AuthFlavor {
     None = 0,
     Sys = 1,
     Short = 2,
@@ -60,12 +60,12 @@ pub enum AuthFlavor {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct OpaqueAuth {
+pub(crate) struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
 }
 
-pub enum RejectedReply {
+pub(crate) enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,
 }
@@ -73,14 +73,14 @@ pub enum RejectedReply {
 /// Represents a mismatch in program/protocol versions.
 /// Returns highest and lowest versions of available versions of requested program
 #[derive(Debug)]
-pub struct VersionMismatch {
+pub(crate) struct VersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
 /// Errors that can occur during parsing.
 #[derive(Debug)]
-pub enum Error {
+pub(crate) enum Error {
     /// The maximum element limit was exceeded.
     MaxElemLimit,
     /// An I/O error occurred.
@@ -88,6 +88,7 @@ pub enum Error {
     /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
+    #[allow(dead_code)]
     IncorrectString(FromUtf8Error),
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
@@ -98,7 +99,7 @@ pub enum Error {
     /// An RPC version mismatch occurred.
     RpcVersionMismatch(VersionMismatch),
     /// An authentication error occurred.
-    AuthError(AuthStat),
+    Auth(AuthStat),
     /// A program mismatch occurred.
     ProgramMismatch,
     /// A procedure mismatch occurred.

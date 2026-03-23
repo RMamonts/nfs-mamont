@@ -80,7 +80,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// let args = parser.next_message().await?;
 /// # }
 /// ```
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub(crate) struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: Arc<Mutex<A>>,
     buffer: CountBuffer<S>,
     last: bool,
@@ -234,7 +234,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 cred_len=%cred.body.len(),
                 "rpc auth reject: unsupported credential flavor",
             );
-            return Err(Error::AuthError(AuthStat::BadCred));
+            return Err(Error::Auth(AuthStat::BadCred));
         }
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
             error!(
@@ -242,7 +242,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 verf_len=%verf.body.len(),
                 "rpc auth reject: invalid verifier",
             );
-            return Err(Error::AuthError(AuthStat::BadVerf));
+            return Err(Error::Auth(AuthStat::BadVerf));
         }
         debug!(
             cred_flavor=?cred.flavor,
@@ -509,7 +509,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if let Error::RpcVersionMismatch(_)
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
-        | Error::AuthError(_)
+        | Error::Auth(_)
         | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
@@ -617,7 +617,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub(crate) async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
@@ -663,7 +663,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub(crate) fn read_in_slice_sync<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,

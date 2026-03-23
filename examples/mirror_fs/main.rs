@@ -2,12 +2,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use nfs_mamont::mount::ExportEntry;
-use nfs_mamont::service::mount::ExportEntryWrapper;
-use nfs_mamont::vfs::file;
-use nfs_mamont::{handle_forever_with_exports, init_tracing, ServerContext};
 use tokio::net::TcpListener;
 use tracing::info;
+
+use nfs_mamont::{handle_forever_with_exports, init_tracing, MountExport, ServerContext};
 
 pub mod fs;
 pub mod fs_map;
@@ -40,13 +38,7 @@ async fn main() -> std::io::Result<()> {
     info!(export_root = %export_root.display(), bind = %bind, "mirrorfs startup");
 
     let listener = TcpListener::bind(&bind).await?;
-    let export = ExportEntryWrapper {
-        export: ExportEntry {
-            directory: file::Path::new(export_root.to_string_lossy().into_owned()).unwrap(),
-            names: Vec::new(),
-        },
-        root_handle,
-    };
+    let export = MountExport::from_directory_path(export_root.to_string_lossy(), root_handle)?;
 
     handle_forever_with_exports(listener, context, vec![export]).await
 }

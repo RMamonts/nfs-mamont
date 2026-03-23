@@ -17,9 +17,9 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::error;
 
-pub mod read;
-pub mod vfs;
-pub mod write;
+mod read;
+mod vfs;
+mod write;
 
 // Creates all connection tasks with their inner connections
 pub async fn new(

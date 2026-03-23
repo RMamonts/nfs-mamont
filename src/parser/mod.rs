@@ -1,10 +1,10 @@
 //! Defines NFSv3 and MOUNT protocol parsing functionality.
 
-pub mod mount;
-pub mod nfsv3;
-pub mod parser_struct;
-pub mod primitive;
-pub mod read_buffer;
+pub(crate) mod mount;
+pub(crate) mod nfsv3;
+pub(crate) mod parser_struct;
+pub(crate) mod primitive;
+pub(crate) mod read_buffer;
 mod rpc;
 
 #[cfg(test)]
@@ -20,12 +20,15 @@ use crate::vfs::{
 };
 
 /// Result of parsing operations with errors type [`Error`].
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// Helper function to process nested errors.
 /// Function takes `future` to call. If result is `OK`, discards it, and returns `error`.
 /// If `future` returns error - returns new one, rather than `error`
-pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Result<T>>) -> Error {
+pub(crate) async fn proc_nested_errors<T>(
+    error: Error,
+    future: impl Future<Output = Result<T>>,
+) -> Error {
     match future.await {
         Ok(_) => error,
         Err(err) => err,
@@ -35,51 +38,53 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 /// Represents the RPC request header extracted during message parsing.
 /// Contains metadata required for identifying and authenticating an RPC call.
 #[cfg_attr(test, derive(PartialEq, Debug, Clone))]
-pub struct RpcHeader {
-    pub xid: u32,
-    pub cred: OpaqueAuth,
-    pub verf: OpaqueAuth,
+pub(crate) struct RpcHeader {
+    pub(crate) xid: u32,
+    pub(crate) cred: OpaqueAuth,
+    #[allow(dead_code)]
+    // TODO: use when auth will be provided
+    pub(crate) verf: OpaqueAuth,
 }
 
 /// Wrapper for NFS procedure arguments along with the parsed RPC header.
 /// Used to pass fully decoded request data into NFS service handlers.
-pub struct NfsArgWrapper {
-    pub header: RpcHeader,
-    pub proc: Box<NfsArguments>,
+pub(crate) struct NfsArgWrapper {
+    pub(crate) header: RpcHeader,
+    pub(crate) proc: Box<NfsArguments>,
 }
 
 /// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
-pub struct MountArgWrapper {
-    pub header: RpcHeader,
-    pub proc: Box<MountArguments>,
+pub(crate) struct MountArgWrapper {
+    pub(crate) header: RpcHeader,
+    pub(crate) proc: Box<MountArguments>,
 }
 
 /// Generic wrapper for RPC arguments used when the protocol type
 /// (NFS, MOUNT, or others) is already resolved at a higher layer.
-pub struct ArgWrapper {
-    pub header: RpcHeader,
-    pub proc: ProcArguments,
+pub(crate) struct ArgWrapper {
+    pub(crate) header: RpcHeader,
+    pub(crate) proc: ProcArguments,
 }
 
 /// Wrapper for [`Error`] to pass `xid` of procedure, this error
 /// is associated with
 #[derive(Debug)]
-pub struct ErrorWrapper {
-    pub xid: Option<u32>,
-    pub error: Error,
+pub(crate) struct ErrorWrapper {
+    pub(crate) xid: Option<u32>,
+    pub(crate) error: Error,
 }
 
 /// Parsed RPC message grouped by top-level RPC program.
 ///
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept both NFSv3 and MOUNT calls from the same connection.
-pub enum ProcArguments {
+pub(crate) enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
-pub enum NfsArguments {
+pub(crate) enum NfsArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -127,7 +132,7 @@ pub enum NfsArguments {
 }
 
 /// Enumerates supported MOUNT protocol procedure arguments.
-pub enum MountArguments {
+pub(crate) enum MountArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the Mount operation.

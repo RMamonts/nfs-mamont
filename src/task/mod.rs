@@ -7,17 +7,17 @@ use crate::mount::MountRes;
 use crate::rpc::Error;
 use crate::vfs::NfsRes;
 
-pub mod connection;
-pub mod global;
+pub(crate) mod connection;
+pub(crate) mod global;
 
 /// Tagged union of top-level RPC program results supported by this server.
-pub enum ProcResult {
+pub(crate) enum ProcResult {
     Nfs3(Box<NfsRes>),
     Mount(Box<MountRes>),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
-pub struct ProcReply {
-    pub xid: u32,
-    pub proc_result: Result<ProcResult, Error>,
+pub(crate) struct ProcReply {
+    pub(crate) xid: u32,
+    pub(crate) proc_result: Result<ProcResult, Error>,
 }

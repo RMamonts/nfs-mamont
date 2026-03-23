@@ -3,8 +3,8 @@ use std::io::SeekFrom;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-use nfs_mamont::allocator::Slice;
 use nfs_mamont::vfs::read;
+use nfs_mamont::Slice;
 
 use super::MirrorFS;
 

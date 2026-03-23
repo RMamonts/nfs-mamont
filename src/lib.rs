@@ -1,15 +1,17 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
-pub mod allocator;
+mod allocator;
 pub mod consts;
 mod context;
-pub mod mount;
-pub mod parser;
-pub mod rpc;
-pub mod serializer;
-pub mod service;
-pub mod task;
+mod mount;
+mod parser;
+mod rpc;
+mod serializer;
+mod service;
+mod task;
 pub mod vfs;
+
+pub use allocator::Slice;
 pub use context::ServerContext;
 
 use tokio::net::TcpListener;
@@ -17,9 +19,30 @@ use tracing::debug;
 #[cfg(debug_assertions)]
 use tracing_subscriber::EnvFilter;
 
-use crate::service::mount::ExportEntryWrapper;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
+
+/// Public export description used to configure MOUNT roots for the server.
+pub struct MountExport {
+    export: mount::ExportEntry,
+    root_handle: vfs::file::Handle,
+}
+
+impl MountExport {
+    /// Creates an export from already validated NFS path.
+    pub fn new(directory: vfs::file::Path, root_handle: vfs::file::Handle) -> Self {
+        Self { export: mount::ExportEntry { directory, names: Vec::new() }, root_handle }
+    }
+
+    /// Creates an export from a filesystem path string.
+    pub fn from_directory_path(
+        directory: impl Into<String>,
+        root_handle: vfs::file::Handle,
+    ) -> std::io::Result<Self> {
+        let directory = vfs::file::Path::new(directory.into())?;
+        Ok(Self::new(directory, root_handle))
+    }
+}
 
 /// Initializes tracing logs.
 ///
@@ -32,12 +55,6 @@ pub fn init_tracing() {
     let _ = tracing_subscriber::fmt().with_env_filter(env_filter).try_init();
 }
 
-/// Initializes tracing logs.
-///
-/// In release builds logs are disabled to avoid runtime overhead.
-#[cfg(not(debug_assertions))]
-pub fn init_tracing() {}
-
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever(listener: TcpListener, context: ServerContext) -> std::io::Result<()> {
     handle_forever_with_exports(listener, context, Vec::new()).await
@@ -47,13 +64,21 @@ pub async fn handle_forever(listener: TcpListener, context: ServerContext) -> st
 pub async fn handle_forever_with_exports(
     listener: TcpListener,
     context: ServerContext,
-    exports: Vec<ExportEntryWrapper>,
+    exports: Vec<MountExport>,
 ) -> std::io::Result<()> {
     let export_paths = exports
         .iter()
         .map(|entry| entry.export.directory.as_path().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     debug!(configured_mount_exports = ?export_paths, "server start: configured MOUNT exports");
+
+    let exports = exports
+        .into_iter()
+        .map(|entry| crate::service::mount::ExportEntryWrapper {
+            export: entry.export,
+            root_handle: entry.root_handle,
+        })
+        .collect();
 
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();

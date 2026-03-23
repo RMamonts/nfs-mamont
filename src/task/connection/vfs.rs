@@ -11,7 +11,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
-pub struct VfsTask {
+pub(super) struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
     allocator: Arc<Mutex<Impl>>,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
@@ -20,7 +20,7 @@ pub struct VfsTask {
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
-    pub fn new(
+    pub(super) fn new(
         context: &ServerContext,
         command_receiver: UnboundedReceiver<NfsArgWrapper>,
         result_sender: UnboundedSender<ProcReply>,
@@ -38,7 +38,7 @@ impl VfsTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub(super) fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 

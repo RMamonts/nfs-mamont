@@ -36,9 +36,9 @@ mod umntall;
 const AUTH: [AuthFlavor; 1] = [AuthFlavor::None];
 
 #[derive(Clone)]
-pub struct ExportEntryWrapper {
-    pub export: ExportEntry,
-    pub root_handle: file::Handle,
+pub(crate) struct ExportEntryWrapper {
+    pub(crate) export: ExportEntry,
+    pub(crate) root_handle: file::Handle,
 }
 
 /// Registry of exported directories advertised by the server
@@ -78,7 +78,7 @@ struct MountRegistry {
 }
 
 /// In-memory state backing the MOUNT v3 service implementation
-pub struct MountService {
+pub(crate) struct MountService {
     /// Exported directories that are available for mounting
     exports: ExportRegistry,
     /// Active mounts keyed by client.
@@ -86,8 +86,7 @@ pub struct MountService {
 }
 
 impl MountService {
-    #[allow(dead_code)]
-    pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
+    pub(crate) fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
     }
 

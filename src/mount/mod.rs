@@ -1,12 +1,10 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-#![allow(dead_code)]
-
-pub mod dump;
-pub mod export;
-pub mod mnt;
-pub mod umnt;
-pub mod umntall;
+pub(crate) mod dump;
+pub(crate) mod export;
+pub(crate) mod mnt;
+pub(crate) mod umnt;
+pub(crate) mod umntall;
 
 use crate::vfs::file;
 
@@ -44,6 +42,8 @@ pub enum MountRes {
     UnmountAll,
 }
 
+// TODO: Remove mount trait
+#[allow(dead_code)]
 pub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
 
 impl<T> Mount for T where T: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}

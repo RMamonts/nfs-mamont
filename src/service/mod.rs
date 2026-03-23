@@ -4,4 +4,4 @@
 //! declared in higher-level modules (for example, `crate::mount`).
 
 /// MOUNT v3 service implementation.
-pub mod mount;
+pub(crate) mod mount;
