@@ -15,15 +15,12 @@
 use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 use tokio::io::AsyncRead;
-use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
-use crate::allocator::multilevel::alloc::{Level, MultiAllocator};
+use crate::allocator::multilevel::alloc::MultiAllocator;
 use crate::allocator::multilevel::slice::MultiSlice;
-use crate::allocator::{Allocator, Slice};
 use crate::consts::mount::{
     MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
     MOUNT_VERSION,
@@ -53,7 +50,7 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+/// this size is enough to hold only arguments without opaque data ([`MultiSlice`] in [`vfs::write::Args`])
 pub const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
@@ -67,7 +64,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 ///
 /// # Type Parameters
 ///
-/// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
+/// * `A` - An allocator type that implements [`MultiAllocator`] for dynamic memory allocation
 /// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
 ///
 /// # Example
@@ -577,9 +574,12 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
+    debug!(size=%non_zero_size, read="for write");
     let mut slice = alloc.allocate_multi(non_zero_size).await.ok_or_else(|| {
+        error!(write = "alloc failed");
         Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
     })?;
+    debug!(write = "alloc successful");
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
@@ -611,7 +611,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 /// # Arguments
 ///
 /// * `src` - The `CountBuffer` to read data from.
-/// * `slice` - The [`Slice`] to write the read data into.
+/// * `slice` - The [`MultiSlice`] to write the read data into.
 /// * `to_skip` - The number of bytes to skip in the `slice` before writing.
 /// * `to_write` - The number of bytes to write into the `slice`.
 ///
@@ -658,7 +658,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 /// # Arguments
 ///
 /// * `src` - The `CountBuffer` to read data from.
-/// * `slice` - The [`Slice`] to write the read data into.
+/// * `slice` - The [`MultiSlice`] to write the read data into.
 /// * `left_size` - The number of bytes expected to be read into the slice.
 ///
 /// # Returns

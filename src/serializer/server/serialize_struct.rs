@@ -9,7 +9,6 @@ use std::io;
 use std::io::{ErrorKind, Write};
 
 use crate::allocator::multilevel::slice::MultiSlice;
-use crate::allocator::Slice;
 use crate::mount::MountRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -28,7 +27,7 @@ use super::rpc::auth;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`MultiSlice`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data
@@ -329,7 +328,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
+    /// Flushes the staged XDR bytes followed by a streamed payload [`MultiSlice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: MultiSlice, count: usize) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data

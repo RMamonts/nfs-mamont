@@ -3,6 +3,7 @@ use std::mem;
 use crate::allocator::slice::{Iter, IterMut};
 use crate::allocator::{Sender, Slice};
 
+#[cfg_attr(test, derive(Debug))]
 pub enum MultiSlice {
     One(Slice),
     Cons(Slice, Box<MultiSlice>),
@@ -128,5 +129,55 @@ impl<'a> IntoIterator for &'a mut MultiSlice {
                 next_iter: Some(Box::new(Self::into_iter(rest))),
             },
         }
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<[u8]> for MultiSlice {
+    fn eq(&self, other: &[u8]) -> bool {
+        if self.total_len() == 1 && other.is_empty() {
+            return true;
+        }
+
+        if self.total_len() != other.len() {
+            return false;
+        }
+
+        let mut self_iter = self.iter();
+        let mut block_self = self_iter.next();
+
+        let mut other = other;
+
+        loop {
+            match block_self {
+                None => return other.is_empty(),
+                Some(mut cur_self) => {
+                    loop {
+                        let take = cur_self.len().min(other.len());
+
+                        if cur_self[..take] != other[..take] {
+                            return false;
+                        }
+
+                        cur_self = &cur_self[take..];
+                        other = &other[take..];
+
+                        if cur_self.is_empty() || other.is_empty() {
+                            break;
+                        }
+                    }
+
+                    block_self =
+                        if cur_self.is_empty() { self_iter.next() } else { Some(cur_self) };
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<MultiSlice> for [u8] {
+    fn eq(&self, other: &MultiSlice) -> bool {
+        other == self
     }
 }
