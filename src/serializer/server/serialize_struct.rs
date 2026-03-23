@@ -8,11 +8,11 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
-use tokio::io::{AsyncWrite, AsyncWriteExt};
-
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::Slice;
 use crate::mount::MountRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
@@ -330,7 +330,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
+    async fn send_inner_with_slice(&mut self, slice: MultiSlice, count: usize) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Slice in vfs::read::Success) from XDR

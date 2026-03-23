@@ -1,16 +1,19 @@
 use async_trait::async_trait;
+use nfs_mamont::allocator::multilevel::slice::MultiSlice;
+use nfs_mamont::vfs::read;
 use std::io::SeekFrom;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
-
-use nfs_mamont::vfs::read;
-use nfs_mamont::Slice;
 
 use super::MirrorFS;
 
 #[async_trait]
 impl read::Read for MirrorFS {
-    async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
+    async fn read(
+        &self,
+        args: read::Args,
+        mut data: MultiSlice,
+    ) -> Result<read::Success, read::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {

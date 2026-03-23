@@ -1,11 +1,10 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use async_trait::async_trait;
-use num_derive::{FromPrimitive, ToPrimitive};
-
-use crate::allocator::Slice;
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::vfs;
+use async_trait::async_trait;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::file;
 
@@ -65,7 +64,7 @@ pub struct Args {
     /// The size of data must be less than or equal to the value of the server's
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
-    pub data: Slice,
+    pub data: MultiSlice,
 }
 
 /// equal to `Args` structure used to separate parsing of `Slice` from other fields

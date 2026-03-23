@@ -6,8 +6,9 @@ use tokio::sync::Mutex;
 pub mod alloc;
 pub mod slice;
 
+#[allow(dead_code)]
 pub const MULTIPLICITY: usize = 8;
-
+#[allow(dead_code)]
 pub fn allocator_constructor(
     block_size: NonZeroUsize,
     low_level_amount: NonZeroUsize,
@@ -27,4 +28,12 @@ pub fn allocator_constructor(
         .map(|lvl| Arc::new(Mutex::new(lvl)));
 
     Some(Level::new(block_size, blocks, next))
+}
+
+pub fn constr_two_level(
+    size: NonZeroUsize,
+    amount: NonZeroUsize,
+    upper: Arc<Mutex<Level>>,
+) -> Level {
+    Level::new(size, amount, Some(upper))
 }

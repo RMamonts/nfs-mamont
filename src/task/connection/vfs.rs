@@ -4,6 +4,8 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
 use tracing::error;
 
+use crate::allocator::multilevel::alloc::{Level, MultiAllocator};
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
 use crate::parser::{NfsArgWrapper, NfsArguments};
@@ -13,7 +15,7 @@ use crate::vfs::{self, NfsRes, Vfs};
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
-    allocator: Arc<Mutex<Impl>>,
+    allocator: Level,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
     result_sender: UnboundedSender<ProcReply>,
 }
@@ -42,7 +44,7 @@ impl VfsTask {
         tokio::spawn(async move { self.run().await });
     }
 
-    async fn run(self) {
+    async fn run(mut self) {
         let mut command_receiver = self.command_receiver;
 
         while let Some(command) = command_receiver.recv().await {
@@ -60,13 +62,12 @@ impl VfsTask {
                 }
                 NfsArguments::Read(args) => {
                     let data_result = if args.count == 0 {
-                        Ok(Slice::empty())
+                        Ok(MultiSlice::empty())
                     } else {
                         let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
-                        let mut allocator = self.allocator.lock().await;
-                        allocator
-                            .allocate(requested_size)
+                        self.allocator
+                            .allocate_multi(requested_size)
                             .await
                             .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
                     };

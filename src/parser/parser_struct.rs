@@ -21,6 +21,8 @@ use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
+use crate::allocator::multilevel::alloc::{Level, MultiAllocator};
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::{Allocator, Slice};
 use crate::consts::mount::{
     MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
@@ -80,15 +82,15 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// let args = parser.next_message().await?;
 /// # }
 /// ```
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
-    allocator: Arc<Mutex<A>>,
+pub struct RpcParser<A: MultiAllocator, S: AsyncRead + Unpin> {
+    allocator: A,
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
 }
 
 #[allow(dead_code)]
-impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+impl<A: MultiAllocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
     /// # Arguments
@@ -99,7 +101,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: Arc<Mutex<A>>) -> Self {
+    pub fn new(socket: S, allocator: A) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(DEFAULT_SIZE, socket),
@@ -119,7 +121,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: Arc<Mutex<A>>, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: A, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -267,7 +269,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             }
             READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
             WRITE => {
-                NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
+                NfsArguments::Write(adapter_for_write(&mut self.allocator, &mut self.buffer).await?)
             }
             CREATE => NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?),
             MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
@@ -566,7 +568,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &Arc<Mutex<impl Allocator>>,
+    alloc: &mut impl MultiAllocator,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     // Parse arguments for WRITE procedure.
@@ -575,7 +577,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.lock().await.allocate(non_zero_size).await.ok_or_else(|| {
+    let mut slice = alloc.allocate_multi(non_zero_size).await.ok_or_else(|| {
         Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
     })?;
 
@@ -619,7 +621,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 /// or an error if an I/O error occurs or buffer sizes are invalid.
 pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
-    slice: &mut Slice,
+    slice: &mut MultiSlice,
     to_skip: usize,
     to_write: usize,
 ) -> Result<usize> {
@@ -665,7 +667,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
 pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
-    slice: &mut Slice,
+    slice: &mut MultiSlice,
     left_size: usize,
 ) -> Result<usize> {
     let mut real_size = 0;

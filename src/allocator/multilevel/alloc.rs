@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::{Allocator, Impl};
 
+#[allow(async_fn_in_trait)]
 pub trait MultiAllocator {
     async fn allocate_multi(&mut self, size: NonZeroUsize) -> Option<MultiSlice>;
 }

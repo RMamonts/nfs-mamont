@@ -1,16 +1,16 @@
-use std::io;
-use std::io::{Result, Write};
-
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::Slice;
 use crate::serializer::files::file_handle;
 use crate::serializer::{padding, u32, u64, usize_as_u32, variant};
 use crate::vfs::write::Args;
+use std::io;
+use std::io::{Result, Write};
 
 /// Serializes [`Slice`].
 ///
 /// ## Warning:
 /// should be used only in tests
-pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
+pub fn slice(dest: &mut impl Write, arg: MultiSlice) -> Result<()> {
     let size: usize = arg.iter().map(|buf| buf.len()).sum();
     usize_as_u32(dest, size)?;
     for buf in arg.iter() {

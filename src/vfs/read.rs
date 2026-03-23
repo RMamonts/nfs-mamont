@@ -1,9 +1,8 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use async_trait::async_trait;
-
-use crate::allocator::Slice;
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::vfs;
+use async_trait::async_trait;
 
 use super::file;
 
@@ -12,7 +11,7 @@ pub struct Success {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
     /// The counted data read from the file.
-    pub data: Slice,
+    pub data: MultiSlice,
 }
 
 pub struct SuccessPartial {
@@ -55,5 +54,5 @@ pub trait Read {
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: Slice) -> Result<Success, Fail>;
+    async fn read(&self, args: Args, data: MultiSlice) -> Result<Success, Fail>;
 }

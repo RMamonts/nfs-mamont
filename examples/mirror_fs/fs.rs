@@ -4,15 +4,14 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::RwLock;
-
+use nfs_mamont::allocator::multilevel::slice::MultiSlice;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
-use nfs_mamont::Slice;
+use tokio::sync::RwLock;
 
 use crate::fs_map::FsMap;
 
@@ -208,7 +207,7 @@ impl MirrorFS {
         }
     }
 
-    fn collect_slice_bytes(slice: &Slice, size: u32) -> Vec<u8> {
+    fn collect_slice_bytes(slice: &MultiSlice, size: u32) -> Vec<u8> {
         let mut data = Vec::with_capacity(size as usize);
         for part in slice {
             data.extend_from_slice(part);
