@@ -21,7 +21,7 @@ use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
-pub(super) struct ReadTask {
+pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     command_sender: UnboundedSender<NfsArgWrapper>,
@@ -37,7 +37,7 @@ pub(super) struct ReadTask {
 
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
-    pub(super) fn new(
+    pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
         command_sender: UnboundedSender<NfsArgWrapper>,
@@ -53,7 +53,7 @@ impl ReadTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub(super) fn spawn(self) {
+    pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 

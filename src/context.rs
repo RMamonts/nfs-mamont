@@ -24,11 +24,11 @@ impl ServerContext {
         Self { allocator, backend }
     }
 
-    pub(crate) fn get_backend(&self) -> Arc<dyn vfs::Vfs + Send + Sync + 'static> {
+    pub fn get_backend(&self) -> Arc<dyn vfs::Vfs + Send + Sync + 'static> {
         Arc::clone(&self.backend)
     }
 
-    pub(crate) fn get_allocator(&self) -> Arc<Mutex<Impl>> {
+    pub fn get_allocator(&self) -> Arc<Mutex<Impl>> {
         Arc::clone(&self.allocator)
     }
 }

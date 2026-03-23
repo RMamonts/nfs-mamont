@@ -7,4 +7,4 @@
 //! - NLM (TODO: TBD)
 //! - AUTH (TODO: TBD)
 
-pub(crate) mod mount;
+pub mod mount;

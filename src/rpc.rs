@@ -8,7 +8,7 @@ pub const RPC_VERSION: u32 = 2;
 pub const MAX_AUTH_SIZE: usize = 400;
 
 #[derive(ToPrimitive, FromPrimitive)]
-pub(crate) enum AcceptStat {
+pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
     ProgMismatch = 2,
@@ -18,7 +18,7 @@ pub(crate) enum AcceptStat {
 }
 
 #[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
-pub(crate) enum AuthStat {
+pub enum AuthStat {
     Ok = 0,
     BadCred = 1,
     RejectedCred = 2,
@@ -37,7 +37,7 @@ pub(crate) enum AuthStat {
 }
 
 #[derive(ToPrimitive, FromPrimitive)]
-pub(crate) enum RpcBody {
+pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
@@ -50,7 +50,7 @@ pub enum ReplyBody {
 /// Authentication flavors.
 #[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
 #[cfg_attr(test, derive(PartialEq))]
-pub(crate) enum AuthFlavor {
+pub enum AuthFlavor {
     None = 0,
     Sys = 1,
     Short = 2,
@@ -60,12 +60,12 @@ pub(crate) enum AuthFlavor {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
-pub(crate) struct OpaqueAuth {
+pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
 }
 
-pub(crate) enum RejectedReply {
+pub enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,
 }
@@ -73,14 +73,14 @@ pub(crate) enum RejectedReply {
 /// Represents a mismatch in program/protocol versions.
 /// Returns highest and lowest versions of available versions of requested program
 #[derive(Debug)]
-pub(crate) struct VersionMismatch {
+pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
 }
 
 /// Errors that can occur during parsing.
 #[derive(Debug)]
-pub(crate) enum Error {
+pub enum Error {
     /// The maximum element limit was exceeded.
     MaxElemLimit,
     /// An I/O error occurred.

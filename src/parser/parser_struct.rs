@@ -80,7 +80,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// let args = parser.next_message().await?;
 /// # }
 /// ```
-pub(crate) struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: Arc<Mutex<A>>,
     buffer: CountBuffer<S>,
     last: bool,
@@ -617,7 +617,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub(crate) async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
@@ -663,7 +663,7 @@ pub(crate) async fn read_in_slice_async<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub(crate) fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,

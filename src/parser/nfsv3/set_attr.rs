@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-pub(crate) use crate::parser::nfsv3::create::{new_attr, nfs_time};
+pub use crate::parser::nfsv3::create::{new_attr, nfs_time};
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::bool;
 use crate::parser::Result;

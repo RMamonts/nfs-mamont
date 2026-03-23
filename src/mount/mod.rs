@@ -1,10 +1,10 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-pub(crate) mod dump;
-pub(crate) mod export;
-pub(crate) mod mnt;
-pub(crate) mod umnt;
-pub(crate) mod umntall;
+pub mod dump;
+pub mod export;
+pub mod mnt;
+pub mod umnt;
+pub mod umntall;
 
 use crate::vfs::file;
 

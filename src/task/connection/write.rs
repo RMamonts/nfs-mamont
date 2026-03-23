@@ -7,17 +7,14 @@ use crate::serializer;
 use crate::task::ProcReply;
 
 /// Writes [`crate::task::connection::vfs::VfsTask`] responses to a network connection.
-pub(super) struct WriteTask {
+pub struct WriteTask {
     writehalf: OwnedWriteHalf,
     result_receiver: UnboundedReceiver<ProcReply>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub(super) fn new(
-        writehalf: OwnedWriteHalf,
-        result_receiver: UnboundedReceiver<ProcReply>,
-    ) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<ProcReply>) -> Self {
         Self { writehalf, result_receiver }
     }
 
@@ -26,7 +23,7 @@ impl WriteTask {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub(super) fn spawn(self) {
+    pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 
