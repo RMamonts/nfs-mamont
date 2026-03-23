@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::allocator::multylevel::slice::MultiSlice;
+use crate::allocator::multilevel::slice::MultiSlice;
 use crate::allocator::{Allocator, Impl};
 
 pub trait MultiAllocator {
