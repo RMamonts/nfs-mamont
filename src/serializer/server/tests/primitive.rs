@@ -49,21 +49,21 @@ fn test_vector() {
 #[test]
 fn test_string() {
     let mut init = Cursor::new([1u8; 13]);
-    string(&mut init, "test42".to_string()).unwrap();
+    string(&mut init, "test42").unwrap();
     assert_eq!(init.into_inner(), [0, 0, 0, 6, b't', b'e', b's', b't', b'4', b'2', 0, 0, 1])
 }
 
 #[test]
 fn test_string_max() {
     let mut init = Cursor::new([1u8; 13]);
-    string_max_size(&mut init, "test42".to_string(), 7).unwrap();
+    string_max_size(&mut init, "test42", 7).unwrap();
     assert_eq!(init.into_inner(), [0, 0, 0, 6, b't', b'e', b's', b't', b'4', b'2', 0, 0, 1])
 }
 
 #[test]
 fn test_string_max_error() {
     let mut init = Cursor::new([1u8; 13]);
-    let res = string_max_size(&mut init, "test42".to_string(), 5);
+    let res = string_max_size(&mut init, "test42", 5);
     assert!(res.is_err())
 }
 

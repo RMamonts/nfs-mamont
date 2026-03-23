@@ -57,7 +57,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// * `capacity` - The size in bytes for each of the two internal buffers
     /// * `socket` - The async stream to read from
-    pub(super) fn new(capacity: usize, socket: S) -> CountBuffer<S> {
+    pub fn new(capacity: usize, socket: S) -> CountBuffer<S> {
         Self {
             bufs: vec![ReadBuffer::new(capacity), ReadBuffer::new(capacity)],
             read: 0,
@@ -166,7 +166,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns the number of bytes read (equal to `dest.len()`), or an error
     /// if the connection is closed before the buffer can be filled.
-    pub(super) async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+    pub async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
         self.socket.read_exact(dest).await?;
         self.total_bytes += dest.len();
         Ok(dest.len())
@@ -176,7 +176,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// This is typically called after successfully parsing a complete message
     /// to prepare for parsing the next message.
-    pub(super) fn clean(&mut self) {
+    pub fn clean(&mut self) {
         self.total_bytes = 0;
     }
 
@@ -193,7 +193,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns the number of bytes read, which may be less than `dest.len()`
     /// if not enough data is available in the internal buffers.
-    pub(super) fn read_from_inner(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+    pub fn read_from_inner(&mut self, dest: &mut [u8]) -> io::Result<usize> {
         if dest.is_empty() {
             return Ok(0);
         }
@@ -204,7 +204,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// This count includes all bytes that have been read from the socket,
     /// whether they were consumed by parsing operations or discarded.
-    pub(super) fn total_bytes(&self) -> usize {
+    pub fn total_bytes(&self) -> usize {
         self.total_bytes
     }
 
@@ -222,7 +222,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// Returns `Ok(())` if exactly `n` bytes were discarded, or an error if
     /// the connection is closed before all bytes can be discarded.
-    pub(super) async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
+    pub async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
         let from_inner = {
             let from_inner1 = min(self.bufs[self.read].available_read(), n);
             self.bufs[self.read].consume(from_inner1);

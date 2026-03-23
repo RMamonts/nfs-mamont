@@ -22,7 +22,6 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
-use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::mount::{ExportEntry, MountEntry};
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
@@ -33,43 +32,36 @@ mod mnt;
 mod umnt;
 mod umntall;
 
-#[derive(Clone)]
-struct ExportPolicyEntry {
-    export: ExportEntry,
-    file_handle: file::Handle,
-    auth_flavors: Vec<AuthFlavor>,
-}
+// TODO: should be taken from config
+const AUTH: [AuthFlavor; 1] = [AuthFlavor::None];
 
-fn stable_export_handle(seed: u64) -> file::Handle {
-    let mut bytes = [0u8; NFS3_FHSIZE];
-    bytes[..8].copy_from_slice(&seed.to_le_bytes());
-    file::Handle(bytes)
+#[derive(Clone)]
+pub struct ExportEntryWrapper {
+    pub export: ExportEntry,
+    pub root_handle: file::Handle,
 }
 
 /// Registry of exported directories advertised by the server
 #[derive(Default)]
 struct ExportRegistry {
     /// A single directory has at most one export entry
-    by_directory: HashMap<file::Path, ExportPolicyEntry>,
+    by_directory: HashMap<file::Path, ExportEntryWrapper>,
 }
 
 impl ExportRegistry {
-    fn from_entries(entries: Vec<ExportEntry>) -> Self {
+    fn from_entries(entries: Vec<ExportEntryWrapper>) -> Self {
         let mut by_directory = HashMap::new();
-        for (idx, entry) in entries.into_iter().enumerate() {
+        for entry in entries.into_iter() {
+            let file_handle = entry.root_handle.clone();
             by_directory.insert(
-                entry.directory.clone(),
-                ExportPolicyEntry {
-                    export: entry,
-                    file_handle: stable_export_handle((idx + 1) as u64),
-                    auth_flavors: vec![AuthFlavor::None],
-                },
+                entry.export.directory.clone(),
+                ExportEntryWrapper { export: entry.export, root_handle: file_handle },
             );
         }
         Self { by_directory }
     }
 
-    fn by_path(&self, path: &file::Path) -> Option<&ExportPolicyEntry> {
+    fn by_path(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
         self.by_directory.get(path)
     }
 
@@ -94,12 +86,11 @@ pub struct MountService {
 }
 
 impl MountService {
-    #[allow(dead_code)]
-    pub fn with_exports(entries: Vec<ExportEntry>) -> Self {
+    pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
     }
 
-    fn export_entry(&self, path: &file::Path) -> Option<&ExportPolicyEntry> {
+    fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
         self.exports.by_path(path)
     }
 }

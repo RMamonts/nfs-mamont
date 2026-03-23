@@ -232,7 +232,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         u32(&mut self.buffer, vers.high)?;
                         self.buffer.send_inner_buffer().await
                     }
-                    Error::AuthError(stat) => {
+                    Error::Auth(stat) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
                         u32(&mut self.buffer, stat as u32)?;
@@ -331,15 +331,6 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
     async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
-        let slice_size = slice.iter().map(|b| b.len()).sum::<usize>();
-
-        if slice_size != count {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Slice count does not match with it's actual size",
-            ));
-        }
-
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Slice in vfs::read::Success) from XDR
@@ -348,12 +339,10 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         //    (an unsigned integer) followed by the encoding of each of the array's
         //    elements, starting with element 0 and progressing through element n-1.
         // so we need to pass size of Slice before actual opaque data
-        u32(&mut self.buf, slice_size as u32)?;
+        u32(&mut self.buf, count as u32)?;
 
-        let padding = (ALIGNMENT - slice_size % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(
-            self.buf.len().saturating_sub(HEADER_SIZE) + slice_size + padding,
-        )?;
+        let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
+        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
