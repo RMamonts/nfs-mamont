@@ -1,6 +1,7 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
 //! for user data transmission inside NFS-Mamont implementation.
 
+mod multylevel;
 mod slice;
 
 #[cfg(test)]
