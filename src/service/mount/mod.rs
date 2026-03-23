@@ -86,7 +86,6 @@ pub struct MountService {
 }
 
 impl MountService {
-    #[allow(dead_code)]
     pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
     }

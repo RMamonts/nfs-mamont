@@ -552,7 +552,7 @@ async fn parse_rejects_non_none_cred_auth() {
     let result = parser.next_message().await;
     assert!(matches!(
         result,
-        Err(ErrorWrapper { error: Error::AuthError(AuthStat::BadCred), xid: Some(XID) })
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadCred), xid: Some(XID) })
     ));
 }
 
@@ -571,6 +571,6 @@ async fn parse_rejects_non_none_verf_auth() {
     let result = parser.next_message().await;
     assert!(matches!(
         result,
-        Err(ErrorWrapper { error: Error::AuthError(AuthStat::BadVerf), xid: Some(XID) })
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadVerf), xid: Some(XID) })
     ));
 }

@@ -21,7 +21,6 @@ use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
-#[allow(dead_code)]
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,

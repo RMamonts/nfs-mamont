@@ -22,7 +22,7 @@ impl Slice {
     /// # Panics
     ///
     /// This function will panics if called if length range bound greater then length of `buffers`.
-    pub(crate) fn new(
+    pub fn new(
         buffers: Vec<Box<[u8]>>,
         range: std::ops::Range<usize>,
         sender: super::Sender<Box<[u8]>>,

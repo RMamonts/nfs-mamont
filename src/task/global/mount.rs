@@ -41,8 +41,8 @@ impl MountTask {
     }
 
     /// Spawns a [`MountTask`]  that processes mount commands received from
-    /// [`crate::task::connection::read::ReadTask`] and returns results to
-    /// [`crate::task::connection::write::WriteTask`].
+    /// `ReadTask` and returns results to
+    /// `WriteTask`.
     ///
     /// # Panics
     ///

@@ -16,10 +16,10 @@ use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tracing::{debug, error, warn};
 
 use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
+use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
 use crate::consts::mount::{
@@ -234,7 +234,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 cred_len=%cred.body.len(),
                 "rpc auth reject: unsupported credential flavor",
             );
-            return Err(Error::AuthError(AuthStat::BadCred));
+            return Err(Error::Auth(AuthStat::BadCred));
         }
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
             error!(
@@ -242,7 +242,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 verf_len=%verf.body.len(),
                 "rpc auth reject: invalid verifier",
             );
-            return Err(Error::AuthError(AuthStat::BadVerf));
+            return Err(Error::Auth(AuthStat::BadVerf));
         }
         debug!(
             cred_flavor=?cred.flavor,
@@ -509,7 +509,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if let Error::RpcVersionMismatch(_)
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
-        | Error::AuthError(_)
+        | Error::Auth(_)
         | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {

@@ -9,17 +9,18 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
-use crate::context::ServerContext;
-use crate::parser::NfsArgWrapper;
-use crate::task::global::mount::MountCommand;
-use crate::task::ProcReply;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::error;
 
-pub mod read;
-pub mod vfs;
-pub mod write;
+use crate::context::ServerContext;
+use crate::parser::NfsArgWrapper;
+use crate::task::global::mount::MountCommand;
+use crate::task::ProcReply;
+
+mod read;
+mod vfs;
+mod write;
 
 // Creates all connection tasks with their inner connections
 pub async fn new(

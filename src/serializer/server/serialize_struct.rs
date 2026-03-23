@@ -232,7 +232,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         u32(&mut self.buffer, vers.high)?;
                         self.buffer.send_inner_buffer().await
                     }
-                    Error::AuthError(stat) => {
+                    Error::Auth(stat) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
                         u32(&mut self.buffer, stat as u32)?;
