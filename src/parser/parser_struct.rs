@@ -16,8 +16,8 @@ use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tracing::{debug, error, warn};
 
+use tracing::{debug, error, warn};
 use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
 

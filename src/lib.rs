@@ -11,16 +11,15 @@ mod service;
 mod task;
 pub mod vfs;
 
-pub use allocator::Slice;
-pub use context::ServerContext;
-
 use tokio::net::TcpListener;
 use tracing::debug;
-#[cfg(debug_assertions)]
 use tracing_subscriber::EnvFilter;
 
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
+
+pub use allocator::Slice;
+pub use context::ServerContext;
 
 /// Public export description used to configure MOUNT roots for the server.
 pub struct MountExport {
