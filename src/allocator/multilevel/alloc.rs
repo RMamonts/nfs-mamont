@@ -17,7 +17,7 @@ pub struct Level {
 }
 
 impl Level {
-    fn new(size: NonZeroUsize, count: NonZeroUsize, upper: Option<Arc<Mutex<Level>>>) -> Self {
+    pub fn new(size: NonZeroUsize, count: NonZeroUsize, upper: Option<Arc<Mutex<Level>>>) -> Self {
         Self { local: Impl::new(size, count), upper }
     }
 }
