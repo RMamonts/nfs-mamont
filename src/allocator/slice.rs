@@ -5,9 +5,9 @@ use tokio::sync::mpsc;
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
-    buffers: Vec<Box<[u8]>>,
-    range: std::ops::Range<usize>,
-    sender: super::Sender<Box<[u8]>>,
+    pub(super) buffers: Vec<Box<[u8]>>,
+    pub(super) range: std::ops::Range<usize>,
+    pub(super) sender: super::Sender<Box<[u8]>>,
 }
 
 impl Slice {
@@ -58,7 +58,7 @@ impl Slice {
     }
 
     /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
-    fn deallocate(&mut self) {
+    pub(super) fn deallocate(&mut self) {
         for mut buffer in self.buffers.drain(..) {
             // No user data should exist after dealloc
             buffer.fill(0u8);
@@ -78,8 +78,8 @@ impl Drop for Slice {
 ///
 /// Return shared slices accordingly to [`Slice`] bounds.
 pub struct Iter<'a> {
-    slice_iter: std::slice::Iter<'a, Box<[u8]>>,
-    range: std::ops::Range<usize>,
+    pub(super) slice_iter: std::slice::Iter<'a, Box<[u8]>>,
+    pub(super) range: std::ops::Range<usize>,
 }
 
 impl<'a> Iterator for Iter<'a> {
@@ -110,8 +110,8 @@ impl<'a> Iterator for Iter<'a> {
 }
 
 impl<'a> IntoIterator for &'a Slice {
-    type IntoIter = Iter<'a>;
     type Item = &'a [u8];
+    type IntoIter = Iter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter { slice_iter: self.buffers.iter(), range: self.range.clone() }
@@ -122,8 +122,8 @@ impl<'a> IntoIterator for &'a Slice {
 ///
 /// Return mutable slices accordingly to [`Slice`] bounds.
 pub struct IterMut<'a> {
-    slice_iter: std::slice::IterMut<'a, Box<[u8]>>,
-    range: std::ops::Range<usize>,
+    pub(super) slice_iter: std::slice::IterMut<'a, Box<[u8]>>,
+    pub(super) range: std::ops::Range<usize>,
 }
 
 impl<'a> Iterator for IterMut<'a> {
