@@ -91,13 +91,13 @@ pub fn vec_max_size(dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::R
 }
 
 /// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
-pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -> io::Result<()> {
-    vec_max_size(dest, &string.into_bytes(), max_size)
+pub fn string_max_size(dest: &mut impl Write, string: &str, max_size: usize) -> io::Result<()> {
+    vec_max_size(dest, string.as_bytes(), max_size)
 }
 
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
-pub fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
-    vector(dest, &string.into_bytes())
+pub fn string(dest: &mut impl Write, string: &str) -> io::Result<()> {
+    vector(dest, string.as_bytes())
 }
 
 /// Serializes an XDR enum discriminant / union tag as a 32-bit integer.

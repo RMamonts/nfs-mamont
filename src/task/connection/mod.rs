@@ -9,16 +9,18 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+use tracing::error;
+
 use crate::context::ServerContext;
 use crate::parser::NfsArgWrapper;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 
-pub mod read;
-pub mod vfs;
-pub mod write;
+mod read;
+mod vfs;
+mod write;
 
 // Creates all connection tasks with their inner connections
 pub async fn new(
@@ -29,7 +31,7 @@ pub async fn new(
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
-            eprintln!("failed to determine peer address: {err}");
+            error!(error=%err, "failed to determine peer address");
             return;
         }
     };
@@ -45,7 +47,7 @@ pub async fn new(
         command_sender,
         mount_sender,
         result_sender.clone(),
-        context.get_allocator(),
+        context.get_write_allocator(),
     )
     .spawn();
 

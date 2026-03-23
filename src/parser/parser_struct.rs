@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use tokio::io::AsyncRead;
 use tokio::sync::Mutex;
+use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
 use crate::consts::mount::{
@@ -186,11 +187,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type != RpcBody::Call as u32 {
+            error!(msg_type, "rpc parse reject: unexpected msg_type");
             return Err(Error::MessageTypeMismatch);
         }
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
+            error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -200,6 +203,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let program = self.buffer.parse_with_retry(u32).await?;
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
+        debug!(program, version, procedure, "rpc header parsed");
 
         //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
         let (cred, verf) = self.parse_authentication().await?;
@@ -209,7 +213,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     /// Parses and validates RPC authentication.
     ///
-    /// Currently only AUTH_NONE is supported.
+    /// NFS clients commonly send AUTH_SYS credentials, so both AUTH_NONE and
+    /// AUTH_SYS are accepted for credentials. Verifier must remain AUTH_NONE.
     ///
     /// # Returns
     ///
@@ -218,12 +223,34 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
         let cred = self.buffer.parse_with_retry(auth).await?;
         let verf = self.buffer.parse_with_retry(auth).await?;
-        if !matches!(cred.flavor, AuthFlavor::None) || !cred.body.is_empty() {
-            return Err(Error::AuthError(AuthStat::BadCred));
+        let cred_ok = match cred.flavor {
+            AuthFlavor::None => cred.body.is_empty(),
+            AuthFlavor::Sys => true,
+            _ => false,
+        };
+        if !cred_ok {
+            error!(
+                cred_flavor=?cred.flavor,
+                cred_len=%cred.body.len(),
+                "rpc auth reject: unsupported credential flavor",
+            );
+            return Err(Error::Auth(AuthStat::BadCred));
         }
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
-            return Err(Error::AuthError(AuthStat::BadVerf));
+            error!(
+                verf_flavor=?verf.flavor,
+                verf_len=%verf.body.len(),
+                "rpc auth reject: invalid verifier",
+            );
+            return Err(Error::Auth(AuthStat::BadVerf));
         }
+        debug!(
+            cred_flavor=?cred.flavor,
+            cred_len=%cred.body.len(),
+            verf_flavor=?verf.flavor,
+            verf_len=%verf.body.len(),
+            "rpc auth accepted",
+        );
         Ok((cred, verf))
     }
 
@@ -376,15 +403,28 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 let args = self.parse_mount_message_with_header(head).await?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
-            _ => Err(Error::ProgramMismatch),
+            _ => {
+                warn!(program = head.program, "rpc parse reject: unknown program");
+                Err(Error::ProgramMismatch)
+            }
         }
     }
 
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
+            error!(
+                got = head.program,
+                expected = NFS_PROGRAM,
+                "rpc parse reject: nfs parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
+            error!(
+                got = head.version,
+                expected = NFS_VERSION,
+                "rpc parse reject: nfs version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: NFS_VERSION,
                 high: NFS_VERSION,
@@ -398,9 +438,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         head: &RpcMessage,
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
+            error!(
+                got = head.program,
+                expected = MOUNT_PROGRAM,
+                "rpc parse reject: mount parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
+            error!(
+                got = head.version,
+                expected = MOUNT_VERSION,
+                "rpc parse reject: mount version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: MOUNT_VERSION,
                 high: MOUNT_VERSION,
@@ -459,7 +509,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if let Error::RpcVersionMismatch(_)
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
-        | Error::AuthError(_)
+        | Error::Auth(_)
         | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
@@ -583,7 +633,11 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
                 .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
-        let cur_write = min(left_skip + left_write, buf.len() - left_skip);
+        let cur_write = min(left_write, buf.len() - left_skip);
+        if cur_write == 0 {
+            left_skip = 0;
+            continue;
+        }
         src.read_from_async(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
         left_write = left_write
             .checked_sub(cur_write)

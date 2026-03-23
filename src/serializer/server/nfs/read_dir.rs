@@ -28,7 +28,8 @@ fn dir_list(dest: &mut impl Write, list: Vec<Entry>) -> io::Result<()> {
 pub fn result_ok(dest: &mut impl Write, arg: read_dir::Success) -> io::Result<()> {
     option(dest, arg.dir_attr, |attr, dest| file_attr(dest, &attr))?;
     array(dest, arg.cookie_verifier.raw())?;
-    dir_list(dest, arg.entries)
+    dir_list(dest, arg.entries)?;
+    bool(dest, arg.eof)
 }
 
 /// Serializes [`read_dir::Fail`] (READDIR3resfail body) into XDR.

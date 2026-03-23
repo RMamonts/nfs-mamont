@@ -6,7 +6,7 @@ use tokio::io::{AsyncRead, ReadBuf};
 
 const SEPARATE: usize = 15;
 
-pub(super) struct MockSocket {
+pub struct MockSocket {
     data: Vec<u8>,
     position: usize,
 }
