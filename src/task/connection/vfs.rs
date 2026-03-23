@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
+use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
@@ -26,7 +27,7 @@ impl VfsTask {
     ) -> Self {
         Self {
             backend: context.get_backend(),
-            allocator: context.get_allocator(),
+            allocator: context.get_read_allocator(),
             command_receiver,
             result_sender,
         }
@@ -46,6 +47,7 @@ impl VfsTask {
 
         while let Some(command) = command_receiver.recv().await {
             let NfsArgWrapper { header, proc } = command;
+            let proc_name = Self::proc_name(&proc);
 
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,
@@ -95,6 +97,10 @@ impl VfsTask {
                 NfsArguments::Commit(args) => NfsRes::Commit(self.backend.commit(args).await),
             };
 
+            if let Some(error) = Self::error_from_response(&response) {
+                error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
+            }
+
             let reply = ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Nfs3(Box::new(response))),
@@ -104,6 +110,61 @@ impl VfsTask {
             if self.result_sender.send(reply).is_err() {
                 return;
             }
+        }
+    }
+
+    fn proc_name(proc: &NfsArguments) -> &'static str {
+        match proc {
+            NfsArguments::Null => "NULL",
+            NfsArguments::GetAttr(_) => "GETATTR",
+            NfsArguments::SetAttr(_) => "SETATTR",
+            NfsArguments::LookUp(_) => "LOOKUP",
+            NfsArguments::Access(_) => "ACCESS",
+            NfsArguments::ReadLink(_) => "READLINK",
+            NfsArguments::Read(_) => "READ",
+            NfsArguments::Write(_) => "WRITE",
+            NfsArguments::Create(_) => "CREATE",
+            NfsArguments::MkDir(_) => "MKDIR",
+            NfsArguments::SymLink(_) => "SYMLINK",
+            NfsArguments::MkNod(_) => "MKNOD",
+            NfsArguments::Remove(_) => "REMOVE",
+            NfsArguments::RmDir(_) => "RMDIR",
+            NfsArguments::Rename(_) => "RENAME",
+            NfsArguments::Link(_) => "LINK",
+            NfsArguments::ReadDir(_) => "READDIR",
+            NfsArguments::ReadDirPlus(_) => "READDIRPLUS",
+            NfsArguments::FsStat(_) => "FSSTAT",
+            NfsArguments::FsInfo(_) => "FSINFO",
+            NfsArguments::PathConf(_) => "PATHCONF",
+            NfsArguments::Commit(_) => "COMMIT",
+        }
+    }
+
+    fn error_from_response(response: &NfsRes) -> Option<vfs::Error> {
+        match response {
+            NfsRes::Null => None,
+            NfsRes::GetAttr(Err(err)) => Some(err.error),
+            NfsRes::SetAttr(Err(err)) => Some(err.error),
+            NfsRes::LookUp(Err(err)) => Some(err.error),
+            NfsRes::Access(Err(err)) => Some(err.error),
+            NfsRes::ReadLink(Err(err)) => Some(err.error),
+            NfsRes::Read(Err(err)) => Some(err.error),
+            NfsRes::Write(Err(err)) => Some(err.error),
+            NfsRes::Create(Err(err)) => Some(err.error),
+            NfsRes::MkDir(Err(err)) => Some(err.error),
+            NfsRes::SymLink(Err(err)) => Some(err.error),
+            NfsRes::MkNod(Err(err)) => Some(err.error),
+            NfsRes::Remove(Err(err)) => Some(err.error),
+            NfsRes::RmDir(Err(err)) => Some(err.error),
+            NfsRes::Rename(Err(err)) => Some(err.error),
+            NfsRes::Link(Err(err)) => Some(err.error),
+            NfsRes::ReadDir(Err(err)) => Some(err.error),
+            NfsRes::ReadDirPlus(Err(err)) => Some(err.error),
+            NfsRes::FsStat(Err(err)) => Some(err.error),
+            NfsRes::FsInfo(Err(err)) => Some(err.error),
+            NfsRes::PathConf(Err(err)) => Some(err.error),
+            NfsRes::Commit(Err(err)) => Some(err.error),
+            _ => None,
         }
     }
 }

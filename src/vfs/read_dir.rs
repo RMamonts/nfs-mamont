@@ -95,6 +95,8 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries. Represent linked list of [`Entry`]
     pub entries: Vec<Entry>,
+    /// `true` if the end of the directory has been reached for this request.
+    pub eof: bool,
 }
 
 /// Fail result.

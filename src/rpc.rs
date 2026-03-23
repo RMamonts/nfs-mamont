@@ -88,6 +88,7 @@ pub enum Error {
     /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
+    #[allow(dead_code)]
     IncorrectString(FromUtf8Error),
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
@@ -98,7 +99,7 @@ pub enum Error {
     /// An RPC version mismatch occurred.
     RpcVersionMismatch(VersionMismatch),
     /// An authentication error occurred.
-    AuthError(AuthStat),
+    Auth(AuthStat),
     /// A program mismatch occurred.
     ProgramMismatch,
     /// A procedure mismatch occurred.
