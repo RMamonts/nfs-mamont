@@ -5,7 +5,10 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use nfs_mamont::{handle_forever_with_exports, init_tracing, MountExport, ServerContext};
+use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
+
+#[cfg(debug_assertions)]
+use nfs_mamont::init_tracing;
 
 pub mod fs;
 pub mod fs_map;
@@ -32,9 +35,13 @@ async fn main() -> std::io::Result<()> {
         fs.clone(),
         NonZeroUsize::new(64 * 1024).unwrap(),
         NonZeroUsize::new(8).unwrap(),
+        NonZeroUsize::new(64 * 1024).unwrap(),
+        NonZeroUsize::new(8).unwrap(),
     );
 
+    #[cfg(debug_assertions)]
     init_tracing();
+
     info!(export_root = %export_root.display(), bind = %bind, "mirrorfs startup");
 
     let listener = TcpListener::bind(&bind).await?;

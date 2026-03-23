@@ -47,7 +47,6 @@ impl MountExport {
 /// Initializes tracing logs.
 ///
 /// In debug builds logs are enabled by default. In release builds this is a no-op.
-#[cfg(debug_assertions)]
 pub fn init_tracing() {
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("nfs_mamont=debug"));
