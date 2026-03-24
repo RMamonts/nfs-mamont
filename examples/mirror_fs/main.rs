@@ -33,10 +33,10 @@ async fn main() -> std::io::Result<()> {
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),
-        NonZeroUsize::new(64 * 1024).unwrap(),
-        NonZeroUsize::new(8).unwrap(),
-        NonZeroUsize::new(64 * 1024).unwrap(),
-        NonZeroUsize::new(8).unwrap(),
+        NonZeroUsize::new(512 * 1024).unwrap(),
+        NonZeroUsize::new(2048).unwrap(),
+        NonZeroUsize::new(512 * 1024).unwrap(),
+        NonZeroUsize::new(2048).unwrap(),
     );
 
     #[cfg(debug_assertions)]

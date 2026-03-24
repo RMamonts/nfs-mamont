@@ -1,11 +1,13 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+use std::sync::Arc;
+
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
-    sender: Option<super::Sender<Box<[u8]>>>,
+    state: Option<Arc<super::AllocatorState>>,
 }
 
 impl Slice {
@@ -15,7 +17,7 @@ impl Slice {
     ///
     /// - `buffers` --- vec of buffers.
     /// - `range` --- range to which slice will allow access.
-    /// - `sender` --- sender to deallocated buffers in drop.
+    /// - `state` --- allocator state to return buffers and restore permits.
     ///
     /// # Panics
     ///
@@ -23,7 +25,7 @@ impl Slice {
     pub fn new(
         buffers: Vec<Box<[u8]>>,
         range: std::ops::Range<usize>,
-        sender: super::Sender<Box<[u8]>>,
+        state: Option<Arc<super::AllocatorState>>,
     ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 
@@ -38,12 +40,12 @@ impl Slice {
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
 
-        Self { buffers, range, sender: Some(sender) }
+        Self { buffers, range, state }
     }
 
     // /// Returns an empty slice that owns no buffers.
     pub fn empty() -> Self {
-        Self { buffers: Vec::new(), range: 0..0, sender: None }
+        Self { buffers: Vec::new(), range: 0..0, state: None }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -56,10 +58,14 @@ impl Slice {
 
     /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
     fn deallocate(&mut self) {
-        if let Some(sender) = &self.sender {
+        if let Some(state) = &self.state {
+            let count = self.buffers.len();
             for buffer in self.buffers.drain(..) {
                 // Ignore allocator drop
-                let _ = sender.send(buffer);
+                let _ = state.pool.push(buffer);
+            }
+            if count > 0 {
+                state.semaphore.add_permits(count);
             }
         }
     }
