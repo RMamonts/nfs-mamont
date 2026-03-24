@@ -1,13 +1,14 @@
-use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::{Mutex, RwLock};
+use dashmap::DashMap;
+use moka::sync::Cache;
+use tokio::sync::RwLock;
 
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
@@ -58,28 +59,48 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 #[derive(Debug)]
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
-    read_file_cache: Mutex<ReadFileCache>,
-    attr_cache: Mutex<AttributeCache>,
+    read_file_cache: ReadFileCache,
+    attr_cache: AttributeCache,
     root_path: PathBuf,
     generation: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ReadFileCache {
-    files: HashMap<PathBuf, Arc<File>>,
-    order: VecDeque<PathBuf>,
+    files: Cache<PathBuf, Arc<File>>,
+    keys: DashMap<PathBuf, ()>,
 }
 
 #[derive(Debug)]
 struct CachedAttrEntry {
     metadata: Metadata,
-    expires_at: Instant,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AttributeCache {
-    attrs: HashMap<PathBuf, CachedAttrEntry>,
-    order: VecDeque<PathBuf>,
+    attrs: Cache<PathBuf, Arc<CachedAttrEntry>>,
+    keys: DashMap<PathBuf, ()>,
+}
+
+impl ReadFileCache {
+    fn new() -> Self {
+        Self {
+            files: Cache::builder().max_capacity(READ_FILE_CACHE_LIMIT as u64).build(),
+            keys: DashMap::new(),
+        }
+    }
+}
+
+impl AttributeCache {
+    fn new() -> Self {
+        Self {
+            attrs: Cache::builder()
+                .max_capacity(ATTRIBUTE_CACHE_LIMIT as u64)
+                .time_to_live(ATTRIBUTE_CACHE_TTL)
+                .build(),
+            keys: DashMap::new(),
+        }
+    }
 }
 
 impl MirrorFS {
@@ -91,8 +112,8 @@ impl MirrorFS {
                 as u64;
         Self {
             fsmap: RwLock::new(FsMap::new(root.clone())),
-            read_file_cache: Mutex::new(ReadFileCache::default()),
-            attr_cache: Mutex::new(AttributeCache::default()),
+            read_file_cache: ReadFileCache::new(),
+            attr_cache: AttributeCache::new(),
             root_path: root,
             generation,
         }
@@ -158,19 +179,10 @@ impl MirrorFS {
     }
 
     async fn attr_for_path(&self, path: &Path) -> Result<file::Attr, vfs::Error> {
-        let now = Instant::now();
-        {
-            let mut cache = self.attr_cache.lock().await;
-            if let Some(entry) = cache.attrs.get(path) {
-                if entry.expires_at > now {
-                    let attr = Self::attr_from_metadata(&entry.metadata);
-                    Self::touch_attr_cache_entry(&mut cache.order, path);
-                    return Ok(attr);
-                }
-            }
-            cache.attrs.remove(path);
-            cache.order.retain(|known_path| known_path != path);
+        if let Some(entry) = self.attr_cache.attrs.get(path) {
+            return Ok(Self::attr_from_metadata(&entry.metadata));
         }
+        self.attr_cache.keys.remove(path);
 
         let path_buf = path.to_path_buf();
         let metadata = tokio::task::spawn_blocking(move || {
@@ -181,30 +193,17 @@ impl MirrorFS {
 
         let attr = Self::attr_from_metadata(&metadata);
 
-        let mut cache = self.attr_cache.lock().await;
-        cache.attrs.insert(
-            path.to_path_buf(),
-            CachedAttrEntry { metadata, expires_at: Instant::now() + ATTRIBUTE_CACHE_TTL },
-        );
-        Self::touch_attr_cache_entry(&mut cache.order, path);
-
-        while cache.attrs.len() > ATTRIBUTE_CACHE_LIMIT {
-            let Some(evicted_path) = cache.order.pop_front() else {
-                break;
-            };
-            cache.attrs.remove(&evicted_path);
-        }
+        let key = path.to_path_buf();
+        self.attr_cache.attrs.insert(key.clone(), Arc::new(CachedAttrEntry { metadata }));
+        self.attr_cache.keys.insert(key, ());
+        self.maybe_compact_attr_keys();
 
         Ok(attr)
     }
 
     async fn get_cached_read_file(&self, path: &Path) -> Result<Arc<File>, vfs::Error> {
-        {
-            let mut cache = self.read_file_cache.lock().await;
-            if let Some(file) = cache.files.get(path).cloned() {
-                Self::touch_read_cache_entry(&mut cache.order, path);
-                return Ok(file);
-            }
+        if let Some(file) = self.read_file_cache.files.get(path) {
+            return Ok(file);
         }
 
         let path_buf = path.to_path_buf();
@@ -214,49 +213,94 @@ impl MirrorFS {
             .map_err(|error| Self::io_error_to_vfs(&error))?;
         let opened = Arc::new(opened);
 
-        let mut cache = self.read_file_cache.lock().await;
-        if let Some(existing) = cache.files.get(path).cloned() {
-            Self::touch_read_cache_entry(&mut cache.order, path);
+        if let Some(existing) = self.read_file_cache.files.get(path) {
             return Ok(existing);
         }
 
-        cache.files.insert(path.to_path_buf(), opened.clone());
-        Self::touch_read_cache_entry(&mut cache.order, path);
-
-        while cache.files.len() > READ_FILE_CACHE_LIMIT {
-            let Some(evicted_path) = cache.order.pop_front() else {
-                break;
-            };
-            cache.files.remove(&evicted_path);
-        }
+        let key = path.to_path_buf();
+        self.read_file_cache.files.insert(key.clone(), opened.clone());
+        self.read_file_cache.keys.insert(key, ());
+        self.maybe_compact_read_file_keys();
 
         Ok(opened)
     }
 
     async fn invalidate_read_file_cache_path(&self, path: &Path) {
-        let mut cache = self.read_file_cache.lock().await;
-        cache.files.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
-        cache.order.retain(|known_path| known_path != path && !known_path.starts_with(path));
+        let keys: Vec<PathBuf> = self
+            .read_file_cache
+            .keys
+            .iter()
+            .filter(|entry| {
+                let known_path = entry.key();
+                known_path == path || known_path.starts_with(path)
+            })
+            .map(|entry| entry.key().clone())
+            .collect();
+        for key in keys {
+            self.read_file_cache.files.invalidate(&key);
+            self.read_file_cache.keys.remove(&key);
+        }
     }
 
     async fn invalidate_attr_cache_path(&self, path: &Path) {
-        let mut cache = self.attr_cache.lock().await;
-        cache.attrs.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
-        cache.order.retain(|known_path| known_path != path && !known_path.starts_with(path));
+        let keys: Vec<PathBuf> = self
+            .attr_cache
+            .keys
+            .iter()
+            .filter(|entry| {
+                let known_path = entry.key();
+                known_path == path || known_path.starts_with(path)
+            })
+            .map(|entry| entry.key().clone())
+            .collect();
+        for key in keys {
+            self.attr_cache.attrs.invalidate(&key);
+            self.attr_cache.keys.remove(&key);
+        }
     }
 
-    fn touch_read_cache_entry(order: &mut VecDeque<PathBuf>, path: &Path) {
-        if let Some(pos) = order.iter().position(|entry| entry == path) {
-            order.remove(pos);
+    fn maybe_compact_read_file_keys(&self) {
+        if self.read_file_cache.keys.len() <= READ_FILE_CACHE_LIMIT * 4 {
+            return;
         }
-        order.push_back(path.to_path_buf());
+        let stale_keys: Vec<PathBuf> = self
+            .read_file_cache
+            .keys
+            .iter()
+            .filter_map(|entry| {
+                let key = entry.key().clone();
+                if self.read_file_cache.files.get(&key).is_none() {
+                    Some(key)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for key in stale_keys {
+            self.read_file_cache.keys.remove(&key);
+        }
     }
 
-    fn touch_attr_cache_entry(order: &mut VecDeque<PathBuf>, path: &Path) {
-        if let Some(pos) = order.iter().position(|entry| entry == path) {
-            order.remove(pos);
+    fn maybe_compact_attr_keys(&self) {
+        if self.attr_cache.keys.len() <= ATTRIBUTE_CACHE_LIMIT * 4 {
+            return;
         }
-        order.push_back(path.to_path_buf());
+        let stale_keys: Vec<PathBuf> = self
+            .attr_cache
+            .keys
+            .iter()
+            .filter_map(|entry| {
+                let key = entry.key().clone();
+                if self.attr_cache.attrs.get(&key).is_none() {
+                    Some(key)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for key in stale_keys {
+            self.attr_cache.keys.remove(&key);
+        }
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
