@@ -1,10 +1,13 @@
+use std::collections::{HashMap, VecDeque};
+use std::fs::File;
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
@@ -39,6 +42,7 @@ mod write_impl;
 
 const READ_WRITE_MAX: u32 = 64 * 1024;
 const READ_DIR_PREF: u32 = 8 * 1024;
+const READ_FILE_CACHE_LIMIT: usize = 1024;
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -52,8 +56,15 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 #[derive(Debug)]
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
+    read_file_cache: Mutex<ReadFileCache>,
     root_path: PathBuf,
     generation: u64,
+}
+
+#[derive(Debug, Default)]
+struct ReadFileCache {
+    files: HashMap<PathBuf, Arc<File>>,
+    order: VecDeque<PathBuf>,
 }
 
 impl MirrorFS {
@@ -63,7 +74,12 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap::new(root.clone())), root_path: root, generation }
+        Self {
+            fsmap: RwLock::new(FsMap::new(root.clone())),
+            read_file_cache: Mutex::new(ReadFileCache::default()),
+            root_path: root,
+            generation,
+        }
     }
 
     /// Returns the root handle.
@@ -112,10 +128,62 @@ impl MirrorFS {
 
     async fn remove_cached_path(&self, path: &Path) {
         self.fsmap.write().await.remove_path(path);
+        self.invalidate_read_file_cache_path(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.write().await.rename_path(from, to)
+        self.fsmap.write().await.rename_path(from, to)?;
+        self.invalidate_read_file_cache_path(from).await;
+        self.invalidate_read_file_cache_path(to).await;
+        Ok(())
+    }
+
+    async fn get_cached_read_file(&self, path: &Path) -> Result<Arc<File>, vfs::Error> {
+        {
+            let mut cache = self.read_file_cache.lock().await;
+            if let Some(file) = cache.files.get(path).cloned() {
+                Self::touch_read_cache_entry(&mut cache.order, path);
+                return Ok(file);
+            }
+        }
+
+        let path_buf = path.to_path_buf();
+        let opened = tokio::task::spawn_blocking(move || File::open(path_buf))
+            .await
+            .map_err(|_| vfs::Error::IO)?
+            .map_err(|error| Self::io_error_to_vfs(&error))?;
+        let opened = Arc::new(opened);
+
+        let mut cache = self.read_file_cache.lock().await;
+        if let Some(existing) = cache.files.get(path).cloned() {
+            Self::touch_read_cache_entry(&mut cache.order, path);
+            return Ok(existing);
+        }
+
+        cache.files.insert(path.to_path_buf(), opened.clone());
+        Self::touch_read_cache_entry(&mut cache.order, path);
+
+        while cache.files.len() > READ_FILE_CACHE_LIMIT {
+            let Some(evicted_path) = cache.order.pop_front() else {
+                break;
+            };
+            cache.files.remove(&evicted_path);
+        }
+
+        Ok(opened)
+    }
+
+    async fn invalidate_read_file_cache_path(&self, path: &Path) {
+        let mut cache = self.read_file_cache.lock().await;
+        cache.files.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
+        cache.order.retain(|known_path| known_path != path && !known_path.starts_with(path));
+    }
+
+    fn touch_read_cache_entry(order: &mut VecDeque<PathBuf>, path: &Path) {
+        if let Some(pos) = order.iter().position(|entry| entry == path) {
+            order.remove(pos);
+        }
+        order.push_back(path.to_path_buf());
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {

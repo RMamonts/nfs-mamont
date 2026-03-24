@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::os::unix::fs::FileExt;
 
 use nfs_mamont::vfs::read;
@@ -14,14 +13,14 @@ impl read::Read for MirrorFS {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let file = match File::open(&path) {
+        let file = match self.get_cached_read_file(&path).await {
             Ok(file) => file,
             Err(error) => {
-                return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
+                return Err(read::Fail { error, file_attr: None });
             }
         };
 
-        let meta = match file.metadata() {
+        let meta = match tokio::fs::metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
