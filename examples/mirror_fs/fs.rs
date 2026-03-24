@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{Mutex, RwLock};
 
@@ -43,6 +43,8 @@ mod write_impl;
 const READ_WRITE_MAX: u32 = 64 * 1024;
 const READ_DIR_PREF: u32 = 8 * 1024;
 const READ_FILE_CACHE_LIMIT: usize = 1024;
+const ATTRIBUTE_CACHE_LIMIT: usize = 16 * 1024;
+const ATTRIBUTE_CACHE_TTL: Duration = Duration::from_secs(3);
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -57,6 +59,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
     read_file_cache: Mutex<ReadFileCache>,
+    attr_cache: Mutex<AttributeCache>,
     root_path: PathBuf,
     generation: u64,
 }
@@ -64,6 +67,18 @@ pub struct MirrorFS {
 #[derive(Debug, Default)]
 struct ReadFileCache {
     files: HashMap<PathBuf, Arc<File>>,
+    order: VecDeque<PathBuf>,
+}
+
+#[derive(Debug)]
+struct CachedAttrEntry {
+    metadata: Metadata,
+    expires_at: Instant,
+}
+
+#[derive(Debug, Default)]
+struct AttributeCache {
+    attrs: HashMap<PathBuf, CachedAttrEntry>,
     order: VecDeque<PathBuf>,
 }
 
@@ -77,6 +92,7 @@ impl MirrorFS {
         Self {
             fsmap: RwLock::new(FsMap::new(root.clone())),
             read_file_cache: Mutex::new(ReadFileCache::default()),
+            attr_cache: Mutex::new(AttributeCache::default()),
             root_path: root,
             generation,
         }
@@ -129,13 +145,57 @@ impl MirrorFS {
     async fn remove_cached_path(&self, path: &Path) {
         self.fsmap.write().await.remove_path(path);
         self.invalidate_read_file_cache_path(path).await;
+        self.invalidate_attr_cache_path(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
         self.fsmap.write().await.rename_path(from, to)?;
         self.invalidate_read_file_cache_path(from).await;
         self.invalidate_read_file_cache_path(to).await;
+        self.invalidate_attr_cache_path(from).await;
+        self.invalidate_attr_cache_path(to).await;
         Ok(())
+    }
+
+    async fn attr_for_path(&self, path: &Path) -> Result<file::Attr, vfs::Error> {
+        let now = Instant::now();
+        {
+            let mut cache = self.attr_cache.lock().await;
+            if let Some(entry) = cache.attrs.get(path) {
+                if entry.expires_at > now {
+                    let attr = Self::attr_from_metadata(&entry.metadata);
+                    Self::touch_attr_cache_entry(&mut cache.order, path);
+                    return Ok(attr);
+                }
+            }
+            cache.attrs.remove(path);
+            cache.order.retain(|known_path| known_path != path);
+        }
+
+        let path_buf = path.to_path_buf();
+        let metadata = tokio::task::spawn_blocking(move || {
+            std::fs::symlink_metadata(path_buf).map_err(|error| Self::io_error_to_vfs(&error))
+        })
+        .await
+        .map_err(|_| vfs::Error::IO)??;
+
+        let attr = Self::attr_from_metadata(&metadata);
+
+        let mut cache = self.attr_cache.lock().await;
+        cache.attrs.insert(
+            path.to_path_buf(),
+            CachedAttrEntry { metadata, expires_at: Instant::now() + ATTRIBUTE_CACHE_TTL },
+        );
+        Self::touch_attr_cache_entry(&mut cache.order, path);
+
+        while cache.attrs.len() > ATTRIBUTE_CACHE_LIMIT {
+            let Some(evicted_path) = cache.order.pop_front() else {
+                break;
+            };
+            cache.attrs.remove(&evicted_path);
+        }
+
+        Ok(attr)
     }
 
     async fn get_cached_read_file(&self, path: &Path) -> Result<Arc<File>, vfs::Error> {
@@ -179,7 +239,20 @@ impl MirrorFS {
         cache.order.retain(|known_path| known_path != path && !known_path.starts_with(path));
     }
 
+    async fn invalidate_attr_cache_path(&self, path: &Path) {
+        let mut cache = self.attr_cache.lock().await;
+        cache.attrs.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
+        cache.order.retain(|known_path| known_path != path && !known_path.starts_with(path));
+    }
+
     fn touch_read_cache_entry(order: &mut VecDeque<PathBuf>, path: &Path) {
+        if let Some(pos) = order.iter().position(|entry| entry == path) {
+            order.remove(pos);
+        }
+        order.push_back(path.to_path_buf());
+    }
+
+    fn touch_attr_cache_entry(order: &mut VecDeque<PathBuf>, path: &Path) {
         if let Some(pos) = order.iter().position(|entry| entry == path) {
             order.remove(pos);
         }
@@ -368,25 +441,30 @@ impl MirrorFS {
         Ok(())
     }
 
-    fn list_directory_entries(
+    async fn list_directory_entries(
         &self,
         dir_path: &Path,
     ) -> Result<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error> {
-        let mut entries = Vec::new();
-        let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
+        let dir_path = dir_path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let mut entries = Vec::new();
+            let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
-        for item in listing {
-            let item = item.map_err(|error| Self::io_error_to_vfs(&error))?;
-            let file_name = item.file_name();
-            let name = file::Name::new(file_name.to_string_lossy().into_owned())
-                .map_err(|_| vfs::Error::InvalidArgument)?;
-            let path = item.path();
-            let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
-            entries.push((name, path, metadata));
-        }
+            for item in listing {
+                let item = item.map_err(|error| Self::io_error_to_vfs(&error))?;
+                let file_name = item.file_name();
+                let name = file::Name::new(file_name.to_string_lossy().into_owned())
+                    .map_err(|_| vfs::Error::InvalidArgument)?;
+                let path = item.path();
+                let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
+                entries.push((name, path, metadata));
+            }
 
-        entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
-        Ok(entries)
+            entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
+            Ok::<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error>(entries)
+        })
+        .await
+        .map_err(|_| vfs::Error::IO)?
     }
 
     async fn child_path(

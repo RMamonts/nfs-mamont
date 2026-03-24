@@ -12,13 +12,12 @@ impl lookup::Lookup for MirrorFS {
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
-        let parent_meta = match Self::metadata(&parent_path) {
-            Ok(meta) => meta,
+        let parent_attr = match self.attr_for_path(&parent_path).await {
+            Ok(attr) => attr,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: None });
             }
         };
-        let parent_attr = Self::attr_from_metadata(&parent_meta);
         if let Err(error) = Self::validate_directory(&parent_attr) {
             return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
         }
@@ -45,8 +44,8 @@ impl lookup::Lookup for MirrorFS {
                 child_path
             }
         };
-        let child_meta = match Self::metadata(&child_path) {
-            Ok(meta) => meta,
+        let child_attr = match self.attr_for_path(&child_path).await {
+            Ok(attr) => attr,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
             }
@@ -61,7 +60,7 @@ impl lookup::Lookup for MirrorFS {
 
         Ok(lookup::Success {
             file: child_handle,
-            file_attr: Some(Self::attr_from_metadata(&child_meta)),
+            file_attr: Some(child_attr),
             dir_attr: Some(parent_attr),
         })
     }

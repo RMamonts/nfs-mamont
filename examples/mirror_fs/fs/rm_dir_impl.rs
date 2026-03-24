@@ -53,6 +53,7 @@ impl rm_dir::RmDir for MirrorFS {
         match fs::remove_dir(&child_path).await {
             Ok(()) => {
                 self.remove_cached_path(&child_path).await;
+                self.invalidate_attr_cache_path(&dir_path).await;
                 Ok(rm_dir::Success { wcc_data: Self::wcc_data(&dir_path, before) })
             }
             Err(error) => Err(rm_dir::Fail {

@@ -10,8 +10,8 @@ impl get_attr::GetAttr for MirrorFS {
                 return Err(get_attr::Fail { error });
             }
         };
-        match Self::metadata(&path) {
-            Ok(meta) => Ok(get_attr::Success { object: Self::attr_from_metadata(&meta) }),
+        match self.attr_for_path(&path).await {
+            Ok(attr) => Ok(get_attr::Success { object: attr }),
             Err(error) => Err(get_attr::Fail { error }),
         }
     }

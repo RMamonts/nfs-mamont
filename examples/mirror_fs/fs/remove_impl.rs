@@ -51,6 +51,7 @@ impl remove::Remove for MirrorFS {
             });
         }
         self.remove_cached_path(&child_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(remove::Success { wcc_data: Self::wcc_data(&dir_path, before) })
     }

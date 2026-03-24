@@ -81,6 +81,8 @@ impl write::Write for MirrorFS {
             });
         }
 
+        self.invalidate_attr_cache_path(&path).await;
+
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
             count: written,

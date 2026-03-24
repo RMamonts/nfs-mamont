@@ -38,6 +38,8 @@ impl set_attr::SetAttr for MirrorFS {
             return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(&path, before) });
         }
 
+        self.invalidate_attr_cache_path(&path).await;
+
         Ok(set_attr::Success { wcc_data: Self::wcc_data(&path, before) })
     }
 }

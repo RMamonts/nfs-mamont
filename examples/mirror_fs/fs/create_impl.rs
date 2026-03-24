@@ -108,6 +108,9 @@ impl create::Create for MirrorFS {
             }
         };
 
+        self.invalidate_attr_cache_path(&child_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
+
         Ok(create::Success {
             file: Some(handle),
             attr: Some(attr),

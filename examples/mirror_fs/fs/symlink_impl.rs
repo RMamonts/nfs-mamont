@@ -49,6 +49,9 @@ impl symlink::Symlink for MirrorFS {
             }
         };
 
+        self.invalidate_attr_cache_path(&link_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
+
         Ok(symlink::Success {
             file: Some(handle),
             attr: Some(attr),

@@ -57,6 +57,10 @@ impl link::Link for MirrorFS {
         }
         let _ = self.ensure_handle_for_path(&target_path).await;
 
+        self.invalidate_attr_cache_path(&file_path).await;
+        self.invalidate_attr_cache_path(&target_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
+
         Ok(link::Success {
             file_attr: Self::file_attr(&file_path),
             dir_wcc: Self::wcc_data(&dir_path, before),

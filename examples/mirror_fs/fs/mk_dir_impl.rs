@@ -48,6 +48,9 @@ impl mk_dir::MkDir for MirrorFS {
             }
         };
 
+        self.invalidate_attr_cache_path(&child_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
+
         Ok(mk_dir::Success {
             file: Some(handle),
             attr: Some(attr),
