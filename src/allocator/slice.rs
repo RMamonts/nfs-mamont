@@ -1,13 +1,11 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
-use tokio::sync::mpsc;
-
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
-    sender: super::Sender<Box<[u8]>>,
+    sender: Option<super::Sender<Box<[u8]>>>,
 }
 
 impl Slice {
@@ -40,13 +38,12 @@ impl Slice {
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
 
-        Self { buffers, range, sender }
+        Self { buffers, range, sender: Some(sender) }
     }
 
     // /// Returns an empty slice that owns no buffers.
     pub fn empty() -> Self {
-        let (sender, _receiver) = mpsc::unbounded_channel::<Box<[u8]>>();
-        Self { buffers: Vec::new(), range: 0..0, sender }
+        Self { buffers: Vec::new(), range: 0..0, sender: None }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -59,11 +56,11 @@ impl Slice {
 
     /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
     fn deallocate(&mut self) {
-        for mut buffer in self.buffers.drain(..) {
-            // No user data should exist after dealloc
-            buffer.fill(0u8);
-            // Ignore allocator drop
-            let _ = self.sender.send(buffer);
+        if let Some(sender) = &self.sender {
+            for buffer in self.buffers.drain(..) {
+                // Ignore allocator drop
+                let _ = sender.send(buffer);
+            }
         }
     }
 }

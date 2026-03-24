@@ -69,15 +69,16 @@ impl Allocator for Impl {
             return None;
         }
 
-        let mut remain_size = size.get();
-        let mut buffers = Vec::with_capacity(remain_size.div_ceil(self.buffer_size.get()));
+        let remain_size = size.get();
+        let count_needed = remain_size.div_ceil(self.buffer_size.get());
+        let mut buffers = Vec::with_capacity(count_needed);
 
-        while remain_size > 0 {
-            let buffer = self.receiver.recv().await?;
-            assert_eq!(buffer.len(), self.buffer_size.get());
-
-            remain_size = remain_size.saturating_sub(buffer.len());
-            buffers.push(buffer);
+        while buffers.len() < count_needed {
+            let limit = count_needed - buffers.len();
+            let count_read = self.receiver.recv_many(&mut buffers, limit).await;
+            if count_read == 0 {
+                return None;
+            }
         }
 
         Some(Slice::new(buffers, 0..size.get(), self.sender.clone()))

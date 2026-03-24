@@ -42,7 +42,6 @@ async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_si
     let allocator_capacity = NonZeroUsize::new(buffer_size.get() * count.get()).unwrap();
     let slice = allocator.allocate(allocator_capacity).await.unwrap();
     assert_eq!(slice.iter().count(), count.get());
-    assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
 }
 
 #[tokio::test]
@@ -95,7 +94,6 @@ async fn reclaiming() {
     for _ in 0..5 {
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
         assert_eq!(slice.iter().count(), COUNT.get());
-        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
 
         tokio::time::timeout(Duration::from_millis(120), async {
             allocator.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
@@ -108,7 +106,6 @@ async fn reclaiming() {
 
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
         assert_eq!(slice.iter().count(), COUNT.get());
-        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 }
 
