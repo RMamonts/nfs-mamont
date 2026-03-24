@@ -5,9 +5,11 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::collections::BTreeSet;
 
-use dashmap::DashMap;
 use moka::sync::Cache;
+use tokio::sync::RwLock;
+use whirlwind::ShardSet;
 
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
@@ -55,7 +57,6 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 };
 
 /// A file system implementation that mirrors a local directory.
-#[derive(Debug)]
 pub struct MirrorFS {
     fsmap: FsMap,
     read_file_cache: ReadFileCache,
@@ -64,10 +65,10 @@ pub struct MirrorFS {
     generation: u64,
 }
 
-#[derive(Debug)]
 struct ReadFileCache {
     files: Cache<PathBuf, Arc<File>>,
-    keys: DashMap<PathBuf, ()>,
+    keys: ShardSet<PathBuf>,
+    key_index: RwLock<BTreeSet<PathBuf>>,
 }
 
 #[derive(Debug)]
@@ -75,17 +76,18 @@ struct CachedAttrEntry {
     metadata: Metadata,
 }
 
-#[derive(Debug)]
 struct AttributeCache {
     attrs: Cache<PathBuf, Arc<CachedAttrEntry>>,
-    keys: DashMap<PathBuf, ()>,
+    keys: ShardSet<PathBuf>,
+    key_index: RwLock<BTreeSet<PathBuf>>,
 }
 
 impl ReadFileCache {
     fn new() -> Self {
         Self {
             files: Cache::builder().max_capacity(READ_FILE_CACHE_LIMIT as u64).build(),
-            keys: DashMap::new(),
+            keys: ShardSet::new(),
+            key_index: RwLock::new(BTreeSet::new()),
         }
     }
 }
@@ -97,7 +99,8 @@ impl AttributeCache {
                 .max_capacity(ATTRIBUTE_CACHE_LIMIT as u64)
                 .time_to_live(ATTRIBUTE_CACHE_TTL)
                 .build(),
-            keys: DashMap::new(),
+            keys: ShardSet::new(),
+            key_index: RwLock::new(BTreeSet::new()),
         }
     }
 }
@@ -135,7 +138,7 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let candidates = self.fsmap.path_candidates_for_handle(handle)?;
+        let candidates = self.fsmap.path_candidates_for_handle(handle).await?;
         for candidate in candidates {
             if self.attr_for_path(&candidate).await.is_ok() {
                 return Ok(candidate);
@@ -146,7 +149,7 @@ impl MirrorFS {
 
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
         let attr = self.attr_for_path(path).await?;
-        self.fsmap.ensure_handle_for_attr(path, &attr)
+        self.fsmap.ensure_handle_for_attr(path, &attr).await
     }
 
     async fn ensure_handles_for_paths(
@@ -167,13 +170,13 @@ impl MirrorFS {
     }
 
     async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.remove_path(path);
+        self.fsmap.remove_path(path).await;
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.rename_path(from, to)?;
+        self.fsmap.rename_path(from, to).await?;
         self.invalidate_read_file_cache_path(from).await;
         self.invalidate_read_file_cache_path(to).await;
         self.invalidate_attr_cache_path(from).await;
@@ -185,7 +188,8 @@ impl MirrorFS {
         if let Some(entry) = self.attr_cache.attrs.get(path) {
             return Ok(Self::attr_from_metadata(&entry.metadata));
         }
-        self.attr_cache.keys.remove(path);
+        self.attr_cache.keys.remove(&path.to_path_buf()).await;
+        self.attr_cache.key_index.write().await.remove(path);
 
         let path_buf = path.to_path_buf();
         let metadata = tokio::task::spawn_blocking(move || {
@@ -198,8 +202,9 @@ impl MirrorFS {
 
         let key = path.to_path_buf();
         self.attr_cache.attrs.insert(key.clone(), Arc::new(CachedAttrEntry { metadata }));
-        self.attr_cache.keys.insert(key, ());
-        self.maybe_compact_attr_keys();
+        self.attr_cache.keys.insert(key.clone()).await;
+        self.attr_cache.key_index.write().await.insert(key);
+        self.maybe_compact_attr_keys().await;
 
         Ok(attr)
     }
@@ -222,87 +227,72 @@ impl MirrorFS {
 
         let key = path.to_path_buf();
         self.read_file_cache.files.insert(key.clone(), opened.clone());
-        self.read_file_cache.keys.insert(key, ());
-        self.maybe_compact_read_file_keys();
+        self.read_file_cache.keys.insert(key.clone()).await;
+        self.read_file_cache.key_index.write().await.insert(key);
+        self.maybe_compact_read_file_keys().await;
 
         Ok(opened)
     }
 
     async fn invalidate_read_file_cache_path(&self, path: &Path) {
-        let keys: Vec<PathBuf> = self
-            .read_file_cache
-            .keys
-            .iter()
-            .filter(|entry| {
-                let known_path = entry.key();
-                known_path == path || known_path.starts_with(path)
-            })
-            .map(|entry| entry.key().clone())
-            .collect();
+        let keys: Vec<PathBuf> = {
+            let index = self.read_file_cache.key_index.read().await;
+            index
+                .iter()
+                .filter(|known_path| *known_path == path || known_path.starts_with(path))
+                .cloned()
+                .collect()
+        };
         for key in keys {
             self.read_file_cache.files.invalidate(&key);
-            self.read_file_cache.keys.remove(&key);
+            self.read_file_cache.keys.remove(&key).await;
+            self.read_file_cache.key_index.write().await.remove(&key);
         }
     }
 
     async fn invalidate_attr_cache_path(&self, path: &Path) {
-        let keys: Vec<PathBuf> = self
-            .attr_cache
-            .keys
-            .iter()
-            .filter(|entry| {
-                let known_path = entry.key();
-                known_path == path || known_path.starts_with(path)
-            })
-            .map(|entry| entry.key().clone())
-            .collect();
+        let keys: Vec<PathBuf> = {
+            let index = self.attr_cache.key_index.read().await;
+            index
+                .iter()
+                .filter(|known_path| *known_path == path || known_path.starts_with(path))
+                .cloned()
+                .collect()
+        };
         for key in keys {
             self.attr_cache.attrs.invalidate(&key);
-            self.attr_cache.keys.remove(&key);
+            self.attr_cache.keys.remove(&key).await;
+            self.attr_cache.key_index.write().await.remove(&key);
         }
     }
 
-    fn maybe_compact_read_file_keys(&self) {
-        if self.read_file_cache.keys.len() <= READ_FILE_CACHE_LIMIT * 4 {
+    async fn maybe_compact_read_file_keys(&self) {
+        if self.read_file_cache.key_index.read().await.len() <= READ_FILE_CACHE_LIMIT * 4 {
             return;
         }
-        let stale_keys: Vec<PathBuf> = self
-            .read_file_cache
-            .keys
-            .iter()
-            .filter_map(|entry| {
-                let key = entry.key().clone();
-                if self.read_file_cache.files.get(&key).is_none() {
-                    Some(key)
-                } else {
-                    None
-                }
-            })
+        let keys: Vec<PathBuf> = self.read_file_cache.key_index.read().await.iter().cloned().collect();
+        let stale_keys: Vec<PathBuf> = keys
+            .into_iter()
+            .filter(|key| self.read_file_cache.files.get(key).is_none())
             .collect();
         for key in stale_keys {
-            self.read_file_cache.keys.remove(&key);
+            self.read_file_cache.keys.remove(&key).await;
+            self.read_file_cache.key_index.write().await.remove(&key);
         }
     }
 
-    fn maybe_compact_attr_keys(&self) {
-        if self.attr_cache.keys.len() <= ATTRIBUTE_CACHE_LIMIT * 4 {
+    async fn maybe_compact_attr_keys(&self) {
+        if self.attr_cache.key_index.read().await.len() <= ATTRIBUTE_CACHE_LIMIT * 4 {
             return;
         }
-        let stale_keys: Vec<PathBuf> = self
-            .attr_cache
-            .keys
-            .iter()
-            .filter_map(|entry| {
-                let key = entry.key().clone();
-                if self.attr_cache.attrs.get(&key).is_none() {
-                    Some(key)
-                } else {
-                    None
-                }
-            })
+        let keys: Vec<PathBuf> = self.attr_cache.key_index.read().await.iter().cloned().collect();
+        let stale_keys: Vec<PathBuf> = keys
+            .into_iter()
+            .filter(|key| self.attr_cache.attrs.get(key).is_none())
             .collect();
         for key in stale_keys {
-            self.attr_cache.keys.remove(&key);
+            self.attr_cache.keys.remove(&key).await;
+            self.attr_cache.key_index.write().await.remove(&key);
         }
     }
 
