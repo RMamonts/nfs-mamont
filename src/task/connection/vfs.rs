@@ -1,6 +1,7 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -14,10 +15,11 @@ pub struct VfsTask<V>
 where
     V: Vfs + Send + Sync + 'static,
 {
+    inflight_limit: Arc<Semaphore>,
     backend: Arc<V>,
     allocator: Arc<Impl>,
-    command_receiver: UnboundedReceiver<NfsArgWrapper>,
-    result_sender: UnboundedSender<ProcReply>,
+    command_receiver: Receiver<NfsArgWrapper>,
+    result_sender: Sender<ProcReply>,
 }
 
 impl<V> VfsTask<V>
@@ -27,10 +29,13 @@ where
     /// Creates new instance of [`VfsTask`].
     pub fn new(
         context: &ServerContext<V>,
-        command_receiver: UnboundedReceiver<NfsArgWrapper>,
-        result_sender: UnboundedSender<ProcReply>,
+        command_receiver: Receiver<NfsArgWrapper>,
+        result_sender: Sender<ProcReply>,
     ) -> Self {
+        const MAX_INFLIGHT_OPS: usize = 128;
+
         Self {
+            inflight_limit: Arc::new(Semaphore::new(MAX_INFLIGHT_OPS)),
             backend: context.get_backend(),
             allocator: context.get_read_allocator(),
             command_receiver,
@@ -62,8 +67,15 @@ where
             let backend = self.backend.clone();
             let allocator = self.allocator.clone();
             let result_sender = self.result_sender.clone();
+            let inflight_limit = self.inflight_limit.clone();
+
+            let permit = match inflight_limit.acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => break,
+            };
 
             tokio::spawn(async move {
+                let _permit = permit;
                 let response = match *proc {
                     NfsArguments::Null => NfsRes::Null,
                     NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
@@ -118,7 +130,7 @@ where
                 };
 
                 // Write task may already be closed; then this connection pipeline is done.
-                let _ = result_sender.send(reply);
+                let _ = result_sender.send(reply).await;
             });
         }
     }

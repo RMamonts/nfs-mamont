@@ -7,7 +7,8 @@
 //! - [`vfs::VfsTask`] - Processes commands and performs VFS operations
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
-//! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
+//! These tasks communicate via bounded channels to form an asynchronous processing pipeline
+//! with built-in backpressure.
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -22,6 +23,9 @@ use crate::vfs::Vfs;
 mod read;
 mod vfs;
 mod write;
+
+const COMMAND_CHANNEL_CAPACITY: usize = 512;
+const RESULT_CHANNEL_CAPACITY: usize = 512;
 
 // Creates all connection tasks with their inner connections
 pub async fn new<V>(
@@ -40,9 +44,10 @@ pub async fn new<V>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
+    let (result_sender, result_receiver) = mpsc::channel::<ProcReply>(RESULT_CHANNEL_CAPACITY);
     // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<NfsArgWrapper>();
+    let (command_sender, command_receiver) =
+        mpsc::channel::<NfsArgWrapper>(COMMAND_CHANNEL_CAPACITY);
 
     read::ReadTask::new(
         readhalf,

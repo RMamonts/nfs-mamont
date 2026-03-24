@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, Sender, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
 use crate::mount::dump::Dump;
@@ -16,7 +16,7 @@ use crate::task::{ProcReply, ProcResult};
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
+    pub result_tx: Sender<ProcReply>,
     /// Client socket address from connection task.
     pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
@@ -111,10 +111,12 @@ impl MountTask {
             // - some logs when occurred error
             // - or retry with fail
             // * but don't stop task
-            let _ = result_tx.send(ProcReply {
+            let _ = result_tx
+                .send(ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
-            });
+                })
+                .await;
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }

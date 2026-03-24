@@ -94,7 +94,40 @@ where
         let (socket, _) = listener.accept().await?;
 
         socket.set_nodelay(true)?;
+        tune_socket_buffers(&socket)?;
 
         connection::new(socket, mount_sender.clone(), &context).await;
     }
+}
+
+#[cfg(target_os = "linux")]
+fn tune_socket_buffers(socket: &tokio::net::TcpStream) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    const SOCKET_BUFFER_SIZE: libc::c_int = 4 * 1024 * 1024;
+
+    let fd = socket.as_raw_fd();
+    let value_ptr = &SOCKET_BUFFER_SIZE as *const libc::c_int as *const libc::c_void;
+    let value_len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+
+    let snd_result = unsafe {
+        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_SNDBUF, value_ptr, value_len)
+    };
+    if snd_result != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let rcv_result = unsafe {
+        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_RCVBUF, value_ptr, value_len)
+    };
+    if rcv_result != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tune_socket_buffers(_socket: &tokio::net::TcpStream) -> std::io::Result<()> {
+    Ok(())
 }
