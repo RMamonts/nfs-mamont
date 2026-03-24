@@ -1,6 +1,6 @@
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
@@ -36,6 +36,7 @@ impl WriteTask {
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
+            info!(xid=%reply.xid, "write task: reply");
             match serializer.form_reply(reply, verifier).await {
                 Ok(_) => {
                     // Reply successfully written to socket

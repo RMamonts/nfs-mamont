@@ -34,13 +34,14 @@ impl read_dir::ReadDir for MirrorFS {
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
+        let mut selected_paths = Vec::new();
         for (index, (name, path, meta)) in entries.into_iter().enumerate().skip(start) {
             let estimated = (24 + name.as_str().len()) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.count {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);
-            let _ = self.ensure_handle_for_path(&path).await;
+            selected_paths.push(path);
             result.push(read_dir::Entry {
                 file_id: attr.file_id,
                 file_name: name,
@@ -48,6 +49,9 @@ impl read_dir::ReadDir for MirrorFS {
             });
             used = used.saturating_add(estimated);
         }
+
+        self.cache_handles_for_paths(&selected_paths).await;
+
         let eof = start >= total_entries || start.saturating_add(result.len()) >= total_entries;
 
         Ok(read_dir::Success {

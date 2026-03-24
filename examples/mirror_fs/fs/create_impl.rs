@@ -41,33 +41,24 @@ impl create::Create for MirrorFS {
 
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
-        let existed = std::fs::symlink_metadata(&child_path).is_ok();
 
         let apply_attr = match &args.how {
             create::How::Unchecked(attr) => {
-                if !existed {
-                    if let Err(error) = OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(false)
-                        .open(&child_path)
-                        .await
-                    {
-                        return Err(create::Fail {
-                            error: Self::io_error_to_vfs(&error),
-                            wcc_data: Self::wcc_data(&dir_path, before),
-                        });
-                    }
+                if let Err(error) = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&child_path)
+                    .await
+                {
+                    return Err(create::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: Self::wcc_data(&dir_path, before),
+                    });
                 }
                 attr
             }
             create::How::Guarded(attr) => {
-                if existed {
-                    return Err(create::Fail {
-                        error: vfs::Error::Exist,
-                        wcc_data: Self::wcc_data(&dir_path, before),
-                    });
-                }
                 if let Err(error) =
                     OpenOptions::new().write(true).create_new(true).open(&child_path).await
                 {

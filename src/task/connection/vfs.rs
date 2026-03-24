@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
@@ -48,6 +48,7 @@ impl VfsTask {
         while let Some(command) = command_receiver.recv().await {
             let NfsArgWrapper { header, proc } = command;
             let proc_name = Self::proc_name(&proc);
+            info!(xid=header.xid, proc=%proc_name);
 
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,

@@ -17,26 +17,23 @@ impl read::Read for MirrorFS {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let meta = match Self::metadata(&path) {
+        let mut file = match File::open(&path).await {
+            Ok(file) => file,
+            Err(error) => {
+                return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
+            }
+        };
+
+        let meta = match file.metadata().await {
             Ok(meta) => meta,
             Err(error) => {
-                return Err(read::Fail { error, file_attr: None });
+                return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
             }
         };
         let attr = Self::attr_from_metadata(&meta);
         if let Err(error) = Self::validate_regular(&attr) {
             return Err(read::Fail { error, file_attr: Some(attr) });
         }
-
-        let mut file = match File::open(&path).await {
-            Ok(file) => file,
-            Err(error) => {
-                return Err(read::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_attr: Some(attr),
-                });
-            }
-        };
 
         let file_len = meta.len();
         let start = args.offset.min(file_len);

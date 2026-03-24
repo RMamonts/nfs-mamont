@@ -78,10 +78,35 @@ impl rename::Rename for MirrorFS {
                 });
             }
             if target_meta.is_dir() {
-                if let Ok(mut iter) = std::fs::read_dir(&to_path) {
-                    if iter.next().is_some() {
+                let mut iter = match fs::read_dir(&to_path).await {
+                    Ok(iter) => iter,
+                    Err(error) => {
+                        return Err(rename::Fail {
+                            error: Self::io_error_to_vfs(&error),
+                            from_dir_wcc: vfs::WccData {
+                                before: from_before,
+                                after: from_before_after,
+                            },
+                            to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
+                        });
+                    }
+                };
+
+                match iter.next_entry().await {
+                    Ok(Some(_)) => {
                         return Err(rename::Fail {
                             error: vfs::Error::Exist,
+                            from_dir_wcc: vfs::WccData {
+                                before: from_before,
+                                after: from_before_after,
+                            },
+                            to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
+                        });
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        return Err(rename::Fail {
+                            error: Self::io_error_to_vfs(&error),
                             from_dir_wcc: vfs::WccData {
                                 before: from_before,
                                 after: from_before_after,

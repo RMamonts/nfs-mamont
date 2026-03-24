@@ -52,6 +52,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 #[derive(Debug)]
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
+    root_path: PathBuf,
     generation: u64,
 }
 
@@ -62,7 +63,7 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap::new(root)), generation }
+        Self { fsmap: RwLock::new(FsMap::new(root.clone())), root_path: root, generation }
     }
 
     /// Returns the root handle.
@@ -88,6 +89,25 @@ impl MirrorFS {
 
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
         self.fsmap.write().await.ensure_handle_for_path(path)
+    }
+
+    async fn ensure_handles_for_paths(
+        &self,
+        paths: &[PathBuf],
+    ) -> Result<Vec<file::Handle>, vfs::Error> {
+        let mut fsmap = self.fsmap.write().await;
+        let mut handles = Vec::with_capacity(paths.len());
+        for path in paths {
+            handles.push(fsmap.ensure_handle_for_path(path)?);
+        }
+        Ok(handles)
+    }
+
+    async fn cache_handles_for_paths(&self, paths: &[PathBuf]) {
+        let mut fsmap = self.fsmap.write().await;
+        for path in paths {
+            let _ = fsmap.ensure_handle_for_path(path);
+        }
     }
 
     async fn remove_cached_path(&self, path: &Path) {
@@ -313,7 +333,6 @@ impl MirrorFS {
     }
 
     async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
-        let root = self.root_handle().await;
-        self.path_for_handle(&root).await
+        Ok(self.root_path.clone())
     }
 }

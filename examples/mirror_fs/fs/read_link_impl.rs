@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tokio::fs;
 
 use nfs_mamont::vfs::{self, file, read_link};
 
@@ -29,7 +30,7 @@ impl read_link::ReadLink for MirrorFS {
                 symlink_attr: Some(attr),
             });
         }
-        let target = match std::fs::read_link(&path) {
+        let target = match fs::read_link(&path).await {
             Ok(target) => target,
             Err(error) => {
                 return Err(read_link::Fail {

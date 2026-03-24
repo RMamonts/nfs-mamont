@@ -20,23 +20,30 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let before_meta = std::fs::symlink_metadata(&path).ok();
-        let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
-        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
-            if let Err(error) = Self::validate_regular(&attr) {
-                return Err(write::Fail { error, wcc_data: Self::wcc_data(&path, before) });
-            }
-        }
-
         let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
             Ok(file) => file,
             Err(error) => {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
-                    wcc_data: Self::wcc_data(&path, before),
+                    wcc_data: vfs::WccData { before: None, after: None },
                 });
             }
         };
+
+        let before_meta = match file.metadata().await {
+            Ok(meta) => meta,
+            Err(error) => {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: vfs::WccData { before: None, after: None },
+                });
+            }
+        };
+        let before = Some(Self::wcc_attr_from_metadata(&before_meta));
+        let attr = Self::attr_from_metadata(&before_meta);
+        if let Err(error) = Self::validate_regular(&attr) {
+            return Err(write::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+        }
 
         if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
             return Err(write::Fail {
