@@ -8,7 +8,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dashmap::DashMap;
 use moka::sync::Cache;
-use tokio::sync::RwLock;
 
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
@@ -58,7 +57,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 /// A file system implementation that mirrors a local directory.
 #[derive(Debug)]
 pub struct MirrorFS {
-    fsmap: RwLock<FsMap>,
+    fsmap: FsMap,
     read_file_cache: ReadFileCache,
     attr_cache: AttributeCache,
     root_path: PathBuf,
@@ -111,7 +110,7 @@ impl MirrorFS {
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
         Self {
-            fsmap: RwLock::new(FsMap::new(root.clone())),
+            fsmap: FsMap::new(root.clone()),
             read_file_cache: ReadFileCache::new(),
             attr_cache: AttributeCache::new(),
             root_path: root,
@@ -121,7 +120,7 @@ impl MirrorFS {
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.read().await.root_handle()
+        self.fsmap.root_handle()
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -136,41 +135,45 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let fsmap = self.fsmap.read().await;
-        fsmap.path_for_handle(handle)
+        let candidates = self.fsmap.path_candidates_for_handle(handle)?;
+        for candidate in candidates {
+            if self.attr_for_path(&candidate).await.is_ok() {
+                return Ok(candidate);
+            }
+        }
+        Err(vfs::Error::StaleFile)
     }
 
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        self.fsmap.write().await.ensure_handle_for_path(path)
+        let attr = self.attr_for_path(path).await?;
+        self.fsmap.ensure_handle_for_attr(path, &attr)
     }
 
     async fn ensure_handles_for_paths(
         &self,
         paths: &[PathBuf],
     ) -> Result<Vec<file::Handle>, vfs::Error> {
-        let mut fsmap = self.fsmap.write().await;
         let mut handles = Vec::with_capacity(paths.len());
         for path in paths {
-            handles.push(fsmap.ensure_handle_for_path(path)?);
+            handles.push(self.ensure_handle_for_path(path).await?);
         }
         Ok(handles)
     }
 
     async fn cache_handles_for_paths(&self, paths: &[PathBuf]) {
-        let mut fsmap = self.fsmap.write().await;
         for path in paths {
-            let _ = fsmap.ensure_handle_for_path(path);
+            let _ = self.ensure_handle_for_path(path).await;
         }
     }
 
     async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.write().await.remove_path(path);
+        self.fsmap.remove_path(path);
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.write().await.rename_path(from, to)?;
+        self.fsmap.rename_path(from, to)?;
         self.invalidate_read_file_cache_path(from).await;
         self.invalidate_read_file_cache_path(to).await;
         self.invalidate_attr_cache_path(from).await;
