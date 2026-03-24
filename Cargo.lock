@@ -339,6 +339,7 @@ dependencies = [
  "byteorder",
  "crossbeam-queue",
  "io-uring",
+ "libc",
  "moka",
  "num-derive",
  "num-traits",

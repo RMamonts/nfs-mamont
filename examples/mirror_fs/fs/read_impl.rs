@@ -7,6 +7,8 @@ use super::MirrorFS;
 
 impl read::Read for MirrorFS {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
+        const SENDFILE_MIN_BYTES: usize = 32 * 1024;
+
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
@@ -36,8 +38,16 @@ impl read::Read for MirrorFS {
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut read_count = 0usize;
+        let mut sendfile_source = None;
 
-        if requested > 0 {
+        #[cfg(target_os = "linux")]
+        if requested >= SENDFILE_MIN_BYTES {
+            read_count = requested;
+            sendfile_source = Some(read::SendfileSource { file: file.clone(), offset: start });
+            data = Slice::empty();
+        }
+
+        if requested > 0 && sendfile_source.is_none() {
             let read_result = tokio::task::spawn_blocking(move || {
                 let mut remaining = requested;
                 let mut local_offset = start;
@@ -82,7 +92,10 @@ impl read::Read for MirrorFS {
                     });
                 }
                 Err(_) => {
-                    return Err(read::Fail { error: nfs_mamont::vfs::Error::IO, file_attr: Some(attr) });
+                    return Err(read::Fail {
+                        error: nfs_mamont::vfs::Error::IO,
+                        file_attr: Some(attr),
+                    });
                 }
             };
 
@@ -97,6 +110,7 @@ impl read::Read for MirrorFS {
                 eof: start.saturating_add(read_count as u64) >= file_len,
             },
             data,
+            sendfile_source,
         })
     }
 }

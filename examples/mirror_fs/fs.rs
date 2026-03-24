@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::fs::Metadata;
 use std::io::ErrorKind;
@@ -6,7 +7,6 @@ use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::collections::BTreeSet;
 
 use moka::sync::Cache;
 use tokio::sync::RwLock;
@@ -302,11 +302,10 @@ impl MirrorFS {
         if self.read_file_cache.key_index.read().await.len() <= READ_FILE_CACHE_LIMIT * 4 {
             return;
         }
-        let keys: Vec<PathBuf> = self.read_file_cache.key_index.read().await.iter().cloned().collect();
-        let stale_keys: Vec<PathBuf> = keys
-            .into_iter()
-            .filter(|key| self.read_file_cache.files.get(key).is_none())
-            .collect();
+        let keys: Vec<PathBuf> =
+            self.read_file_cache.key_index.read().await.iter().cloned().collect();
+        let stale_keys: Vec<PathBuf> =
+            keys.into_iter().filter(|key| self.read_file_cache.files.get(key).is_none()).collect();
         for key in stale_keys {
             self.read_file_cache.keys.remove(&key).await;
             self.read_file_cache.key_index.write().await.remove(&key);
@@ -318,10 +317,8 @@ impl MirrorFS {
             return;
         }
         let keys: Vec<PathBuf> = self.attr_cache.key_index.read().await.iter().cloned().collect();
-        let stale_keys: Vec<PathBuf> = keys
-            .into_iter()
-            .filter(|key| self.attr_cache.attrs.get(key).is_none())
-            .collect();
+        let stale_keys: Vec<PathBuf> =
+            keys.into_iter().filter(|key| self.attr_cache.attrs.get(key).is_none()).collect();
         for key in stale_keys {
             self.attr_cache.keys.remove(&key).await;
             self.attr_cache.key_index.write().await.remove(&key);
@@ -538,7 +535,8 @@ impl MirrorFS {
         let dir_path = dir_path.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let mut entries = Vec::new();
-            let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
+            let listing =
+                std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
             for item in listing {
                 let item = item.map_err(|error| Self::io_error_to_vfs(&error))?;

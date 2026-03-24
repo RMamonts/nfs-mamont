@@ -84,9 +84,7 @@ impl FsMap {
         let _guard = self.mutation_lock.lock().await;
 
         let key = ObjectKey { dev: attr.fs_id, ino: attr.file_id };
-        if let Some(id) = {
-            self.key_to_id.get(&key).await.map(|id_ref| *id_ref.value())
-        } {
+        if let Some(id) = { self.key_to_id.get(&key).await.map(|id_ref| *id_ref.value()) } {
             self.insert_relative_alias(relative, key).await;
             return Ok(Self::encode_handle(id));
         }
@@ -130,7 +128,6 @@ impl FsMap {
             self.relative_index.write().await.remove(&known_relative);
 
             if let Some(paths_lock) = self.paths_lock_for_key(&key).await {
-
                 let mut paths = paths_lock.write().await;
                 paths.remove(&known_relative);
                 let empty = paths.is_empty();
@@ -170,12 +167,9 @@ impl FsMap {
         }
 
         for old_relative in to_rename {
-            let Some(key) = ({
-                self.relative_to_key
-                    .get(&old_relative)
-                    .await
-                    .map(|key_ref| *key_ref.value())
-            }) else {
+            let Some(key) =
+                ({ self.relative_to_key.get(&old_relative).await.map(|key_ref| *key_ref.value()) })
+            else {
                 continue;
             };
 
@@ -198,7 +192,6 @@ impl FsMap {
             }
 
             if let Some(paths_lock) = self.paths_lock_for_key(&key).await {
-
                 let mut paths = paths_lock.write().await;
                 paths.remove(&old_relative);
                 paths.insert(new_relative);
@@ -247,13 +240,10 @@ impl FsMap {
             let current = next_id.load(Ordering::Relaxed);
             let candidate = if current <= 1 { 2 } else { current };
             let next = candidate.wrapping_add(1).max(2);
-            if next_id
-                .compare_exchange(current, next, Ordering::AcqRel, Ordering::Relaxed)
-                .is_ok()
+            if next_id.compare_exchange(current, next, Ordering::AcqRel, Ordering::Relaxed).is_ok()
             {
                 return candidate;
             }
         }
     }
-
 }

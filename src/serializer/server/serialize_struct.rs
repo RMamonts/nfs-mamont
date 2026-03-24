@@ -8,7 +8,11 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
+
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
 
 use crate::allocator::Slice;
 use crate::mount::MountRes;
@@ -42,6 +46,7 @@ const HEADER_MASK: usize = 0x8000_0000;
 /// Size of RMS header
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_SIZE: usize = 4;
+const SENDFILE_MIN_BYTES: usize = 32 * 1024;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -60,23 +65,23 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<T: AsyncWrite + Unpin> {
-    buffer: WriteBuffer<T>,
+pub struct Serializer {
+    buffer: WriteBuffer,
 }
 
-impl<T: AsyncWrite + Unpin> Serializer<T> {
+impl Serializer {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub async fn flush(&mut self) -> io::Result<()> {
         use tokio::io::AsyncWriteExt;
         self.buffer.socket.flush().await
     }
 
-    pub fn new(writer: T) -> Self {
+    pub fn new(writer: OwnedWriteHalf) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    fn with_capacity(writer: T, capacity: usize) -> Self {
+    fn with_capacity(writer: OwnedWriteHalf, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
@@ -113,7 +118,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     let count = ok.head.count as usize;
                     usize_as_u32(&mut self.buffer, STATUS_OK)?;
                     read::result_ok_part(&mut self.buffer, ok.head)?;
-                    self.buffer.send_inner_with_slice(ok.data, count).await
+                    self.buffer.send_inner_with_slice(ok.data, ok.sendfile_source, count).await
                 }
                 Err(err) => {
                     error(&mut self.buffer, err.error)?;
@@ -276,12 +281,12 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<T: AsyncWrite + Unpin> {
-    socket: T,
+struct WriteBuffer {
+    socket: OwnedWriteHalf,
     buf: Vec<u8>,
 }
 
-impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
+impl Write for WriteBuffer {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -294,9 +299,9 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     }
 }
 
-impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
+impl WriteBuffer {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
+    fn new(socket: OwnedWriteHalf, capacity: usize) -> WriteBuffer {
         let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
         buffer.clean();
         buffer
@@ -335,7 +340,12 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
+    async fn send_inner_with_slice(
+        &mut self,
+        slice: Slice,
+        sendfile_source: Option<crate::vfs::read::SendfileSource>,
+        count: usize,
+    ) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Slice in vfs::read::Success) from XDR
@@ -350,15 +360,65 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
         self.socket.write_all(&self.buf).await?;
 
-        // later change to explicit cursor (when one implemented)
-        for buf in slice.iter() {
-            self.socket.write_all(buf).await?;
+        let mut sent_with_sendfile = false;
+
+        #[cfg(target_os = "linux")]
+        if let Some(source) = sendfile_source {
+            if count >= SENDFILE_MIN_BYTES {
+                self.send_file_data_linux(source, count).await?;
+                sent_with_sendfile = true;
+            }
+        }
+
+        if !sent_with_sendfile {
+            // later change to explicit cursor (when one implemented)
+            for buf in slice.iter() {
+                self.socket.write_all(buf).await?;
+            }
         }
 
         // write padding directly to socket
         let slice = [0u8; ALIGNMENT];
         self.socket.write_all(&slice[..padding]).await?;
         self.clean();
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn send_file_data_linux(
+        &self,
+        source: crate::vfs::read::SendfileSource,
+        count: usize,
+    ) -> io::Result<()> {
+        let in_fd = source.file.as_raw_fd();
+        let out_fd = self.socket.as_ref().as_raw_fd();
+
+        let mut offset: libc::off_t = source.offset.try_into().map_err(|_| {
+            io::Error::new(ErrorKind::InvalidInput, "READ offset does not fit off_t")
+        })?;
+        let mut remaining = count;
+
+        while remaining > 0 {
+            let sent = unsafe {
+                libc::sendfile(out_fd, in_fd, &mut offset, remaining.min(usize::MAX >> 1))
+            };
+
+            if sent > 0 {
+                remaining -= sent as usize;
+                continue;
+            }
+
+            let err = io::Error::last_os_error();
+            match err.raw_os_error() {
+                Some(libc::EINTR) => continue,
+                Some(libc::EAGAIN) => {
+                    self.socket.writable().await?;
+                    continue;
+                }
+                _ => return Err(err),
+            }
+        }
+
         Ok(())
     }
 }

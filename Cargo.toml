@@ -25,6 +25,7 @@ moka = { version = "0.12.11", features = ["sync"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = "0.7"
+libc = "0.2"
 
 [dev-dependencies]
 [package.metadata.cargo-udeps.ignore]
