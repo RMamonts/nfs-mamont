@@ -42,22 +42,6 @@ impl MultiSlice {
     pub fn iter_mut(&mut self) -> MultiMutIter<'_> {
         self.into_iter()
     }
-
-    fn deallocate(&mut self) {
-        match self {
-            MultiSlice::One(slice) => slice.deallocate(),
-            MultiSlice::Cons(slice, next) => {
-                slice.deallocate();
-                next.deallocate();
-            }
-        }
-    }
-}
-
-impl Drop for MultiSlice {
-    fn drop(&mut self) {
-        self.deallocate();
-    }
 }
 
 pub struct MultiIter<'a> {
