@@ -66,6 +66,11 @@ pub struct Serializer<T: AsyncWrite + Unpin> {
 
 impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
+    pub async fn flush(&mut self) -> io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        self.buffer.socket.flush().await
+    }
+
     pub fn new(writer: T) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
     }

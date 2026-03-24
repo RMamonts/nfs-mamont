@@ -29,24 +29,30 @@ impl WriteTask {
 
     async fn run(self) {
         let mut result_receiver = self.result_receiver;
-        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
+        let buf_writer = tokio::io::BufWriter::with_capacity(128 * 1024, self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(buf_writer);
 
         while let Some(reply) = result_receiver.recv().await {
-            // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-            // Use proper authentication verifier instead of None
+            // Process the first received reply
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-
             info!(xid=%reply.xid, "write task: reply");
-            match serializer.form_reply(reply, verifier).await {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                }
-                Err(e) => {
+            if let Err(e) = serializer.form_reply(reply, verifier).await {
+                error!(error=%e, "write task: failed to serialize/send reply");
+            }
+
+            // Drain any additionally available replies from the channel synchronously
+            while let Ok(next_reply) = result_receiver.try_recv() {
+                let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+                info!(xid=%next_reply.xid, "write task: reply (batched)");
+                if let Err(e) = serializer.form_reply(next_reply, verifier).await {
                     error!(error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
                 }
-            };
+            }
+
+            // After draining all ready replies, flush the buffered writer to the socket.
+            if let Err(e) = serializer.flush().await {
+                error!(error=%e, "write task: failed to flush buffered replies");
+            }
         }
     }
 }
