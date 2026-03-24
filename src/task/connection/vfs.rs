@@ -10,17 +10,23 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
-pub struct VfsTask {
-    backend: Arc<dyn Vfs + Send + Sync + 'static>,
+pub struct VfsTask<V>
+where
+    V: Vfs + Send + Sync + 'static,
+{
+    backend: Arc<V>,
     allocator: Arc<Impl>,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
     result_sender: UnboundedSender<ProcReply>,
 }
 
-impl VfsTask {
+impl<V> VfsTask<V>
+where
+    V: Vfs + Send + Sync + 'static,
+{
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        context: &ServerContext,
+        context: &ServerContext<V>,
         command_receiver: UnboundedReceiver<NfsArgWrapper>,
         result_sender: UnboundedSender<ProcReply>,
     ) -> Self {

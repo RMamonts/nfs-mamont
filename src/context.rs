@@ -5,16 +5,22 @@ use std::sync::Arc;
 
 use crate::{allocator::Impl, vfs};
 
-pub struct ServerContext {
+pub struct ServerContext<V>
+where
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     read_allocator: Arc<Impl>,
     write_allocator: Arc<Impl>,
-    backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+    backend: Arc<V>,
 }
 
-impl ServerContext {
+impl<V> ServerContext<V>
+where
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Builds context from allocator limits without exposing allocator implementation.
     pub fn new(
-        backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+        backend: Arc<V>,
         read_buffer_size: NonZeroUsize,
         read_buffer_count: NonZeroUsize,
         write_buffer_size: NonZeroUsize,
@@ -26,7 +32,7 @@ impl ServerContext {
         Self { read_allocator, write_allocator, backend }
     }
 
-    pub fn get_backend(&self) -> Arc<dyn vfs::Vfs + Send + Sync + 'static> {
+    pub fn get_backend(&self) -> Arc<V> {
         Arc::clone(&self.backend)
     }
 

@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Create`] interface.
 
-use async_trait::async_trait;
-
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::vfs;
 
@@ -64,8 +62,8 @@ pub struct Args {
     pub how: How,
 }
 
-#[async_trait]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, args: Args) -> Result<Success, Fail>;
+    fn create(&self, args: Args)
+        -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

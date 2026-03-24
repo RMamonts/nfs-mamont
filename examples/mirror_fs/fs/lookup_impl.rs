@@ -1,12 +1,9 @@
 use std::path::PathBuf;
 
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::lookup;
 
 use super::MirrorFS;
 
-#[async_trait]
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, args: lookup::Args) -> Result<lookup::Success, lookup::Fail> {
         let parent_path = match self.path_for_handle(&args.parent).await {

@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use async_trait::async_trait;
-
 use crate::allocator::Slice;
 use crate::vfs;
 
@@ -49,11 +47,14 @@ pub struct Args {
     pub count: u32,
 }
 
-#[async_trait]
 pub trait Read {
     /// Reads data from a file into a server-provided buffer.
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: Slice) -> Result<Success, Fail>;
+    fn read(
+        &self,
+        args: Args,
+        data: Slice,
+    ) -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

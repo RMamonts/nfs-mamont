@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, rm_dir};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl rm_dir::RmDir for MirrorFS {
     async fn rm_dir(&self, args: rm_dir::Args) -> Result<rm_dir::Success, rm_dir::Fail> {
         if args.object.name.as_str() == "." {

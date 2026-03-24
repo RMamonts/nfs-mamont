@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, file, link};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl link::Link for MirrorFS {
     async fn link(&self, args: link::Args) -> Result<link::Success, link::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.link.name) {

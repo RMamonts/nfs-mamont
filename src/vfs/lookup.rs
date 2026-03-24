@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Lookup`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -29,11 +27,11 @@ pub struct Args {
     pub name: file::Name,
 }
 
-#[async_trait]
 pub trait Lookup {
     /// Searches a directory for a specific name and returns the file handle for the corresponding
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, args: Args) -> Result<Success, Fail>;
+    fn lookup(&self, args: Args)
+        -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }
