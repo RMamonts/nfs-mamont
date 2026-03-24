@@ -28,7 +28,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             });
         }
 
-        let entries = match self.list_directory_entries(&dir_path).await {
+        let entries = match self.directory_entries_for(&dir_path, verifier).await {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
         };
@@ -38,20 +38,26 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let mut used = 0u32;
         let mut selected_paths = Vec::new();
         let mut selected_entries = Vec::new();
-        for (index, (name, path, meta)) in entries.into_iter().enumerate().skip(start) {
+        for (index, entry) in entries.iter().enumerate().skip(start) {
+            let name = entry.name.clone();
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
             if !selected_entries.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
-            let attr = Self::attr_from_metadata(&meta);
-            selected_entries.push((
-                attr.file_id,
-                name,
-                read_dir::Cookie::new((index + 1) as u64),
-                attr,
-            ));
-            selected_paths.push(path);
+            selected_entries.push((entry.file_id, name, read_dir::Cookie::new((index + 1) as u64)));
+            selected_paths.push(entry.path.clone());
             used = used.saturating_add(estimated);
+        }
+
+        let mut selected_attrs = Vec::with_capacity(selected_paths.len());
+        for path in &selected_paths {
+            let attr = match self.attr_for_path(path).await {
+                Ok(attr) => attr,
+                Err(error) => {
+                    return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) });
+                }
+            };
+            selected_attrs.push(attr);
         }
 
         let handles = match self.ensure_handles_for_paths(&selected_paths).await {
@@ -60,8 +66,8 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         };
 
         let mut result = Vec::with_capacity(selected_entries.len());
-        for ((file_id, file_name, cookie, file_attr), file_handle) in
-            selected_entries.into_iter().zip(handles)
+        for (((file_id, file_name, cookie), file_attr), file_handle) in
+            selected_entries.into_iter().zip(selected_attrs).zip(handles)
         {
             result.push(read_dir_plus::Entry {
                 file_id,

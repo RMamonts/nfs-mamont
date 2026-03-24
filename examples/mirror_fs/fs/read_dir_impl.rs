@@ -21,7 +21,7 @@ impl read_dir::ReadDir for MirrorFS {
             return Err(read_dir::Fail { error: vfs::Error::BadCookie, dir_attr: Some(dir_attr) });
         }
 
-        let entries = match self.list_directory_entries(&dir_path).await {
+        let entries = match self.directory_entries_for(&dir_path, verifier).await {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) }),
         };
@@ -31,15 +31,15 @@ impl read_dir::ReadDir for MirrorFS {
         let mut used = 0u32;
         let mut result = Vec::new();
         let mut selected_paths = Vec::new();
-        for (index, (name, path, meta)) in entries.into_iter().enumerate().skip(start) {
+        for (index, entry) in entries.iter().enumerate().skip(start) {
+            let name = entry.name.clone();
             let estimated = (24 + name.as_str().len()) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.count {
                 break;
             }
-            let attr = Self::attr_from_metadata(&meta);
-            selected_paths.push(path);
+            selected_paths.push(entry.path.clone());
             result.push(read_dir::Entry {
-                file_id: attr.file_id,
+                file_id: entry.file_id,
                 file_name: name,
                 cookie: read_dir::Cookie::new((index + 1) as u64),
             });

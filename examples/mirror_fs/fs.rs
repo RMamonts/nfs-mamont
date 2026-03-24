@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::fs::Metadata;
 use std::io::ErrorKind;
+use std::os::unix::fs::DirEntryExt;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -47,6 +48,8 @@ const READ_DIR_PREF: u32 = 8 * 1024;
 const READ_FILE_CACHE_LIMIT: usize = 1024;
 const ATTRIBUTE_CACHE_LIMIT: usize = 16 * 1024;
 const ATTRIBUTE_CACHE_TTL: Duration = Duration::from_secs(3);
+const DIRECTORY_LISTING_CACHE_LIMIT: usize = 1024;
+const DIRECTORY_LISTING_CACHE_TTL: Duration = Duration::from_millis(700);
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -61,8 +64,25 @@ pub struct MirrorFS {
     fsmap: FsMap,
     read_file_cache: ReadFileCache,
     attr_cache: AttributeCache,
+    dir_listing_cache: DirectoryListingCache,
     root_path: PathBuf,
     generation: u64,
+}
+
+#[derive(Clone)]
+struct DirectoryEntrySnapshot {
+    name: file::Name,
+    path: PathBuf,
+    file_id: u64,
+}
+
+struct DirectoryListingSnapshot {
+    verifier: read_dir::CookieVerifier,
+    entries: Arc<[DirectoryEntrySnapshot]>,
+}
+
+struct DirectoryListingCache {
+    listings: Cache<PathBuf, Arc<DirectoryListingSnapshot>>,
 }
 
 struct ReadFileCache {
@@ -105,6 +125,17 @@ impl AttributeCache {
     }
 }
 
+impl DirectoryListingCache {
+    fn new() -> Self {
+        Self {
+            listings: Cache::builder()
+                .max_capacity(DIRECTORY_LISTING_CACHE_LIMIT as u64)
+                .time_to_live(DIRECTORY_LISTING_CACHE_TTL)
+                .build(),
+        }
+    }
+}
+
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
@@ -116,6 +147,7 @@ impl MirrorFS {
             fsmap: FsMap::new(root.clone()),
             read_file_cache: ReadFileCache::new(),
             attr_cache: AttributeCache::new(),
+            dir_listing_cache: DirectoryListingCache::new(),
             root_path: root,
             generation,
         }
@@ -478,10 +510,31 @@ impl MirrorFS {
         Ok(())
     }
 
-    async fn list_directory_entries(
+    async fn directory_entries_for(
         &self,
         dir_path: &Path,
-    ) -> Result<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error> {
+        verifier: read_dir::CookieVerifier,
+    ) -> Result<Arc<[DirectoryEntrySnapshot]>, vfs::Error> {
+        if let Some(cached) = self.dir_listing_cache.listings.get(dir_path) {
+            if cached.verifier == verifier {
+                return Ok(Arc::clone(&cached.entries));
+            }
+        }
+
+        let entries = Self::load_directory_entries(dir_path).await?;
+        let key = dir_path.to_path_buf();
+        let snapshot = Arc::new(DirectoryListingSnapshot {
+            verifier,
+            entries: Arc::<[DirectoryEntrySnapshot]>::from(entries),
+        });
+        let result = Arc::clone(&snapshot.entries);
+        self.dir_listing_cache.listings.insert(key, snapshot);
+        Ok(result)
+    }
+
+    async fn load_directory_entries(
+        dir_path: &Path,
+    ) -> Result<Vec<DirectoryEntrySnapshot>, vfs::Error> {
         let dir_path = dir_path.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let mut entries = Vec::new();
@@ -493,12 +546,12 @@ impl MirrorFS {
                 let name = file::Name::new(file_name.to_string_lossy().into_owned())
                     .map_err(|_| vfs::Error::InvalidArgument)?;
                 let path = item.path();
-                let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
-                entries.push((name, path, metadata));
+                let file_id = item.ino();
+                entries.push(DirectoryEntrySnapshot { name, path, file_id });
             }
 
-            entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
-            Ok::<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error>(entries)
+            entries.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+            Ok::<Vec<DirectoryEntrySnapshot>, vfs::Error>(entries)
         })
         .await
         .map_err(|_| vfs::Error::IO)?
