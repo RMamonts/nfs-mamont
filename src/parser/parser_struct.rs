@@ -18,7 +18,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use tokio::io::AsyncRead;
-use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
@@ -81,7 +80,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
-    allocator: Arc<Mutex<A>>,
+    allocator: Arc<A>,
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
@@ -99,7 +98,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: Arc<Mutex<A>>) -> Self {
+    pub fn new(socket: S, allocator: Arc<A>) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(DEFAULT_SIZE, socket),
@@ -119,7 +118,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: Arc<Mutex<A>>, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -566,7 +565,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &Arc<Mutex<impl Allocator>>,
+    alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     // Parse arguments for WRITE procedure.
@@ -575,7 +574,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.lock().await.allocate(non_zero_size).await.ok_or_else(|| {
+    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
         Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
     })?;
 
