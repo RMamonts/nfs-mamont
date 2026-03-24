@@ -1,5 +1,5 @@
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
@@ -9,12 +9,12 @@ use crate::task::ProcReply;
 /// Writes [`crate::task::connection::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<ProcReply>,
+    result_receiver: mpsc::Receiver<ProcReply>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<ProcReply>) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: mpsc::Receiver<ProcReply>) -> Self {
         Self { writehalf, result_receiver }
     }
 
