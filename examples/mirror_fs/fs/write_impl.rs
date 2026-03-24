@@ -38,19 +38,32 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let data = Self::collect_slice_bytes(&args.data, args.size);
         if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
                 wcc_data: Self::wcc_data(&path, before),
             });
         }
-        if let Err(error) = file.write_all(&data).await {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
+
+        let mut remaining = args.size as usize;
+        let mut written: u32 = 0;
+        for part in &args.data {
+            if remaining == 0 {
+                break;
+            }
+
+            let chunk_len = part.len().min(remaining);
+            if let Err(error) = file.write_all(&part[..chunk_len]).await {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: Self::wcc_data(&path, before),
+                });
+            }
+
+            remaining -= chunk_len;
+            written += chunk_len as u32;
         }
+
         let sync_result = match args.stable {
             write::StableHow::Unstable => Ok(()),
             write::StableHow::DataSync => file.sync_data().await,
@@ -65,7 +78,7 @@ impl write::Write for MirrorFS {
 
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
-            count: data.len() as u32,
+            count: written,
             commited: args.stable,
             verifier: self.write_verifier(),
         })
