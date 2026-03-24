@@ -29,7 +29,8 @@ impl WriteTask {
 
     async fn run(self) {
         let mut result_receiver = self.result_receiver;
-        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
+        let buf_writer = tokio::io::BufWriter::with_capacity(128 * 1024, self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(buf_writer);
 
         while let Some(reply) = result_receiver.recv().await {
             // Process the first received reply

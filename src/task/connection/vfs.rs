@@ -72,7 +72,7 @@ where
                     NfsArguments::Access(args) => NfsRes::Access(backend.access(args).await),
                     NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args).await),
                     NfsArguments::Read(args) => {
-                        let data_result = if args.count == 0 || backend.supports_sendfile() {
+                        let data_result = if args.count == 0 {
                             Ok(Slice::empty())
                         } else {
                             let requested_size = NonZeroUsize::new(args.count as usize).unwrap();

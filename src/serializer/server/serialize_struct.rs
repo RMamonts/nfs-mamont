@@ -6,11 +6,9 @@
 //! RPC reply to an async writer.
 
 use std::io;
-use std::io::{ErrorKind, IoSlice, Write};
-use std::os::fd::AsRawFd;
+use std::io::{ErrorKind, Write};
 
-use tokio::io::AsyncWriteExt;
-use tokio::net::tcp::OwnedWriteHalf;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
 use crate::mount::MountRes;
@@ -62,23 +60,23 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer {
-    buffer: WriteBuffer,
+pub struct Serializer<T: AsyncWrite + Unpin> {
+    buffer: WriteBuffer<T>,
 }
 
-impl Serializer {
+impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub async fn flush(&mut self) -> io::Result<()> {
         use tokio::io::AsyncWriteExt;
         self.buffer.socket.flush().await
     }
 
-    pub fn new(writer: OwnedWriteHalf) -> Self {
+    pub fn new(writer: T) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    fn with_capacity(writer: OwnedWriteHalf, capacity: usize) -> Self {
+    fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
@@ -115,7 +113,7 @@ impl Serializer {
                     let count = ok.head.count as usize;
                     usize_as_u32(&mut self.buffer, STATUS_OK)?;
                     read::result_ok_part(&mut self.buffer, ok.head)?;
-                    self.buffer.send_inner_with_payload(ok.data, count).await
+                    self.buffer.send_inner_with_slice(ok.data, count).await
                 }
                 Err(err) => {
                     error(&mut self.buffer, err.error)?;
@@ -278,12 +276,12 @@ impl Serializer {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer {
-    socket: OwnedWriteHalf,
+struct WriteBuffer<T: AsyncWrite + Unpin> {
+    socket: T,
     buf: Vec<u8>,
 }
 
-impl Write for WriteBuffer {
+impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -296,9 +294,9 @@ impl Write for WriteBuffer {
     }
 }
 
-impl WriteBuffer {
+impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: OwnedWriteHalf, capacity: usize) -> WriteBuffer {
+    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
         let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
         buffer.clean();
         buffer
@@ -336,12 +334,8 @@ impl WriteBuffer {
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload (used for READ data).
-    async fn send_inner_with_payload(
-        &mut self,
-        payload: crate::vfs::read::Payload,
-        count: usize,
-    ) -> io::Result<()> {
+    /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
+    async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Slice in vfs::read::Success) from XDR
@@ -356,125 +350,15 @@ impl WriteBuffer {
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
         self.socket.write_all(&self.buf).await?;
 
-        match payload {
-            crate::vfs::read::Payload::Slice(slice) => {
-                self.write_slice_payload(slice, count).await?;
-            }
-            crate::vfs::read::Payload::SendFile(sendfile_data) => {
-                self.write_sendfile_payload(sendfile_data).await?;
-            }
+        // later change to explicit cursor (when one implemented)
+        for buf in slice.iter() {
+            self.socket.write_all(buf).await?;
         }
 
         // write padding directly to socket
-        if padding > 0 {
-            let padding_buf = [0u8; ALIGNMENT];
-            let pad = IoSlice::new(&padding_buf[..padding]);
-            let mut written = 0usize;
-            while written < padding {
-                let bytes = self.socket.write_vectored(&[pad]).await?;
-                if bytes == 0 {
-                    return Err(io::Error::new(
-                        ErrorKind::WriteZero,
-                        "failed to write XDR padding",
-                    ));
-                }
-                written += bytes;
-            }
-        }
-
+        let slice = [0u8; ALIGNMENT];
+        self.socket.write_all(&slice[..padding]).await?;
         self.clean();
-        Ok(())
-    }
-
-    async fn write_slice_payload(&mut self, slice: Slice, count: usize) -> io::Result<()> {
-        let mut chunks = Vec::with_capacity(16);
-        let mut remaining = count;
-        for chunk in slice.iter() {
-            if remaining == 0 {
-                break;
-            }
-            if chunk.is_empty() {
-                continue;
-            }
-            let take = chunk.len().min(remaining);
-            chunks.push(&chunk[..take]);
-            remaining -= take;
-        }
-
-        if remaining != 0 {
-            return Err(io::Error::new(
-                ErrorKind::UnexpectedEof,
-                "slice payload shorter than READ count",
-            ));
-        }
-
-        let mut chunk_idx = 0usize;
-        let mut chunk_offset = 0usize;
-        while chunk_idx < chunks.len() {
-            let mut iovecs = Vec::with_capacity(16);
-            for (i, chunk) in chunks.iter().enumerate().skip(chunk_idx).take(16) {
-                if i == chunk_idx {
-                    iovecs.push(IoSlice::new(&chunk[chunk_offset..]));
-                } else {
-                    iovecs.push(IoSlice::new(chunk));
-                }
-            }
-
-            let bytes = self.socket.write_vectored(&iovecs).await?;
-            if bytes == 0 {
-                return Err(io::Error::new(ErrorKind::WriteZero, "failed to write READ payload"));
-            }
-
-            let mut consumed = bytes;
-            while consumed > 0 && chunk_idx < chunks.len() {
-                let available = chunks[chunk_idx].len().saturating_sub(chunk_offset);
-                if consumed < available {
-                    chunk_offset += consumed;
-                    consumed = 0;
-                } else {
-                    consumed -= available;
-                    chunk_idx += 1;
-                    chunk_offset = 0;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn write_sendfile_payload(
-        &mut self,
-        sendfile_data: crate::vfs::read::SendFile,
-    ) -> io::Result<()> {
-        let socket_fd = self.socket.as_ref().as_raw_fd();
-        let file_fd = sendfile_data.file.as_raw_fd();
-        let mut offset = sendfile_data.offset as libc::off_t;
-        let mut remaining = sendfile_data.count;
-
-        while remaining > 0 {
-            let chunk = remaining.min(1 << 20);
-            let sent = unsafe {
-                libc::sendfile(socket_fd, file_fd, &mut offset as *mut libc::off_t, chunk)
-            };
-
-            if sent < 0 {
-                let err = io::Error::last_os_error();
-                if err.kind() == ErrorKind::Interrupted {
-                    continue;
-                }
-                return Err(err);
-            }
-
-            if sent == 0 {
-                return Err(io::Error::new(
-                    ErrorKind::UnexpectedEof,
-                    "sendfile reached EOF before READ count",
-                ));
-            }
-
-            remaining = remaining.saturating_sub(sent as usize);
-        }
-
         Ok(())
     }
 }

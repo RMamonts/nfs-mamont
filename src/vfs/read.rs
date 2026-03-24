@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use std::fs::File;
-
 use crate::allocator::Slice;
 use crate::vfs;
 
@@ -12,22 +10,7 @@ pub struct Success {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
     /// The counted data read from the file.
-    pub data: Payload,
-}
-
-/// READ payload transported by the serializer.
-pub enum Payload {
-    /// Read data already materialized in memory.
-    Slice(Slice),
-    /// File-backed payload that can be streamed to socket with `sendfile`.
-    SendFile(SendFile),
-}
-
-/// File descriptor-backed payload for zero-copy socket transmission.
-pub struct SendFile {
-    pub file: File,
-    pub offset: u64,
-    pub count: usize,
+    pub data: Slice,
 }
 
 pub struct SuccessPartial {
@@ -74,9 +57,4 @@ pub trait Read {
         args: Args,
         data: Slice,
     ) -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
-
-    /// Whether implementation can return [`Payload::SendFile`] and skip allocator buffers.
-    fn supports_sendfile(&self) -> bool {
-        false
-    }
 }
