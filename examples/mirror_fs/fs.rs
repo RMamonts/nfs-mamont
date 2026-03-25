@@ -43,7 +43,7 @@ mod set_attr_impl;
 mod symlink_impl;
 mod write_impl;
 
-const READ_WRITE_MAX: u32 = 1024 * 1024;
+pub const READ_WRITE_MAX: u32 = 1024 * 1024;
 const READ_DIR_PREF: u32 = 8 * 1024;
 const READ_FILE_CACHE_LIMIT: usize = 1024;
 const ATTRIBUTE_CACHE_LIMIT: usize = 16 * 1024;

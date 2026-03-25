@@ -10,6 +10,8 @@ use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
 
+use crate::fs::READ_WRITE_MAX;
+
 pub mod fs;
 pub mod fs_map;
 
@@ -33,10 +35,10 @@ async fn main() -> std::io::Result<()> {
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),
-        NonZeroUsize::new(512 * 1024).unwrap(),
-        NonZeroUsize::new(2048 * 2).unwrap(),
-        NonZeroUsize::new(512 * 1024).unwrap(),
-        NonZeroUsize::new(2048 * 2).unwrap(),
+        NonZeroUsize::new(READ_WRITE_MAX as usize).unwrap(),
+        NonZeroUsize::new(2048).unwrap(),
+        NonZeroUsize::new(READ_WRITE_MAX as usize).unwrap(),
+        NonZeroUsize::new(2048).unwrap(),
     );
 
     #[cfg(debug_assertions)]
