@@ -8,6 +8,18 @@ use super::MirrorFS;
 
 impl write::Write for MirrorFS {
     async fn write(&self, args: write::Args) -> Result<write::Success, write::Fail> {
+        let mut payload = Vec::with_capacity(args.size as usize);
+        let mut remaining_payload = args.size as usize;
+        for part in &args.data {
+            if remaining_payload == 0 {
+                break;
+            }
+
+            let take = part.len().min(remaining_payload);
+            payload.extend_from_slice(&part[..take]);
+            remaining_payload -= take;
+        }
+
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
@@ -50,23 +62,14 @@ impl write::Write for MirrorFS {
             });
         }
 
-        let mut remaining = args.size as usize;
-        let mut written: u32 = 0;
-        for part in &args.data {
-            if remaining == 0 {
-                break;
-            }
-
-            let chunk_len = part.len().min(remaining);
-            if let Err(error) = file.write_all(&part[..chunk_len]).await {
+        let written = payload.len() as u32;
+        if !payload.is_empty() {
+            if let Err(error) = file.write_all(&payload).await {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
                     wcc_data: Self::wcc_data(&path, before),
                 });
             }
-
-            remaining -= chunk_len;
-            written += chunk_len as u32;
         }
 
         match args.stable {

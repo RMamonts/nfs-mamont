@@ -1,4 +1,6 @@
 use std::collections::BTreeSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -9,6 +11,8 @@ use whirlwind::ShardMap;
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 
+const FS_MAP_MUTATION_SHARDS: usize = 64;
+
 /// Maps mirror paths to opaque VFS handles.
 pub struct FsMap {
     root: PathBuf,
@@ -18,7 +22,7 @@ pub struct FsMap {
     key_to_paths: ShardMap<ObjectKey, Arc<RwLock<BTreeSet<PathBuf>>>>,
     relative_to_key: ShardMap<PathBuf, ObjectKey>,
     relative_index: RwLock<BTreeSet<PathBuf>>,
-    mutation_lock: Mutex<()>,
+    mutation_locks: Vec<Mutex<()>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -37,7 +41,7 @@ impl FsMap {
             key_to_paths: ShardMap::new(),
             relative_to_key: ShardMap::new(),
             relative_index: RwLock::new(BTreeSet::new()),
-            mutation_lock: Mutex::new(()),
+            mutation_locks: (0..FS_MAP_MUTATION_SHARDS).map(|_| Mutex::new(())).collect(),
         }
     }
 
@@ -81,7 +85,8 @@ impl FsMap {
             return Ok(self.root_handle());
         }
 
-        let _guard = self.mutation_lock.lock().await;
+        let shard = Self::mutation_shard_for_relative(&relative);
+        let _guard = self.mutation_locks[shard].lock().await;
 
         let key = ObjectKey { dev: attr.fs_id, ino: attr.file_id };
         if let Some(id) = { self.key_to_id.get(&key).await.map(|id_ref| *id_ref.value()) } {
@@ -104,7 +109,8 @@ impl FsMap {
         };
         let relative = relative.to_path_buf();
 
-        let _guard = self.mutation_lock.lock().await;
+        let shard = Self::mutation_shard_for_relative(&relative);
+        let _guard = self.mutation_locks[shard].lock().await;
 
         let to_remove = {
             let index = self.relative_index.read().await;
@@ -149,7 +155,20 @@ impl FsMap {
         let to_relative =
             to.strip_prefix(&self.root).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
 
-        let _guard = self.mutation_lock.lock().await;
+        let from_shard = Self::mutation_shard_for_relative(&from_relative);
+        let to_shard = Self::mutation_shard_for_relative(&to_relative);
+        let (first, second) = if from_shard <= to_shard {
+            (from_shard, to_shard)
+        } else {
+            (to_shard, from_shard)
+        };
+
+        let _first_guard = self.mutation_locks[first].lock().await;
+        let _second_guard = if second != first {
+            Some(self.mutation_locks[second].lock().await)
+        } else {
+            None
+        };
 
         let to_rename = {
             let index = self.relative_index.read().await;
@@ -245,5 +264,11 @@ impl FsMap {
                 return candidate;
             }
         }
+    }
+
+    fn mutation_shard_for_relative(relative: &Path) -> usize {
+        let mut hasher = DefaultHasher::new();
+        relative.hash(&mut hasher);
+        (hasher.finish() as usize) % FS_MAP_MUTATION_SHARDS
     }
 }
