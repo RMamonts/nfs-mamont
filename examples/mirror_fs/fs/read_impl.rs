@@ -9,12 +9,17 @@ impl read::Read for MirrorFS {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
         const SENDFILE_MIN_BYTES: usize = 32 * 1024;
 
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
+        let (path, attr) = match self.path_and_attr_for_handle(&args.file).await {
+            Ok(path_and_attr) => path_and_attr,
             Err(error) => {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
+
+        if let Err(error) = Self::validate_regular(&attr) {
+            return Err(read::Fail { error, file_attr: Some(attr) });
+        }
+
         let file = match self.get_cached_read_file(&path).await {
             Ok(file) => file,
             Err(error) => {
@@ -22,32 +27,28 @@ impl read::Read for MirrorFS {
             }
         };
 
-        let meta = match tokio::fs::metadata(&path).await {
-            Ok(meta) => meta,
-            Err(error) => {
-                return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
-            }
-        };
-        let attr = Self::attr_from_metadata(&meta);
-        if let Err(error) = Self::validate_regular(&attr) {
-            return Err(read::Fail { error, file_attr: Some(attr) });
-        }
-
-        let file_len = meta.len();
+        let file_len = attr.size;
         let start = args.offset.min(file_len);
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut read_count = 0usize;
         let mut sendfile_source = None;
 
+        if requested > 0 && sendfile_source.is_none() {
+            if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await {
+                read_count = cached;
+            }
+        }
+
         #[cfg(target_os = "linux")]
-        if requested >= SENDFILE_MIN_BYTES {
+        if requested >= SENDFILE_MIN_BYTES && read_count == 0 {
             read_count = requested;
             sendfile_source = Some(read::SendfileSource { file: file.clone(), offset: start });
             data = Slice::empty();
         }
 
-        if requested > 0 && sendfile_source.is_none() {
+        if requested > 0 && sendfile_source.is_none() && read_count == 0 {
+            let read_file = file.clone();
             let read_result = tokio::task::spawn_blocking(move || {
                 let mut remaining = requested;
                 let mut local_offset = start;
@@ -62,7 +63,7 @@ impl read::Read for MirrorFS {
                     let mut chunk_offset = 0usize;
 
                     while chunk_offset < to_read {
-                        let bytes = file.read_at(
+                        let bytes = read_file.read_at(
                             &mut chunk[chunk_offset..to_read],
                             local_offset + chunk_offset as u64,
                         )?;
@@ -101,6 +102,15 @@ impl read::Read for MirrorFS {
 
             data = filled_data;
             read_count = filled_count;
+        }
+
+        if read_count > 0 {
+            let next_offset = start.saturating_add(read_count as u64);
+            let sequential = self.update_read_sequence(&path, start, next_offset).await;
+            let should_prefetch = requested >= (SENDFILE_MIN_BYTES * 4) || sequential;
+            if should_prefetch {
+                self.schedule_read_ahead(&path, file, next_offset, file_len).await;
+            }
         }
 
         Ok(read::Success {

@@ -1,12 +1,12 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::DirEntryExt;
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{FileExt, FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use moka::sync::Cache;
 use tokio::sync::RwLock;
@@ -47,9 +47,14 @@ pub const READ_WRITE_MAX: u32 = 1024 * 1024;
 const READ_DIR_PREF: u32 = 8 * 1024;
 const READ_FILE_CACHE_LIMIT: usize = 1024;
 const ATTRIBUTE_CACHE_LIMIT: usize = 16 * 1024;
-const ATTRIBUTE_CACHE_TTL: Duration = Duration::from_secs(3);
+const ATTRIBUTE_CACHE_TTL: Duration = Duration::from_secs(60);
 const DIRECTORY_LISTING_CACHE_LIMIT: usize = 1024;
 const DIRECTORY_LISTING_CACHE_TTL: Duration = Duration::from_millis(700);
+const READ_AHEAD_BLOCK_SIZE: usize = READ_WRITE_MAX as usize;
+const READ_AHEAD_CACHE_LIMIT: usize = 256;
+const READ_AHEAD_PER_FILE_LIMIT: usize = 4;
+const READ_AHEAD_CACHE_TTL: Duration = Duration::from_secs(15);
+const READ_AHEAD_SEQUENCE_WINDOW: Duration = Duration::from_secs(2);
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -65,6 +70,7 @@ pub struct MirrorFS {
     read_file_cache: ReadFileCache,
     attr_cache: AttributeCache,
     dir_listing_cache: DirectoryListingCache,
+    read_ahead_cache: ReadAheadCache,
     root_path: PathBuf,
     generation: u64,
 }
@@ -102,6 +108,26 @@ struct AttributeCache {
     key_index: RwLock<BTreeSet<PathBuf>>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct ReadAheadKey {
+    path: PathBuf,
+    offset: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ReadSequenceState {
+    next_offset: u64,
+    last_seen: Instant,
+}
+
+#[derive(Clone)]
+struct ReadAheadCache {
+    blocks: Cache<ReadAheadKey, Arc<[u8]>>,
+    key_index: Arc<RwLock<BTreeSet<ReadAheadKey>>>,
+    inflight: Arc<tokio::sync::Mutex<HashSet<ReadAheadKey>>>,
+    sequence: Arc<tokio::sync::Mutex<HashMap<PathBuf, ReadSequenceState>>>,
+}
+
 impl ReadFileCache {
     fn new() -> Self {
         Self {
@@ -136,6 +162,34 @@ impl DirectoryListingCache {
     }
 }
 
+impl ReadAheadCache {
+    fn new() -> Self {
+        Self {
+            blocks: Cache::builder()
+                .max_capacity(READ_AHEAD_CACHE_LIMIT as u64)
+                .time_to_live(READ_AHEAD_CACHE_TTL)
+                .build(),
+            key_index: Arc::new(RwLock::new(BTreeSet::new())),
+            inflight: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+            sequence: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn maybe_compact_keys(&self) {
+        if self.key_index.read().await.len() <= READ_AHEAD_CACHE_LIMIT * 4 {
+            return;
+        }
+
+        let keys: Vec<ReadAheadKey> = self.key_index.read().await.iter().cloned().collect();
+        let stale: Vec<ReadAheadKey> =
+            keys.into_iter().filter(|key| self.blocks.get(key).is_none()).collect();
+
+        for key in stale {
+            self.key_index.write().await.remove(&key);
+        }
+    }
+}
+
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
@@ -148,6 +202,7 @@ impl MirrorFS {
             read_file_cache: ReadFileCache::new(),
             attr_cache: AttributeCache::new(),
             dir_listing_cache: DirectoryListingCache::new(),
+            read_ahead_cache: ReadAheadCache::new(),
             root_path: root,
             generation,
         }
@@ -170,10 +225,17 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
+        self.path_and_attr_for_handle(handle).await.map(|(path, _)| path)
+    }
+
+    async fn path_and_attr_for_handle(
+        &self,
+        handle: &file::Handle,
+    ) -> Result<(PathBuf, file::Attr), vfs::Error> {
         let candidates = self.fsmap.path_candidates_for_handle(handle).await?;
         for candidate in candidates {
-            if self.attr_for_path(&candidate).await.is_ok() {
-                return Ok(candidate);
+            if let Ok(attr) = self.attr_for_path(&candidate).await {
+                return Ok((candidate, attr));
             }
         }
         Err(vfs::Error::StaleFile)
@@ -205,6 +267,7 @@ impl MirrorFS {
         self.fsmap.remove_path(path).await;
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
+        self.invalidate_read_ahead_path(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
@@ -213,6 +276,8 @@ impl MirrorFS {
         self.invalidate_read_file_cache_path(to).await;
         self.invalidate_attr_cache_path(from).await;
         self.invalidate_attr_cache_path(to).await;
+        self.invalidate_read_ahead_path(from).await;
+        self.invalidate_read_ahead_path(to).await;
         Ok(())
     }
 
@@ -275,6 +340,7 @@ impl MirrorFS {
                 .cloned()
                 .collect()
         };
+
         for key in keys {
             self.read_file_cache.files.invalidate(&key);
             self.read_file_cache.keys.remove(&key).await;
@@ -323,6 +389,135 @@ impl MirrorFS {
             self.attr_cache.keys.remove(&key).await;
             self.attr_cache.key_index.write().await.remove(&key);
         }
+    }
+
+    async fn read_ahead_copy_hit(
+        &self,
+        path: &Path,
+        offset: u64,
+        requested: usize,
+        data: &mut nfs_mamont::Slice,
+    ) -> Option<usize> {
+        let key = ReadAheadKey { path: path.to_path_buf(), offset };
+        let block = self.read_ahead_cache.blocks.get(&key)?;
+
+        let mut copied = 0usize;
+        let max_copy = requested.min(block.len());
+        for chunk in data.iter_mut() {
+            if copied >= max_copy {
+                break;
+            }
+
+            let take = chunk.len().min(max_copy - copied);
+            chunk[..take].copy_from_slice(&block[copied..copied + take]);
+            copied += take;
+        }
+
+        Some(copied)
+    }
+
+    async fn update_read_sequence(&self, path: &Path, start: u64, end: u64) -> bool {
+        let now = Instant::now();
+        let mut sequence = self.read_ahead_cache.sequence.lock().await;
+        let sequential = sequence
+            .get(path)
+            .map(|state| {
+                state.next_offset == start
+                    && now.saturating_duration_since(state.last_seen) <= READ_AHEAD_SEQUENCE_WINDOW
+            })
+            .unwrap_or(false);
+
+        sequence.insert(path.to_path_buf(), ReadSequenceState { next_offset: end, last_seen: now });
+
+        if sequence.len() > READ_AHEAD_CACHE_LIMIT * 8 {
+            sequence.retain(|_, state| {
+                now.saturating_duration_since(state.last_seen)
+                    <= READ_AHEAD_SEQUENCE_WINDOW.saturating_mul(4)
+            });
+        }
+
+        sequential
+    }
+
+    async fn schedule_read_ahead(&self, path: &Path, file: Arc<File>, offset: u64, file_len: u64) {
+        if offset >= file_len {
+            return;
+        }
+
+        let prefetch_size = (file_len - offset).min(READ_AHEAD_BLOCK_SIZE as u64) as usize;
+        if prefetch_size == 0 {
+            return;
+        }
+
+        let key = ReadAheadKey { path: path.to_path_buf(), offset };
+        if self.read_ahead_cache.blocks.get(&key).is_some() {
+            return;
+        }
+
+        {
+            let key_index = self.read_ahead_cache.key_index.read().await;
+            let existing_for_file = key_index.iter().filter(|known| known.path == key.path).count();
+            if existing_for_file >= READ_AHEAD_PER_FILE_LIMIT {
+                return;
+            }
+        }
+
+        {
+            let mut inflight = self.read_ahead_cache.inflight.lock().await;
+            if !inflight.insert(key.clone()) {
+                return;
+            }
+        }
+
+        let cache = self.read_ahead_cache.clone();
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let mut loaded = vec![0u8; prefetch_size];
+                let mut total = 0usize;
+
+                while total < prefetch_size {
+                    let read = file.read_at(&mut loaded[total..], offset + total as u64)?;
+                    if read == 0 {
+                        break;
+                    }
+                    total += read;
+                }
+
+                loaded.truncate(total);
+                Ok::<Vec<u8>, std::io::Error>(loaded)
+            })
+            .await;
+
+            if let Ok(Ok(loaded)) = result {
+                if !loaded.is_empty() {
+                    cache.blocks.insert(key.clone(), Arc::<[u8]>::from(loaded));
+                    cache.key_index.write().await.insert(key.clone());
+                    cache.maybe_compact_keys().await;
+                }
+            }
+
+            cache.inflight.lock().await.remove(&key);
+        });
+    }
+
+    async fn invalidate_read_ahead_path(&self, path: &Path) {
+        let keys: Vec<ReadAheadKey> = {
+            let index = self.read_ahead_cache.key_index.read().await;
+            index
+                .iter()
+                .filter(|known| known.path == path || known.path.starts_with(path))
+                .cloned()
+                .collect()
+        };
+
+        for key in keys {
+            self.read_ahead_cache.blocks.invalidate(&key);
+            self.read_ahead_cache.key_index.write().await.remove(&key);
+            self.read_ahead_cache.inflight.lock().await.remove(&key);
+        }
+
+        let mut sequence = self.read_ahead_cache.sequence.lock().await;
+        sequence.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {

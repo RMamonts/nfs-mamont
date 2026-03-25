@@ -81,6 +81,7 @@ impl write::Write for MirrorFS {
             });
         }
 
+        self.invalidate_read_ahead_path(&path).await;
         self.invalidate_attr_cache_path(&path).await;
 
         Ok(write::Success {
