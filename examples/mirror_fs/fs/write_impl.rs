@@ -69,16 +69,28 @@ impl write::Write for MirrorFS {
             written += chunk_len as u32;
         }
 
-        let sync_result = match args.stable {
-            write::StableHow::Unstable => Ok(()),
-            write::StableHow::DataSync => file.sync_data().await,
-            write::StableHow::FileSync => file.sync_all().await,
-        };
-        if let Err(error) = sync_result {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
+        match args.stable {
+            write::StableHow::Unstable => {
+                self.mark_pending_unstable_write(&path).await;
+            }
+            write::StableHow::DataSync => {
+                if let Err(error) = file.sync_data().await {
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: Self::wcc_data(&path, before),
+                    });
+                }
+                self.clear_pending_unstable_write(&path).await;
+            }
+            write::StableHow::FileSync => {
+                if let Err(error) = file.sync_all().await {
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: Self::wcc_data(&path, before),
+                    });
+                }
+                self.clear_pending_unstable_write(&path).await;
+            }
         }
 
         self.invalidate_read_ahead_path(&path).await;

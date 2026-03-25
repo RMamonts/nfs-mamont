@@ -56,6 +56,7 @@ const READ_AHEAD_CACHE_LIMIT: usize = 1024;
 const READ_AHEAD_PER_FILE_LIMIT: usize = 16;
 const READ_AHEAD_CACHE_TTL: Duration = Duration::from_secs(30);
 const READ_AHEAD_SEQUENCE_WINDOW: Duration = Duration::from_secs(6);
+const READDIRPLUS_ATTR_PARALLELISM: usize = 16;
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -72,6 +73,7 @@ pub struct MirrorFS {
     attr_cache: AttributeCache,
     dir_listing_cache: DirectoryListingCache,
     read_ahead_cache: ReadAheadCache,
+    pending_unstable_writes: Arc<tokio::sync::Mutex<HashSet<PathBuf>>>,
     root_path: PathBuf,
     generation: u64,
 }
@@ -204,6 +206,7 @@ impl MirrorFS {
             attr_cache: AttributeCache::new(),
             dir_listing_cache: DirectoryListingCache::new(),
             read_ahead_cache: ReadAheadCache::new(),
+            pending_unstable_writes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
             root_path: root,
             generation,
         }
@@ -269,6 +272,7 @@ impl MirrorFS {
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
         self.invalidate_read_ahead_path(path).await;
+        self.clear_pending_unstable_write(path).await;
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
@@ -279,7 +283,17 @@ impl MirrorFS {
         self.invalidate_attr_cache_path(to).await;
         self.invalidate_read_ahead_path(from).await;
         self.invalidate_read_ahead_path(to).await;
+        self.clear_pending_unstable_write(from).await;
+        self.clear_pending_unstable_write(to).await;
         Ok(())
+    }
+
+    async fn mark_pending_unstable_write(&self, path: &Path) {
+        self.pending_unstable_writes.lock().await.insert(path.to_path_buf());
+    }
+
+    async fn clear_pending_unstable_write(&self, path: &Path) {
+        self.pending_unstable_writes.lock().await.remove(path);
     }
 
     async fn attr_for_path(&self, path: &Path) -> Result<file::Attr, vfs::Error> {
@@ -390,6 +404,57 @@ impl MirrorFS {
             self.attr_cache.keys.remove(&key).await;
             self.attr_cache.key_index.write().await.remove(&key);
         }
+    }
+
+    async fn attrs_for_paths_parallel(&self, paths: &[PathBuf]) -> Result<Vec<file::Attr>, vfs::Error> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut attrs: Vec<Option<file::Attr>> = (0..paths.len()).map(|_| None).collect();
+        let mut misses: Vec<(usize, PathBuf)> = Vec::new();
+
+        for (idx, path) in paths.iter().enumerate() {
+            if let Some(entry) = self.attr_cache.attrs.get(path) {
+                attrs[idx] = Some(Self::attr_from_metadata(&entry.metadata));
+                continue;
+            }
+
+            self.attr_cache.keys.remove(path).await;
+            self.attr_cache.key_index.write().await.remove(path);
+            misses.push((idx, path.clone()));
+        }
+
+        for batch in misses.chunks(READDIRPLUS_ATTR_PARALLELISM) {
+            let mut tasks = tokio::task::JoinSet::new();
+
+            for (idx, path) in batch.iter().cloned() {
+                tasks.spawn(async move {
+                    let path_for_meta = path.clone();
+                    let metadata = tokio::task::spawn_blocking(move || std::fs::symlink_metadata(path_for_meta))
+                        .await
+                        .map_err(|_| vfs::Error::IO)?
+                        .map_err(|error| Self::io_error_to_vfs(&error))?;
+                    Ok::<(usize, PathBuf, Metadata), vfs::Error>((idx, path, metadata))
+                });
+            }
+
+            while let Some(task_result) = tasks.join_next().await {
+                let (idx, path, metadata) = task_result.map_err(|_| vfs::Error::IO)??;
+                let attr = Self::attr_from_metadata(&metadata);
+
+                self.attr_cache
+                    .attrs
+                    .insert(path.clone(), Arc::new(CachedAttrEntry { metadata }));
+                self.attr_cache.keys.insert(path.clone()).await;
+                self.attr_cache.key_index.write().await.insert(path);
+                attrs[idx] = Some(attr);
+            }
+        }
+
+        self.maybe_compact_attr_keys().await;
+
+        attrs.into_iter().map(|attr| attr.ok_or(vfs::Error::IO)).collect()
     }
 
     async fn read_ahead_copy_hit(

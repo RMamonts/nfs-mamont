@@ -48,6 +48,8 @@ impl commit::Commit for MirrorFS {
             });
         }
 
+        self.clear_pending_unstable_write(&path).await;
+
         Ok(commit::Success {
             file_wcc: Self::wcc_data(&path, before),
             verifier: self.write_verifier(),

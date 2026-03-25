@@ -49,16 +49,12 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             used = used.saturating_add(estimated);
         }
 
-        let mut selected_attrs = Vec::with_capacity(selected_paths.len());
-        for path in &selected_paths {
-            let attr = match self.attr_for_path(path).await {
-                Ok(attr) => attr,
-                Err(error) => {
-                    return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) });
-                }
-            };
-            selected_attrs.push(attr);
-        }
+        let selected_attrs = match self.attrs_for_paths_parallel(&selected_paths).await {
+            Ok(attrs) => attrs,
+            Err(error) => {
+                return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) });
+            }
+        };
 
         let handles = match self.ensure_handles_for_paths(&selected_paths).await {
             Ok(handles) => handles,
