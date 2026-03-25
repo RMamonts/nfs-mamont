@@ -34,11 +34,13 @@ impl read::Read for MirrorFS {
         let requested = end.saturating_sub(start) as usize;
         let mut read_count = 0usize;
         let mut sendfile_source = None;
+        let block_size = super::READ_AHEAD_BLOCK_SIZE as u64;
 
         let sequential = self.update_read_sequence(&path, start, end).await;
         let should_prefetch = requested >= READ_AHEAD_TRIGGER_BYTES || sequential;
         if should_prefetch {
-            self.schedule_read_ahead_window(&path, file.clone(), end, file_len).await;
+            let start_block_index = end / block_size;
+            self.schedule_read_ahead_window(&path, file.clone(), start_block_index, file_len).await;
         }
 
         if requested > 0 && sendfile_source.is_none() {
@@ -54,24 +56,34 @@ impl read::Read for MirrorFS {
             data = Slice::empty();
         }
 
-        if requested > 0 && sendfile_source.is_none() && read_count == 0 {
+        if requested > 0 && sendfile_source.is_none() && read_count < requested {
             let read_file = file.clone();
+            let read_start = start.saturating_add(read_count as u64);
+            let read_remaining = requested - read_count;
+            let data_offset = read_count;
             let read_result = tokio::task::spawn_blocking(move || {
-                let mut remaining = requested;
-                let mut local_offset = start;
+                let mut remaining = read_remaining;
+                let mut local_offset = read_start;
                 let mut local_read_count = 0usize;
+                let mut slice_offset = data_offset;
 
                 for chunk in data.iter_mut() {
+                    if slice_offset >= chunk.len() {
+                        slice_offset -= chunk.len();
+                        continue;
+                    }
+
                     if remaining == 0 {
                         break;
                     }
 
-                    let to_read = chunk.len().min(remaining);
+                    let writable = chunk.len() - slice_offset;
+                    let to_read = writable.min(remaining);
                     let mut chunk_offset = 0usize;
 
                     while chunk_offset < to_read {
                         let bytes = read_file.read_at(
-                            &mut chunk[chunk_offset..to_read],
+                            &mut chunk[slice_offset + chunk_offset..slice_offset + to_read],
                             local_offset + chunk_offset as u64,
                         )?;
 
@@ -85,6 +97,7 @@ impl read::Read for MirrorFS {
 
                     local_offset = local_offset.saturating_add(to_read as u64);
                     remaining -= to_read;
+                    slice_offset = 0;
                 }
 
                 Ok::<(Slice, usize), std::io::Error>((data, local_read_count))
@@ -108,7 +121,7 @@ impl read::Read for MirrorFS {
             };
 
             data = filled_data;
-            read_count = filled_count;
+            read_count += filled_count;
         }
 
         Ok(read::Success {

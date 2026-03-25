@@ -112,7 +112,7 @@ struct AttributeCache {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct ReadAheadKey {
     path: PathBuf,
-    offset: u64,
+    block_index: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -399,22 +399,58 @@ impl MirrorFS {
         requested: usize,
         data: &mut nfs_mamont::Slice,
     ) -> Option<usize> {
-        let key = ReadAheadKey { path: path.to_path_buf(), offset };
-        let block = self.read_ahead_cache.blocks.get(&key)?;
+        if requested == 0 {
+            return Some(0);
+        }
 
+        let block_size = READ_AHEAD_BLOCK_SIZE as u64;
         let mut copied = 0usize;
-        let max_copy = requested.min(block.len());
-        for chunk in data.iter_mut() {
-            if copied >= max_copy {
+        let mut current_offset = offset;
+
+        while copied < requested {
+            let block_index = current_offset / block_size;
+            let block_offset = (current_offset % block_size) as usize;
+            let key = ReadAheadKey { path: path.to_path_buf(), block_index };
+            let block = match self.read_ahead_cache.blocks.get(&key) {
+                Some(block) => block,
+                None => break,
+            };
+
+            if block_offset >= block.len() {
                 break;
             }
 
-            let take = chunk.len().min(max_copy - copied);
-            chunk[..take].copy_from_slice(&block[copied..copied + take]);
-            copied += take;
+            let available = block.len() - block_offset;
+            let to_copy = available.min(requested - copied);
+            if to_copy == 0 {
+                break;
+            }
+
+            let mut left = to_copy;
+            let mut dst_pos = copied;
+            let mut src_pos = block_offset;
+            for chunk in data.iter_mut() {
+                if left == 0 {
+                    break;
+                }
+                if dst_pos >= chunk.len() {
+                    dst_pos -= chunk.len();
+                    continue;
+                }
+
+                let writable = (chunk.len() - dst_pos).min(left);
+                chunk[dst_pos..dst_pos + writable]
+                    .copy_from_slice(&block[src_pos..src_pos + writable]);
+                left -= writable;
+                src_pos += writable;
+                dst_pos = 0;
+            }
+
+            copied += to_copy;
+            current_offset = current_offset.saturating_add(to_copy as u64);
         }
 
-        Some(copied)
+        if copied == 0 { None } else { Some(copied) }
     }
 
     async fn update_read_sequence(&self, path: &Path, start: u64, end: u64) -> bool {
@@ -440,17 +476,24 @@ impl MirrorFS {
         sequential
     }
 
-    async fn schedule_read_ahead(&self, path: &Path, file: Arc<File>, offset: u64, file_len: u64) {
-        if offset >= file_len {
+    async fn schedule_read_ahead(
+        &self,
+        path: &Path,
+        file: Arc<File>,
+        block_index: u64,
+        file_len: u64,
+    ) {
+        let block_start = block_index.saturating_mul(READ_AHEAD_BLOCK_SIZE as u64);
+        if block_start >= file_len {
             return;
         }
 
-        let prefetch_size = (file_len - offset).min(READ_AHEAD_BLOCK_SIZE as u64) as usize;
+        let prefetch_size = (file_len - block_start).min(READ_AHEAD_BLOCK_SIZE as u64) as usize;
         if prefetch_size == 0 {
             return;
         }
 
-        let key = ReadAheadKey { path: path.to_path_buf(), offset };
+        let key = ReadAheadKey { path: path.to_path_buf(), block_index };
         if self.read_ahead_cache.blocks.get(&key).is_some() {
             return;
         }
@@ -477,7 +520,7 @@ impl MirrorFS {
                 let mut total = 0usize;
 
                 while total < prefetch_size {
-                    let read = file.read_at(&mut loaded[total..], offset + total as u64)?;
+                    let read = file.read_at(&mut loaded[total..], block_start + total as u64)?;
                     if read == 0 {
                         break;
                     }
@@ -505,16 +548,17 @@ impl MirrorFS {
         &self,
         path: &Path,
         file: Arc<File>,
-        start_offset: u64,
+        start_block_index: u64,
         file_len: u64,
     ) {
         for block in 0..READ_AHEAD_WINDOW_BLOCKS {
-            let offset = start_offset.saturating_add((block * READ_AHEAD_BLOCK_SIZE) as u64);
-            if offset >= file_len {
+            let block_index = start_block_index.saturating_add(block as u64);
+            let block_start = block_index.saturating_mul(READ_AHEAD_BLOCK_SIZE as u64);
+            if block_start >= file_len {
                 break;
             }
 
-            self.schedule_read_ahead(path, file.clone(), offset, file_len).await;
+            self.schedule_read_ahead(path, file.clone(), block_index, file_len).await;
         }
     }
 
