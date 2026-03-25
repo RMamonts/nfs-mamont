@@ -8,6 +8,7 @@ use super::MirrorFS;
 impl read::Read for MirrorFS {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
         const SENDFILE_MIN_BYTES: usize = 32 * 1024;
+        const READ_AHEAD_TRIGGER_BYTES: usize = 256 * 1024;
 
         let (path, attr) = match self.path_and_attr_for_handle(&args.file).await {
             Ok(path_and_attr) => path_and_attr,
@@ -34,6 +35,12 @@ impl read::Read for MirrorFS {
         let mut read_count = 0usize;
         let mut sendfile_source = None;
 
+        let sequential = self.update_read_sequence(&path, start, end).await;
+        let should_prefetch = requested >= READ_AHEAD_TRIGGER_BYTES || sequential;
+        if should_prefetch {
+            self.schedule_read_ahead_window(&path, file.clone(), end, file_len).await;
+        }
+
         if requested > 0 && sendfile_source.is_none() {
             if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await {
                 read_count = cached;
@@ -41,7 +48,7 @@ impl read::Read for MirrorFS {
         }
 
         #[cfg(target_os = "linux")]
-        if requested >= SENDFILE_MIN_BYTES && read_count == 0 {
+        if requested >= SENDFILE_MIN_BYTES && read_count == 0 && !should_prefetch {
             read_count = requested;
             sendfile_source = Some(read::SendfileSource { file: file.clone(), offset: start });
             data = Slice::empty();
@@ -102,15 +109,6 @@ impl read::Read for MirrorFS {
 
             data = filled_data;
             read_count = filled_count;
-        }
-
-        if read_count > 0 {
-            let next_offset = start.saturating_add(read_count as u64);
-            let sequential = self.update_read_sequence(&path, start, next_offset).await;
-            let should_prefetch = requested >= (SENDFILE_MIN_BYTES * 4) || sequential;
-            if should_prefetch {
-                self.schedule_read_ahead(&path, file, next_offset, file_len).await;
-            }
         }
 
         Ok(read::Success {

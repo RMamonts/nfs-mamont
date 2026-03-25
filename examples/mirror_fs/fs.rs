@@ -51,10 +51,11 @@ const ATTRIBUTE_CACHE_TTL: Duration = Duration::from_secs(60);
 const DIRECTORY_LISTING_CACHE_LIMIT: usize = 1024;
 const DIRECTORY_LISTING_CACHE_TTL: Duration = Duration::from_millis(700);
 const READ_AHEAD_BLOCK_SIZE: usize = READ_WRITE_MAX as usize;
-const READ_AHEAD_CACHE_LIMIT: usize = 256;
-const READ_AHEAD_PER_FILE_LIMIT: usize = 4;
-const READ_AHEAD_CACHE_TTL: Duration = Duration::from_secs(15);
-const READ_AHEAD_SEQUENCE_WINDOW: Duration = Duration::from_secs(2);
+const READ_AHEAD_WINDOW_BLOCKS: usize = 8;
+const READ_AHEAD_CACHE_LIMIT: usize = 1024;
+const READ_AHEAD_PER_FILE_LIMIT: usize = 16;
+const READ_AHEAD_CACHE_TTL: Duration = Duration::from_secs(30);
+const READ_AHEAD_SEQUENCE_WINDOW: Duration = Duration::from_secs(6);
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -498,6 +499,23 @@ impl MirrorFS {
 
             cache.inflight.lock().await.remove(&key);
         });
+    }
+
+    async fn schedule_read_ahead_window(
+        &self,
+        path: &Path,
+        file: Arc<File>,
+        start_offset: u64,
+        file_len: u64,
+    ) {
+        for block in 0..READ_AHEAD_WINDOW_BLOCKS {
+            let offset = start_offset.saturating_add((block * READ_AHEAD_BLOCK_SIZE) as u64);
+            if offset >= file_len {
+                break;
+            }
+
+            self.schedule_read_ahead(path, file.clone(), offset, file_len).await;
+        }
     }
 
     async fn invalidate_read_ahead_path(&self, path: &Path) {
