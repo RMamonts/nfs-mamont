@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs::OpenOptions;
 
 use nfs_mamont::vfs::{self, create};
 
 use super::{MirrorFS, DEFAULT_SET_ATTR};
 
-#[async_trait]
 impl create::Create for MirrorFS {
     async fn create(&self, args: create::Args) -> Result<create::Success, create::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
@@ -41,33 +39,24 @@ impl create::Create for MirrorFS {
 
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
-        let existed = std::fs::symlink_metadata(&child_path).is_ok();
 
         let apply_attr = match &args.how {
             create::How::Unchecked(attr) => {
-                if !existed {
-                    if let Err(error) = OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(false)
-                        .open(&child_path)
-                        .await
-                    {
-                        return Err(create::Fail {
-                            error: Self::io_error_to_vfs(&error),
-                            wcc_data: Self::wcc_data(&dir_path, before),
-                        });
-                    }
+                if let Err(error) = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&child_path)
+                    .await
+                {
+                    return Err(create::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: Self::wcc_data(&dir_path, before),
+                    });
                 }
                 attr
             }
             create::How::Guarded(attr) => {
-                if existed {
-                    return Err(create::Fail {
-                        error: vfs::Error::Exist,
-                        wcc_data: Self::wcc_data(&dir_path, before),
-                    });
-                }
                 if let Err(error) =
                     OpenOptions::new().write(true).create_new(true).open(&child_path).await
                 {
@@ -118,6 +107,9 @@ impl create::Create for MirrorFS {
                 return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
             }
         };
+
+        self.invalidate_attr_cache_path(&child_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(create::Success {
             file: Some(handle),

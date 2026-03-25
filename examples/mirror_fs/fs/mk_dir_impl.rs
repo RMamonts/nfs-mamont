@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, mk_dir};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl mk_dir::MkDir for MirrorFS {
     async fn mk_dir(&self, args: mk_dir::Args) -> Result<mk_dir::Success, mk_dir::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
@@ -49,6 +47,9 @@ impl mk_dir::MkDir for MirrorFS {
                 return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
+
+        self.invalidate_attr_cache_path(&child_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(mk_dir::Success {
             file: Some(handle),

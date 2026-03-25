@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`RmDir`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 /// Success result.
@@ -25,7 +23,6 @@ pub struct Args {
     pub object: vfs::DirOpArgs,
 }
 
-#[async_trait]
 pub trait RmDir {
     /// Removes (deletes) a subdirectory from a directory.
     ///
@@ -34,5 +31,6 @@ pub trait RmDir {
     ///
     /// On some servers, the filename, "..", is illegal. These servers will return
     /// the error, [`vfs::Error::Exist`].
-    async fn rm_dir(&self, args: Args) -> Result<Success, Fail>;
+    fn rm_dir(&self, args: Args)
+        -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

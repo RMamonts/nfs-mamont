@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, file, link};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl link::Link for MirrorFS {
     async fn link(&self, args: link::Args) -> Result<link::Success, link::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.link.name) {
@@ -58,6 +56,10 @@ impl link::Link for MirrorFS {
             });
         }
         let _ = self.ensure_handle_for_path(&target_path).await;
+
+        self.invalidate_attr_cache_path(&file_path).await;
+        self.invalidate_attr_cache_path(&target_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(link::Success {
             file_attr: Self::file_attr(&file_path),

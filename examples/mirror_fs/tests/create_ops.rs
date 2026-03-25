@@ -345,6 +345,38 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
 }
 
 #[tokio::test]
+async fn unstable_write_reports_unstable_and_commit_succeeds() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "file.txt", b"");
+    let root = ctx.root_handle().await;
+    let handle = ctx.lookup_handle(root, "file.txt").await;
+
+    let write_result = expect_ok(
+        write::Write::write(
+            &ctx.fs,
+            write::Args {
+                file: handle.clone(),
+                offset: 0,
+                size: 4,
+                stable: write::StableHow::Unstable,
+                data: slice_from_bytes(b"data").await,
+            },
+        )
+        .await,
+        "unstable write should succeed",
+    );
+    assert_eq!(write_result.count, 4);
+    assert_eq!(write_result.commited, write::StableHow::Unstable);
+
+    let commit_result = expect_ok(
+        commit::Commit::commit(&ctx.fs, commit::Args { file: handle, offset: 0, count: 0 }).await,
+        "commit after unstable write should succeed",
+    );
+    assert_eq!(commit_result.verifier.0, write_result.verifier.0);
+    assert_eq!(stdfs::read(ctx.root_path().join("file.txt")).unwrap(), b"data");
+}
+
+#[tokio::test]
 async fn file_lifecycle_create_edit_read_and_remove() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;

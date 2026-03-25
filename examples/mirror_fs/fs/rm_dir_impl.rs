@@ -1,10 +1,9 @@
-use async_trait::async_trait;
+use tokio::fs;
 
 use nfs_mamont::vfs::{self, rm_dir};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl rm_dir::RmDir for MirrorFS {
     async fn rm_dir(&self, args: rm_dir::Args) -> Result<rm_dir::Success, rm_dir::Fail> {
         if args.object.name.as_str() == "." {
@@ -51,9 +50,10 @@ impl rm_dir::RmDir for MirrorFS {
             });
         }
 
-        match std::fs::remove_dir(&child_path) {
+        match fs::remove_dir(&child_path).await {
             Ok(()) => {
                 self.remove_cached_path(&child_path).await;
+                self.invalidate_attr_cache_path(&dir_path).await;
                 Ok(rm_dir::Success { wcc_data: Self::wcc_data(&dir_path, before) })
             }
             Err(error) => Err(rm_dir::Fail {

@@ -1,6 +1,6 @@
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tracing::error;
+use tokio::sync::mpsc::Receiver;
+use tracing::{error, info};
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
@@ -9,12 +9,12 @@ use crate::task::ProcReply;
 /// Writes [`crate::task::connection::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<ProcReply>,
+    result_receiver: Receiver<ProcReply>,
 }
 
 impl WriteTask {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<ProcReply>) -> Self {
+    pub fn new(writehalf: OwnedWriteHalf, result_receiver: Receiver<ProcReply>) -> Self {
         Self { writehalf, result_receiver }
     }
 
@@ -28,24 +28,38 @@ impl WriteTask {
     }
 
     async fn run(self) {
+        const MAX_BATCH_REPLIES: usize = 32;
+        const BATCH_WINDOW: std::time::Duration = std::time::Duration::from_millis(1);
+
         let mut result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
-        while let Some(reply) = result_receiver.recv().await {
-            // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-            // Use proper authentication verifier instead of None
+        'outer: while let Some(reply) = result_receiver.recv().await {
+            // Process the first received reply
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+            info!(xid=%reply.xid, "write task: reply");
+            if let Err(e) = serializer.form_reply(reply, verifier).await {
+                error!(error=%e, "write task: failed to serialize/send reply");
+            }
 
-            match serializer.form_reply(reply, verifier).await {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                }
-                Err(e) => {
+            // Batch a small time window to improve throughput on non-local networks.
+            for _ in 0..MAX_BATCH_REPLIES.saturating_sub(1) {
+                let next_reply = match tokio::time::timeout(BATCH_WINDOW, result_receiver.recv()).await {
+                    Ok(Some(next_reply)) => next_reply,
+                    Ok(None) => break 'outer,
+                    Err(_) => break,
+                };
+                let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+                info!(xid=%next_reply.xid, "write task: reply (batched)");
+                if let Err(e) = serializer.form_reply(next_reply, verifier).await {
                     error!(error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
                 }
-            };
+            }
+
+            // After draining all ready replies, flush the buffered writer to the socket.
+            if let Err(e) = serializer.flush().await {
+                error!(error=%e, "write task: failed to flush buffered replies");
+            }
         }
     }
 }
