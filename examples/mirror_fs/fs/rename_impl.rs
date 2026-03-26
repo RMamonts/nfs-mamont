@@ -16,8 +16,20 @@ impl rename::Rename for MirrorFS {
             });
         }
 
-        let from_dir_path = match self.path_for_handle(&args.from.dir).await {
-            Ok(path) => path,
+        let (from_export_id, from_dir_path) =
+            match self.path_for_handle_with_export(&args.from.dir).await {
+                Ok(value) => value,
+                Err(error) => {
+                    return Err(rename::Fail {
+                        error,
+                        from_dir_wcc: vfs::WccData { before: None, after: None },
+                        to_dir_wcc: vfs::WccData { before: None, after: None },
+                    });
+                }
+            };
+        let (to_export_id, to_dir_path) = match self.path_for_handle_with_export(&args.to.dir).await
+        {
+            Ok(value) => value,
             Err(error) => {
                 return Err(rename::Fail {
                     error,
@@ -26,16 +38,13 @@ impl rename::Rename for MirrorFS {
                 });
             }
         };
-        let to_dir_path = match self.path_for_handle(&args.to.dir).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(rename::Fail {
-                    error,
-                    from_dir_wcc: vfs::WccData { before: None, after: None },
-                    to_dir_wcc: vfs::WccData { before: None, after: None },
-                });
-            }
-        };
+        if from_export_id != to_export_id {
+            return Err(rename::Fail {
+                error: vfs::Error::XDev,
+                from_dir_wcc: vfs::WccData { before: None, after: None },
+                to_dir_wcc: vfs::WccData { before: None, after: None },
+            });
+        }
         let from_before_meta = std::fs::symlink_metadata(&from_dir_path).ok();
         let to_before_meta = std::fs::symlink_metadata(&to_dir_path).ok();
         let from_before = from_before_meta.as_ref().map(Self::wcc_attr_from_metadata);
@@ -114,7 +123,7 @@ impl rename::Rename for MirrorFS {
                     }
                 }
             }
-            self.remove_cached_path(&to_path).await;
+            self.remove_cached_path(to_export_id, &to_path).await;
         }
 
         if let Err(error) = fs::rename(&from_path, &to_path).await {
@@ -125,7 +134,7 @@ impl rename::Rename for MirrorFS {
             });
         }
 
-        if let Err(error) = self.rename_cached_path(&from_path, &to_path).await {
+        if let Err(error) = self.rename_cached_path(from_export_id, &from_path, &to_path).await {
             return Err(rename::Fail {
                 error,
                 from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),

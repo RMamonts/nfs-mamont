@@ -57,6 +57,8 @@ const READ_AHEAD_PER_FILE_LIMIT: usize = 16;
 const READ_AHEAD_CACHE_TTL: Duration = Duration::from_secs(30);
 const READ_AHEAD_SEQUENCE_WINDOW: Duration = Duration::from_secs(6);
 const READDIRPLUS_ATTR_PARALLELISM: usize = 16;
+const EXPORT_ID_SHIFT: u32 = 56;
+const LOCAL_HANDLE_MASK: u64 = (1u64 << EXPORT_ID_SHIFT) - 1;
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,
     uid: None,
@@ -68,14 +70,18 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 
 /// A file system implementation that mirrors a local directory.
 pub struct MirrorFS {
-    fsmap: FsMap,
+    exports: Vec<ExportState>,
     read_file_cache: ReadFileCache,
     attr_cache: AttributeCache,
     dir_listing_cache: DirectoryListingCache,
     read_ahead_cache: ReadAheadCache,
     pending_unstable_writes: Arc<tokio::sync::Mutex<HashSet<PathBuf>>>,
-    root_path: PathBuf,
     generation: u64,
+}
+
+struct ExportState {
+    root_path: PathBuf,
+    fsmap: FsMap,
 }
 
 #[derive(Clone)]
@@ -196,25 +202,42 @@ impl ReadAheadCache {
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        Self::new_many(vec![root])
+    }
+
+    /// Creates a new mirror file system with multiple export roots.
+    pub fn new_many(roots: Vec<PathBuf>) -> Self {
+        assert!(!roots.is_empty(), "mirror fs requires at least one export");
+        assert!(roots.len() <= 256, "mirror fs supports at most 256 exports");
+        let exports = roots
+            .into_iter()
+            .map(|root| {
+                let root = std::fs::canonicalize(&root).unwrap_or(root);
+                ExportState { fsmap: FsMap::new(root.clone()), root_path: root }
+            })
+            .collect();
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
         Self {
-            fsmap: FsMap::new(root.clone()),
+            exports,
             read_file_cache: ReadFileCache::new(),
             attr_cache: AttributeCache::new(),
             dir_listing_cache: DirectoryListingCache::new(),
             read_ahead_cache: ReadAheadCache::new(),
             pending_unstable_writes: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
-            root_path: root,
             generation,
         }
     }
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.root_handle()
+        self.root_handle_for_export(0).await
+    }
+
+    /// Returns the root handle for the requested export.
+    pub async fn root_handle_for_export(&self, export_id: usize) -> file::Handle {
+        Self::compose_handle(export_id, self.exports[export_id].fsmap.root_handle())
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -229,54 +252,78 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        self.path_and_attr_for_handle(handle).await.map(|(path, _)| path)
+        self.path_for_handle_with_export(handle).await.map(|(_, path)| path)
+    }
+
+    async fn path_for_handle_with_export(
+        &self,
+        handle: &file::Handle,
+    ) -> Result<(usize, PathBuf), vfs::Error> {
+        self.path_and_attr_for_handle(handle).await.map(|(export_id, path, _)| (export_id, path))
     }
 
     async fn path_and_attr_for_handle(
         &self,
         handle: &file::Handle,
-    ) -> Result<(PathBuf, file::Attr), vfs::Error> {
-        let candidates = self.fsmap.path_candidates_for_handle(handle).await?;
+    ) -> Result<(usize, PathBuf, file::Attr), vfs::Error> {
+        let (export_id, inner_handle) = self.split_handle(handle)?;
+        let export = self.export_state(export_id)?;
+        let candidates = export.fsmap.path_candidates_for_handle(&inner_handle).await?;
         for candidate in candidates {
             if let Ok(attr) = self.attr_for_path(&candidate).await {
-                return Ok((candidate, attr));
+                return Ok((export_id, candidate, attr));
             }
         }
         Err(vfs::Error::StaleFile)
     }
 
-    async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
+    async fn ensure_handle_for_path(
+        &self,
+        export_id: usize,
+        path: &Path,
+    ) -> Result<file::Handle, vfs::Error> {
         let attr = self.attr_for_path(path).await?;
-        self.fsmap.ensure_handle_for_attr(path, &attr).await
+        let export = self.export_state(export_id)?;
+        let inner_handle = export.fsmap.ensure_handle_for_attr(path, &attr).await?;
+        Ok(Self::compose_handle(export_id, inner_handle))
     }
 
     async fn ensure_handles_for_paths(
         &self,
+        export_id: usize,
         paths: &[PathBuf],
     ) -> Result<Vec<file::Handle>, vfs::Error> {
         let mut handles = Vec::with_capacity(paths.len());
         for path in paths {
-            handles.push(self.ensure_handle_for_path(path).await?);
+            handles.push(self.ensure_handle_for_path(export_id, path).await?);
         }
         Ok(handles)
     }
 
-    async fn cache_handles_for_paths(&self, paths: &[PathBuf]) {
+    async fn cache_handles_for_paths(&self, export_id: usize, paths: &[PathBuf]) {
         for path in paths {
-            let _ = self.ensure_handle_for_path(path).await;
+            let _ = self.ensure_handle_for_path(export_id, path).await;
         }
     }
 
-    async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.remove_path(path).await;
+    async fn remove_cached_path(&self, export_id: usize, path: &Path) {
+        if let Ok(export) = self.export_state(export_id) {
+            export.fsmap.remove_path(path).await;
+        }
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
         self.invalidate_read_ahead_path(path).await;
         self.clear_pending_unstable_write(path).await;
     }
 
-    async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.rename_path(from, to).await?;
+    async fn rename_cached_path(
+        &self,
+        export_id: usize,
+        from: &Path,
+        to: &Path,
+    ) -> Result<(), vfs::Error> {
+        let export = self.export_state(export_id)?;
+        export.fsmap.rename_path(from, to).await?;
         self.invalidate_read_file_cache_path(from).await;
         self.invalidate_read_file_cache_path(to).await;
         self.invalidate_attr_cache_path(from).await;
@@ -406,7 +453,10 @@ impl MirrorFS {
         }
     }
 
-    async fn attrs_for_paths_parallel(&self, paths: &[PathBuf]) -> Result<Vec<file::Attr>, vfs::Error> {
+    async fn attrs_for_paths_parallel(
+        &self,
+        paths: &[PathBuf],
+    ) -> Result<Vec<file::Attr>, vfs::Error> {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
@@ -431,10 +481,12 @@ impl MirrorFS {
             for (idx, path) in batch.iter().cloned() {
                 tasks.spawn(async move {
                     let path_for_meta = path.clone();
-                    let metadata = tokio::task::spawn_blocking(move || std::fs::symlink_metadata(path_for_meta))
-                        .await
-                        .map_err(|_| vfs::Error::IO)?
-                        .map_err(|error| Self::io_error_to_vfs(&error))?;
+                    let metadata = tokio::task::spawn_blocking(move || {
+                        std::fs::symlink_metadata(path_for_meta)
+                    })
+                    .await
+                    .map_err(|_| vfs::Error::IO)?
+                    .map_err(|error| Self::io_error_to_vfs(&error))?;
                     Ok::<(usize, PathBuf, Metadata), vfs::Error>((idx, path, metadata))
                 });
             }
@@ -443,9 +495,7 @@ impl MirrorFS {
                 let (idx, path, metadata) = task_result.map_err(|_| vfs::Error::IO)??;
                 let attr = Self::attr_from_metadata(&metadata);
 
-                self.attr_cache
-                    .attrs
-                    .insert(path.clone(), Arc::new(CachedAttrEntry { metadata }));
+                self.attr_cache.attrs.insert(path.clone(), Arc::new(CachedAttrEntry { metadata }));
                 self.attr_cache.keys.insert(path.clone()).await;
                 self.attr_cache.key_index.write().await.insert(path);
                 attrs[idx] = Some(attr);
@@ -515,7 +565,11 @@ impl MirrorFS {
             current_offset = current_offset.saturating_add(to_copy as u64);
         }
 
-        if copied == 0 { None } else { Some(copied) }
+        if copied == 0 {
+            None
+        } else {
+            Some(copied)
+        }
     }
 
     async fn update_read_sequence(&self, path: &Path, start: u64, end: u64) -> bool {
@@ -881,14 +935,40 @@ impl MirrorFS {
         &self,
         dir: &file::Handle,
         name: &file::Name,
-    ) -> Result<PathBuf, vfs::Error> {
-        let dir_path = self.path_for_handle(dir).await?;
+    ) -> Result<(usize, PathBuf), vfs::Error> {
+        let (export_id, dir_path) = self.path_for_handle_with_export(dir).await?;
         let mut child = dir_path;
         child.push(name.as_str());
-        Ok(child)
+        Ok((export_id, child))
     }
 
-    async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
-        Ok(self.root_path.clone())
+    async fn exported_root_path(&self, export_id: usize) -> Result<PathBuf, vfs::Error> {
+        Ok(self.export_state(export_id)?.root_path.clone())
+    }
+
+    fn compose_handle(export_id: usize, inner_handle: file::Handle) -> file::Handle {
+        let inner_id = u64::from_be_bytes(inner_handle.0);
+        debug_assert!(inner_id != 0);
+        debug_assert!(inner_id <= LOCAL_HANDLE_MASK);
+        file::Handle((((export_id as u64) << EXPORT_ID_SHIFT) | inner_id).to_be_bytes())
+    }
+
+    fn split_handle(&self, handle: &file::Handle) -> Result<(usize, file::Handle), vfs::Error> {
+        let raw = u64::from_be_bytes(handle.0);
+        let inner_id = raw & LOCAL_HANDLE_MASK;
+        if inner_id == 0 {
+            return Err(vfs::Error::BadFileHandle);
+        }
+
+        let export_id = (raw >> EXPORT_ID_SHIFT) as usize;
+        if export_id >= self.exports.len() {
+            return Err(vfs::Error::BadFileHandle);
+        }
+
+        Ok((export_id, file::Handle(inner_id.to_be_bytes())))
+    }
+
+    fn export_state(&self, export_id: usize) -> Result<&ExportState, vfs::Error> {
+        self.exports.get(export_id).ok_or(vfs::Error::BadFileHandle)
     }
 }

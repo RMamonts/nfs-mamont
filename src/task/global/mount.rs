@@ -113,8 +113,8 @@ impl MountTask {
             // * but don't stop task
             let _ = result_tx
                 .send(ProcReply {
-                xid: header.xid,
-                proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
+                    xid: header.xid,
+                    proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
                 })
                 .await;
             debug!(xid = header.xid, "mount task: reply queued");

@@ -8,8 +8,8 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         &self,
         args: read_dir_plus::Args,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
-        let dir_path = match self.path_for_handle(&args.dir).await {
-            Ok(path) => path,
+        let (export_id, dir_path) = match self.path_for_handle_with_export(&args.dir).await {
+            Ok(value) => value,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
         };
         let dir_attr = match self.attr_for_path(&dir_path).await {
@@ -56,7 +56,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             }
         };
 
-        let handles = match self.ensure_handles_for_paths(&selected_paths).await {
+        let handles = match self.ensure_handles_for_paths(export_id, &selected_paths).await {
             Ok(handles) => handles,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
         };

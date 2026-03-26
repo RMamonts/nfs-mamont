@@ -13,8 +13,8 @@ impl remove::Remove for MirrorFS {
             });
         }
 
-        let dir_path = match self.path_for_handle(&args.object.dir).await {
-            Ok(path) => path,
+        let (export_id, dir_path) = match self.path_for_handle_with_export(&args.object.dir).await {
+            Ok(value) => value,
             Err(error) => {
                 return Err(remove::Fail {
                     error,
@@ -26,7 +26,7 @@ impl remove::Remove for MirrorFS {
             .ok()
             .map(|meta| Self::wcc_attr_from_metadata(&meta));
         let child_path = match self.child_path(&args.object.dir, &args.object.name).await {
-            Ok(path) => path,
+            Ok((_, path)) => path,
             Err(error) => {
                 return Err(remove::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) });
             }
@@ -50,7 +50,7 @@ impl remove::Remove for MirrorFS {
                 dir_wcc: Self::wcc_data(&dir_path, before),
             });
         }
-        self.remove_cached_path(&child_path).await;
+        self.remove_cached_path(export_id, &child_path).await;
         self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(remove::Success { wcc_data: Self::wcc_data(&dir_path, before) })

@@ -44,11 +44,12 @@ impl WriteTask {
 
             // Batch a small time window to improve throughput on non-local networks.
             for _ in 0..MAX_BATCH_REPLIES.saturating_sub(1) {
-                let next_reply = match tokio::time::timeout(BATCH_WINDOW, result_receiver.recv()).await {
-                    Ok(Some(next_reply)) => next_reply,
-                    Ok(None) => break 'outer,
-                    Err(_) => break,
-                };
+                let next_reply =
+                    match tokio::time::timeout(BATCH_WINDOW, result_receiver.recv()).await {
+                        Ok(Some(next_reply)) => next_reply,
+                        Ok(None) => break 'outer,
+                        Err(_) => break,
+                    };
                 let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
                 info!(xid=%next_reply.xid, "write task: reply (batched)");
                 if let Err(e) = serializer.form_reply(next_reply, verifier).await {

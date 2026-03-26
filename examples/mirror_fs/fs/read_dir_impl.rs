@@ -4,8 +4,8 @@ use super::MirrorFS;
 
 impl read_dir::ReadDir for MirrorFS {
     async fn read_dir(&self, args: read_dir::Args) -> Result<read_dir::Success, read_dir::Fail> {
-        let dir_path = match self.path_for_handle(&args.dir).await {
-            Ok(path) => path,
+        let (export_id, dir_path) = match self.path_for_handle_with_export(&args.dir).await {
+            Ok(value) => value,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
         };
         let dir_attr = match self.attr_for_path(&dir_path).await {
@@ -46,7 +46,7 @@ impl read_dir::ReadDir for MirrorFS {
             used = used.saturating_add(estimated);
         }
 
-        self.cache_handles_for_paths(&selected_paths).await;
+        self.cache_handles_for_paths(export_id, &selected_paths).await;
 
         let eof = start >= total_entries || start.saturating_add(result.len()) >= total_entries;
 

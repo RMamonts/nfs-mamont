@@ -1,5 +1,5 @@
-use std::collections::BTreeSet;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -157,18 +157,12 @@ impl FsMap {
 
         let from_shard = Self::mutation_shard_for_relative(&from_relative);
         let to_shard = Self::mutation_shard_for_relative(&to_relative);
-        let (first, second) = if from_shard <= to_shard {
-            (from_shard, to_shard)
-        } else {
-            (to_shard, from_shard)
-        };
+        let (first, second) =
+            if from_shard <= to_shard { (from_shard, to_shard) } else { (to_shard, from_shard) };
 
         let _first_guard = self.mutation_locks[first].lock().await;
-        let _second_guard = if second != first {
-            Some(self.mutation_locks[second].lock().await)
-        } else {
-            None
-        };
+        let _second_guard =
+            if second != first { Some(self.mutation_locks[second].lock().await) } else { None };
 
         let to_rename = {
             let index = self.relative_index.read().await;

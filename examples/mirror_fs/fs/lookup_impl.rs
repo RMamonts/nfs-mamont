@@ -6,8 +6,8 @@ use super::MirrorFS;
 
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, args: lookup::Args) -> Result<lookup::Success, lookup::Fail> {
-        let parent_path = match self.path_for_handle(&args.parent).await {
-            Ok(path) => path,
+        let (export_id, parent_path) = match self.path_for_handle_with_export(&args.parent).await {
+            Ok(value) => value,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: None });
             }
@@ -25,7 +25,7 @@ impl lookup::Lookup for MirrorFS {
         let child_path = match args.name.as_str() {
             "." => parent_path.clone(),
             ".." => {
-                let export_root = match self.exported_root_path().await {
+                let export_root = match self.exported_root_path(export_id).await {
                     Ok(path) => path,
                     Err(error) => {
                         return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
@@ -51,7 +51,7 @@ impl lookup::Lookup for MirrorFS {
             }
         };
 
-        let child_handle = match self.ensure_handle_for_path(&child_path).await {
+        let child_handle = match self.ensure_handle_for_path(export_id, &child_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });

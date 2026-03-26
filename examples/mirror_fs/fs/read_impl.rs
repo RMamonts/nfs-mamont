@@ -10,7 +10,7 @@ impl read::Read for MirrorFS {
         const SENDFILE_MIN_BYTES: usize = 32 * 1024;
         const READ_AHEAD_TRIGGER_BYTES: usize = 256 * 1024;
 
-        let (path, attr) = match self.path_and_attr_for_handle(&args.file).await {
+        let (_, path, attr) = match self.path_and_attr_for_handle(&args.file).await {
             Ok(path_and_attr) => path_and_attr,
             Err(error) => {
                 return Err(read::Fail { error, file_attr: None });
@@ -44,7 +44,8 @@ impl read::Read for MirrorFS {
         }
 
         if requested > 0 && sendfile_source.is_none() {
-            if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await {
+            if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await
+            {
                 read_count = cached;
             }
         }
