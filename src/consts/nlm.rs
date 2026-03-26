@@ -1,0 +1,23 @@
+pub const NLM_PROGRAM: u32 = 100021;
+pub const NLM_VERSION: u32 = 4;
+
+pub const NLMPROC4_NULL: u32 = 0;
+pub const NLMPROC4_TEST: u32 = 1;
+pub const NLMPROC4_LOCK: u32 = 2;
+pub const NLMPROC4_CANCEL: u32 = 3;
+pub const NLMPROC4_UNLOCK: u32 = 4;
+pub const NLMPROC4_GRANTED: u32 = 5;
+pub const NLMPROC4_TEST_MSG: u32 = 6;
+pub const NLMPROC4_LOCK_MSG: u32 = 7;
+pub const NLMPROC4_CANCEL_MSG: u32 = 8;
+pub const NLMPROC4_UNLOCK_MSG: u32 = 9;
+pub const NLMPROC4_GRANTED_MSG: u32 = 10;
+pub const NLMPROC4_TEST_RES: u32 = 11;
+pub const NLMPROC4_LOCK_RES: u32 = 12;
+pub const NLMPROC4_CANCEL_RES: u32 = 13;
+pub const NLMPROC4_UNLOCK_RES: u32 = 14;
+pub const NLMPROC4_GRANTED_RES: u32 = 15;
+pub const NLMPROC4_SHARE: u32 = 20;
+pub const NLMPROC4_UNSHARE: u32 = 21;
+pub const NLMPROC4_NM_LOCK: u32 = 22;
+pub const NLMPROC4_FREE_ALL: u32 = 23;
