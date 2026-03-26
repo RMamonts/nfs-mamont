@@ -72,6 +72,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 pub struct MirrorFS {
     exports: Vec<ExportState>,
     read_file_cache: ReadFileCache,
+    write_file_cache: WriteFileCache,
     attr_cache: AttributeCache,
     dir_listing_cache: DirectoryListingCache,
     read_ahead_cache: ReadAheadCache,
@@ -101,6 +102,12 @@ struct DirectoryListingCache {
 }
 
 struct ReadFileCache {
+    files: Cache<PathBuf, Arc<File>>,
+    keys: ShardSet<PathBuf>,
+    key_index: RwLock<BTreeSet<PathBuf>>,
+}
+
+struct WriteFileCache {
     files: Cache<PathBuf, Arc<File>>,
     keys: ShardSet<PathBuf>,
     key_index: RwLock<BTreeSet<PathBuf>>,
@@ -138,6 +145,16 @@ struct ReadAheadCache {
 }
 
 impl ReadFileCache {
+    fn new() -> Self {
+        Self {
+            files: Cache::builder().max_capacity(READ_FILE_CACHE_LIMIT as u64).build(),
+            keys: ShardSet::new(),
+            key_index: RwLock::new(BTreeSet::new()),
+        }
+    }
+}
+
+impl WriteFileCache {
     fn new() -> Self {
         Self {
             files: Cache::builder().max_capacity(READ_FILE_CACHE_LIMIT as u64).build(),
@@ -222,6 +239,7 @@ impl MirrorFS {
         Self {
             exports,
             read_file_cache: ReadFileCache::new(),
+            write_file_cache: WriteFileCache::new(),
             attr_cache: AttributeCache::new(),
             dir_listing_cache: DirectoryListingCache::new(),
             read_ahead_cache: ReadAheadCache::new(),
@@ -311,6 +329,7 @@ impl MirrorFS {
             export.fsmap.remove_path(path).await;
         }
         self.invalidate_read_file_cache_path(path).await;
+        self.invalidate_write_file_cache_path(path).await;
         self.invalidate_attr_cache_path(path).await;
         self.invalidate_read_ahead_path(path).await;
         self.clear_pending_unstable_write(path).await;
@@ -326,6 +345,8 @@ impl MirrorFS {
         export.fsmap.rename_path(from, to).await?;
         self.invalidate_read_file_cache_path(from).await;
         self.invalidate_read_file_cache_path(to).await;
+        self.invalidate_write_file_cache_path(from).await;
+        self.invalidate_write_file_cache_path(to).await;
         self.invalidate_attr_cache_path(from).await;
         self.invalidate_attr_cache_path(to).await;
         self.invalidate_read_ahead_path(from).await;
@@ -393,6 +414,33 @@ impl MirrorFS {
         Ok(opened)
     }
 
+    async fn get_cached_write_file(&self, path: &Path) -> Result<Arc<File>, vfs::Error> {
+        if let Some(file) = self.write_file_cache.files.get(path) {
+            return Ok(file);
+        }
+
+        let path_buf = path.to_path_buf();
+        let opened = tokio::task::spawn_blocking(move || {
+            std::fs::OpenOptions::new().write(true).truncate(false).open(path_buf)
+        })
+        .await
+        .map_err(|_| vfs::Error::IO)?
+        .map_err(|error| Self::io_error_to_vfs(&error))?;
+        let opened = Arc::new(opened);
+
+        if let Some(existing) = self.write_file_cache.files.get(path) {
+            return Ok(existing);
+        }
+
+        let key = path.to_path_buf();
+        self.write_file_cache.files.insert(key.clone(), opened.clone());
+        self.write_file_cache.keys.insert(key.clone()).await;
+        self.write_file_cache.key_index.write().await.insert(key);
+        self.maybe_compact_write_file_keys().await;
+
+        Ok(opened)
+    }
+
     async fn invalidate_read_file_cache_path(&self, path: &Path) {
         let keys: Vec<PathBuf> = {
             let index = self.read_file_cache.key_index.read().await;
@@ -407,6 +455,23 @@ impl MirrorFS {
             self.read_file_cache.files.invalidate(&key);
             self.read_file_cache.keys.remove(&key).await;
             self.read_file_cache.key_index.write().await.remove(&key);
+        }
+    }
+
+    async fn invalidate_write_file_cache_path(&self, path: &Path) {
+        let keys: Vec<PathBuf> = {
+            let index = self.write_file_cache.key_index.read().await;
+            index
+                .iter()
+                .filter(|known_path| *known_path == path || known_path.starts_with(path))
+                .cloned()
+                .collect()
+        };
+
+        for key in keys {
+            self.write_file_cache.files.invalidate(&key);
+            self.write_file_cache.keys.remove(&key).await;
+            self.write_file_cache.key_index.write().await.remove(&key);
         }
     }
 
@@ -426,6 +491,13 @@ impl MirrorFS {
         }
     }
 
+    async fn store_attr_cache_metadata(&self, path: PathBuf, metadata: Metadata) {
+        self.attr_cache.attrs.insert(path.clone(), Arc::new(CachedAttrEntry { metadata }));
+        self.attr_cache.keys.insert(path.clone()).await;
+        self.attr_cache.key_index.write().await.insert(path);
+        self.maybe_compact_attr_keys().await;
+    }
+
     async fn maybe_compact_read_file_keys(&self) {
         if self.read_file_cache.key_index.read().await.len() <= READ_FILE_CACHE_LIMIT * 4 {
             return;
@@ -437,6 +509,20 @@ impl MirrorFS {
         for key in stale_keys {
             self.read_file_cache.keys.remove(&key).await;
             self.read_file_cache.key_index.write().await.remove(&key);
+        }
+    }
+
+    async fn maybe_compact_write_file_keys(&self) {
+        if self.write_file_cache.key_index.read().await.len() <= READ_FILE_CACHE_LIMIT * 4 {
+            return;
+        }
+        let keys: Vec<PathBuf> =
+            self.write_file_cache.key_index.read().await.iter().cloned().collect();
+        let stale_keys: Vec<PathBuf> =
+            keys.into_iter().filter(|key| self.write_file_cache.files.get(key).is_none()).collect();
+        for key in stale_keys {
+            self.write_file_cache.keys.remove(&key).await;
+            self.write_file_cache.key_index.write().await.remove(&key);
         }
     }
 
@@ -781,6 +867,10 @@ impl MirrorFS {
             mtime: Self::time_from_unix(meta.mtime(), meta.mtime_nsec()),
             ctime: Self::time_from_unix(meta.ctime(), meta.ctime_nsec()),
         }
+    }
+
+    fn wcc_attr_from_attr(attr: &file::Attr) -> file::WccAttr {
+        file::WccAttr { size: attr.size, mtime: attr.mtime, ctime: attr.ctime }
     }
 
     fn metadata(path: &Path) -> Result<Metadata, vfs::Error> {

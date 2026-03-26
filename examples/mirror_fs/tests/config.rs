@@ -70,5 +70,5 @@ paths = [".", "nested"]
 
     let error = super::super::load_runtime_config(&config_path).unwrap_err();
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-    assert!(error.to_string().contains("must be a relative child path"));
+    assert!(error.to_string().contains("export path must not be empty"));
 }

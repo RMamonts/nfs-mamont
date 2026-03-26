@@ -25,6 +25,7 @@ async fn root_handle_and_reused_handles() {
     assert_eq!(path_for_handle(&fs_map, &first).await.unwrap(), child);
 
     let outside = tempdir.path().parent().unwrap().join("outside.txt");
+    std::fs::write(&outside, b"outside").unwrap();
     let error =
         expect_err(ensure_handle_for_path(&fs_map, &outside).await, "outside path must fail");
     assert_eq!(error, vfs::Error::BadFileHandle);
