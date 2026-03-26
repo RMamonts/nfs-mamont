@@ -4,6 +4,7 @@ mod allocator;
 pub mod consts;
 mod context;
 mod mount;
+mod nlm;
 mod parser;
 mod rpc;
 mod serializer;
