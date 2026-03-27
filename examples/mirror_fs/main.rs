@@ -33,6 +33,7 @@ async fn main() -> std::io::Result<()> {
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),
+        path.clone(),
         NonZeroUsize::new(64 * 1024).unwrap(),
         NonZeroUsize::new(8).unwrap(),
         NonZeroUsize::new(64 * 1024).unwrap(),
