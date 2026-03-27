@@ -20,7 +20,7 @@ pub enum Nlm4Stats {
     /// locks after a reboot and is not yet ready to resume normal service.
     DeniedGracePeriod = 4,
     /// The request could not be granted and blocking would cause a deadlock.
-    Deadlack = 5,
+    Deadlock = 5,
     /// The call failed because the remote file system is read-only.
     Rofs = 6,
     /// The call failed because it uses an invalid file handle.
@@ -37,7 +37,16 @@ pub enum Nlm4Stats {
 
 #[allow(dead_code)]
 /// Opaque lock owner identifier (`oh`).
+#[derive(Debug)]
 pub struct OpaqueHandle(Vec<u8>);
+
+impl OpaqueHandle {
+    /// Returns the underlying bytes of the opaque handle.
+    #[allow(dead_code)]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 #[allow(dead_code)]
 /// This structure describes a lock request.
@@ -48,7 +57,8 @@ pub struct OpaqueHandle(Vec<u8>);
 /// - `opaque_handle`: host or process that is making the request
 /// - `system_identifier`: process that is making the request.
 /// - `lock_offset`: offset for the lock region.
-/// - `lock_length`: length of the blocking region. A l_len of 0 means "to end of file.
+/// - `lock_length`: length of the blocking region. A l_len of 0 means "to end of file".
+#[derive(Debug)]
 pub struct Nlm4Lock {
     caller_name: String,
     file_handle: vfs::file::Handle,
@@ -131,5 +141,62 @@ impl Nlm4Lock {
     /// See the [`lock_length`] field in [`Nlm4Lock`].
     pub fn lock_length(&self) -> u64 {
         self.lock_length
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vfs::file::Handle;
+
+    use crate::consts::nfsv3::NFS3_FHSIZE;
+
+    #[test]
+    fn new_lock_succeeds() {
+        let caller_name = "host".to_string();
+        let file_handle = Handle([0; NFS3_FHSIZE]);
+        let opaque_handle = OpaqueHandle(vec![1, 2, 3]);
+        let system_id = 12345;
+        let offset = 0;
+        let length = 0;
+
+        let lock = Nlm4Lock::new(
+            caller_name.clone(),
+            file_handle,
+            opaque_handle,
+            system_id,
+            offset,
+            length,
+        )
+        .unwrap();
+
+        assert_eq!(lock.caller_name(), caller_name);
+        assert_eq!(lock.file_handle().0, [0; NFS3_FHSIZE]);
+        assert_eq!(lock.opaque_handle().as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.system_identifier(), system_id);
+        assert_eq!(lock.lock_offset(), offset);
+        assert_eq!(lock.lock_length(), length);
+    }
+
+    #[test]
+    fn new_lock_fails_on_empty_caller_name() {
+        let result = Nlm4Lock::new(
+            "".to_string(),
+            Handle([0; NFS3_FHSIZE]),
+            OpaqueHandle(vec![]),
+            12345,
+            0,
+            0,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), "caller_name must not be empty");
+    }
+
+    #[test]
+    fn opaque_handle_bytes() {
+        let bytes = vec![0x01, 0x02];
+        let oh = OpaqueHandle(bytes.clone());
+        assert_eq!(oh.as_bytes(), bytes.as_slice());
     }
 }
