@@ -1,4 +1,6 @@
-//! Defines NLMv3 Network Lock Manager interface --- [`Nlm`].
+//! Defines NLMv3 Network Lock Manager interface.
+//!
+//! This module contains types and structures for NLMv4 as defined in RFC 1813.
 
 use crate::vfs;
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -100,21 +102,21 @@ impl Nlm4Lock {
 
     /// Returns the host name of the client.
     ///
-    /// See the description of the [`caller_name`] field in [`Nlm4Lock`].
+    /// See the description of the `caller_name` field in [`Nlm4Lock`].
     pub fn caller_name(&self) -> &str {
         &self.caller_name
     }
 
     /// Returns the file handle of the client.
     ///
-    /// See the description of the [`file_handle`] field in [`Nlm4Lock`].
+    /// See the description of the `file_handle` field in [`Nlm4Lock`].
     pub fn file_handle(&self) -> &vfs::file::Handle {
         &self.file_handle
     }
 
     /// Returns the opaque handle of the client.
     ///
-    /// See the description of the [`opaque_handle`] field in [`Nlm4Lock`].
+    /// See the description of the `opaque_handle` field in [`Nlm4Lock`].
     pub fn opaque_handle(&self) -> &OpaqueHandle {
         &self.opaque_handle
     }
@@ -122,7 +124,7 @@ impl Nlm4Lock {
     /// Returns the system identifier (`svid`).
     ///
     /// This is a copy of the original value.
-    /// See the [`system_identifier`] field in [`Nlm4Lock`].
+    /// See the `system_identifier` field in [`Nlm4Lock`].
     pub fn system_identifier(&self) -> i32 {
         self.system_identifier
     }
@@ -130,7 +132,7 @@ impl Nlm4Lock {
     /// Returns the lock offset.
     ///
     /// This is a copy of the original value.
-    /// See the [`lock_offset`] field in [`Nlm4Lock`].
+    /// See the `lock_offset` field in [`Nlm4Lock`].
     pub fn lock_offset(&self) -> u64 {
         self.lock_offset
     }
@@ -138,7 +140,7 @@ impl Nlm4Lock {
     /// Returns the lock length.
     ///
     /// This is a copy of the original value.
-    /// See the [`lock_length`] field in [`Nlm4Lock`].
+    /// See the `lock_length` field in [`Nlm4Lock`].
     pub fn lock_length(&self) -> u64 {
         self.lock_length
     }
