@@ -37,9 +37,9 @@ pub enum Nlm4Stats {
     Failed = 9,
 }
 
-#[allow(dead_code)]
 /// Opaque lock owner identifier (`oh`).
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct OpaqueHandle(Vec<u8>);
 
 impl OpaqueHandle {
@@ -50,7 +50,6 @@ impl OpaqueHandle {
     }
 }
 
-#[allow(dead_code)]
 /// This structure describes a lock request.
 ///
 /// # Fields
@@ -61,6 +60,7 @@ impl OpaqueHandle {
 /// - `lock_offset`: offset for the lock region.
 /// - `lock_length`: length of the blocking region. A l_len of 0 means "to end of file".
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Nlm4Lock {
     caller_name: String,
     file_handle: vfs::file::Handle,
