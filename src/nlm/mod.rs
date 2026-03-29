@@ -1,4 +1,4 @@
-//! Defines NLMv3 Network Lock Manager interface.
+//! Defines NLMv4 Network Lock Manager interface.
 //!
 //! This module contains types and structures for NLMv4 as defined in RFC 1813.
 
