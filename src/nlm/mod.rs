@@ -2,6 +2,7 @@
 //!
 //! This module contains types and structures for NLMv4 as defined in RFC 1813.
 
+use crate::consts::nlm;
 use crate::vfs;
 use num_derive::{FromPrimitive, ToPrimitive};
 
@@ -89,6 +90,9 @@ impl Nlm4Lock {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if caller_name.is_empty() {
             return Err("caller_name must not be empty".into());
+        }
+        if caller_name.len() > nlm::LM_MAXSTRLEN {
+            return Err(format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN).into());
         }
         Ok(Nlm4Lock {
             caller_name,
@@ -193,6 +197,21 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.to_string(), "caller_name must not be empty");
+    }
+
+    #[test]
+    fn new_lock_fails_on_too_long_caller_name() {
+        let result = Nlm4Lock::new(
+            "a".repeat(nlm::LM_MAXSTRLEN + 1),
+            Handle([0; NFS3_FHSIZE]),
+            OpaqueHandle(vec![]),
+            12345,
+            0,
+            0,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN));
     }
 
     #[test]
