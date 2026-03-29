@@ -1,19 +1,21 @@
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
-use crate::context::ServerContext;
+use crate::context::{HandleMap, ServerContext};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{self, NfsRes, Vfs};
+use crate::vfs::{self, NfsRes, Vfs, WccData};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
     allocator: Arc<Mutex<Impl>>,
+    handles: Arc<HandleMap>,
     command_receiver: UnboundedReceiver<NfsArgWrapper>,
     result_sender: UnboundedSender<ProcReply>,
 }
@@ -28,6 +30,7 @@ impl VfsTask {
         Self {
             backend: context.get_backend(),
             allocator: context.get_read_allocator(),
+            handles: context.get_handle_map(),
             command_receiver,
             result_sender,
         }
@@ -51,35 +54,89 @@ impl VfsTask {
 
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,
-                NfsArguments::GetAttr(args) => NfsRes::GetAttr(self.backend.get_attr(args).await),
-                NfsArguments::SetAttr(args) => NfsRes::SetAttr(self.backend.set_attr(args).await),
-                NfsArguments::LookUp(args) => NfsRes::LookUp(self.backend.lookup(args).await),
-                NfsArguments::Access(args) => NfsRes::Access(self.backend.access(args).await),
-                NfsArguments::ReadLink(args) => {
-                    NfsRes::ReadLink(self.backend.read_link(args).await)
-                }
-                NfsArguments::Read(args) => {
-                    let data_result = if args.count == 0 {
-                        Ok(Slice::empty())
-                    } else {
-                        let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+                NfsArguments::GetAttr(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => NfsRes::GetAttr(self.backend.get_attr(args, path).await),
+                    Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
+                },
+                NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => NfsRes::SetAttr(self.backend.set_attr(args, path).await),
+                    Err(error) => NfsRes::SetAttr(Err(vfs::set_attr::Fail {
+                        error,
+                        wcc_data: WccData { before: None, after: None },
+                    })),
+                },
 
-                        let mut allocator = self.allocator.lock().await;
-                        allocator
-                            .allocate(requested_size)
-                            .await
-                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
-                    };
+                NfsArguments::LookUp(args) => match self.handles.path_for_handle(&args.parent) {
+                    Ok(path) => NfsRes::LookUp(self.backend.lookup(args, path).await),
+                    Err(error) => NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None })),
+                },
+                NfsArguments::Access(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => NfsRes::Access(self.backend.access(args, path).await),
+                    Err(error) => {
+                        NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None }))
+                    }
+                },
 
-                    match data_result {
-                        Ok(data) => NfsRes::Read(self.backend.read(args, data).await),
-                        Err(err) => NfsRes::Read(Err(err)),
+                NfsArguments::ReadLink(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => NfsRes::ReadLink(self.backend.read_link(args, path).await),
+                    Err(error) => {
+                        NfsRes::ReadLink(Err(vfs::read_link::Fail { symlink_attr: None, error }))
+                    }
+                },
+                NfsArguments::Read(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => {
+                        let data_result = if args.count == 0 {
+                            Ok(Slice::empty())
+                        } else {
+                            let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+
+                            let mut allocator = self.allocator.lock().await;
+                            allocator.allocate(requested_size).await.ok_or(vfs::read::Fail {
+                                error: vfs::Error::TooSmall,
+                                file_attr: None,
+                            })
+                        };
+
+                        match data_result {
+                            Ok(data) => NfsRes::Read(self.backend.read(args, data, path).await),
+                            Err(err) => NfsRes::Read(Err(err)),
+                        }
+                    }
+                    Err(error) => NfsRes::Read(vfs::read::Fail { error, file_attr: None }),
+                },
+                NfsArguments::Write(args) => match self.handles.path_for_handle(&args.file) {
+                    Ok(path) => NfsRes::Write(self.backend.write(args, path).await),
+                    Err(error) => NfsRes::Write(Err(vfs::write::Fail {
+                        error,
+                        wcc_data: WccData { before: None, after: None },
+                    })),
+                },
+                NfsArguments::Create(args) => {
+                    match self.handles.path_for_handle(&args.object.dir) {
+                        Ok(path) => NfsRes::Create(self.backend.create(args, path).await),
+                        Err(error) => NfsRes::Create(Err(vfs::create::Fail {
+                            error,
+                            wcc_data: WccData { before: None, after: None },
+                        })),
                     }
                 }
-                NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
-                NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),
-                NfsArguments::MkDir(args) => NfsRes::MkDir(self.backend.mk_dir(args).await),
-                NfsArguments::SymLink(args) => NfsRes::SymLink(self.backend.symlink(args).await),
+
+                NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir) {
+                    Ok(path) => NfsRes::MkDir(self.backend.mk_dir(args, path).await),
+                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
+                        error,
+                        dir_wcc: WccData { before: None, after: None },
+                    })),
+                },
+                NfsArguments::SymLink(args) => match self.handles.path_for_handle(&args.object.dir) {
+                    Ok(path) => NfsRes::SymLink(self.backend.symlink(args, path).await),
+                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
+                        error,
+                        dir_wcc: WccData { before: None, after: None },
+                    })),
+                },
+
+
                 NfsArguments::MkNod(args) => NfsRes::MkNod(self.backend.mk_node(args).await),
                 NfsArguments::Remove(args) => NfsRes::Remove(self.backend.remove(args).await),
                 NfsArguments::RmDir(args) => NfsRes::RmDir(self.backend.rm_dir(args).await),

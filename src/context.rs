@@ -112,4 +112,8 @@ impl ServerContext {
     pub fn get_write_allocator(&self) -> Arc<Mutex<Impl>> {
         Arc::clone(&self.write_allocator)
     }
+
+    pub fn get_handle_map(&self) -> Arc<HandleMap> {
+        Arc::clone(&self.handles)
+    }
 }
