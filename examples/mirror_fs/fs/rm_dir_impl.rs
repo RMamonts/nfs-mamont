@@ -36,10 +36,7 @@ impl rm_dir::RmDir for MirrorFS {
         }
 
         match std::fs::remove_dir(path) {
-            Ok(()) => {
-                self.remove_cached_path(path).await;
-                Ok(rm_dir::Success { wcc_data: Self::wcc_data(dir_path, before) })
-            }
+            Ok(()) => Ok(rm_dir::Success { wcc_data: Self::wcc_data(dir_path, before) }),
             Err(error) => Err(rm_dir::Fail {
                 error: Self::io_error_to_vfs(&error),
                 dir_wcc: Self::wcc_data(dir_path, before),

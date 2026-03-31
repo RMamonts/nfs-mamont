@@ -10,7 +10,9 @@ use crate::context::ServerContext;
 use crate::handles::{ensure_name_allowed, HandleMap};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{self, NfsRes, Vfs, WccData};
+use crate::vfs::file::Handle;
+use crate::vfs::read_dir_plus::{Fail, Success};
+use crate::vfs::{self, Error, NfsRes, Vfs, WccData};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
@@ -94,14 +96,14 @@ impl VfsTask {
                     match self.backend.lookup(path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => {
-                            let handle = match self.handles.create_handle(path.as_path()).await {
+                            let handle = match self.handles.create_handle(&path).await {
                                 Ok(handle) => handle,
                                 Err(_) => {
                                     unreachable!("handle creation failed, fs consistency is broken")
                                 }
                             };
                             NfsRes::LookUp(Ok(vfs::lookup::Success {
-                                file: handle,
+                                file: Some(handle),
                                 file_attr: ok.file_attr,
                                 dir_attr: ok.dir_attr,
                             }))
@@ -133,7 +135,16 @@ impl VfsTask {
                             Err(err) => NfsRes::Create(Err(err)),
                             Ok(ok) => {
                                 //TODO(can we use option, if possible, or unreachable everywhere?)
-                                let handle = self.handles.create_handle(path.as_path()).await.ok();
+                                let handle = match self.handles.create_handle(&path).await {
+                                    Ok(s) => Some(s),
+                                    Err(err) => unreachable!(
+                                        "{}",
+                                        format!(
+                                            "handle remove failed, fs consistency is broken: {:?}",
+                                            err
+                                        )
+                                    ),
+                                };
                                 NfsRes::Create(Ok(vfs::create::Success {
                                     file: handle,
                                     attr: ok.attr,
@@ -166,7 +177,16 @@ impl VfsTask {
                         match self.backend.mk_dir(path.as_path(), args.attr).await {
                             Err(err) => NfsRes::MkDir(Err(err)),
                             Ok(ok) => {
-                                let handle = self.handles.create_handle(path.as_path()).await.ok();
+                                let handle = match self.handles.create_handle(&path).await {
+                                    Ok(s) => Some(s),
+                                    Err(err) => unreachable!(
+                                        "{}",
+                                        format!(
+                                            "handle remove failed, fs consistency is broken: {:?}",
+                                            err
+                                        )
+                                    ),
+                                };
                                 NfsRes::MkDir(Ok(vfs::mk_dir::Success {
                                     file: handle,
                                     attr: ok.attr,
@@ -203,10 +223,14 @@ impl VfsTask {
                             Err(err) => NfsRes::Remove(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
-                                match self.handles.remove_handle(handle).await {
+                                match self.handles.remove_handle(handle, &path).await {
                                     Ok(_) => NfsRes::Remove(Ok(ok)),
-                                    Err(_) => unreachable!(
-                                        "handle remove failed, fs consistency is broken"
+                                    Err(err) => unreachable!(
+                                        "{}",
+                                        format!(
+                                            "handle remove failed, fs consistency is broken: {:?}",
+                                            err
+                                        )
                                     ),
                                 }
                             }
@@ -238,10 +262,14 @@ impl VfsTask {
                             Err(err) => NfsRes::RmDir(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
-                                match self.handles.remove_handle(handle).await {
+                                match self.handles.remove_handle(handle, &path).await {
                                     Ok(_) => NfsRes::RmDir(Ok(ok)),
-                                    Err(_) => unreachable!(
-                                        "handle remove failed, fs consistency is broken"
+                                    Err(err) => unreachable!(
+                                        "{}",
+                                        format!(
+                                            "handle remove failed, fs consistency is broken: {:?}",
+                                            err
+                                        )
                                     ),
                                 }
                             }
@@ -332,7 +360,7 @@ impl VfsTask {
                 match self.backend.link(path.as_path(), real.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
-                        let _handle = self.handles.create_handle(path.as_path()).await.ok();
+                        let _handle = self.handles.create_handle(&path).await.ok();
                         NfsRes::Link(Ok(vfs::link::Success {
                             file_attr: ok.file_attr,
                             dir_wcc: ok.dir_wcc,
@@ -365,7 +393,7 @@ impl VfsTask {
                 match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path.as_path()).await.ok();
+                        let handle = self.handles.create_handle(&path).await.ok();
                         NfsRes::SymLink(Ok(vfs::symlink::Success {
                             file: handle,
                             attr: ok.attr,
@@ -465,7 +493,7 @@ impl VfsTask {
                 match self.backend.mk_node(path.as_path(), args.what).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path.as_path()).await.ok();
+                        let handle = self.handles.create_handle(&path).await.ok();
                         NfsRes::MkNod(Ok(vfs::mk_node::Success {
                             file: handle,
                             attr: ok.attr,
@@ -480,9 +508,22 @@ impl VfsTask {
                 Ok(lock) => {
                     let path = lock.write().await;
                     NfsRes::ReadDir(
-                        self.backend
+                        match self
+                            .backend
                             .read_dir(path.as_path(), args.cookie, args.cookie_verifier, args.count)
-                            .await,
+                            .await
+                        {
+                            Ok(mut ok) => {
+                                for entrie in ok.entries.iter_mut() {
+                                    let name = &entrie.file_name;
+                                    let mut entr_path = path.clone();
+                                    entr_path.push(name.as_str());
+                                    let _ = self.handles.create_handle(&entr_path).await.ok();
+                                }
+                                Ok(ok)
+                            }
+                            error => error,
+                        },
                     )
                 }
             },
@@ -495,7 +536,8 @@ impl VfsTask {
                     Ok(lock) => {
                         let path = lock.write().await;
                         NfsRes::ReadDirPlus(
-                            self.backend
+                            match self
+                                .backend
                                 .read_dir_plus(
                                     path.as_path(),
                                     args.cookie,
@@ -503,7 +545,21 @@ impl VfsTask {
                                     args.dir_count,
                                     args.max_count,
                                 )
-                                .await,
+                                .await
+                            {
+                                Ok(mut ok) => {
+                                    for entrie in ok.entries.iter_mut() {
+                                        let name = &entrie.file_name;
+                                        let mut entr_path = path.clone();
+                                        entr_path.push(name.as_str());
+                                        let handle =
+                                            self.handles.create_handle(&entr_path).await.ok();
+                                        entrie.file_handle = handle;
+                                    }
+                                    Ok(ok)
+                                }
+                                Err(error) => Err(error),
+                            },
                         )
                     }
                 }

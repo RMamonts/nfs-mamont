@@ -47,16 +47,12 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);
-            let handle = match self.ensure_handle_for_path(&path).await {
-                Ok(handle) => handle,
-                Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
-            };
             result.push(read_dir_plus::Entry {
                 file_id: attr.file_id,
                 file_name: name,
                 cookie: read_dir::Cookie::new((index + 1) as u64),
                 file_attr: Some(attr),
-                file_handle: Some(handle),
+                file_handle: None,
             });
             used = used.saturating_add(estimated);
         }

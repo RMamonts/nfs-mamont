@@ -43,7 +43,6 @@ impl read_dir::ReadDir for MirrorFS {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);
-            let _ = self.ensure_handle_for_path(&path).await;
             result.push(read_dir::Entry {
                 file_id: attr.file_id,
                 file_name: name,
