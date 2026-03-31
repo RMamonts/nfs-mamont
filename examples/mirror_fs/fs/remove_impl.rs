@@ -9,8 +9,6 @@ use super::MirrorFS;
 #[async_trait]
 impl remove::Remove for MirrorFS {
     async fn remove(&self, path: &Path) -> Result<remove::Success, remove::Fail> {
-        //TODO(make ensure path?)
-
         let dir_path = match path.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {

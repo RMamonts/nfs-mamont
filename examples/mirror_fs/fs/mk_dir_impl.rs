@@ -9,7 +9,6 @@ use nfs_mamont::vfs::{self, mk_dir};
 #[async_trait]
 impl mk_dir::MkDir for MirrorFS {
     async fn mk_dir(&self, path: &Path, attr: NewAttr) -> Result<mk_dir::Success, mk_dir::Fail> {
-        //TODO(make ensure path?)
         let dir_path = match path.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {

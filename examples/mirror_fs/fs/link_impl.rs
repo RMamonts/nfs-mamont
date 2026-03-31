@@ -9,7 +9,6 @@ use super::MirrorFS;
 #[async_trait]
 impl link::Link for MirrorFS {
     async fn link(&self, path: &Path, object: &Path) -> Result<link::Success, link::Fail> {
-        //TODO(make ensure path?)
         let file_attr = Self::file_attr(object);
         if matches!(file_attr.as_ref().map(|attr| attr.file_type), Some(file::Type::Directory)) {
             return Err(link::Fail {

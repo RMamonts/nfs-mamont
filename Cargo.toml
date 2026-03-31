@@ -19,7 +19,6 @@ num-traits = "0.2.19"
 tracing = { version = "0.1", features = ["release_max_level_off"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 dashmap = "6.1.0"
-whirlwind = "0.1.1"
 
 [dev-dependencies]
 [package.metadata.cargo-udeps.ignore]

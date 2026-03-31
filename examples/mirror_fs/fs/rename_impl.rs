@@ -9,8 +9,6 @@ use super::MirrorFS;
 #[async_trait]
 impl rename::Rename for MirrorFS {
     async fn rename(&self, from: &Path, to: &Path) -> Result<rename::Success, rename::Fail> {
-        //TODO(make ensure path?)
-
         let from_dir_path = match from.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {

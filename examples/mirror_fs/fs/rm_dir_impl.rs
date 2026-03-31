@@ -8,7 +8,6 @@ use super::MirrorFS;
 #[async_trait]
 impl rm_dir::RmDir for MirrorFS {
     async fn rm_dir(&self, path: &Path) -> Result<rm_dir::Success, rm_dir::Fail> {
-        //TODO(make ensure path?)
         let dir_path = match path.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {

@@ -27,8 +27,6 @@ impl lookup::Lookup for MirrorFS {
             return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
         }
 
-        //TODO(make ensure path?)
-
         let child_meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
@@ -37,7 +35,7 @@ impl lookup::Lookup for MirrorFS {
         };
 
         Ok(lookup::Success {
-            //TODO("change!!!")
+            //TODO("change types?")
             file: Handle(5u64.to_be_bytes()),
             file_attr: Some(Self::attr_from_metadata(&child_meta)),
             dir_attr: Some(parent_attr),

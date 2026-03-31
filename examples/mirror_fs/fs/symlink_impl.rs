@@ -13,7 +13,6 @@ impl symlink::Symlink for MirrorFS {
         obj: &Path,
         _new_attr: NewAttr,
     ) -> Result<symlink::Success, symlink::Fail> {
-        //TODO(make ensure path?)
         let dir_path = match path.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {
