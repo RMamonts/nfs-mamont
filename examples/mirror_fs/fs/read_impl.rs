@@ -18,7 +18,7 @@ impl read::Read for MirrorFS {
         count: u32,
         mut data: Slice,
     ) -> Result<read::Success, read::Fail> {
-        let meta = match Self::metadata(&path) {
+        let meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(read::Fail { error, file_attr: None });
@@ -29,7 +29,7 @@ impl read::Read for MirrorFS {
             return Err(read::Fail { error, file_attr: Some(attr) });
         }
 
-        let mut file = match File::open(&path).await {
+        let mut file = match File::open(path).await {
             Ok(file) => file,
             Err(error) => {
                 return Err(read::Fail {

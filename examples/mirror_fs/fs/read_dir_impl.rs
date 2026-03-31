@@ -14,7 +14,7 @@ impl read_dir::ReadDir for MirrorFS {
         cookie_verifier: CookieVerifier,
         count: u32,
     ) -> Result<read_dir::Success, read_dir::Fail> {
-        let dir_meta = match Self::metadata(&dir_path) {
+        let dir_meta = match Self::metadata(dir_path) {
             Ok(meta) => meta,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
         };
@@ -28,7 +28,7 @@ impl read_dir::ReadDir for MirrorFS {
             return Err(read_dir::Fail { error: vfs::Error::BadCookie, dir_attr: Some(dir_attr) });
         }
 
-        let entries = match self.list_directory_entries(&dir_path) {
+        let entries = match self.list_directory_entries(dir_path) {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) }),
         };

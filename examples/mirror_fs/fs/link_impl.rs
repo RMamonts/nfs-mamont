@@ -30,7 +30,7 @@ impl link::Link for MirrorFS {
             }
         };
 
-        let before = std::fs::symlink_metadata(&dir_path)
+        let before = std::fs::symlink_metadata(dir_path)
             .ok()
             .map(|meta| Self::wcc_attr_from_metadata(&meta));
 
@@ -38,14 +38,14 @@ impl link::Link for MirrorFS {
             return Err(link::Fail {
                 error: Self::io_error_to_vfs(&error),
                 file_attr,
-                dir_wcc: Self::wcc_data(&dir_path, before),
+                dir_wcc: Self::wcc_data(dir_path, before),
             });
         }
         let _ = self.ensure_handle_for_path(path).await;
 
         Ok(link::Success {
             file_attr: Self::file_attr(object),
-            dir_wcc: Self::wcc_data(&dir_path, before),
+            dir_wcc: Self::wcc_data(dir_path, before),
         })
     }
 }

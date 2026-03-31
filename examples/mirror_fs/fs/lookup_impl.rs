@@ -15,7 +15,7 @@ impl lookup::Lookup for MirrorFS {
                 return Err(lookup::Fail { error: vfs::Error::BadType, dir_attr: None });
             }
         };
-        let parent_meta = match Self::metadata(&parent_path) {
+        let parent_meta = match Self::metadata(parent_path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: None });

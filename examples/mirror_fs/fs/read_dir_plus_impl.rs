@@ -16,7 +16,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         _dir_count: u32,
         max_count: u32,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
-        let dir_meta = match Self::metadata(&dir_path) {
+        let dir_meta = match Self::metadata(dir_path) {
             Ok(meta) => meta,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
         };
@@ -33,7 +33,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             });
         }
 
-        let entries = match self.list_directory_entries(&dir_path) {
+        let entries = match self.list_directory_entries(dir_path) {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
         };

@@ -10,7 +10,7 @@ use super::MirrorFS;
 #[async_trait]
 impl access::Access for MirrorFS {
     async fn access(&self, path: &Path, mask: Mask) -> Result<Success, Fail> {
-        let meta = match Self::metadata(&path) {
+        let meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => return Err(access::Fail { error, object_attr: None }),
         };

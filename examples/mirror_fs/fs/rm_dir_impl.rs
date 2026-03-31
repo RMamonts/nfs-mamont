@@ -25,24 +25,24 @@ impl rm_dir::RmDir for MirrorFS {
         let child_meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
-                return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+                return Err(rm_dir::Fail { error, dir_wcc: Self::wcc_data(dir_path, before) })
             }
         };
         if !child_meta.is_dir() {
             return Err(rm_dir::Fail {
                 error: vfs::Error::NotDir,
-                dir_wcc: Self::wcc_data(&dir_path, before),
+                dir_wcc: Self::wcc_data(dir_path, before),
             });
         }
 
         match std::fs::remove_dir(path) {
             Ok(()) => {
                 self.remove_cached_path(path).await;
-                Ok(rm_dir::Success { wcc_data: Self::wcc_data(&dir_path, before) })
+                Ok(rm_dir::Success { wcc_data: Self::wcc_data(dir_path, before) })
             }
             Err(error) => Err(rm_dir::Fail {
                 error: Self::io_error_to_vfs(&error),
-                dir_wcc: Self::wcc_data(&dir_path, before),
+                dir_wcc: Self::wcc_data(dir_path, before),
             }),
         }
     }

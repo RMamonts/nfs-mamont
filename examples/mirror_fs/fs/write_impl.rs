@@ -18,20 +18,20 @@ impl write::Write for MirrorFS {
         stable: StableHow,
         data: Slice,
     ) -> Result<write::Success, write::Fail> {
-        let before_meta = std::fs::symlink_metadata(&path).ok();
+        let before_meta = std::fs::symlink_metadata(path).ok();
         let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
             if let Err(error) = Self::validate_regular(&attr) {
-                return Err(write::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+                return Err(write::Fail { error, wcc_data: Self::wcc_data(path, before) });
             }
         }
 
-        let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
+        let mut file = match OpenOptions::new().write(true).truncate(false).open(path).await {
             Ok(file) => file,
             Err(error) => {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
-                    wcc_data: Self::wcc_data(&path, before),
+                    wcc_data: Self::wcc_data(path, before),
                 });
             }
         };
@@ -40,13 +40,13 @@ impl write::Write for MirrorFS {
         if let Err(error) = file.seek(SeekFrom::Start(offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
+                wcc_data: Self::wcc_data(path, before),
             });
         }
         if let Err(error) = file.write_all(&data).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
+                wcc_data: Self::wcc_data(path, before),
             });
         }
         let sync_result = match stable {
@@ -57,12 +57,12 @@ impl write::Write for MirrorFS {
         if let Err(error) = sync_result {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
+                wcc_data: Self::wcc_data(path, before),
             });
         }
 
         Ok(write::Success {
-            file_wcc: Self::wcc_data(&path, before),
+            file_wcc: Self::wcc_data(path, before),
             count: data.len() as u32,
             commited: stable,
             verifier: self.write_verifier(),

@@ -86,22 +86,22 @@ impl rename::Rename for MirrorFS {
         if let Err(error) = fs::rename(from, to).await {
             return Err(rename::Fail {
                 error: Self::io_error_to_vfs(&error),
-                from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                from_dir_wcc: Self::wcc_data(from_dir_path, from_before),
+                to_dir_wcc: Self::wcc_data(to_dir_path, to_before),
             });
         }
 
         if let Err(error) = self.rename_cached_path(from, to).await {
             return Err(rename::Fail {
                 error,
-                from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-                to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+                from_dir_wcc: Self::wcc_data(from_dir_path, from_before),
+                to_dir_wcc: Self::wcc_data(to_dir_path, to_before),
             });
         }
 
         Ok(rename::Success {
-            from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
-            to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),
+            from_dir_wcc: Self::wcc_data(from_dir_path, from_before),
+            to_dir_wcc: Self::wcc_data(to_dir_path, to_before),
         })
     }
 }

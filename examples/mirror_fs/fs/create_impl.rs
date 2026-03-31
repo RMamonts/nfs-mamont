@@ -24,7 +24,7 @@ impl create::Create for MirrorFS {
                 });
             }
         };
-        let dir_meta = match Self::metadata(&dir_path) {
+        let dir_meta = match Self::metadata(dir_path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(create::Fail {
@@ -36,7 +36,7 @@ impl create::Create for MirrorFS {
         let before = Some(Self::wcc_attr_from_metadata(&dir_meta));
         let dir_attr = Self::attr_from_metadata(&dir_meta);
         if let Err(error) = Self::validate_directory(&dir_attr) {
-            return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
+            return Err(create::Fail { error, wcc_data: Self::wcc_data(dir_path, before) });
         }
 
         let existed = std::fs::symlink_metadata(path).is_ok();
@@ -49,7 +49,7 @@ impl create::Create for MirrorFS {
                     {
                         return Err(create::Fail {
                             error: Self::io_error_to_vfs(&error),
-                            wcc_data: Self::wcc_data(&dir_path, before),
+                            wcc_data: Self::wcc_data(dir_path, before),
                         });
                     }
                 }
@@ -59,14 +59,14 @@ impl create::Create for MirrorFS {
                 if existed {
                     return Err(create::Fail {
                         error: vfs::Error::Exist,
-                        wcc_data: Self::wcc_data(&dir_path, before),
+                        wcc_data: Self::wcc_data(dir_path, before),
                     });
                 }
                 if let Err(error) = OpenOptions::new().write(true).create_new(true).open(path).await
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
-                        wcc_data: Self::wcc_data(&dir_path, before),
+                        wcc_data: Self::wcc_data(dir_path, before),
                     });
                 }
                 attr
@@ -80,14 +80,14 @@ impl create::Create for MirrorFS {
                         if !Self::check_exclusive_verifier(path, &verifier.0) {
                             return Err(create::Fail {
                                 error: vfs::Error::Exist,
-                                wcc_data: Self::wcc_data(&dir_path, before),
+                                wcc_data: Self::wcc_data(dir_path, before),
                             });
                         }
                     }
                     Err(error) => {
                         return Err(create::Fail {
                             error: Self::io_error_to_vfs(&error),
-                            wcc_data: Self::wcc_data(&dir_path, before),
+                            wcc_data: Self::wcc_data(dir_path, before),
                         });
                     }
                 }
@@ -96,26 +96,26 @@ impl create::Create for MirrorFS {
         };
 
         if let Err(error) = Self::apply_set_attr(path, &apply_attr) {
-            return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
+            return Err(create::Fail { error, wcc_data: Self::wcc_data(dir_path, before) });
         }
 
         let attr = match Self::metadata(path) {
             Ok(meta) => Self::attr_from_metadata(&meta),
             Err(error) => {
-                return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
+                return Err(create::Fail { error, wcc_data: Self::wcc_data(dir_path, before) });
             }
         };
         let handle = match self.ensure_handle_for_path(path).await {
             Ok(handle) => handle,
             Err(error) => {
-                return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
+                return Err(create::Fail { error, wcc_data: Self::wcc_data(dir_path, before) });
             }
         };
 
         Ok(create::Success {
             file: Some(handle),
             attr: Some(attr),
-            wcc_data: Self::wcc_data(&dir_path, before),
+            wcc_data: Self::wcc_data(dir_path, before),
         })
     }
 }

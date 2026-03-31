@@ -9,7 +9,7 @@ use super::MirrorFS;
 impl path_conf::PathConf for MirrorFS {
     async fn path_conf(&self, path: &Path) -> Result<path_conf::Success, path_conf::Fail> {
         Ok(path_conf::Success {
-            file_attr: Self::file_attr(&path),
+            file_attr: Self::file_attr(path),
             link_max: u32::MAX,
             name_max: vfs::MAX_NAME_LEN as u32,
             no_trunc: true,

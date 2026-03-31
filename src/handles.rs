@@ -14,18 +14,12 @@ const ROOT: u64 = 0;
 pub struct HandleMap {
     root: PathBuf,
     handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
-    path_to_handle: DashMap<PathBuf, Handle>,
     next_id: AtomicU64,
 }
 
 impl HandleMap {
     pub fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            handle_to_path: DashMap::new(),
-            path_to_handle: DashMap::new(),
-            next_id: AtomicU64::new(ROOT + 1),
-        }
+        Self { root, handle_to_path: DashMap::new(), next_id: AtomicU64::new(ROOT + 1) }
     }
 
     pub fn root(&self) -> file::Handle {
@@ -49,7 +43,6 @@ impl HandleMap {
 
         let arc = Arc::new(RwLock::new(relative));
         self.handle_to_path.insert(handle.clone(), arc);
-
         Ok(handle)
     }
 

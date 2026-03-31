@@ -82,11 +82,6 @@ impl MirrorFS {
         read_dir::CookieVerifier::new(raw)
     }
 
-    async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let fsmap = self.fsmap.read().await;
-        fsmap.path_for_handle(handle)
-    }
-
     async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
         self.fsmap.write().await.ensure_handle_for_path(path)
     }
@@ -97,14 +92,6 @@ impl MirrorFS {
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
         self.fsmap.write().await.rename_path(from, to)
-    }
-
-    fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
-        match name.as_str() {
-            "." => Err(vfs::Error::InvalidArgument),
-            ".." => Err(vfs::Error::Exist),
-            _ => Ok(()),
-        }
     }
 
     fn io_error_to_vfs(error: &std::io::Error) -> vfs::Error {
@@ -312,21 +299,5 @@ impl MirrorFS {
 
         entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
         Ok(entries)
-    }
-
-    async fn child_path(
-        &self,
-        dir: &file::Handle,
-        name: &file::Name,
-    ) -> Result<PathBuf, vfs::Error> {
-        let dir_path = self.path_for_handle(dir).await?;
-        let mut child = dir_path;
-        child.push(name.as_str());
-        Ok(child)
-    }
-
-    async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
-        let root = self.root_handle().await;
-        self.path_for_handle(&root).await
     }
 }

@@ -13,7 +13,7 @@ impl set_attr::SetAttr for MirrorFS {
         new_attr: NewAttr,
         guard: Option<Guard>,
     ) -> Result<set_attr::Success, set_attr::Fail> {
-        let meta = match Self::metadata(&path) {
+        let meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(set_attr::Fail {
@@ -34,10 +34,10 @@ impl set_attr::SetAttr for MirrorFS {
             }
         }
 
-        if let Err(error) = Self::apply_set_attr(&path, &new_attr) {
-            return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+        if let Err(error) = Self::apply_set_attr(path, &new_attr) {
+            return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(path, before) });
         }
 
-        Ok(set_attr::Success { wcc_data: Self::wcc_data(&path, before) })
+        Ok(set_attr::Success { wcc_data: Self::wcc_data(path, before) })
     }
 }
