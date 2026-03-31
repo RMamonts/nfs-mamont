@@ -130,7 +130,7 @@ pub enum Error {
     JUKEBOX = 10008,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
     pub after: Option<file::Attr>,

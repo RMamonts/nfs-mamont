@@ -1,8 +1,8 @@
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
 use std::sync::Arc;
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -10,7 +10,7 @@ use crate::context::ServerContext;
 use crate::handles::HandleMap;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{self, Error, NfsRes, Vfs, WccData};
+use crate::vfs::{self, NfsRes, Vfs, WccData};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
@@ -90,12 +90,16 @@ impl VfsTask {
                     match self.backend.lookup(path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => {
-                            //TODO("handle properly")
-                            let handle = self.handles.create_handle(path.as_path()).await.unwrap();
+                            let handle = match self.handles.create_handle(path.as_path()).await {
+                                Ok(handle) => handle,
+                                Err(_) => {
+                                    unreachable!("handle creation failed, fs consistency is broken")
+                                }
+                            };
                             NfsRes::LookUp(Ok(vfs::lookup::Success {
                                 file: handle,
                                 file_attr: ok.file_attr,
-                                dir_attr: None,
+                                dir_attr: ok.dir_attr,
                             }))
                         }
                     }
@@ -106,7 +110,7 @@ impl VfsTask {
                 match self.handles.path_for_handle(&args.object.dir).await {
                     Err(error) => NfsRes::Create(Err(vfs::create::Fail {
                         error,
-                        wcc_data: WccData { before: None, after: None },
+                        wcc_data: WccData::default(),
                     })),
                     Ok(lock) => {
                         let path_parent = lock.write().await;
@@ -117,11 +121,12 @@ impl VfsTask {
                         match self.backend.create(path.as_path(), args.how).await {
                             Err(err) => NfsRes::Create(Err(err)),
                             Ok(ok) => {
+                                //TODO(can we use option, if possible, or unreachable everywhere?)
                                 let handle = self.handles.create_handle(path.as_path()).await.ok();
                                 NfsRes::Create(Ok(vfs::create::Success {
                                     file: handle,
-                                    attr: None,
-                                    wcc_data: WccData { before: None, after: None },
+                                    attr: ok.attr,
+                                    wcc_data: ok.wcc_data,
                                 }))
                             }
                         }
@@ -131,10 +136,9 @@ impl VfsTask {
 
             NfsArguments::MkDir(args) => {
                 match self.handles.path_for_handle(&args.object.dir).await {
-                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
-                        error,
-                        dir_wcc: WccData { before: None, after: None },
-                    })),
+                    Err(error) => {
+                        NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
+                    }
                     Ok(lock) => {
                         let path_parent = lock.write().await;
 
@@ -147,8 +151,8 @@ impl VfsTask {
                                 let handle = self.handles.create_handle(path.as_path()).await.ok();
                                 NfsRes::MkDir(Ok(vfs::mk_dir::Success {
                                     file: handle,
-                                    attr: None,
-                                    wcc_data: WccData { before: None, after: None },
+                                    attr: ok.attr,
+                                    wcc_data: ok.wcc_data,
                                 }))
                             }
                         }
@@ -162,7 +166,7 @@ impl VfsTask {
                 match self.handles.path_for_handle(handle).await {
                     Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
                         error,
-                        dir_wcc: WccData { before: None, after: None },
+                        dir_wcc: WccData::default(),
                     })),
                     Ok(lock) => {
                         let path_parent = lock.write().await;
@@ -174,8 +178,12 @@ impl VfsTask {
                             Err(err) => NfsRes::Remove(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
-                                let _ = self.handles.remove_handle(handle).await;
-                                NfsRes::Remove(Ok(ok))
+                                match self.handles.remove_handle(handle).await {
+                                    Ok(_) => NfsRes::Remove(Ok(ok)),
+                                    Err(_) => unreachable!(
+                                        "handle remove failed, fs consistency is broken"
+                                    ),
+                                }
                             }
                         }
                     }
@@ -185,10 +193,9 @@ impl VfsTask {
             NfsArguments::RmDir(args) => {
                 let handle = &args.object.dir.clone();
                 match self.handles.path_for_handle(handle).await {
-                    Err(error) => NfsRes::RmDir(Err(vfs::rm_dir::Fail {
-                        error,
-                        dir_wcc: WccData { before: None, after: None },
-                    })),
+                    Err(error) => {
+                        NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: WccData::default() }))
+                    }
                     Ok(lock) => {
                         let path_parent = lock.write().await;
 
@@ -199,8 +206,12 @@ impl VfsTask {
                             Err(err) => NfsRes::RmDir(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
-                                let _ = self.handles.remove_handle(handle).await;
-                                NfsRes::RmDir(Ok(ok))
+                                match self.handles.remove_handle(handle).await {
+                                    Ok(_) => NfsRes::RmDir(Ok(ok)),
+                                    Err(_) => unreachable!(
+                                        "handle remove failed, fs consistency is broken"
+                                    ),
+                                }
                             }
                         }
                     }
@@ -213,8 +224,8 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: WccData { before: None, after: None },
-                            to_dir_wcc: WccData { before: None, after: None },
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -224,8 +235,8 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: WccData { before: None, after: None },
-                            to_dir_wcc: WccData { before: None, after: None },
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -240,10 +251,10 @@ impl VfsTask {
 
                 match self.backend.rename(from.as_path(), to.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
-                    Ok(ok) => {
-                        let _ = self.handles.rename_path(from.as_path(), to.as_path()).await;
-                        NfsRes::Rename(Ok(ok))
-                    }
+                    Ok(ok) => match self.handles.rename_path(from.as_path(), to.as_path()).await {
+                        Ok(_) => NfsRes::Rename(Ok(ok)),
+                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
+                    },
                 }
             }
 
@@ -254,7 +265,7 @@ impl VfsTask {
                         return NfsRes::Link(Err(vfs::link::Fail {
                             error,
                             file_attr: None,
-                            dir_wcc: WccData { before: None, after: None },
+                            dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -265,7 +276,7 @@ impl VfsTask {
                         return NfsRes::Link(Err(vfs::link::Fail {
                             error,
                             file_attr: None,
-                            dir_wcc: WccData { before: None, after: None },
+                            dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -278,10 +289,10 @@ impl VfsTask {
                 match self.backend.link(path.as_path(), real.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path.as_path()).await.ok();
+                        let _handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::Link(Ok(vfs::link::Success {
                             file_attr: ok.file_attr,
-                            dir_wcc: WccData { before: None, after: None },
+                            dir_wcc: ok.dir_wcc,
                         }))
                     }
                 }
@@ -296,7 +307,7 @@ impl VfsTask {
                         return NfsRes::Link(Err(vfs::link::Fail {
                             error,
                             file_attr: None,
-                            dir_wcc: WccData { before: None, after: None },
+                            dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -311,8 +322,8 @@ impl VfsTask {
                         let handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::SymLink(Ok(vfs::symlink::Success {
                             file: handle,
-                            attr: None,
-                            wcc_data: WccData { before: None, after: None },
+                            attr: ok.attr,
+                            wcc_data: ok.wcc_data,
                         }))
                     }
                 }
@@ -320,7 +331,7 @@ impl VfsTask {
             NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file).await {
                 Err(error) => NfsRes::SetAttr(Err(vfs::set_attr::Fail {
                     error,
-                    wcc_data: WccData { before: None, after: None },
+                    wcc_data: WccData::default(),
                 })),
                 Ok(lock) => {
                     let path = lock.read().await;
@@ -378,10 +389,9 @@ impl VfsTask {
             },
 
             NfsArguments::Write(args) => match self.handles.path_for_handle(&args.file).await {
-                Err(error) => NfsRes::Write(Err(vfs::write::Fail {
-                    error,
-                    wcc_data: WccData { before: None, after: None },
-                })),
+                Err(error) => {
+                    NfsRes::Write(Err(vfs::write::Fail { error, wcc_data: WccData::default() }))
+                }
                 Ok(lock) => {
                     let path = lock.read().await;
                     NfsRes::Write(
@@ -398,7 +408,7 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::MkNod(Err(vfs::mk_node::Fail {
                             error,
-                            dir_wcc: WccData { before: None, after: None },
+                            dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -412,8 +422,8 @@ impl VfsTask {
                         let handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::MkNod(Ok(vfs::mk_node::Success {
                             file: handle,
-                            attr: None,
-                            wcc_data: WccData { before: None, after: None },
+                            attr: ok.attr,
+                            wcc_data: ok.wcc_data,
                         }))
                     }
                 }
@@ -480,10 +490,9 @@ impl VfsTask {
             },
 
             NfsArguments::Commit(args) => match self.handles.path_for_handle(&args.file).await {
-                Err(error) => NfsRes::Commit(Err(vfs::commit::Fail {
-                    error,
-                    file_wcc: WccData { before: None, after: None },
-                })),
+                Err(error) => {
+                    NfsRes::Commit(Err(vfs::commit::Fail { error, file_wcc: WccData::default() }))
+                }
                 Ok(lock) => {
                     let path = lock.read().await;
                     NfsRes::Commit(
