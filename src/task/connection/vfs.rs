@@ -75,7 +75,7 @@ impl VfsTask {
                 Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
                 Ok(lock) => {
                     let lock = lock.read().await;
-                    NfsRes::GetAttr(self.backend.get_attr(args, lock.as_path()).await)
+                    NfsRes::GetAttr(self.backend.get_attr(lock.as_path()).await)
                 }
             },
 
@@ -87,7 +87,7 @@ impl VfsTask {
                     let mut path = path_parent.clone();
                     path.push(args.name.as_str());
 
-                    match self.backend.lookup(args, path.as_path()).await {
+                    match self.backend.lookup(path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => {
                             //TODO("handle properly")
@@ -114,7 +114,7 @@ impl VfsTask {
                         let mut path = path_parent.clone();
                         path.push(args.object.name.as_str());
 
-                        match self.backend.create(args, path.as_path()).await {
+                        match self.backend.create(path.as_path(), args.how).await {
                             Err(err) => NfsRes::Create(Err(err)),
                             Ok(ok) => {
                                 let handle = self.handles.create_handle(path.as_path()).await.ok();
@@ -141,7 +141,7 @@ impl VfsTask {
                         let mut path = path_parent.clone();
                         path.push(args.object.name.as_str());
 
-                        match self.backend.mk_dir(args, path.as_path()).await {
+                        match self.backend.mk_dir(path.as_path(), args.attr).await {
                             Err(err) => NfsRes::MkDir(Err(err)),
                             Ok(ok) => {
                                 let handle = self.handles.create_handle(path.as_path()).await.ok();
@@ -170,7 +170,7 @@ impl VfsTask {
                         let mut path = path_parent.clone();
                         path.push(args.object.name.as_str());
 
-                        match self.backend.remove(args, path.as_path()).await {
+                        match self.backend.remove(path.as_path()).await {
                             Err(err) => NfsRes::Remove(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
@@ -195,7 +195,7 @@ impl VfsTask {
                         let mut path = path_parent.clone();
                         path.push(args.object.name.as_str());
 
-                        match self.backend.rm_dir(args, path.as_path()).await {
+                        match self.backend.rm_dir(path.as_path()).await {
                             Err(err) => NfsRes::RmDir(Err(err)),
                             Ok(ok) => {
                                 // not sure what to do, should be unreachable
@@ -238,7 +238,7 @@ impl VfsTask {
                 let mut to = lock_to.clone();
                 to.push(args.to.name.as_str());
 
-                match self.backend.rename(args, from.as_path(), to.as_path()).await {
+                match self.backend.rename(from.as_path(), to.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
                     Ok(ok) => {
                         let _ = self.handles.rename_path(from.as_path(), to.as_path()).await;
@@ -275,7 +275,7 @@ impl VfsTask {
                 let mut path = parent.write().await.clone();
                 path.push(args.link.name.as_str());
 
-                match self.backend.link(args, path.as_path(), real.as_path()).await {
+                match self.backend.link(path.as_path(), real.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
                         let handle = self.handles.create_handle(path.as_path()).await.ok();
@@ -305,7 +305,7 @@ impl VfsTask {
                 path.push(args.object.name.as_str());
 
                 let obj = args.path.clone();
-                match self.backend.symlink(args, path.as_path(), obj.as_path()).await {
+                match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => {
                         let handle = self.handles.create_handle(path.as_path()).await.ok();
@@ -324,7 +324,9 @@ impl VfsTask {
                 })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::SetAttr(self.backend.set_attr(args, path.as_path()).await)
+                    NfsRes::SetAttr(
+                        self.backend.set_attr(path.as_path(), args.new_attr, args.guard).await,
+                    )
                 }
             },
 
@@ -332,7 +334,7 @@ impl VfsTask {
                 Err(error) => NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::Access(self.backend.access(args, path.as_path()).await)
+                    NfsRes::Access(self.backend.access(path.as_path(), args.mask).await)
                 }
             },
 
@@ -342,7 +344,7 @@ impl VfsTask {
                 }
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::ReadLink(self.backend.read_link(args, path.as_path()).await)
+                    NfsRes::ReadLink(self.backend.read_link(path.as_path()).await)
                 }
             },
 
@@ -364,7 +366,11 @@ impl VfsTask {
                     match data_result {
                         Ok(data) => {
                             let path = lock.read().await;
-                            NfsRes::Read(self.backend.read(args, data, path.as_path()).await)
+                            NfsRes::Read(
+                                self.backend
+                                    .read(path.as_path(), args.offset, args.count, data)
+                                    .await,
+                            )
                         }
                         Err(err) => NfsRes::Read(Err(err)),
                     }
@@ -378,7 +384,11 @@ impl VfsTask {
                 })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::Write(self.backend.write(args, path.as_path()).await)
+                    NfsRes::Write(
+                        self.backend
+                            .write(path.as_path(), args.offset, args.size, args.stable, args.data)
+                            .await,
+                    )
                 }
             },
             //remake to write and change
@@ -396,7 +406,7 @@ impl VfsTask {
                 let mut path = parent.write().await.clone();
                 path.push(args.object.name.as_str());
 
-                match self.backend.mk_node(args, path.as_path()).await {
+                match self.backend.mk_node(path.as_path(), args.what).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
                     Ok(ok) => {
                         let handle = self.handles.create_handle(path.as_path()).await.ok();
@@ -413,7 +423,11 @@ impl VfsTask {
                 Err(error) => NfsRes::ReadDir(Err(vfs::read_dir::Fail { error, dir_attr: None })),
                 Ok(lock) => {
                     let path = lock.write().await;
-                    NfsRes::ReadDir(self.backend.read_dir(args, path.as_path()).await)
+                    NfsRes::ReadDir(
+                        self.backend
+                            .read_dir(path.as_path(), args.cookie, args.cookie_verifier, args.count)
+                            .await,
+                    )
                 }
             },
 
@@ -424,7 +438,17 @@ impl VfsTask {
                     }
                     Ok(lock) => {
                         let path = lock.write().await;
-                        NfsRes::ReadDirPlus(self.backend.read_dir_plus(args, path.as_path()).await)
+                        NfsRes::ReadDirPlus(
+                            self.backend
+                                .read_dir_plus(
+                                    path.as_path(),
+                                    args.cookie,
+                                    args.cookie_verifier,
+                                    args.dir_count,
+                                    args.max_count,
+                                )
+                                .await,
+                        )
                     }
                 }
             }
@@ -433,7 +457,7 @@ impl VfsTask {
                 Err(error) => NfsRes::FsStat(Err(vfs::fs_stat::Fail { error, root_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::FsStat(self.backend.fs_stat(args, path.as_path()).await)
+                    NfsRes::FsStat(self.backend.fs_stat(path.as_path()).await)
                 }
             },
 
@@ -441,7 +465,7 @@ impl VfsTask {
                 Err(error) => NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::FsInfo(self.backend.fs_info(args, path.as_path()).await)
+                    NfsRes::FsInfo(self.backend.fs_info(path.as_path()).await)
                 }
             },
 
@@ -451,7 +475,7 @@ impl VfsTask {
                 }
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::PathConf(self.backend.path_conf(args, path.as_path()).await)
+                    NfsRes::PathConf(self.backend.path_conf(path.as_path()).await)
                 }
             },
 
@@ -462,7 +486,9 @@ impl VfsTask {
                 })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::Commit(self.backend.commit(args, path.as_path()).await)
+                    NfsRes::Commit(
+                        self.backend.commit(path.as_path(), args.offset, args.count).await,
+                    )
                 }
             },
         }

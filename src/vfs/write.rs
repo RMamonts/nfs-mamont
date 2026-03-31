@@ -98,5 +98,12 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+        size: u32,
+        stable: StableHow,
+        slice: Slice,
+    ) -> Result<Success, Fail>;
 }

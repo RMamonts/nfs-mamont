@@ -7,17 +7,7 @@ use super::MirrorFS;
 
 #[async_trait]
 impl read_link::ReadLink for MirrorFS {
-    async fn read_link(
-        &self,
-        args: read_link::Args,
-        path: &Path,
-    ) -> Result<read_link::Success, read_link::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(read_link::Fail { error, symlink_attr: None });
-            }
-        };
+    async fn read_link(&self, path: &Path) -> Result<read_link::Success, read_link::Fail> {
         let meta = match Self::metadata(&path) {
             Ok(meta) => meta,
             Err(error) => {

@@ -2,17 +2,13 @@ use async_trait::async_trait;
 use std::path::Path;
 use tokio::fs::OpenOptions;
 
-use nfs_mamont::vfs::{self, create};
-
 use super::{MirrorFS, DEFAULT_SET_ATTR};
+use nfs_mamont::vfs::create::{Fail, How, Success};
+use nfs_mamont::vfs::{self, create};
 
 #[async_trait]
 impl create::Create for MirrorFS {
-    async fn create(
-        &self,
-        args: create::Args,
-        path: &Path,
-    ) -> Result<create::Success, create::Fail> {
+    async fn create(&self, path: &Path, mode: How) -> Result<Success, Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
             return Err(create::Fail {
                 error,

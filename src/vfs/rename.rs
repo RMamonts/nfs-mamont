@@ -63,5 +63,5 @@ pub trait Rename {
     ///
     /// If arguments pairs refer to the same file (they might be hard links of each other), then
     /// [`Rename::rename`] should perform no action and return [`Success`].
-    async fn rename(&self, args: Args, path: &Path, to: &Path) -> Result<Success, Fail>;
+    async fn rename(&self, path: &Path, to: &Path) -> Result<Success, Fail>;
 }

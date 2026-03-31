@@ -7,11 +7,7 @@ use super::MirrorFS;
 
 #[async_trait]
 impl rm_dir::RmDir for MirrorFS {
-    async fn rm_dir(
-        &self,
-        args: rm_dir::Args,
-        path: &Path,
-    ) -> Result<rm_dir::Success, rm_dir::Fail> {
+    async fn rm_dir(&self, path: &Path) -> Result<rm_dir::Success, rm_dir::Fail> {
         if args.object.name.as_str() == "." {
             return Err(rm_dir::Fail {
                 error: vfs::Error::InvalidArgument,

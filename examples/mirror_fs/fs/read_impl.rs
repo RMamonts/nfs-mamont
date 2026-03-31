@@ -13,16 +13,11 @@ use super::MirrorFS;
 impl read::Read for MirrorFS {
     async fn read(
         &self,
-        args: read::Args,
-        mut data: Slice,
         path: &Path,
+        offset: u64,
+        count: u32,
+        mut data: Slice,
     ) -> Result<read::Success, read::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(read::Fail { error, file_attr: None });
-            }
-        };
         let meta = match Self::metadata(&path) {
             Ok(meta) => meta,
             Err(error) => {
@@ -45,8 +40,8 @@ impl read::Read for MirrorFS {
         };
 
         let file_len = meta.len();
-        let start = args.offset.min(file_len);
-        let end = args.offset.saturating_add(args.count as u64).min(file_len);
+        let start = offset.min(file_len);
+        let end = offset.saturating_add(count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut remaining = requested;
         let mut read_count = 0usize;

@@ -80,5 +80,10 @@ pub trait SetAttr {
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than
     ///   can be represented in 32 bit.
-    async fn set_attr(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn set_attr(
+        &self,
+        path: &Path,
+        new_attr: NewAttr,
+        guard: Option<Guard>,
+    ) -> Result<Success, Fail>;
 }

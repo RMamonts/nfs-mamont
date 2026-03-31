@@ -45,9 +45,9 @@ impl HandleMap {
         let handle = file::Handle(id.to_be_bytes());
 
         let arc = Arc::new(RwLock::new(relative));
-        self.handles.insert(handle.clone(), arc.clone());
+        self.handles.insert(handle.clone(), arc);
 
-        Ok(handle.clone())
+        Ok(handle)
     }
 
     pub async fn remove_handle(&self, handle: &file::Handle) -> Result<(), vfs::Error> {

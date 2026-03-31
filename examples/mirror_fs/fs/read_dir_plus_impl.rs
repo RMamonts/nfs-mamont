@@ -1,22 +1,21 @@
 use async_trait::async_trait;
 use std::path::Path;
 
-use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
-use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
-
 use super::MirrorFS;
+use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
+use nfs_mamont::vfs::read_dir::{Cookie, CookieVerifier};
+use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
 
 #[async_trait]
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
         &self,
-        args: read_dir_plus::Args,
-        path: &Path,
+        dir_path: &Path,
+        cookie: Cookie,
+        cookie_verifier: CookieVerifier,
+        _dir_count: u32,
+        max_count: u32,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
-        let dir_path = match self.path_for_handle(&args.dir).await {
-            Ok(path) => path,
-            Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
-        };
         let dir_meta = match Self::metadata(&dir_path) {
             Ok(meta) => meta,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
@@ -27,7 +26,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         }
 
         let verifier = Self::cookie_verifier_for_attr(&dir_attr);
-        if !args.cookie.is_zero() && args.cookie_verifier != verifier {
+        if !cookie.is_zero() && cookie_verifier != verifier {
             return Err(read_dir_plus::Fail {
                 error: vfs::Error::BadCookie,
                 dir_attr: Some(dir_attr),
@@ -39,12 +38,12 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
         };
 
-        let start = args.cookie.raw() as usize;
+        let start = cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
         for (index, (name, path, meta)) in entries.iter().cloned().enumerate().skip(start) {
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
-            if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
+            if !result.is_empty() && used.saturating_add(estimated) > max_count {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);

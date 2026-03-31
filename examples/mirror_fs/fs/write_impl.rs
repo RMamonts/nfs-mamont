@@ -1,26 +1,23 @@
+use super::MirrorFS;
 use async_trait::async_trait;
+use nfs_mamont::vfs::write;
+use nfs_mamont::vfs::write::StableHow;
+use nfs_mamont::Slice;
 use std::io::SeekFrom;
 use std::path::Path;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use nfs_mamont::vfs::{self, write};
-
-use super::MirrorFS;
-
 #[async_trait]
 impl write::Write for MirrorFS {
-    async fn write(&self, args: write::Args, path: &Path) -> Result<write::Success, write::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(write::Fail {
-                    error,
-                    wcc_data: vfs::WccData { before: None, after: None },
-                });
-            }
-        };
-
+    async fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+        size: u32,
+        stable: StableHow,
+        data: Slice,
+    ) -> Result<write::Success, write::Fail> {
         let before_meta = std::fs::symlink_metadata(&path).ok();
         let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
@@ -39,8 +36,8 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let data = Self::collect_slice_bytes(&args.data, args.size);
-        if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
+        let data = Self::collect_slice_bytes(&data, size);
+        if let Err(error) = file.seek(SeekFrom::Start(offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
                 wcc_data: Self::wcc_data(&path, before),
@@ -52,7 +49,7 @@ impl write::Write for MirrorFS {
                 wcc_data: Self::wcc_data(&path, before),
             });
         }
-        let sync_result = match args.stable {
+        let sync_result = match stable {
             write::StableHow::Unstable => Ok(()),
             write::StableHow::DataSync => file.sync_data().await,
             write::StableHow::FileSync => file.sync_all().await,
@@ -67,7 +64,7 @@ impl write::Write for MirrorFS {
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
             count: data.len() as u32,
-            commited: args.stable,
+            commited: stable,
             verifier: self.write_verifier(),
         })
     }

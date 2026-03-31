@@ -2,24 +2,20 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use nfs_mamont::vfs::access;
-use nfs_mamont::vfs::access::{Args, Fail, Success};
+use nfs_mamont::vfs::access::{Fail, Mask, Success};
 use nfs_mamont::vfs::file;
 
 use super::MirrorFS;
 
 #[async_trait]
 impl access::Access for MirrorFS {
-    async fn access(&self, args: Args, path: &Path) -> Result<Success, Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
-            Err(error) => return Err(access::Fail { error, object_attr: None }),
-        };
+    async fn access(&self, path: &Path, mask: Mask) -> Result<Success, Fail> {
         let meta = match Self::metadata(&path) {
             Ok(meta) => meta,
             Err(error) => return Err(access::Fail { error, object_attr: None }),
         };
         let attr = Self::attr_from_metadata(&meta);
-        let granted = Self::compute_access_mask(&attr, args.mask);
+        let granted = Self::compute_access_mask(&attr, mask);
         Ok(access::Success { object_attr: Some(attr), access: granted })
     }
 }

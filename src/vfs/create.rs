@@ -68,5 +68,5 @@ pub struct Args {
 #[async_trait]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn create(&self, path: &Path, mode: How) -> Result<Success, Fail>;
 }

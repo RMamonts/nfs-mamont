@@ -8,11 +8,7 @@ use super::MirrorFS;
 
 #[async_trait]
 impl lookup::Lookup for MirrorFS {
-    async fn lookup(
-        &self,
-        args: lookup::Args,
-        path: &Path,
-    ) -> Result<lookup::Success, lookup::Fail> {
+    async fn lookup(&self, path: &Path) -> Result<lookup::Success, lookup::Fail> {
         let parent_path = match self.path_for_handle(&args.parent).await {
             Ok(path) => path,
             Err(error) => {

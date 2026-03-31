@@ -55,5 +55,5 @@ pub struct Args {
 #[async_trait]
 pub trait FsStat {
     /// Retrieves volatile file system state information.
-    async fn fs_stat(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn fs_stat(&self, path: &Path) -> Result<Success, Fail>;
 }

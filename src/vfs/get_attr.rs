@@ -27,5 +27,5 @@ pub struct Args {
 #[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    async fn get_attr(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn get_attr(&self, path: &Path) -> Result<Success, Fail>;
 }

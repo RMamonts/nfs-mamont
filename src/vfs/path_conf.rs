@@ -52,5 +52,5 @@ pub struct Args {
 #[async_trait]
 pub trait PathConf {
     /// Retrieves the pathconf information for a file or directory.
-    async fn path_conf(&self, args: Args, path: &Path) -> Result<Success, Fail>;
+    async fn path_conf(&self, path: &Path) -> Result<Success, Fail>;
 }
