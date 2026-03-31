@@ -74,22 +74,6 @@ impl HandleMap {
         Ok(handle)
     }
 
-    pub async fn add_path(&self, handle: &Handle, path: &PathBuf) -> Result<(), vfs::Error> {
-        let relative = self.relative_path(path.as_path())?;
-
-        if let Some(existing) = self.path_to_handle.get(&relative) {
-            if existing.value() == handle {
-                return Ok(());
-            }
-            return Err(vfs::Error::Exist);
-        }
-
-        let paths = self.key_to_paths.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone();
-        paths.write().await.insert(relative.clone());
-        self.path_to_handle.insert(relative, handle.clone());
-        Ok(())
-    }
-
     pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let relative = self.relative_path(path)?;
 

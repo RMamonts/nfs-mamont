@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -75,10 +75,38 @@ impl VfsTask {
         }
     }
 
+    async fn cached_child_lock(
+        &self,
+        path: &std::path::PathBuf,
+    ) -> Option<Arc<RwLock<std::path::PathBuf>>> {
+        match self.handles.handle_for_path(path).await {
+            Ok(handle) => Some(self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
+                unreachable!(
+                    "child path lock resolution failed, fs consistency is broken: {:?}",
+                    err
+                )
+            })),
+            Err(vfs::Error::StaleFile) => None,
+            Err(err) => {
+                unreachable!("child handle resolution failed, fs consistency is broken: {:?}", err)
+            }
+        }
+    }
+
     async fn remove_path_or_panic(&self, path: &std::path::Path) {
         if let Err(err) = self.handles.remove_path(path).await {
             unreachable!("handle remove failed, fs consistency is broken: {:?}", err);
         }
+    }
+
+    fn join_name(parent: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let mut path = parent.to_path_buf();
+        path.push(name);
+        path
+    }
+
+    fn default_wcc() -> WccData {
+        WccData::default()
     }
 
     async fn process_argument(&self, proc: Box<NfsArguments>) -> NfsRes {
@@ -115,49 +143,51 @@ impl VfsTask {
                 }
             },
 
-            NfsArguments::Create(args) => match self.handles.path_for_handle(&args.object.dir).await {
-                Err(error) => NfsRes::Create(Err(vfs::create::Fail {
-                    error,
-                    wcc_data: WccData::default(),
-                })),
-                Ok(lock) => {
-                    if let Err(error) = ensure_name_allowed(&args.object.name) {
-                        return NfsRes::Create(Err(vfs::create::Fail {
-                            error,
-                            wcc_data: WccData::default(),
-                        }));
-                    }
+            NfsArguments::Create(args) => {
+                match self.handles.path_for_handle(&args.object.dir).await {
+                    Err(error) => NfsRes::Create(Err(vfs::create::Fail {
+                        error,
+                        wcc_data: Self::default_wcc(),
+                    })),
+                    Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::Create(Err(vfs::create::Fail {
+                                error,
+                                wcc_data: Self::default_wcc(),
+                            }));
+                        }
 
-                    let path_parent = lock.read().await;
-                    let mut path = path_parent.clone();
-                    path.push(args.object.name.as_str());
+                        let path_parent = lock.read().await;
+                        let path =
+                            Self::join_name(path_parent.as_path(), args.object.name.as_str());
 
-                    match self.backend.create(path.as_path(), args.how).await {
-                        Err(err) => NfsRes::Create(Err(err)),
-                        Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
-                            file: Some(self.create_handle_or_panic(&path).await),
-                            attr: ok.attr,
-                            wcc_data: ok.wcc_data,
-                        })),
+                        match self.backend.create(path.as_path(), args.how).await {
+                            Err(err) => NfsRes::Create(Err(err)),
+                            Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
+                                file: Some(self.create_handle_or_panic(&path).await),
+                                attr: ok.attr,
+                                wcc_data: ok.wcc_data,
+                            })),
+                        }
                     }
                 }
-            },
+            }
 
-            NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir).await {
+            NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir).await
+            {
                 Err(error) => {
-                    NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
+                    NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: Self::default_wcc() }))
                 }
                 Ok(lock) => {
                     if let Err(error) = ensure_name_allowed(&args.object.name) {
                         return NfsRes::MkDir(Err(vfs::mk_dir::Fail {
                             error,
-                            dir_wcc: WccData::default(),
+                            dir_wcc: Self::default_wcc(),
                         }));
                     }
 
                     let path_parent = lock.read().await;
-                    let mut path = path_parent.clone();
-                    path.push(args.object.name.as_str());
+                    let path = Self::join_name(path_parent.as_path(), args.object.name.as_str());
 
                     match self.backend.mk_dir(path.as_path(), args.attr).await {
                         Err(err) => NfsRes::MkDir(Err(err)),
@@ -170,111 +200,80 @@ impl VfsTask {
                 }
             },
 
-            NfsArguments::Remove(args) => match self.handles.path_for_handle(&args.object.dir).await {
-                Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
-                    error,
-                    dir_wcc: WccData::default(),
-                })),
-                Ok(lock) => {
-                    if let Err(error) = ensure_name_allowed(&args.object.name) {
-                        return NfsRes::Remove(Err(vfs::remove::Fail {
-                            error,
-                            dir_wcc: WccData::default(),
-                        }));
-                    }
-
-                    let path_parent = lock.read().await;
-                    let mut path = path_parent.clone();
-                    path.push(args.object.name.as_str());
-                    let child_lock = match self.handles.handle_for_path(&path).await {
-                        Ok(handle) => Some(
-                            self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
-                                unreachable!(
-                                    "child path lock resolution failed, fs consistency is broken: {:?}",
-                                    err
-                                )
-                            }),
-                        ),
-                        Err(vfs::Error::StaleFile) => None,
-                        Err(err) => unreachable!(
-                            "child handle resolution failed, fs consistency is broken: {:?}",
-                            err
-                        ),
-                    };
-
-                    if let Some(child_lock) = child_lock {
-                        let _child_guard = child_lock.read().await;
-                        match self.backend.remove(path.as_path()).await {
-                            Err(err) => NfsRes::Remove(Err(err)),
-                            Ok(ok) => {
-                                self.remove_path_or_panic(path.as_path()).await;
-                                NfsRes::Remove(Ok(ok))
-                            }
-                        }
-                    } else {
-                        match self.backend.remove(path.as_path()).await {
-                            Err(err) => NfsRes::Remove(Err(err)),
-                            Ok(ok) => {
-                                self.remove_path_or_panic(path.as_path()).await;
-                                NfsRes::Remove(Ok(ok))
-                            }
-                        }
-                    }
-                }
-            },
-
-            NfsArguments::RmDir(args) => {
+            NfsArguments::Remove(args) => {
                 match self.handles.path_for_handle(&args.object.dir).await {
-                    Err(error) => {
-                        NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: WccData::default() }))
-                    }
+                    Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
+                        error,
+                        dir_wcc: Self::default_wcc(),
+                    })),
                     Ok(lock) => {
                         if let Err(error) = ensure_name_allowed(&args.object.name) {
-                            return NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                            return NfsRes::Remove(Err(vfs::remove::Fail {
                                 error,
-                                dir_wcc: WccData::default(),
+                                dir_wcc: Self::default_wcc(),
                             }));
-                    }
-
-                    let path_parent = lock.read().await;
-                    let mut path = path_parent.clone();
-                    path.push(args.object.name.as_str());
-                    let child_lock = match self.handles.handle_for_path(&path).await {
-                        Ok(handle) => Some(
-                            self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
-                                unreachable!(
-                                    "child path lock resolution failed, fs consistency is broken: {:?}",
-                                    err
-                                )
-                            }),
-                        ),
-                        Err(vfs::Error::StaleFile) => None,
-                        Err(err) => unreachable!(
-                            "child handle resolution failed, fs consistency is broken: {:?}",
-                            err
-                        ),
-                    };
-
-                    if let Some(child_lock) = child_lock {
-                        let _child_guard = child_lock.read().await;
-                        match self.backend.rm_dir(path.as_path()).await {
-                            Err(err) => NfsRes::RmDir(Err(err)),
-                            Ok(ok) => {
-                                self.remove_path_or_panic(path.as_path()).await;
-                                NfsRes::RmDir(Ok(ok))
-                            }
                         }
-                    } else {
-                        match self.backend.rm_dir(path.as_path()).await {
-                            Err(err) => NfsRes::RmDir(Err(err)),
-                            Ok(ok) => {
-                                self.remove_path_or_panic(path.as_path()).await;
-                                NfsRes::RmDir(Ok(ok))
+
+                        let path_parent = lock.read().await;
+                        let path =
+                            Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                        let child_lock = self.cached_child_lock(&path).await;
+
+                        if let Some(child_lock) = child_lock {
+                            let _child_guard = child_lock.read().await;
+                            match self.backend.remove(path.as_path()).await {
+                                Err(err) => NfsRes::Remove(Err(err)),
+                                Ok(ok) => {
+                                    self.remove_path_or_panic(path.as_path()).await;
+                                    NfsRes::Remove(Ok(ok))
+                                }
                             }
+                        } else {
+                            NfsRes::Remove(Err(vfs::remove::Fail {
+                                error: vfs::Error::NoEntry,
+                                dir_wcc: Self::default_wcc(),
+                            }))
                         }
                     }
                 }
             }
+
+            NfsArguments::RmDir(args) => {
+                match self.handles.path_for_handle(&args.object.dir).await {
+                    Err(error) => NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                        error,
+                        dir_wcc: Self::default_wcc(),
+                    })),
+                    Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                                error,
+                                dir_wcc: Self::default_wcc(),
+                            }));
+                        }
+
+                        let path_parent = lock.read().await;
+                        let path =
+                            Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                        let child_lock = self.cached_child_lock(&path).await;
+
+                        if let Some(child_lock) = child_lock {
+                            let _child_guard = child_lock.read().await;
+                            match self.backend.rm_dir(path.as_path()).await {
+                                Err(err) => NfsRes::RmDir(Err(err)),
+                                Ok(ok) => {
+                                    self.remove_path_or_panic(path.as_path()).await;
+                                    NfsRes::RmDir(Ok(ok))
+                                }
+                            }
+                        } else {
+                            NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                                error: vfs::Error::NoEntry,
+                                dir_wcc: Self::default_wcc(),
+                            }))
+                        }
+                    }
+                }
             }
 
             NfsArguments::Rename(args) => {
@@ -283,8 +282,8 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: WccData::default(),
-                            to_dir_wcc: WccData::default(),
+                            from_dir_wcc: Self::default_wcc(),
+                            to_dir_wcc: Self::default_wcc(),
                         }))
                     }
                 };
@@ -294,33 +293,31 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: WccData::default(),
-                            to_dir_wcc: WccData::default(),
+                            from_dir_wcc: Self::default_wcc(),
+                            to_dir_wcc: Self::default_wcc(),
                         }))
                     }
                 };
                 if let Err(error) = ensure_name_allowed(&args.to.name) {
                     return NfsRes::Rename(Err(vfs::rename::Fail {
                         error,
-                        from_dir_wcc: WccData::default(),
-                        to_dir_wcc: WccData::default(),
+                        from_dir_wcc: Self::default_wcc(),
+                        to_dir_wcc: Self::default_wcc(),
                     }));
                 }
                 if let Err(error) = ensure_name_allowed(&args.from.name) {
                     return NfsRes::Rename(Err(vfs::rename::Fail {
                         error,
-                        from_dir_wcc: WccData::default(),
-                        to_dir_wcc: WccData::default(),
+                        from_dir_wcc: Self::default_wcc(),
+                        to_dir_wcc: Self::default_wcc(),
                     }));
                 }
 
                 let from_lock = from_dir.read().await;
-                let mut from = from_lock.clone();
-                from.push(args.from.name.as_str());
+                let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
 
                 let to_lock = to_dir.read().await;
-                let mut to = to_lock.clone();
-                to.push(args.to.name.as_str());
+                let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
 
                 match self.backend.rename(from.as_path(), to.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
@@ -362,20 +359,19 @@ impl VfsTask {
                     }));
                 }
                 let real = object.read().await;
-                let handle = args.file.clone();
 
-                let mut path = parent.write().await.clone();
-                path.push(args.link.name.as_str());
+                let parent_path = parent.read().await;
+                let path = Self::join_name(parent_path.as_path(), args.link.name.as_str());
 
                 match self.backend.link(path.as_path(), real.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
-                    Ok(ok) => match self.handles.add_path(&handle, &path).await {
-                        Ok(_) => NfsRes::Link(Ok(vfs::link::Success {
+                    Ok(ok) => {
+                        let _handle = self.create_handle_or_panic(&path).await;
+                        NfsRes::Link(Ok(vfs::link::Success {
                             file_attr: ok.file_attr,
                             dir_wcc: ok.dir_wcc,
-                        })),
-                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
-                    },
+                        }))
+                    }
                 }
             }
 
@@ -398,10 +394,12 @@ impl VfsTask {
                         dir_wcc: WccData::default(),
                     }));
                 }
+
                 let mut path = parent.write().await.clone();
                 path.push(args.object.name.as_str());
 
                 let obj = args.path.clone();
+
                 match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => match self.handles.create_handle(&path).await {
@@ -487,7 +485,6 @@ impl VfsTask {
                     )
                 }
             },
-            //remake to write and change
             NfsArguments::MkNod(args) => {
                 let parent = match self.handles.path_for_handle(&args.object.dir).await {
                     Ok(dir) => dir,
