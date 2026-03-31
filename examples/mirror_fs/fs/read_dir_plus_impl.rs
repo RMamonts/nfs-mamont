@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::Path;
 
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
@@ -10,6 +11,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
         &self,
         args: read_dir_plus::Args,
+        path: &Path,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
         let dir_path = match self.path_for_handle(&args.dir).await {
             Ok(path) => path,

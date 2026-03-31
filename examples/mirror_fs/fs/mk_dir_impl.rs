@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::Path;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, mk_dir};
@@ -7,7 +8,11 @@ use super::MirrorFS;
 
 #[async_trait]
 impl mk_dir::MkDir for MirrorFS {
-    async fn mk_dir(&self, args: mk_dir::Args) -> Result<mk_dir::Success, mk_dir::Fail> {
+    async fn mk_dir(
+        &self,
+        args: mk_dir::Args,
+        path: &Path,
+    ) -> Result<mk_dir::Success, mk_dir::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
             return Err(mk_dir::Fail {
                 error,

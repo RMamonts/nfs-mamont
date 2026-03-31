@@ -7,7 +7,11 @@ use super::*;
 
 #[async_trait]
 impl commit::Commit for MirrorFS {
-    async fn commit(&self, args: commit::Args) -> Result<commit::Success, commit::Fail> {
+    async fn commit(
+        &self,
+        args: commit::Args,
+        path: &Path,
+    ) -> Result<commit::Success, commit::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {

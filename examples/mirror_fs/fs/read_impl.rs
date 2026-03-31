@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::io::SeekFrom;
+use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -10,7 +11,12 @@ use super::MirrorFS;
 
 #[async_trait]
 impl read::Read for MirrorFS {
-    async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
+    async fn read(
+        &self,
+        args: read::Args,
+        mut data: Slice,
+        path: &Path,
+    ) -> Result<read::Success, read::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {

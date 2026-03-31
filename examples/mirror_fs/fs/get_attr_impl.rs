@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::Path;
 
 use nfs_mamont::vfs::get_attr;
 
@@ -10,7 +10,7 @@ impl get_attr::GetAttr for MirrorFS {
     async fn get_attr(
         &self,
         _args: get_attr::Args,
-        path: PathBuf,
+        path: &Path,
     ) -> Result<get_attr::Success, get_attr::Fail> {
         match Self::metadata(&path) {
             Ok(meta) => Ok(get_attr::Success { object: Self::attr_from_metadata(&meta) }),

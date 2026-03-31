@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`ReadDirPlus`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 use crate::vfs::read_dir::Cookie;
@@ -69,5 +70,5 @@ pub struct Args {
 pub trait ReadDirPlus {
     /// Retrieves a variable number of entries from a file system directory and returns complete
     /// information about each.
-    async fn read_dir_plus(&self, args: Args) -> Result<Success, Fail>;
+    async fn read_dir_plus(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

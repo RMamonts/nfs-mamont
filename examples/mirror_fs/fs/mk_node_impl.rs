@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::Path;
 
 use nfs_mamont::vfs::{self, create, mk_dir, mk_node};
 
@@ -8,11 +9,16 @@ use super::MirrorFS;
 
 #[async_trait]
 impl mk_node::MkNode for MirrorFS {
-    async fn mk_node(&self, args: mk_node::Args) -> Result<mk_node::Success, mk_node::Fail> {
+    async fn mk_node(
+        &self,
+        args: mk_node::Args,
+        path: &Path,
+    ) -> Result<mk_node::Success, mk_node::Fail> {
         match args.what {
             mk_node::What::Regular => match create::Create::create(
                 self,
                 create::Args { object: args.object, how: create::How::Unchecked(DEFAULT_SET_ATTR) },
+                path,
             )
             .await
             {
@@ -27,6 +33,7 @@ impl mk_node::MkNode for MirrorFS {
                 match mk_dir::MkDir::mk_dir(
                     self,
                     mk_dir::Args { object: args.object, attr: DEFAULT_SET_ATTR },
+                    path,
                 )
                 .await
                 {

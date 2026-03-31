@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -79,5 +80,5 @@ pub trait SetAttr {
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than
     ///   can be represented in 32 bit.
-    async fn set_attr(&self, args: Args) -> Result<Success, Fail>;
+    async fn set_attr(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

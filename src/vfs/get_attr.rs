@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`GetAttr`] interface.
 
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -27,5 +27,5 @@ pub struct Args {
 #[async_trait]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    async fn get_attr(&self, args: Args, path_buf: PathBuf) -> Result<Success, Fail>;
+    async fn get_attr(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

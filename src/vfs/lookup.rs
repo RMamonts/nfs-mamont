@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`Lookup`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -35,5 +36,5 @@ pub trait Lookup {
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, args: Args) -> Result<Success, Fail>;
+    async fn lookup(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

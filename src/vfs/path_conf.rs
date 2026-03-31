@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`PathConf`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -51,5 +52,5 @@ pub struct Args {
 #[async_trait]
 pub trait PathConf {
     /// Retrieves the pathconf information for a file or directory.
-    async fn path_conf(&self, args: Args) -> Result<Success, Fail>;
+    async fn path_conf(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

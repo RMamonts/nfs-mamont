@@ -2,14 +2,14 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::{HandleMap, ServerContext};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{self, NfsRes, Vfs, WccData};
+use crate::vfs::{self, Error, NfsRes, Vfs, WccData};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
@@ -45,115 +45,12 @@ impl VfsTask {
         tokio::spawn(async move { self.run().await });
     }
 
-    async fn run(self) {
-        let mut command_receiver = self.command_receiver;
-
-        while let Some(command) = command_receiver.recv().await {
+    async fn run(mut self) {
+        while let Some(command) = self.command_receiver.recv().await {
             let NfsArgWrapper { header, proc } = command;
             let proc_name = Self::proc_name(&proc);
 
-            let response = match *proc {
-                NfsArguments::Null => NfsRes::Null,
-                NfsArguments::GetAttr(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => NfsRes::GetAttr(self.backend.get_attr(args, path).await),
-                    Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
-                },
-                NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => NfsRes::SetAttr(self.backend.set_attr(args, path).await),
-                    Err(error) => NfsRes::SetAttr(Err(vfs::set_attr::Fail {
-                        error,
-                        wcc_data: WccData { before: None, after: None },
-                    })),
-                },
-
-                NfsArguments::LookUp(args) => match self.handles.path_for_handle(&args.parent) {
-                    Ok(path) => NfsRes::LookUp(self.backend.lookup(args, path).await),
-                    Err(error) => NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None })),
-                },
-                NfsArguments::Access(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => NfsRes::Access(self.backend.access(args, path).await),
-                    Err(error) => {
-                        NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None }))
-                    }
-                },
-
-                NfsArguments::ReadLink(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => NfsRes::ReadLink(self.backend.read_link(args, path).await),
-                    Err(error) => {
-                        NfsRes::ReadLink(Err(vfs::read_link::Fail { symlink_attr: None, error }))
-                    }
-                },
-                NfsArguments::Read(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => {
-                        let data_result = if args.count == 0 {
-                            Ok(Slice::empty())
-                        } else {
-                            let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
-
-                            let mut allocator = self.allocator.lock().await;
-                            allocator.allocate(requested_size).await.ok_or(vfs::read::Fail {
-                                error: vfs::Error::TooSmall,
-                                file_attr: None,
-                            })
-                        };
-
-                        match data_result {
-                            Ok(data) => NfsRes::Read(self.backend.read(args, data, path).await),
-                            Err(err) => NfsRes::Read(Err(err)),
-                        }
-                    }
-                    Err(error) => NfsRes::Read(vfs::read::Fail { error, file_attr: None }),
-                },
-                NfsArguments::Write(args) => match self.handles.path_for_handle(&args.file) {
-                    Ok(path) => NfsRes::Write(self.backend.write(args, path).await),
-                    Err(error) => NfsRes::Write(Err(vfs::write::Fail {
-                        error,
-                        wcc_data: WccData { before: None, after: None },
-                    })),
-                },
-                NfsArguments::Create(args) => {
-                    match self.handles.path_for_handle(&args.object.dir) {
-                        Ok(path) => NfsRes::Create(self.backend.create(args, path).await),
-                        Err(error) => NfsRes::Create(Err(vfs::create::Fail {
-                            error,
-                            wcc_data: WccData { before: None, after: None },
-                        })),
-                    }
-                }
-
-                NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir) {
-                    Ok(path) => NfsRes::MkDir(self.backend.mk_dir(args, path).await),
-                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
-                        error,
-                        dir_wcc: WccData { before: None, after: None },
-                    })),
-                },
-                NfsArguments::SymLink(args) => match self.handles.path_for_handle(&args.object.dir) {
-                    Ok(path) => NfsRes::SymLink(self.backend.symlink(args, path).await),
-                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
-                        error,
-                        dir_wcc: WccData { before: None, after: None },
-                    })),
-                },
-
-
-                NfsArguments::MkNod(args) => NfsRes::MkNod(self.backend.mk_node(args).await),
-                NfsArguments::Remove(args) => NfsRes::Remove(self.backend.remove(args).await),
-                NfsArguments::RmDir(args) => NfsRes::RmDir(self.backend.rm_dir(args).await),
-                NfsArguments::Rename(args) => NfsRes::Rename(self.backend.rename(args).await),
-                NfsArguments::Link(args) => NfsRes::Link(self.backend.link(args).await),
-                NfsArguments::ReadDir(args) => NfsRes::ReadDir(self.backend.read_dir(args).await),
-                NfsArguments::ReadDirPlus(args) => {
-                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(args).await)
-                }
-                NfsArguments::FsStat(args) => NfsRes::FsStat(self.backend.fs_stat(args).await),
-                NfsArguments::FsInfo(args) => NfsRes::FsInfo(self.backend.fs_info(args).await),
-                NfsArguments::PathConf(args) => {
-                    NfsRes::PathConf(self.backend.path_conf(args).await)
-                }
-                NfsArguments::Commit(args) => NfsRes::Commit(self.backend.commit(args).await),
-            };
-
+            let response = self.process_argument(proc).await;
             if let Some(error) = Self::error_from_response(&response) {
                 error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
             }
@@ -163,10 +60,410 @@ impl VfsTask {
                 proc_result: Ok(ProcResult::Nfs3(Box::new(response))),
             };
 
-            // Write task may already be closed; then this connection pipeline is done.
             if self.result_sender.send(reply).is_err() {
                 return;
             }
+        }
+    }
+
+    async fn process_argument(&self, proc: Box<NfsArguments>) -> NfsRes {
+        match *proc {
+            NfsArguments::Null => NfsRes::Null,
+
+            NfsArguments::GetAttr(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
+                Ok(lock) => {
+                    let lock = lock.read().await;
+                    NfsRes::GetAttr(self.backend.get_attr(args, lock.as_path()).await)
+                }
+            },
+
+            NfsArguments::LookUp(args) => match self.handles.path_for_handle(&args.parent).await {
+                Err(error) => NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None })),
+                Ok(lock) => {
+                    let path_parent = lock.write().await;
+
+                    let mut path = path_parent.clone();
+                    path.push(args.name.as_str());
+
+                    match self.backend.lookup(args, path.as_path()).await {
+                        Err(err) => NfsRes::LookUp(Err(err)),
+                        Ok(ok) => {
+                            //TODO("handle properly")
+                            let handle = self.handles.create_handle(path).await.unwrap();
+                            NfsRes::LookUp(Ok(vfs::lookup::Success {
+                                file: handle,
+                                file_attr: ok.file_attr,
+                                dir_attr: None,
+                            }))
+                        }
+                    }
+                }
+            },
+
+            NfsArguments::Create(args) => {
+                match self.handles.path_for_handle(&args.object.dir).await {
+                    Err(error) => NfsRes::Create(Err(vfs::create::Fail {
+                        error,
+                        wcc_data: WccData { before: None, after: None },
+                    })),
+                    Ok(lock) => {
+                        let path_parent = lock.write().await;
+
+                        let mut path = path_parent.clone();
+                        path.push(args.object.name.as_str());
+
+                        match self.backend.create(args, path.as_path()).await {
+                            Err(err) => NfsRes::Create(Err(err)),
+                            Ok(ok) => {
+                                let handle = self.handles.create_handle(path).await.ok();
+                                NfsRes::Create(Ok(vfs::create::Success {
+                                    file: handle,
+                                    attr: None,
+                                    wcc_data: WccData { before: None, after: None },
+                                }))
+                            }
+                        }
+                    }
+                }
+            }
+
+            NfsArguments::MkDir(args) => {
+                match self.handles.path_for_handle(&args.object.dir).await {
+                    Err(error) => NfsRes::MkDir(Err(vfs::mk_dir::Fail {
+                        error,
+                        dir_wcc: WccData { before: None, after: None },
+                    })),
+                    Ok(lock) => {
+                        let path_parent = lock.write().await;
+
+                        let mut path = path_parent.clone();
+                        path.push(args.object.name.as_str());
+
+                        match self.backend.mk_dir(args, path.as_path()).await {
+                            Err(err) => NfsRes::MkDir(Err(err)),
+                            Ok(ok) => {
+                                let handle = self.handles.create_handle(path).await.ok();
+                                NfsRes::MkDir(Ok(vfs::mk_dir::Success {
+                                    file: handle,
+                                    attr: None,
+                                    wcc_data: WccData { before: None, after: None },
+                                }))
+                            }
+                        }
+                    }
+                }
+            }
+
+            NfsArguments::Remove(args) => {
+                let handle = &args.object.dir.clone();
+
+                match self.handles.path_for_handle(handle).await {
+                    Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
+                        error,
+                        dir_wcc: WccData { before: None, after: None },
+                    })),
+                    Ok(lock) => {
+                        let path_parent = lock.write().await;
+
+                        let mut path = path_parent.clone();
+                        path.push(args.object.name.as_str());
+
+                        match self.backend.remove(args, path.as_path()).await {
+                            Err(err) => NfsRes::Remove(Err(err)),
+                            Ok(ok) => {
+                                // not sure what to do, should be unreachable
+                                let _ = self.handles.remove_handle(handle).await;
+                                NfsRes::Remove(Ok(ok))
+                            }
+                        }
+                    }
+                }
+            }
+
+            NfsArguments::RmDir(args) => {
+                let handle = &args.object.dir.clone();
+                match self.handles.path_for_handle(handle).await {
+                    Err(error) => NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                        error,
+                        dir_wcc: WccData { before: None, after: None },
+                    })),
+                    Ok(lock) => {
+                        let path_parent = lock.write().await;
+
+                        let mut path = path_parent.clone();
+                        path.push(args.object.name.as_str());
+
+                        match self.backend.rm_dir(args, path.as_path()).await {
+                            Err(err) => NfsRes::RmDir(Err(err)),
+                            Ok(ok) => {
+                                // not sure what to do, should be unreachable
+                                let _ = self.handles.remove_handle(handle).await;
+                                NfsRes::RmDir(Ok(ok))
+                            }
+                        }
+                    }
+                }
+            }
+
+            NfsArguments::Rename(args) => {
+                let from_dir = match self.handles.path_for_handle(&args.from.dir).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::Rename(Err(vfs::rename::Fail {
+                            error,
+                            from_dir_wcc: WccData { before: None, after: None },
+                            to_dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+
+                let to_dir = match self.handles.path_for_handle(&args.to.dir).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::Rename(Err(vfs::rename::Fail {
+                            error,
+                            from_dir_wcc: WccData { before: None, after: None },
+                            to_dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+                let lock_from = from_dir.write().await;
+                let lock_to = to_dir.write().await;
+
+                let mut from = lock_from.clone();
+                from.push(args.from.name.as_str());
+
+                let mut to = lock_to.clone();
+                to.push(args.to.name.as_str());
+
+                match self.backend.rename(args, from.as_path(), to.as_path()).await {
+                    Err(err) => NfsRes::Rename(Err(err)),
+                    Ok(ok) => {
+                        let _ = self.handles.rename_path(from.as_path(), to.as_path()).await;
+                        NfsRes::Rename(Ok(ok))
+                    }
+                }
+            }
+
+            NfsArguments::Link(args) => {
+                let object = match self.handles.path_for_handle(&args.file).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::Link(Err(vfs::link::Fail {
+                            error,
+                            file_attr: None,
+                            dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+
+                let parent = match self.handles.path_for_handle(&args.link.dir).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::Link(Err(vfs::link::Fail {
+                            error,
+                            file_attr: None,
+                            dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+
+                let real = object.read().await;
+
+                let mut path = parent.write().await.clone();
+                path.push(args.link.name.as_str());
+
+                match self.backend.link(args, path.as_path(), real.as_path()).await {
+                    Err(err) => NfsRes::Link(Err(err)),
+                    Ok(ok) => {
+                        let handle = self.handles.create_handle(path).await.ok();
+                        NfsRes::Link(Ok(vfs::link::Success {
+                            file_attr: ok.file_attr,
+                            dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                }
+            }
+
+            NfsArguments::SymLink(args) => {
+                //TODO("check that path really exist")
+
+                let parent = match self.handles.path_for_handle(&args.object.dir).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::Link(Err(vfs::link::Fail {
+                            error,
+                            file_attr: None,
+                            dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+
+                let mut path = parent.write().await.clone();
+                path.push(args.object.name.as_str());
+
+                let obj = args.path.clone();
+                match self.backend.symlink(args, path.as_path(), obj.as_path()).await {
+                    Err(err) => NfsRes::SymLink(Err(err)),
+                    Ok(ok) => {
+                        let handle = self.handles.create_handle(path).await.ok();
+                        NfsRes::SymLink(Ok(vfs::symlink::Success {
+                            file: handle,
+                            attr: None,
+                            wcc_data: WccData { before: None, after: None },
+                        }))
+                    }
+                }
+            }
+            NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::SetAttr(Err(vfs::set_attr::Fail {
+                    error,
+                    wcc_data: WccData { before: None, after: None },
+                })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::SetAttr(self.backend.set_attr(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::Access(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::Access(self.backend.access(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::ReadLink(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => {
+                    NfsRes::ReadLink(Err(vfs::read_link::Fail { symlink_attr: None, error }))
+                }
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::ReadLink(self.backend.read_link(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::Read(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::Read(Err(vfs::read::Fail { error, file_attr: None })),
+                Ok(lock) => {
+                    let data_result = if args.count == 0 {
+                        Ok(Slice::empty())
+                    } else {
+                        let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+
+                        let mut allocator = self.allocator.lock().await;
+                        allocator
+                            .allocate(requested_size)
+                            .await
+                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
+                    };
+
+                    match data_result {
+                        Ok(data) => {
+                            let path = lock.read().await;
+                            NfsRes::Read(self.backend.read(args, data, path.as_path()).await)
+                        }
+                        Err(err) => NfsRes::Read(Err(err)),
+                    }
+                }
+            },
+
+            NfsArguments::Write(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::Write(Err(vfs::write::Fail {
+                    error,
+                    wcc_data: WccData { before: None, after: None },
+                })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::Write(self.backend.write(args, path.as_path()).await)
+                }
+            },
+            //remake to write and change
+            NfsArguments::MkNod(args) => {
+                let parent = match self.handles.path_for_handle(&args.object.dir).await {
+                    Ok(dir) => dir,
+                    Err(error) => {
+                        return NfsRes::MkNod(Err(vfs::mk_node::Fail {
+                            error,
+                            dir_wcc: WccData { before: None, after: None },
+                        }))
+                    }
+                };
+
+                let mut path = parent.write().await.clone();
+                path.push(args.object.name.as_str());
+
+                match self.backend.mk_node(args, path.as_path()).await {
+                    Err(err) => NfsRes::MkNod(Err(err)),
+                    Ok(ok) => {
+                        let handle = self.handles.create_handle(path).await.ok();
+                        NfsRes::MkNod(Ok(vfs::mk_node::Success {
+                            file: handle,
+                            attr: None,
+                            wcc_data: WccData { before: None, after: None },
+                        }))
+                    }
+                }
+            }
+
+            NfsArguments::ReadDir(args) => match self.handles.path_for_handle(&args.dir).await {
+                Err(error) => NfsRes::ReadDir(Err(vfs::read_dir::Fail { error, dir_attr: None })),
+                Ok(lock) => {
+                    let path = lock.write().await;
+                    NfsRes::ReadDir(self.backend.read_dir(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::ReadDirPlus(args) => {
+                match self.handles.path_for_handle(&args.dir).await {
+                    Err(error) => {
+                        NfsRes::ReadDirPlus(Err(vfs::read_dir_plus::Fail { error, dir_attr: None }))
+                    }
+                    Ok(lock) => {
+                        let path = lock.write().await;
+                        NfsRes::ReadDirPlus(self.backend.read_dir_plus(args, path.as_path()).await)
+                    }
+                }
+            }
+
+            NfsArguments::FsStat(args) => match self.handles.path_for_handle(&args.root).await {
+                Err(error) => NfsRes::FsStat(Err(vfs::fs_stat::Fail { error, root_attr: None })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::FsStat(self.backend.fs_stat(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::FsInfo(args) => match self.handles.path_for_handle(&args.root).await {
+                Err(error) => NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::FsInfo(self.backend.fs_info(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::PathConf(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => {
+                    NfsRes::PathConf(Err(vfs::path_conf::Fail { error, file_attr: None }))
+                }
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::PathConf(self.backend.path_conf(args, path.as_path()).await)
+                }
+            },
+
+            NfsArguments::Commit(args) => match self.handles.path_for_handle(&args.file).await {
+                Err(error) => NfsRes::Commit(Err(vfs::commit::Fail {
+                    error,
+                    file_wcc: WccData { before: None, after: None },
+                })),
+                Ok(lock) => {
+                    let path = lock.read().await;
+                    NfsRes::Commit(self.backend.commit(args, path.as_path()).await)
+                }
+            },
         }
     }
 

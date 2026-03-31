@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`MkDir`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -37,5 +38,5 @@ pub trait MkDir {
     /// Creates a new subdirectory.
     ///
     /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
-    async fn mk_dir(&self, args: Args) -> Result<Success, Fail>;
+    async fn mk_dir(&self, args: Args, path: &Path) -> Result<Success, Fail>;
 }

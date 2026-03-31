@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::Path;
 
 use nfs_mamont::vfs::{self, path_conf};
 
@@ -9,6 +10,7 @@ impl path_conf::PathConf for MirrorFS {
     async fn path_conf(
         &self,
         args: path_conf::Args,
+        path: &Path,
     ) -> Result<path_conf::Success, path_conf::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
