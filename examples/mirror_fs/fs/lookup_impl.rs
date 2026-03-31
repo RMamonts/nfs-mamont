@@ -2,6 +2,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use nfs_mamont::vfs;
+use nfs_mamont::vfs::file::Handle;
 use nfs_mamont::vfs::lookup;
 
 use super::MirrorFS;
@@ -36,7 +37,8 @@ impl lookup::Lookup for MirrorFS {
         };
 
         Ok(lookup::Success {
-            file: None,
+            //TODO("change!!!")
+            file: Handle(5u64.to_be_bytes()),
             file_attr: Some(Self::attr_from_metadata(&child_meta)),
             dir_attr: Some(parent_attr),
         })

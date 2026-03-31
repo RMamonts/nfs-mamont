@@ -9,7 +9,7 @@ use super::file;
 
 /// Success result.
 pub struct Success {
-    pub file: Option<file::Handle>,
+    pub file: file::Handle,
     pub file_attr: Option<file::Attr>,
     pub dir_attr: Option<file::Attr>,
 }

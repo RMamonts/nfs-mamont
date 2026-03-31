@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -12,22 +13,29 @@ use crate::vfs::file::Handle;
 const ROOT: u64 = 1;
 
 pub struct HandleMap {
-    root_path: PathBuf,
+    root: PathBuf,
     handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
     path_to_handle: DashMap<PathBuf, Handle>,
+    key_to_paths: DashMap<Handle, Arc<RwLock<BTreeSet<PathBuf>>>>,
     next_id: AtomicU64,
 }
 
 impl HandleMap {
     pub fn new(root: PathBuf) -> Self {
-        let id_to_handle = DashMap::new();
-        let handle_to_id = DashMap::new();
-        id_to_handle.insert(file::Handle(ROOT.to_be_bytes()), Arc::new(RwLock::new(root.clone())));
-        handle_to_id.insert(root.clone(), file::Handle(ROOT.to_be_bytes()));
+        let root_handle = file::Handle(ROOT.to_be_bytes());
+        let root_paths = Arc::new(RwLock::new(BTreeSet::from([root.clone()])));
+        let handle_to_path = DashMap::new();
+        handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root.clone())));
+        let path_to_handle = DashMap::new();
+        path_to_handle.insert(root.clone(), root_handle.clone());
+        let key_to_paths = DashMap::new();
+        key_to_paths.insert(root_handle, root_paths);
+
         Self {
-            root_path: root,
-            handle_to_path: id_to_handle,
-            path_to_handle: handle_to_id,
+            root,
+            handle_to_path,
+            path_to_handle,
+            key_to_paths,
             next_id: AtomicU64::new(ROOT + 1),
         }
     }
@@ -50,90 +58,132 @@ impl HandleMap {
     }
 
     pub async fn create_handle(&self, path: &PathBuf) -> Result<Handle, vfs::Error> {
-        let relative = path
-            .strip_prefix(&self.root_path)
-            .map_err(|_| vfs::Error::BadFileHandle)?
-            .to_path_buf();
+        if let Some(prev) = self.path_to_handle.get(path) {
+            return Ok(prev.value().clone());
+        }
 
-        let handle = match self.path_to_handle.get(path) {
-            Some(prev) => prev.clone(),
-            None => {
-                let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-                let handle = file::Handle(id.to_be_bytes());
-                let arc = Arc::new(RwLock::new(relative));
-                self.handle_to_path.insert(handle.clone(), arc);
-                self.path_to_handle.insert(path.clone(), handle.clone());
-                handle
-            }
-        };
-
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let handle = file::Handle(id.to_be_bytes());
+        self.handle_to_path.insert(handle.clone(), Arc::new(RwLock::new(path.clone())));
+        self.path_to_handle.insert(path.clone(), handle.clone());
+        self.key_to_paths
+            .insert(handle.clone(), Arc::new(RwLock::new(BTreeSet::from([path.clone()]))));
         Ok(handle)
     }
 
-    pub async fn remove_handle(
-        &self,
-        handle: &file::Handle,
-        path_buf: &PathBuf,
-    ) -> Result<(), vfs::Error> {
-        // if handle == &self.root() {
-        //     return Err(vfs::Error::InvalidArgument);
-        // }
+    pub async fn add_path(&self, handle: &Handle, path: &PathBuf) -> Result<(), vfs::Error> {
+        if let Some(existing) = self.path_to_handle.get(path) {
+            if existing.value() == handle {
+                return Ok(());
+            }
+            return Err(vfs::Error::Exist);
+        }
 
-        let removed_path = self.handle_to_path.remove(handle);
-        let removed_handle = self.path_to_handle.remove(path_buf);
+        let paths = self.key_to_paths.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+        paths.write().await.insert(path.clone());
+        self.path_to_handle.insert(path.clone(), handle.clone());
+        Ok(())
+    }
 
-        if removed_handle.is_none() || removed_path.is_none() {
-            return Err(vfs::Error::StaleFile);
+    pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
+        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
+        let paths = self.key_to_paths.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+
+        let next_preferred = {
+            let mut known_paths = paths.write().await;
+            if !known_paths.remove(path) {
+                return Err(vfs::Error::StaleFile);
+            }
+            known_paths.iter().next().cloned()
+        };
+
+        match next_preferred {
+            Some(preferred) => {
+                let lock =
+                    self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+                let mut current_path = lock.write().await;
+                if current_path.as_path() == path {
+                    *current_path = preferred;
+                }
+            }
+            None => {
+                self.key_to_paths.remove(&handle);
+                self.handle_to_path.remove(&handle);
+            }
         }
 
         Ok(())
     }
 
     pub async fn rename_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        let from_relative = from
-            .strip_prefix(&self.root_path)
-            .map_err(|_| vfs::Error::BadFileHandle)?
-            .to_path_buf();
-        let to_relative =
-            to.strip_prefix(&self.root_path).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
-
-        if from_relative.is_absolute() || to_relative.is_absolute() {
-            return Err(vfs::Error::BadFileHandle);
-        }
-
-        let mut found = None;
-
-        for shard in self.handle_to_path.iter() {
-            let path = shard.read().await;
-            if *path == from_relative {
-                found = Some(shard.key().clone());
-                break;
-            }
-
-            if found.is_some() {
-                break;
-            }
-        }
-
-        let handle = found.ok_or(vfs::Error::StaleFile)?;
-
-        let removed_path = self.handle_to_path.remove(&handle);
-        let removed_handle = self.path_to_handle.remove(&from_relative);
-
-        if removed_handle.is_none() || removed_path.is_none() {
+        let cached_source_paths = self.cached_paths_with_prefix(from);
+        if !cached_source_paths.iter().any(|path| path == from) {
             return Err(vfs::Error::StaleFile);
         }
 
-        self.handle_to_path.insert(handle, Arc::new(RwLock::new(to_relative)));
+        let overwritten_paths = self.cached_paths_with_prefix(to);
+        for old_path in overwritten_paths {
+            if !cached_source_paths.iter().any(|source| source == &old_path) {
+                self.remove_path(old_path.as_path()).await?;
+            }
+        }
+
+        for old_path in cached_source_paths {
+            let (_, handle) =
+                self.path_to_handle.remove(old_path.as_path()).ok_or(vfs::Error::StaleFile)?;
+            let new_path = Self::replace_path_prefix(&old_path, from, to)?;
+            let paths =
+                self.key_to_paths.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+
+            {
+                let mut known_paths = paths.write().await;
+                if !known_paths.remove(&old_path) {
+                    return Err(vfs::Error::StaleFile);
+                }
+                known_paths.insert(new_path.clone());
+            }
+
+            self.path_to_handle.insert(new_path.clone(), handle.clone());
+
+            let lock =
+                self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+            let mut current_path = lock.write().await;
+            if *current_path == old_path {
+                *current_path = new_path;
+            }
+        }
 
         Ok(())
     }
 
     pub fn to_full_path(&self, relative: &Path) -> PathBuf {
         if relative.as_os_str().is_empty() {
-            self.root_path.clone()
+            self.root.clone()
         } else {
-            self.root_path.join(relative)
+            self.root.join(relative)
+        }
+    }
+
+    fn cached_paths_with_prefix(&self, prefix: &Path) -> Vec<PathBuf> {
+        self.path_to_handle
+            .iter()
+            .filter_map(|entry| {
+                let path = entry.key();
+                if path == prefix || path.starts_with(prefix) {
+                    Some(path.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn replace_path_prefix(path: &Path, from: &Path, to: &Path) -> Result<PathBuf, vfs::Error> {
+        let suffix = path.strip_prefix(from).map_err(|_| vfs::Error::ServerFault)?;
+        if suffix.as_os_str().is_empty() {
+            Ok(to.to_path_buf())
+        } else {
+            Ok(to.join(suffix))
         }
     }
 }
