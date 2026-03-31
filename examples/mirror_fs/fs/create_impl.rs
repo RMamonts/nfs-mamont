@@ -9,12 +9,6 @@ use nfs_mamont::vfs::{self, create};
 #[async_trait]
 impl create::Create for MirrorFS {
     async fn create(&self, path: &Path, mode: How) -> Result<Success, Fail> {
-        if !path.is_file() {
-            return Err(create::Fail {
-                error: vfs::Error::BadType,
-                wcc_data: vfs::WccData { before: None, after: None },
-            });
-        }
         let dir_path = match path.parent() {
             Some(parent) if parent.is_dir() => parent,
             _ => {
