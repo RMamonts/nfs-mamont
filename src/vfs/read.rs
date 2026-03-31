@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use async_trait::async_trait;
+use std::sync::Arc;
 
 use crate::allocator::Slice;
 use crate::vfs;
@@ -13,6 +13,14 @@ pub struct Success {
     pub head: SuccessPartial,
     /// The counted data read from the file.
     pub data: Slice,
+    /// Optional zero-copy source for transferring payload directly to the socket.
+    pub sendfile_source: Option<SendfileSource>,
+}
+
+/// Backing file range that can be sent with `sendfile` for READ payload.
+pub struct SendfileSource {
+    pub file: Arc<std::fs::File>,
+    pub offset: u64,
 }
 
 pub struct SuccessPartial {
@@ -49,11 +57,14 @@ pub struct Args {
     pub count: u32,
 }
 
-#[async_trait]
 pub trait Read {
     /// Reads data from a file into a server-provided buffer.
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: Slice) -> Result<Success, Fail>;
+    fn read(
+        &self,
+        args: Args,
+        data: Slice,
+    ) -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

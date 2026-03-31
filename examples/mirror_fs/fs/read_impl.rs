@@ -1,87 +1,128 @@
-use async_trait::async_trait;
-use std::io::SeekFrom;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use std::os::unix::fs::FileExt;
 
 use nfs_mamont::vfs::read;
 use nfs_mamont::Slice;
 
 use super::MirrorFS;
 
-#[async_trait]
 impl read::Read for MirrorFS {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
+        const SENDFILE_MIN_BYTES: usize = 32 * 1024;
+        const READ_AHEAD_TRIGGER_BYTES: usize = 256 * 1024;
+
+        let (_, path, attr) = match self.path_and_attr_for_handle(&args.file).await {
+            Ok(path_and_attr) => path_and_attr,
             Err(error) => {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let meta = match Self::metadata(&path) {
-            Ok(meta) => meta,
-            Err(error) => {
-                return Err(read::Fail { error, file_attr: None });
-            }
-        };
-        let attr = Self::attr_from_metadata(&meta);
+
         if let Err(error) = Self::validate_regular(&attr) {
             return Err(read::Fail { error, file_attr: Some(attr) });
         }
 
-        let mut file = match File::open(&path).await {
+        let file = match self.get_cached_read_file(&path).await {
             Ok(file) => file,
             Err(error) => {
-                return Err(read::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_attr: Some(attr),
-                });
+                return Err(read::Fail { error, file_attr: None });
             }
         };
 
-        let file_len = meta.len();
+        let file_len = attr.size;
         let start = args.offset.min(file_len);
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
-        let mut remaining = requested;
         let mut read_count = 0usize;
-        if let Err(error) = file.seek(SeekFrom::Start(start)).await {
-            return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
+        let mut sendfile_source = None;
+        let block_size = super::READ_AHEAD_BLOCK_SIZE as u64;
+
+        let sequential = self.update_read_sequence(&path, start, end).await;
+        let should_prefetch = requested >= READ_AHEAD_TRIGGER_BYTES || sequential;
+        if should_prefetch {
+            let start_block_index = end / block_size;
+            self.schedule_read_ahead_window(&path, file.clone(), start_block_index, file_len).await;
         }
 
-        if remaining > 0 {
-            for chunk in data.iter_mut() {
-                if remaining == 0 {
-                    break;
-                }
-
-                let to_read = chunk.len().min(remaining);
-                let mut chunk_offset = 0usize;
-
-                while chunk_offset < to_read {
-                    match file.read(&mut chunk[chunk_offset..to_read]).await {
-                        Ok(0) => {
-                            remaining = 0;
-                            break;
-                        }
-                        Ok(bytes) => {
-                            chunk_offset += bytes;
-                            read_count += bytes;
-                        }
-                        Err(error) => {
-                            return Err(read::Fail {
-                                error: Self::io_error_to_vfs(&error),
-                                file_attr: Some(attr),
-                            });
-                        }
-                    }
-                }
-
-                if chunk_offset < to_read {
-                    break;
-                }
-
-                remaining -= to_read;
+        if requested > 0 && sendfile_source.is_none() {
+            if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await
+            {
+                read_count = cached;
             }
+        }
+
+        #[cfg(target_os = "linux")]
+        if requested >= SENDFILE_MIN_BYTES && read_count == 0 && !should_prefetch {
+            read_count = requested;
+            sendfile_source = Some(read::SendfileSource { file: file.clone(), offset: start });
+            data = Slice::empty();
+        }
+
+        if requested > 0 && sendfile_source.is_none() && read_count < requested {
+            let read_file = file.clone();
+            let read_start = start.saturating_add(read_count as u64);
+            let read_remaining = requested - read_count;
+            let data_offset = read_count;
+            let read_result = tokio::task::spawn_blocking(move || {
+                let mut remaining = read_remaining;
+                let mut local_offset = read_start;
+                let mut local_read_count = 0usize;
+                let mut slice_offset = data_offset;
+
+                for chunk in data.iter_mut() {
+                    if slice_offset >= chunk.len() {
+                        slice_offset -= chunk.len();
+                        continue;
+                    }
+
+                    if remaining == 0 {
+                        break;
+                    }
+
+                    let writable = chunk.len() - slice_offset;
+                    let to_read = writable.min(remaining);
+                    let mut chunk_offset = 0usize;
+
+                    while chunk_offset < to_read {
+                        let bytes = read_file.read_at(
+                            &mut chunk[slice_offset + chunk_offset..slice_offset + to_read],
+                            local_offset + chunk_offset as u64,
+                        )?;
+
+                        if bytes == 0 {
+                            return Ok((data, local_read_count));
+                        }
+
+                        chunk_offset += bytes;
+                        local_read_count += bytes;
+                    }
+
+                    local_offset = local_offset.saturating_add(to_read as u64);
+                    remaining -= to_read;
+                    slice_offset = 0;
+                }
+
+                Ok::<(Slice, usize), std::io::Error>((data, local_read_count))
+            })
+            .await;
+
+            let (filled_data, filled_count) = match read_result {
+                Ok(Ok(ok)) => ok,
+                Ok(Err(error)) => {
+                    return Err(read::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_attr: Some(attr),
+                    });
+                }
+                Err(_) => {
+                    return Err(read::Fail {
+                        error: nfs_mamont::vfs::Error::IO,
+                        file_attr: Some(attr),
+                    });
+                }
+            };
+
+            data = filled_data;
+            read_count += filled_count;
         }
 
         Ok(read::Success {
@@ -91,6 +132,7 @@ impl read::Read for MirrorFS {
                 eof: start.saturating_add(read_count as u64) >= file_len,
             },
             data,
+            sendfile_source,
         })
     }
 }

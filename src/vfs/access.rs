@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Access`] interface.
 
-use async_trait::async_trait;
-
 use super::{file, Error};
 
 /// Success result.
@@ -53,7 +51,6 @@ pub struct Args {
     pub mask: Mask,
 }
 
-#[async_trait]
 pub trait Access {
     /// Determines the access rights that a user, as identified by the credentials
     /// in the request, has with respect to a file system object.
@@ -64,5 +61,6 @@ pub trait Access {
     /// such access will be allowed to the file system object in
     /// the future, as access rights can be revoked by the server
     /// at any time.
-    async fn access(&self, args: Args) -> Result<Success, Fail>;
+    fn access(&self, args: Args)
+        -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

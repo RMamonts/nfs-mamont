@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, set_attr};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl set_attr::SetAttr for MirrorFS {
     async fn set_attr(&self, args: set_attr::Args) -> Result<set_attr::Success, set_attr::Fail> {
         let path = match self.path_for_handle(&args.file).await {
@@ -40,6 +37,9 @@ impl set_attr::SetAttr for MirrorFS {
         if let Err(error) = Self::apply_set_attr(&path, &args.new_attr) {
             return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(&path, before) });
         }
+
+        self.invalidate_read_ahead_path(&path).await;
+        self.invalidate_attr_cache_path(&path).await;
 
         Ok(set_attr::Success { wcc_data: Self::wcc_data(&path, before) })
     }

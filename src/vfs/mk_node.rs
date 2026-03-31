@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -51,7 +49,6 @@ pub struct Args {
     pub what: What,
 }
 
-#[async_trait]
 pub trait MkNode {
     /// Creates a new special file of the type `what`.
     ///
@@ -60,5 +57,8 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
+    fn mk_node(
+        &self,
+        args: Args,
+    ) -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

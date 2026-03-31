@@ -15,6 +15,8 @@ use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::read_dir_plus;
 use nfs_mamont::vfs::read_link;
 
+use crate::fs::READ_WRITE_MAX;
+
 use super::helpers::{
     alloc_slice, create_dir, create_symlink, expect_err, expect_ok, slice_to_vec, write_file,
     TestContext,
@@ -108,8 +110,8 @@ async fn fs_info_returns_server_limits() {
     let properties = result.properties.bits();
 
     assert!(result.root_attr.is_some());
-    assert_eq!(result.read_max, 64 * 1024);
-    assert_eq!(result.write_max, 64 * 1024);
+    assert_eq!(result.read_max, READ_WRITE_MAX);
+    assert_eq!(result.write_max, READ_WRITE_MAX);
     assert_eq!(result.read_dir_pref, 8 * 1024);
     assert!(properties & fs_info::Properties::LINK != 0);
     assert!(properties & fs_info::Properties::SYMLINK != 0);

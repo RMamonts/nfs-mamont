@@ -1,8 +1,8 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::Mutex;
-use tracing::error;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Semaphore;
+use tracing::{error, info};
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
@@ -11,21 +11,31 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
-pub struct VfsTask {
-    backend: Arc<dyn Vfs + Send + Sync + 'static>,
-    allocator: Arc<Mutex<Impl>>,
-    command_receiver: UnboundedReceiver<NfsArgWrapper>,
-    result_sender: UnboundedSender<ProcReply>,
+pub struct VfsTask<V>
+where
+    V: Vfs + Send + Sync + 'static,
+{
+    inflight_limit: Arc<Semaphore>,
+    backend: Arc<V>,
+    allocator: Arc<Impl>,
+    command_receiver: Receiver<NfsArgWrapper>,
+    result_sender: Sender<ProcReply>,
 }
 
-impl VfsTask {
+impl<V> VfsTask<V>
+where
+    V: Vfs + Send + Sync + 'static,
+{
     /// Creates new instance of [`VfsTask`].
     pub fn new(
-        context: &ServerContext,
-        command_receiver: UnboundedReceiver<NfsArgWrapper>,
-        result_sender: UnboundedSender<ProcReply>,
+        context: &ServerContext<V>,
+        command_receiver: Receiver<NfsArgWrapper>,
+        result_sender: Sender<ProcReply>,
     ) -> Self {
+        const MAX_INFLIGHT_OPS: usize = 128;
+
         Self {
+            inflight_limit: Arc::new(Semaphore::new(MAX_INFLIGHT_OPS)),
             backend: context.get_backend(),
             allocator: context.get_read_allocator(),
             command_receiver,
@@ -46,70 +56,82 @@ impl VfsTask {
         let mut command_receiver = self.command_receiver;
 
         while let Some(command) = command_receiver.recv().await {
+            if self.result_sender.is_closed() {
+                break;
+            }
+
             let NfsArgWrapper { header, proc } = command;
             let proc_name = Self::proc_name(&proc);
+            info!(xid=header.xid, proc=%proc_name);
 
-            let response = match *proc {
-                NfsArguments::Null => NfsRes::Null,
-                NfsArguments::GetAttr(args) => NfsRes::GetAttr(self.backend.get_attr(args).await),
-                NfsArguments::SetAttr(args) => NfsRes::SetAttr(self.backend.set_attr(args).await),
-                NfsArguments::LookUp(args) => NfsRes::LookUp(self.backend.lookup(args).await),
-                NfsArguments::Access(args) => NfsRes::Access(self.backend.access(args).await),
-                NfsArguments::ReadLink(args) => {
-                    NfsRes::ReadLink(self.backend.read_link(args).await)
-                }
-                NfsArguments::Read(args) => {
-                    let data_result = if args.count == 0 {
-                        Ok(Slice::empty())
-                    } else {
-                        let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+            let backend = self.backend.clone();
+            let allocator = self.allocator.clone();
+            let result_sender = self.result_sender.clone();
+            let inflight_limit = self.inflight_limit.clone();
 
-                        let mut allocator = self.allocator.lock().await;
-                        allocator
-                            .allocate(requested_size)
-                            .await
-                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
-                    };
+            let permit = match inflight_limit.acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => break,
+            };
 
-                    match data_result {
-                        Ok(data) => NfsRes::Read(self.backend.read(args, data).await),
-                        Err(err) => NfsRes::Read(Err(err)),
+            tokio::spawn(async move {
+                let _permit = permit;
+                let response = match *proc {
+                    NfsArguments::Null => NfsRes::Null,
+                    NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
+                    NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args).await),
+                    NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args).await),
+                    NfsArguments::Access(args) => NfsRes::Access(backend.access(args).await),
+                    NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args).await),
+                    NfsArguments::Read(args) => {
+                        let data_result = if args.count == 0 {
+                            Ok(Slice::empty())
+                        } else {
+                            let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
+
+                            let allocator = allocator;
+                            allocator.allocate(requested_size).await.ok_or(vfs::read::Fail {
+                                error: vfs::Error::TooSmall,
+                                file_attr: None,
+                            })
+                        };
+
+                        match data_result {
+                            Ok(data) => NfsRes::Read(backend.read(args, data).await),
+                            Err(err) => NfsRes::Read(Err(err)),
+                        }
                     }
-                }
-                NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
-                NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),
-                NfsArguments::MkDir(args) => NfsRes::MkDir(self.backend.mk_dir(args).await),
-                NfsArguments::SymLink(args) => NfsRes::SymLink(self.backend.symlink(args).await),
-                NfsArguments::MkNod(args) => NfsRes::MkNod(self.backend.mk_node(args).await),
-                NfsArguments::Remove(args) => NfsRes::Remove(self.backend.remove(args).await),
-                NfsArguments::RmDir(args) => NfsRes::RmDir(self.backend.rm_dir(args).await),
-                NfsArguments::Rename(args) => NfsRes::Rename(self.backend.rename(args).await),
-                NfsArguments::Link(args) => NfsRes::Link(self.backend.link(args).await),
-                NfsArguments::ReadDir(args) => NfsRes::ReadDir(self.backend.read_dir(args).await),
-                NfsArguments::ReadDirPlus(args) => {
-                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(args).await)
-                }
-                NfsArguments::FsStat(args) => NfsRes::FsStat(self.backend.fs_stat(args).await),
-                NfsArguments::FsInfo(args) => NfsRes::FsInfo(self.backend.fs_info(args).await),
-                NfsArguments::PathConf(args) => {
-                    NfsRes::PathConf(self.backend.path_conf(args).await)
-                }
-                NfsArguments::Commit(args) => NfsRes::Commit(self.backend.commit(args).await),
-            };
+                    NfsArguments::Write(args) => NfsRes::Write(backend.write(args).await),
+                    NfsArguments::Create(args) => NfsRes::Create(backend.create(args).await),
+                    NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args).await),
+                    NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args).await),
+                    NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args).await),
+                    NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(args).await),
+                    NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args).await),
+                    NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(args).await),
+                    NfsArguments::Link(args) => NfsRes::Link(backend.link(args).await),
+                    NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args).await),
+                    NfsArguments::ReadDirPlus(args) => {
+                        NfsRes::ReadDirPlus(backend.read_dir_plus(args).await)
+                    }
+                    NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args).await),
+                    NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args).await),
+                    NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args).await),
+                    NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args).await),
+                };
 
-            if let Some(error) = Self::error_from_response(&response) {
-                error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
-            }
+                if let Some(error) = Self::error_from_response(&response) {
+                    error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
+                }
 
-            let reply = ProcReply {
-                xid: header.xid,
-                proc_result: Ok(ProcResult::Nfs3(Box::new(response))),
-            };
+                let reply = ProcReply {
+                    xid: header.xid,
+                    proc_result: Ok(ProcResult::Nfs3(Box::new(response))),
+                };
 
-            // Write task may already be closed; then this connection pipeline is done.
-            if self.result_sender.send(reply).is_err() {
-                return;
-            }
+                // Write task may already be closed; then this connection pipeline is done.
+                let _ = result_sender.send(reply).await;
+            });
         }
     }
 
