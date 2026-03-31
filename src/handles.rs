@@ -9,31 +9,34 @@ use crate::vfs;
 use crate::vfs::file;
 use crate::vfs::file::Handle;
 
+const ROOT: u64 = 0;
+
 pub struct HandleMap {
     root: PathBuf,
-    handles: DashMap<Handle, Arc<RwLock<PathBuf>>>,
+    handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
+    path_to_handle: DashMap<PathBuf, Handle>,
     next_id: AtomicU64,
 }
 
 impl HandleMap {
     pub fn new(root: PathBuf) -> Self {
-        let handles = DashMap::new();
-        let root_handle = file::Handle(0u64.to_be_bytes());
-
-        handles.insert(root_handle, Arc::new(RwLock::new(root.clone())));
-
-        Self { root, handles, next_id: AtomicU64::new(1) }
+        Self {
+            root,
+            handle_to_path: DashMap::new(),
+            path_to_handle: DashMap::new(),
+            next_id: AtomicU64::new(ROOT + 1),
+        }
     }
 
     pub fn root(&self) -> file::Handle {
-        file::Handle(0u64.to_be_bytes())
+        file::Handle(ROOT.to_be_bytes())
     }
 
     pub async fn path_for_handle(
         &self,
         handle: &file::Handle,
     ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
-        let entry = self.handles.get(handle).ok_or(vfs::Error::StaleFile)?;
+        let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
         Ok(entry.value().clone())
     }
 
@@ -45,7 +48,7 @@ impl HandleMap {
         let handle = file::Handle(id.to_be_bytes());
 
         let arc = Arc::new(RwLock::new(relative));
-        self.handles.insert(handle.clone(), arc);
+        self.handle_to_path.insert(handle.clone(), arc);
 
         Ok(handle)
     }
@@ -55,7 +58,7 @@ impl HandleMap {
             return Err(vfs::Error::InvalidArgument);
         }
 
-        let removed = self.handles.remove(handle);
+        let removed = self.handle_to_path.remove(handle);
 
         if removed.is_none() {
             return Err(vfs::Error::StaleFile);
@@ -70,9 +73,13 @@ impl HandleMap {
         let to_relative =
             to.strip_prefix(&self.root).map_err(|_| vfs::Error::BadFileHandle)?.to_path_buf();
 
+        if from_relative.is_absolute() || to_relative.is_absolute() {
+            return Err(vfs::Error::BadFileHandle);
+        }
+
         let mut found = None;
 
-        for shard in self.handles.iter() {
+        for shard in self.handle_to_path.iter() {
             let path = shard.read().await;
             if *path == from_relative {
                 found = Some(shard.key().clone());
@@ -86,12 +93,12 @@ impl HandleMap {
 
         let handle = found.ok_or(vfs::Error::StaleFile)?;
 
-        let removed = self.handles.remove(&handle);
+        let removed = self.handle_to_path.remove(&handle);
         if removed.is_none() {
             return Err(vfs::Error::StaleFile);
         }
 
-        self.handles.insert(handle, Arc::new(RwLock::new(to_relative)));
+        self.handle_to_path.insert(handle, Arc::new(RwLock::new(to_relative)));
 
         Ok(())
     }
@@ -101,17 +108,6 @@ impl HandleMap {
             self.root.clone()
         } else {
             self.root.join(relative)
-        }
-    }
-
-    fn map_io_error(error: std::io::Error) -> vfs::Error {
-        match error.kind() {
-            std::io::ErrorKind::NotFound => vfs::Error::NoEntry,
-            std::io::ErrorKind::PermissionDenied => vfs::Error::Access,
-            std::io::ErrorKind::InvalidInput | std::io::ErrorKind::InvalidData => {
-                vfs::Error::InvalidArgument
-            }
-            _ => vfs::Error::IO,
         }
     }
 }

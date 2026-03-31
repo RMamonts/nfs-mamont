@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
-
+use nfs_mamont::vfs;
 use nfs_mamont::vfs::lookup;
 
 use super::MirrorFS;
@@ -9,10 +9,10 @@ use super::MirrorFS;
 #[async_trait]
 impl lookup::Lookup for MirrorFS {
     async fn lookup(&self, path: &Path) -> Result<lookup::Success, lookup::Fail> {
-        let parent_path = match self.path_for_handle(&args.parent).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(lookup::Fail { error, dir_attr: None });
+        let parent_path = match path.parent() {
+            Some(parent) if parent.is_dir() => parent,
+            _ => {
+                return Err(lookup::Fail { error: vfs::Error::BadType, dir_attr: None });
             }
         };
         let parent_meta = match Self::metadata(&parent_path) {
@@ -26,36 +26,16 @@ impl lookup::Lookup for MirrorFS {
             return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
         }
 
-        let child_path = match args.name.as_str() {
-            "." => parent_path.clone(),
-            ".." => {
-                let export_root = match self.exported_root_path().await {
-                    Ok(path) => path,
-                    Err(error) => {
-                        return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
-                    }
-                };
+        //TODO(make ensure path?)
 
-                if parent_path == export_root {
-                    parent_path.clone()
-                } else {
-                    parent_path.parent().map(PathBuf::from).unwrap_or(parent_path.clone())
-                }
-            }
-            _ => {
-                let mut child_path = parent_path.clone();
-                child_path.push(args.name.as_str());
-                child_path
-            }
-        };
-        let child_meta = match Self::metadata(&child_path) {
+        let child_meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
             }
         };
 
-        let child_handle = match self.ensure_handle_for_path(&child_path).await {
+        let child_handle = match self.ensure_handle_for_path(path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });

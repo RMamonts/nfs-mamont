@@ -9,18 +9,17 @@ use nfs_mamont::vfs::{self, create};
 #[async_trait]
 impl create::Create for MirrorFS {
     async fn create(&self, path: &Path, mode: How) -> Result<Success, Fail> {
-        if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
+        if !path.is_file() {
             return Err(create::Fail {
-                error,
+                error: vfs::Error::BadType,
                 wcc_data: vfs::WccData { before: None, after: None },
             });
         }
-
-        let dir_path = match self.path_for_handle(&args.object.dir).await {
-            Ok(path) => path,
-            Err(error) => {
+        let dir_path = match path.parent() {
+            Some(parent) if parent.is_dir() => parent,
+            _ => {
                 return Err(create::Fail {
-                    error,
+                    error: vfs::Error::BadType,
                     wcc_data: vfs::WccData { before: None, after: None },
                 });
             }
@@ -40,19 +39,13 @@ impl create::Create for MirrorFS {
             return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
         }
 
-        let mut child_path = dir_path.clone();
-        child_path.push(args.object.name.as_str());
-        let existed = std::fs::symlink_metadata(&child_path).is_ok();
+        let existed = std::fs::symlink_metadata(path).is_ok();
 
-        let apply_attr = match &args.how {
+        let apply_attr = match mode {
             create::How::Unchecked(attr) => {
                 if !existed {
-                    if let Err(error) = OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(false)
-                        .open(&child_path)
-                        .await
+                    if let Err(error) =
+                        OpenOptions::new().write(true).create(true).truncate(false).open(path).await
                     {
                         return Err(create::Fail {
                             error: Self::io_error_to_vfs(&error),
@@ -69,8 +62,7 @@ impl create::Create for MirrorFS {
                         wcc_data: Self::wcc_data(&dir_path, before),
                     });
                 }
-                if let Err(error) =
-                    OpenOptions::new().write(true).create_new(true).open(&child_path).await
+                if let Err(error) = OpenOptions::new().write(true).create_new(true).open(path).await
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -80,12 +72,12 @@ impl create::Create for MirrorFS {
                 attr
             }
             create::How::Exclusive(ref verifier) => {
-                match OpenOptions::new().write(true).create_new(true).open(&child_path).await {
+                match OpenOptions::new().write(true).create_new(true).open(path).await {
                     Ok(_) => {
-                        Self::store_exclusive_verifier(&child_path, &verifier.0);
+                        Self::store_exclusive_verifier(path, &verifier.0);
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                        if !Self::check_exclusive_verifier(&child_path, &verifier.0) {
+                        if !Self::check_exclusive_verifier(path, &verifier.0) {
                             return Err(create::Fail {
                                 error: vfs::Error::Exist,
                                 wcc_data: Self::wcc_data(&dir_path, before),
@@ -99,21 +91,21 @@ impl create::Create for MirrorFS {
                         });
                     }
                 }
-                &DEFAULT_SET_ATTR
+                DEFAULT_SET_ATTR
             }
         };
 
-        if let Err(error) = Self::apply_set_attr(&child_path, apply_attr) {
+        if let Err(error) = Self::apply_set_attr(path, &apply_attr) {
             return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
         }
 
-        let attr = match Self::metadata(&child_path) {
+        let attr = match Self::metadata(path) {
             Ok(meta) => Self::attr_from_metadata(&meta),
             Err(error) => {
                 return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
             }
         };
-        let handle = match self.ensure_handle_for_path(&child_path).await {
+        let handle = match self.ensure_handle_for_path(path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
