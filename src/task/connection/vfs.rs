@@ -7,7 +7,7 @@ use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
-use crate::handles::HandleMap;
+use crate::handles::{ensure_name_allowed, HandleMap};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs, WccData};
@@ -82,6 +82,10 @@ impl VfsTask {
             NfsArguments::LookUp(args) => match self.handles.path_for_handle(&args.parent).await {
                 Err(error) => NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None })),
                 Ok(lock) => {
+                    if let Err(error) = ensure_name_allowed(&args.name) {
+                        return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
+                    }
+
                     let path_parent = lock.write().await;
 
                     let mut path = path_parent.clone();
@@ -113,6 +117,13 @@ impl VfsTask {
                         wcc_data: WccData::default(),
                     })),
                     Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::LookUp(Err(vfs::lookup::Fail {
+                                error,
+                                dir_attr: None,
+                            }));
+                        }
+
                         let path_parent = lock.write().await;
 
                         let mut path = path_parent.clone();
@@ -140,6 +151,13 @@ impl VfsTask {
                         NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
                     }
                     Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::LookUp(Err(vfs::lookup::Fail {
+                                error,
+                                dir_attr: None,
+                            }));
+                        }
+
                         let path_parent = lock.write().await;
 
                         let mut path = path_parent.clone();
@@ -169,6 +187,13 @@ impl VfsTask {
                         dir_wcc: WccData::default(),
                     })),
                     Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::LookUp(Err(vfs::lookup::Fail {
+                                error,
+                                dir_attr: None,
+                            }));
+                        }
+
                         let path_parent = lock.write().await;
 
                         let mut path = path_parent.clone();
@@ -197,6 +222,13 @@ impl VfsTask {
                         NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: WccData::default() }))
                     }
                     Ok(lock) => {
+                        if let Err(error) = ensure_name_allowed(&args.object.name) {
+                            return NfsRes::LookUp(Err(vfs::lookup::Fail {
+                                error,
+                                dir_attr: None,
+                            }));
+                        }
+
                         let path_parent = lock.write().await;
 
                         let mut path = path_parent.clone();
@@ -240,6 +272,14 @@ impl VfsTask {
                         }))
                     }
                 };
+                if let Err(error) = ensure_name_allowed(&args.to.name) {
+                    return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
+                }
+                if let Err(error) = ensure_name_allowed(&args.from.name) {
+                    return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
+                }
+
+                //TODO(possible deadlock)
                 let lock_from = from_dir.write().await;
                 let lock_to = to_dir.write().await;
 
@@ -281,6 +321,9 @@ impl VfsTask {
                     }
                 };
 
+                if let Err(error) = ensure_name_allowed(&args.link.name) {
+                    return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
+                }
                 let real = object.read().await;
 
                 let mut path = parent.write().await.clone();
@@ -312,6 +355,9 @@ impl VfsTask {
                     }
                 };
 
+                if let Err(error) = ensure_name_allowed(&args.object.name) {
+                    return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
+                }
                 let mut path = parent.write().await.clone();
                 path.push(args.object.name.as_str());
 

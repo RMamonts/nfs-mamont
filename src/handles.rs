@@ -104,3 +104,11 @@ impl HandleMap {
         }
     }
 }
+
+pub fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
+    match name.as_str() {
+        "." => Err(vfs::Error::InvalidArgument),
+        ".." => Err(vfs::Error::Exist),
+        _ => Ok(()),
+    }
+}
