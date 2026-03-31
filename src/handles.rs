@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -16,7 +15,6 @@ pub struct HandleMap {
     root: PathBuf,
     handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
     path_to_handle: DashMap<PathBuf, Handle>,
-    key_to_paths: DashMap<Handle, Arc<RwLock<BTreeSet<PathBuf>>>>,
     next_id: AtomicU64,
 }
 
@@ -24,19 +22,15 @@ impl HandleMap {
     pub fn new(root: PathBuf) -> Self {
         let root_handle = file::Handle(ROOT.to_be_bytes());
         let root_relative = PathBuf::new();
-        let root_paths = Arc::new(RwLock::new(BTreeSet::from([root_relative.clone()])));
         let handle_to_path = DashMap::new();
         handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root_relative.clone())));
         let path_to_handle = DashMap::new();
         path_to_handle.insert(root_relative, root_handle.clone());
-        let key_to_paths = DashMap::new();
-        key_to_paths.insert(root_handle, root_paths);
 
         Self {
             root,
             handle_to_path,
             path_to_handle,
-            key_to_paths,
             next_id: AtomicU64::new(ROOT + 1),
         }
     }
@@ -70,38 +64,15 @@ impl HandleMap {
         let handle = file::Handle(id.to_be_bytes());
         self.handle_to_path.insert(handle.clone(), Arc::new(RwLock::new(relative.clone())));
         self.path_to_handle.insert(relative.clone(), handle.clone());
-        self.key_to_paths.insert(handle.clone(), Arc::new(RwLock::new(BTreeSet::from([relative]))));
         Ok(handle)
     }
 
     pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let relative = self.relative_path(path)?;
-
         let (_, handle) =
             self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
-        let paths = self.key_to_paths.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
-
-        let next_preferred = {
-            let mut known_paths = paths.write().await;
-            if !known_paths.remove(relative.as_path()) {
-                return Err(vfs::Error::StaleFile);
-            }
-            known_paths.iter().next().cloned()
-        };
-
-        match next_preferred {
-            Some(preferred) => {
-                let lock =
-                    self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
-                let mut current_path = lock.write().await;
-                if *current_path == relative {
-                    *current_path = preferred;
-                }
-            }
-            None => {
-                self.key_to_paths.remove(&handle);
-                self.handle_to_path.remove(&handle);
-            }
+        if self.handle_to_path.remove(&handle).is_none() {
+            return Err(vfs::Error::StaleFile);
         }
 
         Ok(())
@@ -132,16 +103,6 @@ impl HandleMap {
                 from_relative.as_path(),
                 to_relative.as_path(),
             )?;
-            let paths =
-                self.key_to_paths.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
-
-            {
-                let mut known_paths = paths.write().await;
-                if !known_paths.remove(&old_path) {
-                    return Err(vfs::Error::StaleFile);
-                }
-                known_paths.insert(new_path.clone());
-            }
 
             self.path_to_handle.insert(new_path.clone(), handle.clone());
 
