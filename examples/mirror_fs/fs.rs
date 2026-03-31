@@ -1,4 +1,3 @@
-use crate::fs_map::FsMap;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -11,8 +10,6 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
-// use crate::fs_map::FsMap;
 
 mod access_impl;
 mod commit_impl;
@@ -50,23 +47,23 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 /// A file system implementation that mirrors a local directory.
 #[derive(Debug)]
 pub struct MirrorFS {
-    fsmap: RwLock<FsMap>,
+    root: PathBuf,
     generation: u64,
 }
 
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
-        //let root = std::fs::canonicalize(&root).unwrap_or(root);
+        let root = std::fs::canonicalize(&root).unwrap_or(root);
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap), generation }
+        Self { generation, root }
     }
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.read().await.root_handle()
+        file::Handle(1u64.to_be_bytes())
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -79,18 +76,6 @@ impl MirrorFS {
         raw[4..].copy_from_slice(&attr.ctime.nanos.to_be_bytes());
         read_dir::CookieVerifier::new(raw)
     }
-
-    // async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-    //     self.fsmap.write().await.ensure_handle_for_path(path)
-    // }
-
-    // async fn remove_cached_path(&self, path: &Path) {
-    //     self.fsmap.write().await.remove_path(path);
-    // }
-    //
-    // async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-    //     self.fsmap.write().await.rename_path(from, to)
-    // }
 
     fn io_error_to_vfs(error: &std::io::Error) -> vfs::Error {
         match error.kind() {
