@@ -11,7 +11,6 @@ use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
 use nfs_mamont::init_tracing;
 
 pub mod fs;
-pub mod fs_map;
 
 #[cfg(test)]
 mod tests;

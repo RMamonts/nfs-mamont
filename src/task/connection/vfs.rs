@@ -10,6 +10,7 @@ use crate::context::ServerContext;
 use crate::handles::{ensure_name_allowed, HandleMap};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
+use crate::vfs::file::Handle;
 use crate::vfs::{self, NfsRes, Vfs, WccData};
 
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
@@ -67,6 +68,19 @@ impl VfsTask {
         }
     }
 
+    async fn create_handle_or_panic(&self, path: &std::path::PathBuf) -> Handle {
+        match self.handles.create_handle(path).await {
+            Ok(handle) => handle,
+            Err(err) => unreachable!("handle creation failed, fs consistency is broken: {:?}", err),
+        }
+    }
+
+    async fn remove_path_or_panic(&self, path: &std::path::Path) {
+        if let Err(err) = self.handles.remove_path(path).await {
+            unreachable!("handle remove failed, fs consistency is broken: {:?}", err);
+        }
+    }
+
     async fn process_argument(&self, proc: Box<NfsArguments>) -> NfsRes {
         match *proc {
             NfsArguments::Null => NfsRes::Null,
@@ -74,8 +88,8 @@ impl VfsTask {
             NfsArguments::GetAttr(args) => match self.handles.path_for_handle(&args.file).await {
                 Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
                 Ok(lock) => {
-                    let lock = lock.read().await;
-                    NfsRes::GetAttr(self.backend.get_attr(lock.as_path()).await)
+                    let path = lock.read().await;
+                    NfsRes::GetAttr(self.backend.get_attr(path.as_path()).await)
                 }
             },
 
@@ -86,157 +100,131 @@ impl VfsTask {
                         return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
                     }
 
-                    let path_parent = lock.write().await;
-
+                    let path_parent = lock.read().await;
                     let mut path = path_parent.clone();
                     path.push(args.name.as_str());
 
                     match self.backend.lookup(path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
-                        Ok(ok) => match self.handles.create_handle(&path).await {
-                            Ok(handle) => NfsRes::LookUp(Ok(vfs::lookup::Success {
-                                file: handle,
-                                file_attr: ok.file_attr,
-                                dir_attr: ok.dir_attr,
-                            })),
-                            Err(_) => {
-                                unreachable!("handle creation failed, fs consistency is broken")
-                            }
-                        },
+                        Ok(ok) => NfsRes::LookUp(Ok(vfs::lookup::Success {
+                            file: self.create_handle_or_panic(&path).await,
+                            file_attr: ok.file_attr,
+                            dir_attr: ok.dir_attr,
+                        })),
                     }
                 }
             },
 
-            NfsArguments::Create(args) => {
-                match self.handles.path_for_handle(&args.object.dir).await {
-                    Err(error) => NfsRes::Create(Err(vfs::create::Fail {
-                        error,
-                        wcc_data: WccData::default(),
-                    })),
-                    Ok(lock) => {
-                        if let Err(error) = ensure_name_allowed(&args.object.name) {
-                            return NfsRes::Create(Err(vfs::create::Fail {
-                                error,
-                                wcc_data: WccData::default(),
-                            }));
-                        }
+            NfsArguments::Create(args) => match self.handles.path_for_handle(&args.object.dir).await {
+                Err(error) => NfsRes::Create(Err(vfs::create::Fail {
+                    error,
+                    wcc_data: WccData::default(),
+                })),
+                Ok(lock) => {
+                    if let Err(error) = ensure_name_allowed(&args.object.name) {
+                        return NfsRes::Create(Err(vfs::create::Fail {
+                            error,
+                            wcc_data: WccData::default(),
+                        }));
+                    }
 
-                        let path_parent = lock.write().await;
+                    let path_parent = lock.read().await;
+                    let mut path = path_parent.clone();
+                    path.push(args.object.name.as_str());
 
-                        let mut path = path_parent.clone();
-                        path.push(args.object.name.as_str());
-
-                        match self.backend.create(path.as_path(), args.how).await {
-                            Err(err) => NfsRes::Create(Err(err)),
-                            Ok(ok) => {
-                                //TODO(can we use option, if possible, or unreachable everywhere?)
-                                let handle = match self.handles.create_handle(&path).await {
-                                    Ok(s) => Some(s),
-                                    Err(err) => unreachable!(
-                                        "{}",
-                                        format!(
-                                            "handle remove failed, fs consistency is broken: {:?}",
-                                            err
-                                        )
-                                    ),
-                                };
-                                NfsRes::Create(Ok(vfs::create::Success {
-                                    file: handle,
-                                    attr: ok.attr,
-                                    wcc_data: ok.wcc_data,
-                                }))
-                            }
-                        }
+                    match self.backend.create(path.as_path(), args.how).await {
+                        Err(err) => NfsRes::Create(Err(err)),
+                        Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
+                            file: Some(self.create_handle_or_panic(&path).await),
+                            attr: ok.attr,
+                            wcc_data: ok.wcc_data,
+                        })),
                     }
                 }
-            }
+            },
 
-            NfsArguments::MkDir(args) => {
-                match self.handles.path_for_handle(&args.object.dir).await {
-                    Err(error) => {
-                        NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
+            NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir).await {
+                Err(error) => {
+                    NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
+                }
+                Ok(lock) => {
+                    if let Err(error) = ensure_name_allowed(&args.object.name) {
+                        return NfsRes::MkDir(Err(vfs::mk_dir::Fail {
+                            error,
+                            dir_wcc: WccData::default(),
+                        }));
                     }
-                    Ok(lock) => {
-                        if let Err(error) = ensure_name_allowed(&args.object.name) {
-                            return NfsRes::MkDir(Err(vfs::mk_dir::Fail {
-                                error,
-                                dir_wcc: WccData::default(),
-                            }));
-                        }
 
-                        let path_parent = lock.write().await;
+                    let path_parent = lock.read().await;
+                    let mut path = path_parent.clone();
+                    path.push(args.object.name.as_str());
 
-                        let mut path = path_parent.clone();
-                        path.push(args.object.name.as_str());
-
-                        match self.backend.mk_dir(path.as_path(), args.attr).await {
-                            Err(err) => NfsRes::MkDir(Err(err)),
-                            Ok(ok) => {
-                                let handle = match self.handles.create_handle(&path).await {
-                                    Ok(s) => Some(s),
-                                    Err(err) => unreachable!(
-                                        "{}",
-                                        format!(
-                                            "handle remove failed, fs consistency is broken: {:?}",
-                                            err
-                                        )
-                                    ),
-                                };
-                                NfsRes::MkDir(Ok(vfs::mk_dir::Success {
-                                    file: handle,
-                                    attr: ok.attr,
-                                    wcc_data: ok.wcc_data,
-                                }))
-                            }
-                        }
+                    match self.backend.mk_dir(path.as_path(), args.attr).await {
+                        Err(err) => NfsRes::MkDir(Err(err)),
+                        Ok(ok) => NfsRes::MkDir(Ok(vfs::mk_dir::Success {
+                            file: Some(self.create_handle_or_panic(&path).await),
+                            attr: ok.attr,
+                            wcc_data: ok.wcc_data,
+                        })),
                     }
                 }
-            }
+            },
 
-            NfsArguments::Remove(args) => {
-                let handle = &args.object.dir.clone();
+            NfsArguments::Remove(args) => match self.handles.path_for_handle(&args.object.dir).await {
+                Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
+                    error,
+                    dir_wcc: WccData::default(),
+                })),
+                Ok(lock) => {
+                    if let Err(error) = ensure_name_allowed(&args.object.name) {
+                        return NfsRes::Remove(Err(vfs::remove::Fail {
+                            error,
+                            dir_wcc: WccData::default(),
+                        }));
+                    }
 
-                match self.handles.path_for_handle(handle).await {
-                    Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
-                        error,
-                        dir_wcc: WccData::default(),
-                    })),
-                    Ok(lock) => {
-                        if let Err(error) = ensure_name_allowed(&args.object.name) {
-                            return NfsRes::Remove(Err(vfs::remove::Fail {
-                                error,
-                                dir_wcc: WccData::default(),
-                            }));
-                        }
+                    let path_parent = lock.read().await;
+                    let mut path = path_parent.clone();
+                    path.push(args.object.name.as_str());
+                    let child_lock = match self.handles.handle_for_path(&path).await {
+                        Ok(handle) => Some(
+                            self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
+                                unreachable!(
+                                    "child path lock resolution failed, fs consistency is broken: {:?}",
+                                    err
+                                )
+                            }),
+                        ),
+                        Err(vfs::Error::StaleFile) => None,
+                        Err(err) => unreachable!(
+                            "child handle resolution failed, fs consistency is broken: {:?}",
+                            err
+                        ),
+                    };
 
-                        let path_parent = lock.write().await;
-
-                        let mut path = path_parent.clone();
-                        path.push(args.object.name.as_str());
-
+                    if let Some(child_lock) = child_lock {
+                        let _child_guard = child_lock.read().await;
                         match self.backend.remove(path.as_path()).await {
                             Err(err) => NfsRes::Remove(Err(err)),
                             Ok(ok) => {
-                                // not sure what to do, should be unreachable
-                                match self.handles.remove_path(path.as_path()).await {
-                                    Ok(_) => NfsRes::Remove(Ok(ok)),
-                                    Err(err) => unreachable!(
-                                        "{}",
-                                        format!(
-                                            "handle remove failed, fs consistency is broken: {:?}",
-                                            err
-                                        )
-                                    ),
-                                }
+                                self.remove_path_or_panic(path.as_path()).await;
+                                NfsRes::Remove(Ok(ok))
+                            }
+                        }
+                    } else {
+                        match self.backend.remove(path.as_path()).await {
+                            Err(err) => NfsRes::Remove(Err(err)),
+                            Ok(ok) => {
+                                self.remove_path_or_panic(path.as_path()).await;
+                                NfsRes::Remove(Ok(ok))
                             }
                         }
                     }
                 }
-            }
+            },
 
             NfsArguments::RmDir(args) => {
-                let handle = &args.object.dir.clone();
-                match self.handles.path_for_handle(handle).await {
+                match self.handles.path_for_handle(&args.object.dir).await {
                     Err(error) => {
                         NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: WccData::default() }))
                     }
@@ -246,31 +234,47 @@ impl VfsTask {
                                 error,
                                 dir_wcc: WccData::default(),
                             }));
-                        }
+                    }
 
-                        let path_parent = lock.write().await;
+                    let path_parent = lock.read().await;
+                    let mut path = path_parent.clone();
+                    path.push(args.object.name.as_str());
+                    let child_lock = match self.handles.handle_for_path(&path).await {
+                        Ok(handle) => Some(
+                            self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
+                                unreachable!(
+                                    "child path lock resolution failed, fs consistency is broken: {:?}",
+                                    err
+                                )
+                            }),
+                        ),
+                        Err(vfs::Error::StaleFile) => None,
+                        Err(err) => unreachable!(
+                            "child handle resolution failed, fs consistency is broken: {:?}",
+                            err
+                        ),
+                    };
 
-                        let mut path = path_parent.clone();
-                        path.push(args.object.name.as_str());
-
+                    if let Some(child_lock) = child_lock {
+                        let _child_guard = child_lock.read().await;
                         match self.backend.rm_dir(path.as_path()).await {
                             Err(err) => NfsRes::RmDir(Err(err)),
                             Ok(ok) => {
-                                // not sure what to do, should be unreachable
-                                match self.handles.remove_path(path.as_path()).await {
-                                    Ok(_) => NfsRes::RmDir(Ok(ok)),
-                                    Err(err) => unreachable!(
-                                        "{}",
-                                        format!(
-                                            "handle remove failed, fs consistency is broken: {:?}",
-                                            err
-                                        )
-                                    ),
-                                }
+                                self.remove_path_or_panic(path.as_path()).await;
+                                NfsRes::RmDir(Ok(ok))
+                            }
+                        }
+                    } else {
+                        match self.backend.rm_dir(path.as_path()).await {
+                            Err(err) => NfsRes::RmDir(Err(err)),
+                            Ok(ok) => {
+                                self.remove_path_or_panic(path.as_path()).await;
+                                NfsRes::RmDir(Ok(ok))
                             }
                         }
                     }
                 }
+            }
             }
 
             NfsArguments::Rename(args) => {
@@ -310,36 +314,20 @@ impl VfsTask {
                     }));
                 }
 
-                let from = if Arc::ptr_eq(&from_dir, &to_dir) {
-                    let dir = from_dir.write().await.clone();
-                    let mut from = dir.clone();
-                    from.push(args.from.name.as_str());
-                    let mut to = dir;
-                    to.push(args.to.name.as_str());
-                    (from, to)
-                } else {
-                    //TODO(possible deadlock)
-                    let lock_from = from_dir.write().await;
-                    let lock_to = to_dir.write().await;
+                let from_lock = from_dir.read().await;
+                let mut from = from_lock.clone();
+                from.push(args.from.name.as_str());
 
-                    let mut from = lock_from.clone();
-                    from.push(args.from.name.as_str());
+                let to_lock = to_dir.read().await;
+                let mut to = to_lock.clone();
+                to.push(args.to.name.as_str());
 
-                    let mut to = lock_to.clone();
-                    to.push(args.to.name.as_str());
-                    (from, to)
-                };
-
-                match self.backend.rename(from.0.as_path(), from.1.as_path()).await {
+                match self.backend.rename(from.as_path(), to.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
-                    Ok(ok) => {
-                        match self.handles.rename_path(from.0.as_path(), from.1.as_path()).await {
-                            Ok(_) => NfsRes::Rename(Ok(ok)),
-                            Err(_) => {
-                                unreachable!("handle rename failed, fs consistency is broken")
-                            }
-                        }
-                    }
+                    Ok(ok) => match self.handles.rename_path(from.as_path(), to.as_path()).await {
+                        Ok(_) => NfsRes::Rename(Ok(ok)),
+                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
+                    },
                 }
             }
 
@@ -392,7 +380,7 @@ impl VfsTask {
             }
 
             NfsArguments::SymLink(args) => {
-                //TODO("check that path really exist")
+                //TODO("check that path really exist?")
 
                 let parent = match self.handles.path_for_handle(&args.object.dir).await {
                     Ok(dir) => dir,
