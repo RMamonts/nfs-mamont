@@ -1,4 +1,5 @@
 use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -68,17 +69,14 @@ impl VfsTask {
         }
     }
 
-    async fn create_handle_or_panic(&self, path: &std::path::PathBuf) -> Handle {
+    async fn create_handle_or_panic(&self, path: &Path) -> Handle {
         match self.handles.create_handle(path).await {
             Ok(handle) => handle,
             Err(err) => unreachable!("handle creation failed, fs consistency is broken: {:?}", err),
         }
     }
 
-    async fn cached_child_lock(
-        &self,
-        path: &std::path::PathBuf,
-    ) -> Option<Arc<RwLock<std::path::PathBuf>>> {
+    async fn cached_child_lock(&self, path: &Path) -> Option<Arc<RwLock<PathBuf>>> {
         match self.handles.handle_for_path(path).await {
             Ok(handle) => Some(self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
                 unreachable!(

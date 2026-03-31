@@ -41,7 +41,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let start = cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, (name, path, meta)) in entries.iter().cloned().enumerate().skip(start) {
+        for (index, (name, _path, meta)) in entries.iter().cloned().enumerate().skip(start) {
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > max_count {
                 break;

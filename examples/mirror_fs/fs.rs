@@ -47,18 +47,18 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 /// A file system implementation that mirrors a local directory.
 #[derive(Debug)]
 pub struct MirrorFS {
-    root: PathBuf,
+    _root: PathBuf,
     generation: u64,
 }
 
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
     pub fn new(root: PathBuf) -> Self {
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        let _root = std::fs::canonicalize(&root).unwrap_or(root);
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { generation, root }
+        Self { generation, _root }
     }
 
     /// Returns the root handle.

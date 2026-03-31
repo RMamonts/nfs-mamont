@@ -27,12 +27,7 @@ impl HandleMap {
         let path_to_handle = DashMap::new();
         path_to_handle.insert(root_relative, root_handle.clone());
 
-        Self {
-            root,
-            handle_to_path,
-            path_to_handle,
-            next_id: AtomicU64::new(ROOT + 1),
-        }
+        Self { root, handle_to_path, path_to_handle, next_id: AtomicU64::new(ROOT + 1) }
     }
 
     pub fn root(&self) -> file::Handle {
@@ -48,14 +43,14 @@ impl HandleMap {
         Ok(Arc::new(RwLock::new(self.to_full_path(relative.as_path()))))
     }
 
-    pub async fn handle_for_path(&self, path: &PathBuf) -> Result<Handle, vfs::Error> {
-        let relative = self.relative_path(path.as_path())?;
+    pub async fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
+        let relative = self.relative_path(path)?;
         let entry = self.path_to_handle.get(&relative).ok_or(vfs::Error::StaleFile)?;
         Ok(entry.value().clone())
     }
 
-    pub async fn create_handle(&self, path: &PathBuf) -> Result<Handle, vfs::Error> {
-        let relative = self.relative_path(path.as_path())?;
+    pub async fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
+        let relative = self.relative_path(path)?;
         if let Some(prev) = self.path_to_handle.get(&relative) {
             return Ok(prev.value().clone());
         }

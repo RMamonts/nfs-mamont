@@ -37,7 +37,7 @@ impl read_dir::ReadDir for MirrorFS {
         let start = cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, (name, path, meta)) in entries.into_iter().enumerate().skip(start) {
+        for (index, (name, _path, meta)) in entries.into_iter().enumerate().skip(start) {
             let estimated = (24 + name.as_str().len()) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > count {
                 break;
