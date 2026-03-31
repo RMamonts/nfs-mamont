@@ -3,6 +3,7 @@
 mod allocator;
 pub mod consts;
 mod context;
+pub mod handles;
 mod mount;
 mod parser;
 mod rpc;

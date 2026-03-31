@@ -6,7 +6,8 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
-use crate::context::{HandleMap, ServerContext};
+use crate::context::ServerContext;
+use crate::handles::HandleMap;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, Error, NfsRes, Vfs, WccData};
@@ -90,7 +91,7 @@ impl VfsTask {
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => {
                             //TODO("handle properly")
-                            let handle = self.handles.create_handle(path).await.unwrap();
+                            let handle = self.handles.create_handle(path.as_path()).await.unwrap();
                             NfsRes::LookUp(Ok(vfs::lookup::Success {
                                 file: handle,
                                 file_attr: ok.file_attr,
@@ -116,7 +117,7 @@ impl VfsTask {
                         match self.backend.create(args, path.as_path()).await {
                             Err(err) => NfsRes::Create(Err(err)),
                             Ok(ok) => {
-                                let handle = self.handles.create_handle(path).await.ok();
+                                let handle = self.handles.create_handle(path.as_path()).await.ok();
                                 NfsRes::Create(Ok(vfs::create::Success {
                                     file: handle,
                                     attr: None,
@@ -143,7 +144,7 @@ impl VfsTask {
                         match self.backend.mk_dir(args, path.as_path()).await {
                             Err(err) => NfsRes::MkDir(Err(err)),
                             Ok(ok) => {
-                                let handle = self.handles.create_handle(path).await.ok();
+                                let handle = self.handles.create_handle(path.as_path()).await.ok();
                                 NfsRes::MkDir(Ok(vfs::mk_dir::Success {
                                     file: handle,
                                     attr: None,
@@ -277,7 +278,7 @@ impl VfsTask {
                 match self.backend.link(args, path.as_path(), real.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path).await.ok();
+                        let handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::Link(Ok(vfs::link::Success {
                             file_attr: ok.file_attr,
                             dir_wcc: WccData { before: None, after: None },
@@ -307,7 +308,7 @@ impl VfsTask {
                 match self.backend.symlink(args, path.as_path(), obj.as_path()).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path).await.ok();
+                        let handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::SymLink(Ok(vfs::symlink::Success {
                             file: handle,
                             attr: None,
@@ -398,7 +399,7 @@ impl VfsTask {
                 match self.backend.mk_node(args, path.as_path()).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
                     Ok(ok) => {
-                        let handle = self.handles.create_handle(path).await.ok();
+                        let handle = self.handles.create_handle(path.as_path()).await.ok();
                         NfsRes::MkNod(Ok(vfs::mk_node::Success {
                             file: handle,
                             attr: None,
