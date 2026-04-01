@@ -43,7 +43,7 @@ impl VfsTask {
     ) -> Self {
         Self {
             backend: context.get_backend(),
-            allocator: context.get_read_allocator(),
+            allocator: context.get_allocator(),
             command_receiver,
         }
     }

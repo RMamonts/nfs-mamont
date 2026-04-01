@@ -25,7 +25,6 @@ use crate::vfs::NfsRes;
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
-    command_sender: UnboundedSender<NfsArgWrapper>,
     // to send messages into mount task
     mount_sender: UnboundedSender<MountCommand>,
     // to pass into mount task as part of message,
@@ -42,21 +41,12 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        command_sender: UnboundedSender<NfsArgWrapper>,
         mount_sender: UnboundedSender<MountCommand>,
         result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<Impl>,
         cmd_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self {
-            readhalf,
-            client_addr,
-            command_sender,
-            mount_sender,
-            result_sender,
-            allocator,
-            cmd_sender,
-        }
+        Self { readhalf, client_addr, mount_sender, result_sender, allocator, cmd_sender }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
