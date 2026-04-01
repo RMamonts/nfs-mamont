@@ -75,13 +75,7 @@ async fn main() -> std::io::Result<()> {
     let fs = Arc::new(fs::MirrorFS::new_many(
         config.exports.iter().map(|export| export.local_path.clone()).collect(),
     ));
-    let context = ServerContext::new(
-        fs.clone(),
-        non_zero(config.allocator.read_buffer_size),
-        non_zero(config.allocator.read_buffer_count),
-        non_zero(config.allocator.write_buffer_size),
-        non_zero(config.allocator.write_buffer_count),
-    );
+    let context = ServerContext::new(fs.clone(), non_zero(1024 * 1024), non_zero(1024));
 
     #[cfg(debug_assertions)]
     init_tracing();

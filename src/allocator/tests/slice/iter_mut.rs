@@ -20,9 +20,7 @@ where
         result.push(buf.into_boxed_slice())
     }
 
-    let slice = Slice::new(result, range, None);
-
-    slice
+    Slice::new(result, range, None)
 }
 
 fn check_iter_is_empty<'a>(iter: &'a mut impl Iterator<Item = &'a mut [u8]>) {

@@ -20,8 +20,10 @@ use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
+use async_channel::Sender;
+use tokio::sync::mpsc::UnboundedSender;
+
 mod read;
-mod vfs;
 mod write;
 
 const COMMAND_CHANNEL_CAPACITY: usize = 512;
@@ -32,6 +34,7 @@ pub async fn new<V>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
     context: &ServerContext<V>,
+    cmd_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 ) where
     V: Vfs + Send + Sync + 'static,
 {
@@ -44,22 +47,20 @@ pub async fn new<V>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::channel::<ProcReply>(RESULT_CHANNEL_CAPACITY);
+    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
     // channel for request
-    let (command_sender, command_receiver) =
-        mpsc::channel::<NfsArgWrapper>(COMMAND_CHANNEL_CAPACITY);
 
     read::ReadTask::new(
         readhalf,
         peer_addr,
-        command_sender,
         mount_sender,
         result_sender.clone(),
-        context.get_write_allocator(),
+        context.get_allocator(),
+        cmd_sender,
     )
     .spawn();
 
-    vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
+    // vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }

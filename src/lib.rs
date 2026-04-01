@@ -90,12 +90,14 @@ where
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();
 
+    let cmd_sender = crate::task::global::vfs::start_pool(10, &context);
+
     loop {
         let (socket, _) = listener.accept().await?;
 
         // !!! SLOWS US
         // socket.set_nodelay(true)?;
 
-        connection::new(socket, mount_sender.clone(), &context).await;
+        connection::new(socket, mount_sender.clone(), &context, cmd_sender.clone()).await;
     }
 }
