@@ -17,6 +17,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
+use crate::task::global::vfs::VfsPool;
 
 pub use allocator::Slice;
 pub use context::ServerContext;
@@ -81,11 +82,13 @@ pub async fn handle_forever_with_exports(
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();
 
+    let cmd_sender = VfsPool::start_pool(10, &context);
+
     loop {
         let (socket, _) = listener.accept().await?;
 
         socket.set_nodelay(true)?;
 
-        connection::new(socket, mount_sender.clone(), &context).await;
+        connection::new(socket, mount_sender.clone(), &context, cmd_sender.clone()).await;
     }
 }

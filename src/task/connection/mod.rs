@@ -18,8 +18,10 @@ use crate::parser::NfsArgWrapper;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 
+use async_channel::Sender;
+use tokio::sync::mpsc::UnboundedSender;
+
 mod read;
-mod vfs;
 mod write;
 
 // Creates all connection tasks with their inner connections
@@ -27,6 +29,7 @@ pub async fn new(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
     context: &ServerContext,
+    cmd_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 ) {
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
@@ -48,10 +51,11 @@ pub async fn new(
         mount_sender,
         result_sender.clone(),
         context.get_write_allocator(),
+        cmd_sender,
     )
     .spawn();
 
-    vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
+    // vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }

@@ -1,6 +1,7 @@
+use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 use tracing::error;
 
@@ -10,26 +11,41 @@ use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
+pub struct VfsPool {}
+
+impl VfsPool {
+    pub fn start_pool(
+        num: usize,
+        context: &ServerContext,
+    ) -> Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)> {
+        let (tx, rx) = async_channel::unbounded::<(NfsArgWrapper, UnboundedSender<ProcReply>)>();
+
+        for _ in 0..num {
+            let rx_clone = rx.clone();
+            VfsTask::new(context, rx_clone).spawn();
+        }
+
+        tx
+    }
+}
+
 /// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
     allocator: Arc<Mutex<Impl>>,
-    command_receiver: UnboundedReceiver<NfsArgWrapper>,
-    result_sender: UnboundedSender<ProcReply>,
+    command_receiver: Receiver<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
 impl VfsTask {
     /// Creates new instance of [`VfsTask`].
     pub fn new(
         context: &ServerContext,
-        command_receiver: UnboundedReceiver<NfsArgWrapper>,
-        result_sender: UnboundedSender<ProcReply>,
+        command_receiver: Receiver<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
         Self {
             backend: context.get_backend(),
             allocator: context.get_read_allocator(),
             command_receiver,
-            result_sender,
         }
     }
 
@@ -43,9 +59,9 @@ impl VfsTask {
     }
 
     async fn run(self) {
-        let mut command_receiver = self.command_receiver;
+        let command_receiver = self.command_receiver;
 
-        while let Some(command) = command_receiver.recv().await {
+        while let Ok((command, tx)) = command_receiver.recv().await {
             let NfsArgWrapper { header, proc } = command;
             let proc_name = Self::proc_name(&proc);
 
@@ -107,7 +123,7 @@ impl VfsTask {
             };
 
             // Write task may already be closed; then this connection pipeline is done.
-            if self.result_sender.send(reply).is_err() {
+            if tx.send(reply).is_err() {
                 return;
             }
         }

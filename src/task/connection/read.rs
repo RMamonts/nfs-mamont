@@ -7,6 +7,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 use tracing::{debug, error};
 
+use async_channel::Sender;
+
 use crate::allocator::Impl;
 use crate::mount::MountRes;
 use crate::parser::parser_struct::RpcParser;
@@ -33,6 +35,7 @@ pub struct ReadTask {
     // to bypass vfs with null procedure
     result_sender: UnboundedSender<ProcReply>,
     allocator: Arc<Mutex<Impl>>,
+    cmd_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
 impl ReadTask {
@@ -44,8 +47,17 @@ impl ReadTask {
         mount_sender: UnboundedSender<MountCommand>,
         result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<Mutex<Impl>>,
+        cmd_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, command_sender, mount_sender, result_sender, allocator }
+        Self {
+            readhalf,
+            client_addr,
+            command_sender,
+            mount_sender,
+            result_sender,
+            allocator,
+            cmd_sender,
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -81,7 +93,9 @@ impl ReadTask {
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
-                    if let Err(err) = self.command_sender.send(command) {
+                    if let Err(err) =
+                        self.cmd_sender.send((command, self.result_sender.clone())).await
+                    {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
