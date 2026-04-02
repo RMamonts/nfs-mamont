@@ -426,8 +426,6 @@ impl VfsTask {
             }
 
             NfsArguments::SymLink(args) => {
-                //TODO("check that path really exist?")
-
                 let parent = match self.handles.path_for_handle(&args.object.dir).await {
                     Ok(dir) => dir,
                     Err(error) => {
@@ -452,14 +450,14 @@ impl VfsTask {
 
                 match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
-                    Ok(ok) => match self.handles.create_handle(&path).await {
-                        Ok(handle) => NfsRes::SymLink(Ok(vfs::symlink::Success {
+                    Ok(ok) => {
+                        let handle = self.create_handle_or_panic(&path).await;
+                        NfsRes::SymLink(Ok(vfs::symlink::Success {
                             file: Some(handle),
                             attr: ok.attr,
                             wcc_data: ok.wcc_data,
-                        })),
-                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
-                    },
+                        }))
+                    }
                 }
             }
             NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file).await {
@@ -468,7 +466,7 @@ impl VfsTask {
                     wcc_data: WccData::default(),
                 })),
                 Ok(lock) => {
-                    let path = lock.read().await;
+                    let path = lock.write().await;
                     NfsRes::SetAttr(
                         self.backend.set_attr(path.as_path(), args.new_attr, args.guard).await,
                     )
@@ -496,6 +494,8 @@ impl VfsTask {
             NfsArguments::Read(args) => match self.handles.path_for_handle(&args.file).await {
                 Err(error) => NfsRes::Read(Err(vfs::read::Fail { error, file_attr: None })),
                 Ok(lock) => {
+                    let path = lock.read().await;
+
                     let data_result = if args.count == 0 {
                         Ok(Slice::empty())
                     } else {
@@ -509,14 +509,9 @@ impl VfsTask {
                     };
 
                     match data_result {
-                        Ok(data) => {
-                            let path = lock.read().await;
-                            NfsRes::Read(
-                                self.backend
-                                    .read(path.as_path(), args.offset, args.count, data)
-                                    .await,
-                            )
-                        }
+                        Ok(data) => NfsRes::Read(
+                            self.backend.read(path.as_path(), args.offset, args.count, data).await,
+                        ),
                         Err(err) => NfsRes::Read(Err(err)),
                     }
                 }
@@ -527,6 +522,7 @@ impl VfsTask {
                     NfsRes::Write(Err(vfs::write::Fail { error, wcc_data: WccData::default() }))
                 }
                 Ok(lock) => {
+                    // though it looks unlogic, we can allow parallel writes to file
                     let path = lock.read().await;
                     NfsRes::Write(
                         self.backend
@@ -558,14 +554,14 @@ impl VfsTask {
 
                 match self.backend.mk_node(path.as_path(), args.what).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
-                    Ok(ok) => match self.handles.create_handle(&path).await {
-                        Ok(handle) => NfsRes::MkNod(Ok(vfs::mk_node::Success {
+                    Ok(ok) => {
+                        let handle = self.create_handle_or_panic(&path).await;
+                        NfsRes::MkNod(Ok(vfs::mk_node::Success {
                             file: Some(handle),
                             attr: ok.attr,
                             wcc_data: ok.wcc_data,
-                        })),
-                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
-                    },
+                        }))
+                    }
                 }
             }
 
@@ -650,16 +646,18 @@ impl VfsTask {
             NfsArguments::FsStat(args) => match self.handles.path_for_handle(&args.root).await {
                 Err(error) => NfsRes::FsStat(Err(vfs::fs_stat::Fail { error, root_attr: None })),
                 Ok(lock) => {
-                    let path = lock.read().await;
-                    NfsRes::FsStat(self.backend.fs_stat(path.as_path()).await)
+                    //TODO("root in args required to determine, which of mounted fs to use;
+                    // so redirection to correct vfs should be implemented")
+                    let _path = lock.read().await;
+                    NfsRes::FsStat(self.backend.fs_stat().await)
                 }
             },
 
             NfsArguments::FsInfo(args) => match self.handles.path_for_handle(&args.root).await {
                 Err(error) => NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None })),
                 Ok(lock) => {
-                    let path = lock.read().await;
-                    NfsRes::FsInfo(self.backend.fs_info(path.as_path()).await)
+                    let _path = lock.read().await;
+                    NfsRes::FsInfo(self.backend.fs_info().await)
                 }
             },
 
