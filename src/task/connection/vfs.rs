@@ -1,3 +1,4 @@
+use std::cmp::{Ordering, PartialOrd};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -127,8 +128,7 @@ impl VfsTask {
                     }
 
                     let path_parent = lock.read().await;
-                    let mut path = path_parent.clone();
-                    path.push(args.name.as_str());
+                    let path = Self::join_name(path_parent.as_path(), args.name.as_str());
 
                     match self.backend.lookup(path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
@@ -218,7 +218,8 @@ impl VfsTask {
                         let child_lock = self.cached_child_lock(&path).await;
 
                         if let Some(child_lock) = child_lock {
-                            let _child_guard = child_lock.read().await;
+                            let _child_guard = child_lock.write().await;
+                            //assertion?
                             match self.backend.remove(path.as_path()).await {
                                 Err(err) => NfsRes::Remove(Err(err)),
                                 Ok(ok) => {
@@ -256,7 +257,7 @@ impl VfsTask {
                         let child_lock = self.cached_child_lock(&path).await;
 
                         if let Some(child_lock) = child_lock {
-                            let _child_guard = child_lock.read().await;
+                            let _child_guard = child_lock.write().await;
                             match self.backend.rm_dir(path.as_path()).await {
                                 Err(err) => NfsRes::RmDir(Err(err)),
                                 Ok(ok) => {
@@ -296,6 +297,7 @@ impl VfsTask {
                         }))
                     }
                 };
+
                 if let Err(error) = ensure_name_allowed(&args.to.name) {
                     return NfsRes::Rename(Err(vfs::rename::Fail {
                         error,
@@ -311,15 +313,65 @@ impl VfsTask {
                     }));
                 }
 
-                let from_lock = from_dir.read().await;
-                let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
+                let (from, to) = if args.to.dir >= args.from.dir {
+                    let from_lock = from_dir.read().await;
+                    let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
+                    if let Some(lock) = self.cached_child_lock(&from).await {
+                        let _ = lock.write().await;
+                    }
 
-                let to_lock = to_dir.read().await;
-                let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
+                    let to_lock = to_dir.read().await;
+                    let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
+                    if let Some(lock) = self.cached_child_lock(&to).await {
+                        let _ = lock.write().await;
+                    }
+                    (from, to)
+                } else {
+                    let to_lock = to_dir.read().await;
+                    let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
+                    if let Some(lock) = self.cached_child_lock(&to).await {
+                        let _ = lock.write().await;
+                    }
+
+                    let from_lock = from_dir.read().await;
+                    let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
+                    if let Some(lock) = self.cached_child_lock(&from).await {
+                        let _ = lock.write().await;
+                    }
+
+                    (from, to)
+                };
+
+                let mut from_childs = self.handles.cached_paths_with_prefix(&from);
+
+                from_childs.push((args.from.dir, from.clone()));
+                from_childs.sort_by(|(a, _), (b, _)| a.cmp(b));
+                let mut from_child_write_locks = Vec::with_capacity(from_childs.len());
+                for (handle, _) in from_childs.iter() {
+                    match self.handles.path_for_handle(handle).await {
+                        Ok(lock) => from_child_write_locks.push(lock.write_owned().await),
+                        Err(_) => continue,
+                    };
+                }
+
+                let mut to_childs = self.handles.cached_paths_with_prefix(&to);
+                to_childs.push((args.to.dir, to.clone()));
+                to_childs.sort_by(|(a, _), (b, _)| a.cmp(b));
+                let mut to_child_write_locks = Vec::with_capacity(to_childs.len());
+                for (handle, _) in to_childs.iter() {
+                    match self.handles.path_for_handle(handle).await {
+                        Ok(lock) => to_child_write_locks.push(lock.write_owned().await),
+                        Err(_) => continue,
+                    };
+                }
 
                 match self.backend.rename(from.as_path(), to.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
-                    Ok(ok) => match self.handles.rename_path(from.as_path(), to.as_path()).await {
+                    Ok(ok) => match self
+                        .handles
+                        .rename_path(from.as_path(), to.as_path(), from_childs, to_childs)
+                        .await
+                    {
                         Ok(_) => NfsRes::Rename(Ok(ok)),
                         Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
                     },

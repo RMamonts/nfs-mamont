@@ -38,9 +38,7 @@ impl HandleMap {
         &self,
         handle: &file::Handle,
     ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
-        let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
-        let relative = entry.value().read().await.clone();
-        Ok(Arc::new(RwLock::new(self.to_full_path(relative.as_path()))))
+        Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
     }
 
     pub async fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
@@ -57,11 +55,13 @@ impl HandleMap {
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
-        self.handle_to_path.insert(handle.clone(), Arc::new(RwLock::new(relative.clone())));
+        let path_lock = Arc::new(RwLock::new(relative.clone()));
+        self.handle_to_path.insert(handle.clone(), path_lock);
         self.path_to_handle.insert(relative.clone(), handle.clone());
         Ok(handle)
     }
 
+    // not atomic by design; if lock needed, suggest it is taken before calling this function
     pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let relative = self.relative_path(path)?;
         let (_, handle) =
@@ -73,40 +73,35 @@ impl HandleMap {
         Ok(())
     }
 
-    pub async fn rename_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        let from_relative = self.relative_path(from)?;
-        let to_relative = self.relative_path(to)?;
-
-        let cached_source_paths = self.cached_paths_with_prefix(from_relative.as_path());
-        if !cached_source_paths.iter().any(|path| path == &from_relative) {
-            return Err(vfs::Error::StaleFile);
+    pub async fn rename_path(
+        &self,
+        from: &Path,
+        to: &Path,
+        from_childs: Vec<(Handle, PathBuf)>,
+        to_childs: Vec<(Handle, PathBuf)>,
+    ) -> Result<(), vfs::Error> {
+        for (handle, _) in from_childs {
+            let _ = match self.handle_to_path.remove(&handle) {
+                Some(_) => continue,
+                // ignore
+                None => unreachable!("Handle must exist, since we hold write lock"),
+            };
         }
 
-        let overwritten_paths = self.cached_paths_with_prefix(to_relative.as_path());
-        for old_path in overwritten_paths {
-            if !cached_source_paths.iter().any(|source| source == &old_path) {
-                let full_old_path = self.to_full_path(old_path.as_path());
-                self.remove_path(full_old_path.as_path()).await?;
-            }
-        }
+        for (handle, path) in to_childs {
+            let new_path = Self::replace_path_prefix(&path, from, to)?;
+            self.handle_to_path.alter(&handle, |_, _| Arc::new(RwLock::new(new_path)));
+            let _ = match self.path_to_handle.remove(&path) {
+                Some(_) => {}
+                // ignore
+                None => unreachable!("Handle must exist, since we hold write lock"),
+            };
 
-        for old_path in cached_source_paths {
-            let (_, handle) =
-                self.path_to_handle.remove(old_path.as_path()).ok_or(vfs::Error::StaleFile)?;
-            let new_path = Self::replace_path_prefix(
-                &old_path,
-                from_relative.as_path(),
-                to_relative.as_path(),
-            )?;
-
-            self.path_to_handle.insert(new_path.clone(), handle.clone());
-
-            let lock =
-                self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?.value().clone();
-            let mut current_path = lock.write().await;
-            if *current_path == old_path {
-                *current_path = new_path;
-            }
+            let _ = match self.path_to_handle.insert(path, handle.clone()) {
+                Some(_) => {}
+                // ignore
+                None => unreachable!("Handle must exist, since we hold write lock"),
+            };
         }
 
         Ok(())
@@ -120,13 +115,15 @@ impl HandleMap {
         }
     }
 
-    fn cached_paths_with_prefix(&self, prefix: &Path) -> Vec<PathBuf> {
+    //only with prefix but not path itself
+    pub fn cached_paths_with_prefix(&self, prefix: &Path) -> Vec<(Handle, PathBuf)> {
         self.path_to_handle
             .iter()
             .filter_map(|entry| {
+                let handle = entry.value();
                 let path = entry.key();
-                if path == prefix || path.starts_with(prefix) {
-                    Some(path.clone())
+                if path != prefix && path.starts_with(prefix) {
+                    Some((handle.clone(), path.clone()))
                 } else {
                     None
                 }
