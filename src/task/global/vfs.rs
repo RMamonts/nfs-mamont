@@ -2,7 +2,6 @@ use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -32,7 +31,7 @@ impl VfsPool {
 /// Process RPC commands, sends operation results to WriteTask.
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
-    allocator: Arc<Mutex<Impl>>,
+    allocator: Arc<Impl>,
     command_receiver: Receiver<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
@@ -80,8 +79,7 @@ impl VfsTask {
                     } else {
                         let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
-                        let mut allocator = self.allocator.lock().await;
-                        allocator
+                        self.allocator
                             .allocate(requested_size)
                             .await
                             .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
