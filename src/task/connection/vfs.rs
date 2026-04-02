@@ -78,12 +78,12 @@ impl VfsTask {
 
     async fn cached_child_lock(&self, path: &Path) -> Option<Arc<RwLock<PathBuf>>> {
         match self.handles.handle_for_path(path).await {
-            Ok(handle) => Some(self.handles.path_for_handle(&handle).await.unwrap_or_else(|err| {
-                unreachable!(
-                    "child path lock resolution failed, fs consistency is broken: {:?}",
-                    err
-                )
-            })),
+            Ok(handle) => match self.handles.path_for_handle(&handle).await {
+                Ok(handle) => Some(handle),
+                Err(err) => {
+                    unreachable!("path lock resolution failed, fs consistency is broken: {:?}", err)
+                }
+            },
             Err(vfs::Error::StaleFile) => None,
             Err(err) => {
                 unreachable!("child handle resolution failed, fs consistency is broken: {:?}", err)
@@ -91,26 +91,19 @@ impl VfsTask {
         }
     }
 
-    async fn remove_path_or_panic(&self, path: &std::path::Path) {
+    async fn remove_path_or_panic(&self, path: &Path) {
         if let Err(err) = self.handles.remove_path(path).await {
             unreachable!("handle remove failed, fs consistency is broken: {:?}", err);
         }
     }
 
-    fn join_name(parent: &std::path::Path, name: &str) -> std::path::PathBuf {
+    fn join_name(parent: &Path, name: &str) -> PathBuf {
         let mut path = parent.to_path_buf();
         path.push(name);
         path
     }
-
-    fn default_wcc() -> WccData {
-        WccData::default()
-    }
-
-    async fn lock_child_if_cached(&self, path: &Path) {
-        if let Some(lock) = self.cached_child_lock(path).await {
-            let _ = lock.write().await;
-        }
+    fn is_root(path: &Path) -> bool {
+        path.as_os_str().is_empty()
     }
 
     async fn collect_children_with_write_locks(
@@ -169,13 +162,13 @@ impl VfsTask {
                 match self.handles.path_for_handle(&args.object.dir).await {
                     Err(error) => NfsRes::Create(Err(vfs::create::Fail {
                         error,
-                        wcc_data: Self::default_wcc(),
+                        wcc_data: WccData::default(),
                     })),
                     Ok(lock) => {
                         if let Err(error) = ensure_name_allowed(&args.object.name) {
                             return NfsRes::Create(Err(vfs::create::Fail {
                                 error,
-                                wcc_data: Self::default_wcc(),
+                                wcc_data: WccData::default(),
                             }));
                         }
 
@@ -198,13 +191,13 @@ impl VfsTask {
             NfsArguments::MkDir(args) => match self.handles.path_for_handle(&args.object.dir).await
             {
                 Err(error) => {
-                    NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: Self::default_wcc() }))
+                    NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: WccData::default() }))
                 }
                 Ok(lock) => {
                     if let Err(error) = ensure_name_allowed(&args.object.name) {
                         return NfsRes::MkDir(Err(vfs::mk_dir::Fail {
                             error,
-                            dir_wcc: Self::default_wcc(),
+                            dir_wcc: WccData::default(),
                         }));
                     }
 
@@ -226,19 +219,25 @@ impl VfsTask {
                 match self.handles.path_for_handle(&args.object.dir).await {
                     Err(error) => NfsRes::Remove(Err(vfs::remove::Fail {
                         error,
-                        dir_wcc: Self::default_wcc(),
+                        dir_wcc: WccData::default(),
                     })),
                     Ok(lock) => {
                         if let Err(error) = ensure_name_allowed(&args.object.name) {
                             return NfsRes::Remove(Err(vfs::remove::Fail {
                                 error,
-                                dir_wcc: Self::default_wcc(),
+                                dir_wcc: WccData::default(),
                             }));
                         }
 
                         let path_parent = lock.read().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                        if Self::is_root(path.as_path()) {
+                            return NfsRes::Remove(Err(vfs::remove::Fail {
+                                error: vfs::Error::Permission,
+                                dir_wcc: WccData::default(),
+                            }));
+                        }
                         let child_lock = self.cached_child_lock(&path).await;
 
                         if let Some(child_lock) = child_lock {
@@ -254,7 +253,7 @@ impl VfsTask {
                         } else {
                             NfsRes::Remove(Err(vfs::remove::Fail {
                                 error: vfs::Error::NoEntry,
-                                dir_wcc: Self::default_wcc(),
+                                dir_wcc: WccData::default(),
                             }))
                         }
                     }
@@ -263,21 +262,26 @@ impl VfsTask {
 
             NfsArguments::RmDir(args) => {
                 match self.handles.path_for_handle(&args.object.dir).await {
-                    Err(error) => NfsRes::RmDir(Err(vfs::rm_dir::Fail {
-                        error,
-                        dir_wcc: Self::default_wcc(),
-                    })),
+                    Err(error) => {
+                        NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: WccData::default() }))
+                    }
                     Ok(lock) => {
                         if let Err(error) = ensure_name_allowed(&args.object.name) {
                             return NfsRes::RmDir(Err(vfs::rm_dir::Fail {
                                 error,
-                                dir_wcc: Self::default_wcc(),
+                                dir_wcc: WccData::default(),
                             }));
                         }
 
                         let path_parent = lock.read().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                        if Self::is_root(path.as_path()) {
+                            return NfsRes::RmDir(Err(vfs::rm_dir::Fail {
+                                error: vfs::Error::Permission,
+                                dir_wcc: WccData::default(),
+                            }));
+                        }
                         let child_lock = self.cached_child_lock(&path).await;
 
                         if let Some(child_lock) = child_lock {
@@ -292,7 +296,7 @@ impl VfsTask {
                         } else {
                             NfsRes::RmDir(Err(vfs::rm_dir::Fail {
                                 error: vfs::Error::NoEntry,
-                                dir_wcc: Self::default_wcc(),
+                                dir_wcc: WccData::default(),
                             }))
                         }
                     }
@@ -305,8 +309,8 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: Self::default_wcc(),
-                            to_dir_wcc: Self::default_wcc(),
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -316,8 +320,8 @@ impl VfsTask {
                     Err(error) => {
                         return NfsRes::Rename(Err(vfs::rename::Fail {
                             error,
-                            from_dir_wcc: Self::default_wcc(),
-                            to_dir_wcc: Self::default_wcc(),
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
                         }))
                     }
                 };
@@ -325,38 +329,41 @@ impl VfsTask {
                 if let Err(error) = ensure_name_allowed(&args.to.name) {
                     return NfsRes::Rename(Err(vfs::rename::Fail {
                         error,
-                        from_dir_wcc: Self::default_wcc(),
-                        to_dir_wcc: Self::default_wcc(),
+                        from_dir_wcc: WccData::default(),
+                        to_dir_wcc: WccData::default(),
                     }));
                 }
                 if let Err(error) = ensure_name_allowed(&args.from.name) {
                     return NfsRes::Rename(Err(vfs::rename::Fail {
                         error,
-                        from_dir_wcc: Self::default_wcc(),
-                        to_dir_wcc: Self::default_wcc(),
+                        from_dir_wcc: WccData::default(),
+                        to_dir_wcc: WccData::default(),
                     }));
                 }
 
                 let (from, to) = if args.to.dir >= args.from.dir {
                     let from_lock = from_dir.read().await;
                     let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
-                    self.lock_child_if_cached(&from).await;
 
                     let to_lock = to_dir.read().await;
                     let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
-                    self.lock_child_if_cached(&to).await;
                     (from, to)
                 } else {
                     let to_lock = to_dir.read().await;
                     let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
-                    self.lock_child_if_cached(&to).await;
 
                     let from_lock = from_dir.read().await;
                     let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
-                    self.lock_child_if_cached(&from).await;
 
                     (from, to)
                 };
+                if Self::is_root(from.as_path()) || Self::is_root(to.as_path()) {
+                    return NfsRes::Rename(Err(vfs::rename::Fail {
+                        error: vfs::Error::Permission,
+                        from_dir_wcc: WccData::default(),
+                        to_dir_wcc: WccData::default(),
+                    }));
+                }
 
                 let (from_childs, _from_child_write_locks) = self
                     .collect_children_with_write_locks(&from, args.from.dir.clone(), from.clone())

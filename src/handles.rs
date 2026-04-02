@@ -42,30 +42,26 @@ impl HandleMap {
     }
 
     pub async fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let relative = self.relative_path(path)?;
-        let entry = self.path_to_handle.get(&relative).ok_or(vfs::Error::StaleFile)?;
+        let entry = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
         Ok(entry.value().clone())
     }
 
     pub async fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let relative = self.relative_path(path)?;
-        if let Some(prev) = self.path_to_handle.get(&relative) {
+        if let Some(prev) = self.path_to_handle.get(path) {
             return Ok(prev.value().clone());
         }
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
-        let path_lock = Arc::new(RwLock::new(relative.clone()));
+        let path_lock = Arc::new(RwLock::new(path.to_path_buf()));
         self.handle_to_path.insert(handle.clone(), path_lock);
-        self.path_to_handle.insert(relative.clone(), handle.clone());
+        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
         Ok(handle)
     }
 
     // not atomic by design; if lock needed, suggest it is taken before calling this function
     pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
-        let relative = self.relative_path(path)?;
-        let (_, handle) =
-            self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
+        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
         if self.handle_to_path.remove(&handle).is_none() {
             return Err(vfs::Error::StaleFile);
         }
@@ -132,12 +128,6 @@ impl HandleMap {
         } else {
             Ok(to.join(suffix))
         }
-    }
-
-    fn relative_path(&self, path: &Path) -> Result<PathBuf, vfs::Error> {
-        path.strip_prefix(&self.root)
-            .map(|relative| relative.to_path_buf())
-            .map_err(|_| vfs::Error::BadFileHandle)
     }
 }
 
