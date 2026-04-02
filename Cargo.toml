@@ -21,7 +21,6 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 crossbeam-queue = "0.3.12"
 
 [dev-dependencies]
-[package.metadata.cargo-udeps.ignore]
 tempfile = "3.26.0"
 
 [[example]]
