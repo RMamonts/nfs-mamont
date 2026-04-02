@@ -11,6 +11,7 @@ mod service;
 mod task;
 pub mod vfs;
 
+use std::num::NonZeroUsize;
 use tokio::net::TcpListener;
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
@@ -21,6 +22,9 @@ use crate::task::global::vfs::VfsPool;
 
 pub use allocator::Slice;
 pub use context::ServerContext;
+
+/// Default number of VFS tasks to start in the pool.
+const DEFAULT_VFS_POOL_SIZE: usize = 10;
 
 /// Public export description used to configure MOUNT roots for the server.
 pub struct MountExport {
@@ -82,7 +86,8 @@ pub async fn handle_forever_with_exports(
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();
 
-    let cmd_sender = VfsPool::start_pool(10, &context);
+    let cmd_sender =
+        VfsPool::start_pool(NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap(), &context);
 
     loop {
         let (socket, _) = listener.accept().await?;

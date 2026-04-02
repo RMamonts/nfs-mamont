@@ -14,15 +14,15 @@ pub struct VfsPool {}
 
 impl VfsPool {
     pub fn start_pool(
-        num: usize,
+        num: NonZeroUsize,
         context: &ServerContext,
     ) -> Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)> {
         let (tx, rx) = async_channel::unbounded::<(NfsArgWrapper, UnboundedSender<ProcReply>)>();
 
-        for _ in 0..num {
+        (0..num.get()).for_each(|_| {
             let rx_clone = rx.clone();
             VfsTask::new(context, rx_clone).spawn();
-        }
+        });
 
         tx
     }
