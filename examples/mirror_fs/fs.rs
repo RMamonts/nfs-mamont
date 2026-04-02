@@ -282,3 +282,9 @@ impl MirrorFS {
         Ok(entries)
     }
 }
+
+impl Default for MirrorFS {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -655,16 +655,16 @@ impl VfsTask {
                 Ok(lock) => {
                     //TODO("root in args required to determine, which of mounted fs to use;
                     // so redirection to correct vfs should be implemented")
-                    let _path = lock.read().await;
-                    NfsRes::FsStat(self.backend.fs_stat().await)
+                    let path = lock.read().await;
+                    NfsRes::FsStat(self.backend.fs_stat(path.as_path()).await)
                 }
             },
 
             NfsArguments::FsInfo(args) => match self.handles.path_for_handle(&args.root).await {
                 Err(error) => NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None })),
                 Ok(lock) => {
-                    let _path = lock.read().await;
-                    NfsRes::FsInfo(self.backend.fs_info().await)
+                    let path = lock.read().await;
+                    NfsRes::FsInfo(self.backend.fs_info(path.as_path()).await)
                 }
             },
 

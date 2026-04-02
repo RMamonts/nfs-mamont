@@ -28,7 +28,7 @@ async fn main() -> std::io::Result<()> {
     });
     assert!(metadata.is_dir(), "export root {} must be a directory", export_root.display());
 
-    let fs = Arc::new(fs::MirrorFS::new(export_root.clone()));
+    let fs = Arc::new(fs::MirrorFS::new());
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),

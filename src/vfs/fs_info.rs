@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`FsInfo`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -82,5 +83,5 @@ pub struct Args {
 #[async_trait]
 pub trait FsInfo {
     /// Retrieves nonvolatile file system state information and general information.
-    async fn fs_info(&self) -> Result<Success, Fail>;
+    async fn fs_info(&self, root: &Path) -> Result<Success, Fail>;
 }
