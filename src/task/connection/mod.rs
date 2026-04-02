@@ -42,12 +42,10 @@ pub async fn new(
     // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
     // channel for request
-    let (command_sender, command_receiver) = mpsc::unbounded_channel::<NfsArgWrapper>();
 
     read::ReadTask::new(
         readhalf,
         peer_addr,
-        command_sender,
         mount_sender,
         result_sender.clone(),
         context.get_write_allocator(),
