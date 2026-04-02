@@ -52,7 +52,7 @@ pub struct MirrorFS {
 
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new() -> Self {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
