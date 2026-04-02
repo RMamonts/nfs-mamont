@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Mutex;
 use tracing::{debug, error};
 
 use crate::allocator::Impl;
@@ -32,7 +31,7 @@ pub struct ReadTask {
     // and
     // to bypass vfs with null procedure
     result_sender: UnboundedSender<ProcReply>,
-    allocator: Arc<Mutex<Impl>>,
+    allocator: Arc<Impl>,
 }
 
 impl ReadTask {
@@ -43,7 +42,7 @@ impl ReadTask {
         command_sender: UnboundedSender<NfsArgWrapper>,
         mount_sender: UnboundedSender<MountCommand>,
         result_sender: UnboundedSender<ProcReply>,
-        allocator: Arc<Mutex<Impl>>,
+        allocator: Arc<Impl>,
     ) -> Self {
         Self { readhalf, client_addr, command_sender, mount_sender, result_sender, allocator }
     }

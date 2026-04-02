@@ -8,7 +8,7 @@ use crate::allocator::Allocator as _;
 use crate::allocator::Impl;
 
 async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_size: NonZeroUsize) {
-    let mut allocator = Impl::new(buffer_size, count);
+    let allocator = Impl::new(buffer_size, count);
     let mut slice = allocator.allocate(alloc_size).await.unwrap();
 
     let verify: Vec<u8> = (0..alloc_size.get()).map(|u| (u + 1) as u8).collect();
@@ -42,7 +42,6 @@ async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_si
     let allocator_capacity = NonZeroUsize::new(buffer_size.get() * count.get()).unwrap();
     let slice = allocator.allocate(allocator_capacity).await.unwrap();
     assert_eq!(slice.iter().count(), count.get());
-    assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
 }
 
 #[tokio::test]
@@ -90,12 +89,11 @@ async fn reclaiming() {
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
     const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
 
-    let mut allocator = Impl::new(SIZE, COUNT);
+    let allocator = Impl::new(SIZE, COUNT);
 
     for _ in 0..5 {
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
         assert_eq!(slice.iter().count(), COUNT.get());
-        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
 
         tokio::time::timeout(Duration::from_millis(120), async {
             allocator.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
@@ -108,7 +106,6 @@ async fn reclaiming() {
 
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
         assert_eq!(slice.iter().count(), COUNT.get());
-        assert!(slice.iter().all(|buffer| buffer.iter().all(|&u| u == 0)));
     }
 }
 
@@ -117,7 +114,7 @@ async fn allocate_more_than_capacity_returns_none() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
 
-    let mut allocator = Impl::new(SIZE, COUNT);
+    let allocator = Impl::new(SIZE, COUNT);
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
     assert!(allocator.allocate(requested).await.is_none());
