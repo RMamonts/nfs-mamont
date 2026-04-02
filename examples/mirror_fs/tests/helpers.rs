@@ -1,14 +1,13 @@
 use std::fs as stdfs;
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
-use nfs_mamont::allocator::{Allocator, Impl, Slice};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::lookup;
 use nfs_mamont::vfs::set_attr;
+use nfs_mamont::Slice;
 
 use crate::fs::MirrorFS;
 
@@ -87,10 +86,7 @@ pub async fn alloc_slice(len: usize) -> Slice {
         return Slice::empty();
     }
 
-    let len = NonZeroUsize::new(len).unwrap();
-    let mut allocator = Impl::new(len, NonZeroUsize::new(1).unwrap());
-
-    allocator.allocate(len).await.expect("allocator must return a slice")
+    Slice::new(vec![vec![0u8; len].into_boxed_slice()], 0..len, None)
 }
 
 pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {
