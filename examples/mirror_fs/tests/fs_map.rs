@@ -60,6 +60,7 @@ fn rename_path_moves_cached_descendants() {
     let dir_handle = fs_map.ensure_handle_for_path(&from).unwrap();
     let child_handle = fs_map.ensure_handle_for_path(&child_from).unwrap();
 
+    fs::rename(&from, &to).unwrap();
     fs_map.rename_path(&from, &to).unwrap();
 
     assert_eq!(fs_map.path_for_handle(&dir_handle).unwrap(), to);
