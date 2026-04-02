@@ -34,7 +34,7 @@ pub trait Allocator {
     ///
     /// # Panic
     ///
-    /// This method panics if size is greater then allocator capacity.
+    /// This method returns [`None`] if size is greater then allocator capacity.
     fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<slice::Slice>> + Send;
 }
 

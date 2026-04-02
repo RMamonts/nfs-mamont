@@ -56,7 +56,10 @@ impl Slice {
         self.into_iter()
     }
 
-    /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
+    /// Deallocates all buffers by returning them to the allocator state (pool)
+    /// and restoring the corresponding permits on its semaphore.
+    ///
+    /// The allocator state is provided when constructing the slice via [`Self::new`].
     fn deallocate(&mut self) {
         if let Some(state) = &self.state {
             let count = self.buffers.len();
