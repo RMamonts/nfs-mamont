@@ -29,7 +29,7 @@ impl VfsPool {
     }
 }
 
-/// Process RPC commands, sends operation results to [`crate::task::connection::write::WriteTask`].
+/// Process RPC commands, sends operation results to WriteTask.
 pub struct VfsTask {
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
     allocator: Arc<Mutex<Impl>>,

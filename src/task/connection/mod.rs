@@ -4,7 +4,6 @@
 //! It implements a three-stage pipeline for processing RPC commands:
 //!
 //! - [`read::ReadTask`] - Reads RPC commands from the network connection
-//! - [`vfs::VfsTask`] - Processes commands and performs VFS operations
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
@@ -52,8 +51,6 @@ pub async fn new(
         cmd_sender,
     )
     .spawn();
-
-    // vfs::VfsTask::new(context, command_receiver, result_sender).spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
 }

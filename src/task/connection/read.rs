@@ -22,7 +22,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
+/// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
