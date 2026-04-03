@@ -22,7 +22,6 @@ async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 
 [dev-dependencies]
-[package.metadata.cargo-udeps.ignore]
 tempfile = "3.26.0"
 
 [[example]]
