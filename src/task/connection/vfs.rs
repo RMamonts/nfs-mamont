@@ -1,3 +1,56 @@
+//! VfsTask is the executor for NFSv3 RPC operations.
+//! It receives parsed NFS arguments, resolves handles to paths, applies the
+//! required locking protocol, invokes the backend VFS, updates HandleMap, and
+//! sends replies back to the connection writer.
+//!
+//! ## Concurrency and locking model
+//!
+//! VfsTask is responsible for **all synchronization** around HandleMap and
+//! filesystem structure modifications.
+//! HandleMap itself is not atomic, so VfsTask ensures correctness by taking
+//! appropriate locks before performing any operation.
+//!
+//! ### Write-locks
+//!
+//! A write-lock is taken whenever an operation may modify the filesystem
+//! structure or the HandleMap state:
+//!
+//! - CREATE
+//! - MKDIR
+//! - REMOVE
+//! - RMDIR
+//! - RENAME
+//! - LINK
+//! - SYMLINK
+//! - MKNOD
+//! - READDIR / READDIRPLUS
+//!   (these create new handles for directory entries, so HandleMap is mutated)
+//!
+//! These locks ensure that multi-table updates inside HandleMap behave as a
+//! logically atomic unit.
+//!
+//! ### Read-locks
+//!
+//! Read-only operations take only a read-lock on the path:
+//!
+//! - GETATTR
+//! - ACCESS
+//! - READLINK
+//! - READ
+//! - WRITE (does not modify directory structure)
+//! - FSSTAT
+//! - FSINFO
+//! - PATHCONF
+//! - COMMIT
+//!
+//! These operations do not change HandleMap or directory structure.
+//!
+//! ## Non-recursive structural operations
+//!
+//! REMOVE and RENAME update only the specific path being modified.
+//! Descendants are not rewritten; they remain valid and will be lazily updated
+//! when accessed.
+//!
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
