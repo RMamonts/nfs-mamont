@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -15,6 +16,7 @@ pub struct HandleMap {
     root: PathBuf,
     handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
     path_to_handle: DashMap<PathBuf, Handle>,
+    directory_to_children: DashMap<PathBuf, BTreeSet<Handle>>,
     next_id: AtomicU64,
 }
 
@@ -25,9 +27,18 @@ impl HandleMap {
         let handle_to_path = DashMap::new();
         handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root_relative.clone())));
         let path_to_handle = DashMap::new();
-        path_to_handle.insert(root_relative, root_handle.clone());
+        path_to_handle.insert(root_relative.clone(), root_handle.clone());
 
-        Self { root, handle_to_path, path_to_handle, next_id: AtomicU64::new(ROOT + 1) }
+        let directory_to_children = DashMap::new();
+        directory_to_children.insert(root_relative.clone(), BTreeSet::new());
+
+        Self {
+            root,
+            handle_to_path,
+            path_to_handle,
+            directory_to_children,
+            next_id: AtomicU64::new(ROOT + 1),
+        }
     }
 
     pub fn root(&self) -> file::Handle {
@@ -56,21 +67,22 @@ impl HandleMap {
         let path_lock = Arc::new(RwLock::new(path.to_path_buf()));
         self.handle_to_path.insert(handle.clone(), path_lock);
         self.path_to_handle.insert(path.to_path_buf(), handle.clone());
+
+        self.directory_to_children.entry(path.to_path_buf()).or_default();
+        self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
         Ok(handle)
     }
 
     // not atomic by design; if lock needed, suggest it is taken before calling this function
-    pub async fn remove_paths(&self, paths: Vec<(Handle, PathBuf)>) -> Result<(), vfs::Error> {
-        for (handle, path) in paths {
-            let (_, removed_handle) =
-                self.path_to_handle.remove(&path).ok_or(vfs::Error::StaleFile)?;
-            if removed_handle != handle {
-                return Err(vfs::Error::StaleFile);
-            }
-            if self.handle_to_path.remove(&handle).is_none() {
-                return Err(vfs::Error::StaleFile);
-            }
+    pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
+        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
+        if let Some(parent) = path.parent() {
+            self.remove_child_from_directory(parent, &handle);
         }
+        if self.handle_to_path.remove(&handle).is_none() {
+            return Err(vfs::Error::StaleFile);
+        }
+        self.directory_to_children.remove(path);
 
         Ok(())
     }
@@ -79,25 +91,32 @@ impl HandleMap {
         &self,
         from: &Path,
         to: &Path,
-        from_childs: Vec<(Handle, PathBuf)>,
-        to_childs: Vec<(Handle, PathBuf)>,
+        from_handle: Handle,
+        to_handle: Option<Handle>,
     ) -> Result<(), vfs::Error> {
-        for (handle, path) in to_childs {
-            if self.path_to_handle.remove(&path).is_none() {
+        let from_parent = from.parent().ok_or(vfs::Error::ServerFault)?;
+        let to_parent = to.parent().ok_or(vfs::Error::ServerFault)?;
+
+        if let Some(handle) = to_handle {
+            self.remove_child_from_directory(to_parent, &handle);
+            if self.path_to_handle.remove(to).is_none() {
                 unreachable!("Path must exist, since we hold write lock");
             }
             if self.handle_to_path.remove(&handle).is_none() {
                 unreachable!("Handle must exist, since we hold write lock");
             }
+            self.directory_to_children.remove(to);
         }
 
-        for (handle, path) in from_childs {
-            let new_path = Self::replace_path_prefix(&path, from, to)?;
-            if self.path_to_handle.remove(&path).is_none() {
-                unreachable!("Path must exist, since we hold write lock");
-            }
-            self.path_to_handle.insert(new_path.clone(), handle.clone());
-            self.handle_to_path.alter(&handle, |_, _| Arc::new(RwLock::new(new_path)));
+        self.remove_child_from_directory(from_parent, &from_handle);
+        self.add_child_to_directory(to_parent, from_handle.clone());
+        if self.path_to_handle.remove(from).is_none() {
+            unreachable!("Path must exist, since we hold write lock");
+        }
+        self.path_to_handle.insert(to.to_path_buf(), from_handle.clone());
+        self.handle_to_path.alter(&from_handle, |_, _| Arc::new(RwLock::new(to.to_path_buf())));
+        if let Some((_, children)) = self.directory_to_children.remove(from) {
+            self.directory_to_children.insert(to.to_path_buf(), children);
         }
 
         Ok(())
@@ -127,12 +146,22 @@ impl HandleMap {
             .collect()
     }
 
-    fn replace_path_prefix(path: &Path, from: &Path, to: &Path) -> Result<PathBuf, vfs::Error> {
-        let suffix = path.strip_prefix(from).map_err(|_| vfs::Error::ServerFault)?;
-        if suffix.as_os_str().is_empty() {
-            Ok(to.to_path_buf())
-        } else {
-            Ok(to.join(suffix))
+    fn add_child_to_directory(&self, directory: &Path, handle: Handle) {
+        match self.directory_to_children.get_mut(directory) {
+            Some(mut children) => {
+                children.insert(handle);
+            }
+            None => {
+                let mut children = BTreeSet::new();
+                children.insert(handle);
+                self.directory_to_children.insert(directory.to_path_buf(), children);
+            }
+        }
+    }
+
+    fn remove_child_from_directory(&self, directory: &Path, handle: &Handle) {
+        if let Some(mut children) = self.directory_to_children.get_mut(directory) {
+            children.remove(handle);
         }
     }
 }

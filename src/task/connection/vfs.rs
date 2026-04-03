@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::{Mutex, OwnedRwLockWriteGuard};
+use tokio::sync::Mutex;
 use tracing::error;
 
 use crate::allocator::{Allocator, Impl, Slice};
@@ -76,8 +76,8 @@ impl VfsTask {
         }
     }
 
-    async fn remove_paths_or_panic(&self, paths: Vec<(Handle, PathBuf)>) {
-        if let Err(err) = self.handles.remove_paths(paths).await {
+    async fn remove_path_or_panic(&self, path: &Path) {
+        if let Err(err) = self.handles.remove_path(path).await {
             unreachable!("handle remove failed, fs consistency is broken: {:?}", err);
         }
     }
@@ -93,25 +93,6 @@ impl VfsTask {
 
     fn to_full_path(&self, relative: &Path) -> PathBuf {
         self.handles.to_full_path(relative)
-    }
-
-    async fn collect_children_with_write_locks(
-        &self,
-        prefix: &Path,
-        own_handle: Handle,
-        own_path: PathBuf,
-    ) -> (Vec<(Handle, PathBuf)>, Vec<OwnedRwLockWriteGuard<PathBuf>>) {
-        let mut children = self.handles.cached_paths_with_prefix(prefix);
-        children.push((own_handle, own_path));
-        children.sort_by(|(a, _), (b, _)| a.cmp(b));
-        let mut write_locks = Vec::with_capacity(children.len());
-        for (handle, _) in &children {
-            match self.handles.path_for_handle(handle).await {
-                Ok(lock) => write_locks.push(lock.write_owned().await),
-                Err(_) => continue,
-            };
-        }
-        (children, write_locks)
     }
 
     async fn process_argument(&self, proc: Box<NfsArguments>) -> NfsRes {
@@ -134,7 +115,7 @@ impl VfsTask {
                         return NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None }));
                     }
 
-                    let path_parent = lock.read().await;
+                    let path_parent = lock.write().await;
                     let path = Self::join_name(path_parent.as_path(), args.name.as_str());
                     let full_path = self.to_full_path(path.as_path());
 
@@ -163,7 +144,7 @@ impl VfsTask {
                             }));
                         }
 
-                        let path_parent = lock.read().await;
+                        let path_parent = lock.write().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
                         let full_path = self.to_full_path(path.as_path());
@@ -193,7 +174,7 @@ impl VfsTask {
                         }));
                     }
 
-                    let path_parent = lock.read().await;
+                    let path_parent = lock.write().await;
                     let path = Self::join_name(path_parent.as_path(), args.object.name.as_str());
                     let full_path = self.to_full_path(path.as_path());
 
@@ -222,9 +203,10 @@ impl VfsTask {
                             }));
                         }
 
-                        let path_parent = lock.read().await;
+                        let path_parent = lock.write().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
+
                         if Self::is_root(path.as_path()) {
                             return NfsRes::Remove(Err(vfs::remove::Fail {
                                 error: vfs::Error::Permission,
@@ -233,12 +215,6 @@ impl VfsTask {
                         }
                         let handle = match self.handles.handle_for_path(path.as_path()).await {
                             Ok(handle) => handle,
-                            Err(vfs::Error::StaleFile) => {
-                                return NfsRes::Remove(Err(vfs::remove::Fail {
-                                    error: vfs::Error::NoEntry,
-                                    dir_wcc: WccData::default(),
-                                }))
-                            }
                             Err(error) => {
                                 return NfsRes::Remove(Err(vfs::remove::Fail {
                                     error,
@@ -246,14 +222,24 @@ impl VfsTask {
                                 }))
                             }
                         };
-                        let (children, _child_write_locks) = self
-                            .collect_children_with_write_locks(&path, handle, path.clone())
-                            .await;
+
+                        let lock = match self.handles.path_for_handle(&handle).await {
+                            Err(error) => {
+                                return NfsRes::Remove(Err(vfs::remove::Fail {
+                                    error,
+                                    dir_wcc: WccData::default(),
+                                }))
+                            }
+                            Ok(lock) => lock,
+                        };
+
+                        let _ = lock.write().await;
+
                         let full_path = self.to_full_path(path.as_path());
                         match self.backend.remove(full_path.as_path()).await {
                             Err(err) => NfsRes::Remove(Err(err)),
                             Ok(ok) => {
-                                self.remove_paths_or_panic(children).await;
+                                self.remove_path_or_panic(path.as_path()).await;
                                 NfsRes::Remove(Ok(ok))
                             }
                         }
@@ -274,7 +260,7 @@ impl VfsTask {
                             }));
                         }
 
-                        let path_parent = lock.read().await;
+                        let path_parent = lock.write().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
                         if Self::is_root(path.as_path()) {
@@ -298,14 +284,23 @@ impl VfsTask {
                                 }))
                             }
                         };
-                        let (children, _child_write_locks) = self
-                            .collect_children_with_write_locks(&path, handle, path.clone())
-                            .await;
+                        let lock = match self.handles.path_for_handle(&handle).await {
+                            Err(error) => {
+                                return NfsRes::Remove(Err(vfs::remove::Fail {
+                                    error,
+                                    dir_wcc: WccData::default(),
+                                }))
+                            }
+                            Ok(lock) => lock,
+                        };
+
+                        let _ = lock.write().await;
+
                         let full_path = self.to_full_path(path.as_path());
                         match self.backend.rm_dir(full_path.as_path()).await {
                             Err(err) => NfsRes::RmDir(Err(err)),
                             Ok(ok) => {
-                                self.remove_paths_or_panic(children).await;
+                                self.remove_path_or_panic(path.as_path()).await;
                                 NfsRes::RmDir(Ok(ok))
                             }
                         }
@@ -351,18 +346,23 @@ impl VfsTask {
                     }));
                 }
 
-                let (from, to) = if args.to.dir >= args.from.dir {
-                    let from_lock = from_dir.read().await;
+                let (from, to) = if args.from.dir == args.to.dir {
+                    let dir_lock = from_dir.write().await;
+                    let from = Self::join_name(dir_lock.as_path(), args.from.name.as_str());
+                    let to = Self::join_name(dir_lock.as_path(), args.to.name.as_str());
+                    (from, to)
+                } else if args.to.dir >= args.from.dir {
+                    let from_lock = from_dir.write().await;
                     let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
 
-                    let to_lock = to_dir.read().await;
+                    let to_lock = to_dir.write().await;
                     let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
                     (from, to)
                 } else {
-                    let to_lock = to_dir.read().await;
+                    let to_lock = to_dir.write().await;
                     let to = Self::join_name(to_lock.as_path(), args.to.name.as_str());
 
-                    let from_lock = from_dir.read().await;
+                    let from_lock = from_dir.write().await;
                     let from = Self::join_name(from_lock.as_path(), args.from.name.as_str());
 
                     (from, to)
@@ -385,15 +385,32 @@ impl VfsTask {
                         }))
                     }
                 };
-                let (from_childs, _from_child_write_locks) = self
-                    .collect_children_with_write_locks(&from, from_handle, from.clone())
-                    .await;
-                let (to_childs, _to_child_write_locks) =
-                    match self.handles.handle_for_path(to.as_path()).await {
-                        Ok(handle) => {
-                            self.collect_children_with_write_locks(&to, handle, to.clone()).await
-                        }
-                        Err(vfs::Error::StaleFile) => (Vec::new(), Vec::new()),
+                let to_handle = match self.handles.handle_for_path(to.as_path()).await {
+                    Ok(handle) => Some(handle),
+                    Err(vfs::Error::StaleFile) => None,
+                    Err(error) => {
+                        return NfsRes::Rename(Err(vfs::rename::Fail {
+                            error,
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
+                        }))
+                    }
+                };
+
+                let from_lock = match self.handles.path_for_handle(&from_handle).await {
+                    Ok(lock) => lock,
+                    Err(error) => {
+                        return NfsRes::Rename(Err(vfs::rename::Fail {
+                            error,
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
+                        }))
+                    }
+                };
+
+                if let Some(to_handle) = to_handle.as_ref() {
+                    let to_lock = match self.handles.path_for_handle(to_handle).await {
+                        Ok(lock) => lock,
                         Err(error) => {
                             return NfsRes::Rename(Err(vfs::rename::Fail {
                                 error,
@@ -402,6 +419,19 @@ impl VfsTask {
                             }))
                         }
                     };
+                    if from_handle == *to_handle {
+                        let _guard = from_lock.write().await;
+                    } else if to_handle >= &from_handle {
+                        let _from_guard = from_lock.write().await;
+                        let _to_guard = to_lock.write().await;
+                    } else {
+                        let _to_guard = to_lock.write().await;
+                        let _from_guard = from_lock.write().await;
+                    }
+                } else {
+                    let _ = from_lock.write().await;
+                }
+
                 let from_full = self.to_full_path(from.as_path());
                 let to_full = self.to_full_path(to.as_path());
 
@@ -409,7 +439,7 @@ impl VfsTask {
                     Err(err) => NfsRes::Rename(Err(err)),
                     Ok(ok) => match self
                         .handles
-                        .rename_path(from.as_path(), to.as_path(), from_childs, to_childs)
+                        .rename_path(from.as_path(), to.as_path(), from_handle, to_handle)
                         .await
                     {
                         Ok(_) => NfsRes::Rename(Ok(ok)),
@@ -451,7 +481,7 @@ impl VfsTask {
                 let real = object.read().await;
                 let real_full = self.to_full_path(real.as_path());
 
-                let parent_path = parent.read().await;
+                let parent_path = parent.write().await;
                 let path = Self::join_name(parent_path.as_path(), args.link.name.as_str());
                 let full_path = self.to_full_path(path.as_path());
 
