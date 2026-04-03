@@ -230,23 +230,6 @@ impl HandleMap {
         }
     }
 
-    /// Returns all cached paths that start with the given prefix (excluding the
-    /// prefix itself).
-    pub fn cached_paths_with_prefix(&self, prefix: &Path) -> Vec<(Handle, PathBuf)> {
-        self.path_to_handle
-            .iter()
-            .filter_map(|entry| {
-                let handle = entry.value();
-                let path = entry.key();
-                if path != prefix && path.starts_with(prefix) {
-                    Some((handle.clone(), path.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     /// Adds a child handle to a directory entry.
     ///
     /// Caller must hold the appropriate write-lock.
