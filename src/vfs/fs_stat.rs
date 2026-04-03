@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`FsStat`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -54,5 +55,5 @@ pub struct Args {
 #[async_trait]
 pub trait FsStat {
     /// Retrieves volatile file system state information.
-    async fn fs_stat(&self, args: Args) -> Result<Success, Fail>;
+    async fn fs_stat(&self, root: &Path) -> Result<Success, Fail>;
 }

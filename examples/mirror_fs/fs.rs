@@ -1,11 +1,3 @@
-use std::fs::Metadata;
-use std::io::ErrorKind;
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use tokio::sync::RwLock;
-
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -13,8 +5,11 @@ use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
 use nfs_mamont::Slice;
-
-use crate::fs_map::FsMap;
+use std::fs::Metadata;
+use std::io::ErrorKind;
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod access_impl;
 mod commit_impl;
@@ -52,23 +47,21 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 /// A file system implementation that mirrors a local directory.
 #[derive(Debug)]
 pub struct MirrorFS {
-    fsmap: RwLock<FsMap>,
     generation: u64,
 }
 
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
-    pub fn new(root: PathBuf) -> Self {
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+    pub fn new() -> Self {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap::new(root)), generation }
+        Self { generation }
     }
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.read().await.root_handle()
+        file::Handle(1u64.to_be_bytes())
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -80,31 +73,6 @@ impl MirrorFS {
         raw[..4].copy_from_slice(&attr.ctime.seconds.to_be_bytes());
         raw[4..].copy_from_slice(&attr.ctime.nanos.to_be_bytes());
         read_dir::CookieVerifier::new(raw)
-    }
-
-    async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let fsmap = self.fsmap.read().await;
-        fsmap.path_for_handle(handle)
-    }
-
-    async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        self.fsmap.write().await.ensure_handle_for_path(path)
-    }
-
-    async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.write().await.remove_path(path);
-    }
-
-    async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.write().await.rename_path(from, to)
-    }
-
-    fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
-        match name.as_str() {
-            "." => Err(vfs::Error::InvalidArgument),
-            ".." => Err(vfs::Error::Exist),
-            _ => Ok(()),
-        }
     }
 
     fn io_error_to_vfs(error: &std::io::Error) -> vfs::Error {
@@ -313,20 +281,10 @@ impl MirrorFS {
         entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
         Ok(entries)
     }
+}
 
-    async fn child_path(
-        &self,
-        dir: &file::Handle,
-        name: &file::Name,
-    ) -> Result<PathBuf, vfs::Error> {
-        let dir_path = self.path_for_handle(dir).await?;
-        let mut child = dir_path;
-        child.push(name.as_str());
-        Ok(child)
-    }
-
-    async fn exported_root_path(&self) -> Result<PathBuf, vfs::Error> {
-        let root = self.root_handle().await;
-        self.path_for_handle(&root).await
+impl Default for MirrorFS {
+    fn default() -> Self {
+        Self::new()
     }
 }

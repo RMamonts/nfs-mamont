@@ -1,22 +1,19 @@
 use async_trait::async_trait;
-
-use nfs_mamont::vfs::{self, set_attr};
+use std::path::Path;
 
 use super::MirrorFS;
+use nfs_mamont::vfs::set_attr::{Guard, NewAttr};
+use nfs_mamont::vfs::{self, set_attr};
 
 #[async_trait]
 impl set_attr::SetAttr for MirrorFS {
-    async fn set_attr(&self, args: set_attr::Args) -> Result<set_attr::Success, set_attr::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(set_attr::Fail {
-                    error,
-                    wcc_data: vfs::WccData { before: None, after: None },
-                });
-            }
-        };
-        let meta = match Self::metadata(&path) {
+    async fn set_attr(
+        &self,
+        path: &Path,
+        new_attr: NewAttr,
+        guard: Option<Guard>,
+    ) -> Result<set_attr::Success, set_attr::Fail> {
+        let meta = match Self::metadata(path) {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(set_attr::Fail {
@@ -28,7 +25,7 @@ impl set_attr::SetAttr for MirrorFS {
         let before = Some(Self::wcc_attr_from_metadata(&meta));
         let current_attr = Self::attr_from_metadata(&meta);
 
-        if let Some(guard) = args.guard {
+        if let Some(guard) = guard {
             if !Self::same_time(current_attr.ctime, guard.ctime) {
                 return Err(set_attr::Fail {
                     error: vfs::Error::NotSync,
@@ -37,10 +34,10 @@ impl set_attr::SetAttr for MirrorFS {
             }
         }
 
-        if let Err(error) = Self::apply_set_attr(&path, &args.new_attr) {
-            return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+        if let Err(error) = Self::apply_set_attr(path, &new_attr) {
+            return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(path, before) });
         }
 
-        Ok(set_attr::Success { wcc_data: Self::wcc_data(&path, before) })
+        Ok(set_attr::Success { wcc_data: Self::wcc_data(path, before) })
     }
 }

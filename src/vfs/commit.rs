@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`Commit`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -38,5 +39,5 @@ pub struct Args {
 #[async_trait]
 pub trait Commit {
     /// Forces or flushes data to stable storage that was previously written.
-    async fn commit(&self, args: Args) -> Result<Success, Fail>;
+    async fn commit(&self, path: &Path, offset: u64, count: u32) -> Result<Success, Fail>;
 }

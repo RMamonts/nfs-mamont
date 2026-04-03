@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::allocator::Impl;
+use crate::handles::HandleMap;
 use crate::task::global::vfs::VfsPool;
 use crate::vfs;
 
@@ -19,24 +21,31 @@ pub struct ServerContext {
     write_allocator: Arc<Impl>,
     /// Filesystem implementation backing all NFS operations.
     backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+    handles: Arc<HandleMap>,
 }
 
 impl ServerContext {
     /// Creates a context with the given backend and buffer pool sizes.
     pub fn new(
         backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+        root: PathBuf,
         read_buffer_size: NonZeroUsize,
         read_buffer_count: NonZeroUsize,
         write_buffer_size: NonZeroUsize,
         write_buffer_count: NonZeroUsize,
         vfs_pool_size: NonZeroUsize,
     ) -> Self {
+        let handles = Arc::new(HandleMap::new(root));
         let read_allocator = Arc::new(Impl::new(read_buffer_size, read_buffer_count));
         let write_allocator = Arc::new(Impl::new(write_buffer_size, write_buffer_count));
-        let vfs_pool =
-            VfsPool::new(vfs_pool_size, Arc::clone(&backend), Arc::clone(&read_allocator));
+        let vfs_pool = VfsPool::new(
+            vfs_pool_size,
+            Arc::clone(&backend),
+            handles.clone(),
+            Arc::clone(&read_allocator),
+        );
 
-        Self { vfs_pool, read_allocator, write_allocator, backend }
+        Self { vfs_pool, read_allocator, write_allocator, backend, handles }
     }
 
     /// Returns the shared VFS worker pool used to dispatch NFS procedure work.
@@ -57,5 +66,9 @@ impl ServerContext {
     /// Returns a clone of the write buffer allocator.
     pub fn get_write_allocator(&self) -> Arc<Impl> {
         Arc::clone(&self.write_allocator)
+    }
+
+    pub fn get_handle_map(&self) -> Arc<HandleMap> {
+        Arc::clone(&self.handles)
     }
 }

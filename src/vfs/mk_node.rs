@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::vfs;
 
@@ -60,5 +61,5 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
+    async fn mk_node(&self, path: &Path, what: What) -> Result<Success, Fail>;
 }

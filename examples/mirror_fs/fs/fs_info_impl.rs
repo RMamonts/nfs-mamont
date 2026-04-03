@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::path::Path;
 
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::fs_info;
@@ -7,13 +8,9 @@ use super::{MirrorFS, READ_DIR_PREF, READ_WRITE_MAX};
 
 #[async_trait]
 impl fs_info::FsInfo for MirrorFS {
-    async fn fs_info(&self, args: fs_info::Args) -> Result<fs_info::Success, fs_info::Fail> {
-        let path = match self.path_for_handle(&args.root).await {
-            Ok(path) => path,
-            Err(error) => return Err(fs_info::Fail { error, root_attr: None }),
-        };
+    async fn fs_info(&self, root: &Path) -> Result<fs_info::Success, fs_info::Fail> {
         Ok(fs_info::Success {
-            root_attr: Self::file_attr(&path),
+            root_attr: Self::file_attr(root),
             read_max: READ_WRITE_MAX,
             read_pref: READ_WRITE_MAX,
             read_mult: 1,

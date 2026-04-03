@@ -11,7 +11,6 @@ use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
 use nfs_mamont::init_tracing;
 
 pub mod fs;
-pub mod fs_map;
 
 #[cfg(test)]
 mod tests;
@@ -29,10 +28,11 @@ async fn main() -> std::io::Result<()> {
     });
     assert!(metadata.is_dir(), "export root {} must be a directory", export_root.display());
 
-    let fs = Arc::new(fs::MirrorFS::new(export_root.clone()));
+    let fs = Arc::new(fs::MirrorFS::new());
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),
+        path.clone(),
         NonZeroUsize::new(64 * 1024).unwrap(),
         NonZeroUsize::new(8).unwrap(),
         NonZeroUsize::new(64 * 1024).unwrap(),

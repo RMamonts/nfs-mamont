@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
+use std::path::Path;
 
 use crate::allocator::Slice;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
@@ -97,5 +98,12 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args) -> Result<Success, Fail>;
+    async fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+        size: u32,
+        stable: StableHow,
+        slice: Slice,
+    ) -> Result<Success, Fail>;
 }

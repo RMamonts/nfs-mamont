@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`Access`] interface.
 
 use async_trait::async_trait;
+use std::path::Path;
 
 use super::{file, Error};
 
@@ -64,5 +65,5 @@ pub trait Access {
     /// such access will be allowed to the file system object in
     /// the future, as access rights can be revoked by the server
     /// at any time.
-    async fn access(&self, args: Args) -> Result<Success, Fail>;
+    async fn access(&self, path: &Path, mask: Mask) -> Result<Success, Fail>;
 }
