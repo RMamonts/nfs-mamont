@@ -4,6 +4,8 @@
 
 pub mod holder;
 pub mod lock;
+pub mod share;
+
 use num_derive::{FromPrimitive, ToPrimitive};
 
 /// `Nlm4Stats` indicates the success or failure of a call.

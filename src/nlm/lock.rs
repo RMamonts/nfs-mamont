@@ -11,7 +11,7 @@ use crate::vfs;
 /// # Fields
 /// - `caller_name`: host that is making the request.
 /// - `file_handle`: file to lock.
-/// - `opaque_handle`: host or process that is making the request
+/// - `opaque_handle`: host or process that is making the request.
 /// - `system_identifier`: process that is making the request.
 /// - `lock_offset`: offset for the lock region.
 /// - `lock_length`: length of the blocking region. A l_len of 0 means "to end of file".
@@ -35,6 +35,7 @@ impl Nlm4Lock {
     /// # Errors
     /// Returns `Err` with a text message if:
     /// - `caller_name` is empty.
+    /// - `caller_name` is longer than `LM_MAXSTRLEN`.
     pub fn new(
         caller_name: String,
         file_handle: vfs::file::Handle,
@@ -110,9 +111,9 @@ impl Nlm4Lock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vfs::file::Handle;
 
     use crate::consts::nfsv3::NFS3_FHSIZE;
+    use crate::vfs::file::Handle;
 
     #[test]
     fn new_lock_succeeds() {
