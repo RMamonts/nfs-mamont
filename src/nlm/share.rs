@@ -9,7 +9,7 @@ use crate::vfs;
 /// DOS-style file sharing mode.
 ///
 /// Defines what operations other clients are prohibited from performing.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[allow(dead_code)]
 enum FileSharingMode {
     /// Other clients may perform any operation.
@@ -25,7 +25,7 @@ enum FileSharingMode {
 /// DOS-style file sharing access mode.
 ///
 /// Defines what operations the requesting client is allowed to perform.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[allow(dead_code)]
 enum FileSharingAccess {
     /// Client has no access to the file.
