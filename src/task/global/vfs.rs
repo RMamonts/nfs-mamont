@@ -2,7 +2,7 @@ use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::allocator::{Allocator, Impl, Slice};
 use crate::context::ServerContext;
@@ -122,7 +122,7 @@ impl VfsTask {
 
             // Write task may already be closed; then this connection pipeline is done.
             if tx.send(reply).is_err() {
-                return;
+                warn!("writer task closed, connection pipeline is done");
             }
         }
     }
