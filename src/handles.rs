@@ -76,22 +76,22 @@ impl HandleMap {
         from_childs: Vec<(Handle, PathBuf)>,
         to_childs: Vec<(Handle, PathBuf)>,
     ) -> Result<(), vfs::Error> {
-        for (handle, _) in from_childs {
+        for (handle, path) in to_childs {
+            if self.path_to_handle.remove(&path).is_none() {
+                unreachable!("Path must exist, since we hold write lock");
+            }
             if self.handle_to_path.remove(&handle).is_none() {
                 unreachable!("Handle must exist, since we hold write lock");
             }
         }
 
-        for (handle, path) in to_childs {
+        for (handle, path) in from_childs {
             let new_path = Self::replace_path_prefix(&path, from, to)?;
-            self.handle_to_path.alter(&handle, |_, _| Arc::new(RwLock::new(new_path)));
             if self.path_to_handle.remove(&path).is_none() {
-                unreachable!("Handle must exist, since we hold write lock");
+                unreachable!("Path must exist, since we hold write lock");
             }
-
-            if self.path_to_handle.insert(path, handle.clone()).is_none() {
-                unreachable!("Handle must exist, since we hold write lock");
-            }
+            self.path_to_handle.insert(new_path.clone(), handle.clone());
+            self.handle_to_path.alter(&handle, |_, _| Arc::new(RwLock::new(new_path)));
         }
 
         Ok(())

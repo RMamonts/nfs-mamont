@@ -106,6 +106,10 @@ impl VfsTask {
         path.as_os_str().is_empty()
     }
 
+    fn to_full_path(&self, relative: &Path) -> PathBuf {
+        self.handles.to_full_path(relative)
+    }
+
     async fn collect_children_with_write_locks(
         &self,
         prefix: &Path,
@@ -133,7 +137,8 @@ impl VfsTask {
                 Err(error) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::GetAttr(self.backend.get_attr(path.as_path()).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::GetAttr(self.backend.get_attr(full_path.as_path()).await)
                 }
             },
 
@@ -146,8 +151,9 @@ impl VfsTask {
 
                     let path_parent = lock.read().await;
                     let path = Self::join_name(path_parent.as_path(), args.name.as_str());
+                    let full_path = self.to_full_path(path.as_path());
 
-                    match self.backend.lookup(path.as_path()).await {
+                    match self.backend.lookup(full_path.as_path()).await {
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => NfsRes::LookUp(Ok(vfs::lookup::Success {
                             file: self.create_handle_or_panic(&path).await,
@@ -175,8 +181,9 @@ impl VfsTask {
                         let path_parent = lock.read().await;
                         let path =
                             Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                        let full_path = self.to_full_path(path.as_path());
 
-                        match self.backend.create(path.as_path(), args.how).await {
+                        match self.backend.create(full_path.as_path(), args.how).await {
                             Err(err) => NfsRes::Create(Err(err)),
                             Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
                                 file: Some(self.create_handle_or_panic(&path).await),
@@ -203,8 +210,9 @@ impl VfsTask {
 
                     let path_parent = lock.read().await;
                     let path = Self::join_name(path_parent.as_path(), args.object.name.as_str());
+                    let full_path = self.to_full_path(path.as_path());
 
-                    match self.backend.mk_dir(path.as_path(), args.attr).await {
+                    match self.backend.mk_dir(full_path.as_path(), args.attr).await {
                         Err(err) => NfsRes::MkDir(Err(err)),
                         Ok(ok) => NfsRes::MkDir(Ok(vfs::mk_dir::Success {
                             file: Some(self.create_handle_or_panic(&path).await),
@@ -243,7 +251,8 @@ impl VfsTask {
                         if let Some(child_lock) = child_lock {
                             let _child_guard = child_lock.write().await;
                             //assertion?
-                            match self.backend.remove(path.as_path()).await {
+                            let full_path = self.to_full_path(path.as_path());
+                            match self.backend.remove(full_path.as_path()).await {
                                 Err(err) => NfsRes::Remove(Err(err)),
                                 Ok(ok) => {
                                     self.remove_path_or_panic(path.as_path()).await;
@@ -286,7 +295,8 @@ impl VfsTask {
 
                         if let Some(child_lock) = child_lock {
                             let _child_guard = child_lock.write().await;
-                            match self.backend.rm_dir(path.as_path()).await {
+                            let full_path = self.to_full_path(path.as_path());
+                            match self.backend.rm_dir(full_path.as_path()).await {
                                 Err(err) => NfsRes::RmDir(Err(err)),
                                 Ok(ok) => {
                                     self.remove_path_or_panic(path.as_path()).await;
@@ -365,14 +375,37 @@ impl VfsTask {
                     }));
                 }
 
+                let from_handle = match self.handles.handle_for_path(from.as_path()).await {
+                    Ok(handle) => handle,
+                    Err(error) => {
+                        return NfsRes::Rename(Err(vfs::rename::Fail {
+                            error,
+                            from_dir_wcc: WccData::default(),
+                            to_dir_wcc: WccData::default(),
+                        }))
+                    }
+                };
                 let (from_childs, _from_child_write_locks) = self
-                    .collect_children_with_write_locks(&from, args.from.dir.clone(), from.clone())
+                    .collect_children_with_write_locks(&from, from_handle, from.clone())
                     .await;
-                let (to_childs, _to_child_write_locks) = self
-                    .collect_children_with_write_locks(&to, args.to.dir.clone(), to.clone())
-                    .await;
+                let (to_childs, _to_child_write_locks) =
+                    match self.handles.handle_for_path(to.as_path()).await {
+                        Ok(handle) => {
+                            self.collect_children_with_write_locks(&to, handle, to.clone()).await
+                        }
+                        Err(vfs::Error::StaleFile) => (Vec::new(), Vec::new()),
+                        Err(error) => {
+                            return NfsRes::Rename(Err(vfs::rename::Fail {
+                                error,
+                                from_dir_wcc: WccData::default(),
+                                to_dir_wcc: WccData::default(),
+                            }))
+                        }
+                    };
+                let from_full = self.to_full_path(from.as_path());
+                let to_full = self.to_full_path(to.as_path());
 
-                match self.backend.rename(from.as_path(), to.as_path()).await {
+                match self.backend.rename(from_full.as_path(), to_full.as_path()).await {
                     Err(err) => NfsRes::Rename(Err(err)),
                     Ok(ok) => match self
                         .handles
@@ -416,11 +449,13 @@ impl VfsTask {
                     }));
                 }
                 let real = object.read().await;
+                let real_full = self.to_full_path(real.as_path());
 
                 let parent_path = parent.read().await;
                 let path = Self::join_name(parent_path.as_path(), args.link.name.as_str());
+                let full_path = self.to_full_path(path.as_path());
 
-                match self.backend.link(path.as_path(), real.as_path()).await {
+                match self.backend.link(full_path.as_path(), real_full.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
                         let _handle = self.create_handle_or_panic(&path).await;
@@ -452,10 +487,11 @@ impl VfsTask {
 
                 let mut path = parent.write().await.clone();
                 path.push(args.object.name.as_str());
+                let full_path = self.to_full_path(path.as_path());
 
                 let obj = args.path.clone();
 
-                match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
+                match self.backend.symlink(full_path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => {
                         let handle = self.create_handle_or_panic(&path).await;
@@ -474,8 +510,9 @@ impl VfsTask {
                 })),
                 Ok(lock) => {
                     let path = lock.write().await;
+                    let full_path = self.to_full_path(path.as_path());
                     NfsRes::SetAttr(
-                        self.backend.set_attr(path.as_path(), args.new_attr, args.guard).await,
+                        self.backend.set_attr(full_path.as_path(), args.new_attr, args.guard).await,
                     )
                 }
             },
@@ -484,7 +521,8 @@ impl VfsTask {
                 Err(error) => NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::Access(self.backend.access(path.as_path(), args.mask).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::Access(self.backend.access(full_path.as_path(), args.mask).await)
                 }
             },
 
@@ -494,7 +532,8 @@ impl VfsTask {
                 }
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::ReadLink(self.backend.read_link(path.as_path()).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::ReadLink(self.backend.read_link(full_path.as_path()).await)
                 }
             },
 
@@ -502,6 +541,7 @@ impl VfsTask {
                 Err(error) => NfsRes::Read(Err(vfs::read::Fail { error, file_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
+                    let full_path = self.to_full_path(path.as_path());
 
                     let data_result = if args.count == 0 {
                         Ok(Slice::empty())
@@ -517,7 +557,9 @@ impl VfsTask {
 
                     match data_result {
                         Ok(data) => NfsRes::Read(
-                            self.backend.read(path.as_path(), args.offset, args.count, data).await,
+                            self.backend
+                                .read(full_path.as_path(), args.offset, args.count, data)
+                                .await,
                         ),
                         Err(err) => NfsRes::Read(Err(err)),
                     }
@@ -531,9 +573,16 @@ impl VfsTask {
                 Ok(lock) => {
                     // though it looks unlogic, we can allow parallel writes to file
                     let path = lock.read().await;
+                    let full_path = self.to_full_path(path.as_path());
                     NfsRes::Write(
                         self.backend
-                            .write(path.as_path(), args.offset, args.size, args.stable, args.data)
+                            .write(
+                                full_path.as_path(),
+                                args.offset,
+                                args.size,
+                                args.stable,
+                                args.data,
+                            )
                             .await,
                     )
                 }
@@ -558,8 +607,9 @@ impl VfsTask {
 
                 let mut path = parent.write().await.clone();
                 path.push(args.object.name.as_str());
+                let full_path = self.to_full_path(path.as_path());
 
-                match self.backend.mk_node(path.as_path(), args.what).await {
+                match self.backend.mk_node(full_path.as_path(), args.what).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
                     Ok(ok) => {
                         let handle = self.create_handle_or_panic(&path).await;
@@ -576,10 +626,16 @@ impl VfsTask {
                 Err(error) => NfsRes::ReadDir(Err(vfs::read_dir::Fail { error, dir_attr: None })),
                 Ok(lock) => {
                     let path = lock.write().await;
+                    let full_path = self.to_full_path(path.as_path());
                     NfsRes::ReadDir(
                         match self
                             .backend
-                            .read_dir(path.as_path(), args.cookie, args.cookie_verifier, args.count)
+                            .read_dir(
+                                full_path.as_path(),
+                                args.cookie,
+                                args.cookie_verifier,
+                                args.count,
+                            )
                             .await
                         {
                             Ok(mut ok) => {
@@ -612,11 +668,12 @@ impl VfsTask {
                     }
                     Ok(lock) => {
                         let path = lock.write().await;
+                        let full_path = self.to_full_path(path.as_path());
                         NfsRes::ReadDirPlus(
                             match self
                                 .backend
                                 .read_dir_plus(
-                                    path.as_path(),
+                                    full_path.as_path(),
                                     args.cookie,
                                     args.cookie_verifier,
                                     args.dir_count,
@@ -656,7 +713,8 @@ impl VfsTask {
                     //TODO("root in args required to determine, which of mounted fs to use;
                     // so redirection to correct vfs should be implemented")
                     let path = lock.read().await;
-                    NfsRes::FsStat(self.backend.fs_stat(path.as_path()).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::FsStat(self.backend.fs_stat(full_path.as_path()).await)
                 }
             },
 
@@ -664,7 +722,8 @@ impl VfsTask {
                 Err(error) => NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None })),
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::FsInfo(self.backend.fs_info(path.as_path()).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::FsInfo(self.backend.fs_info(full_path.as_path()).await)
                 }
             },
 
@@ -674,7 +733,8 @@ impl VfsTask {
                 }
                 Ok(lock) => {
                     let path = lock.read().await;
-                    NfsRes::PathConf(self.backend.path_conf(path.as_path()).await)
+                    let full_path = self.to_full_path(path.as_path());
+                    NfsRes::PathConf(self.backend.path_conf(full_path.as_path()).await)
                 }
             },
 
@@ -684,8 +744,9 @@ impl VfsTask {
                 }
                 Ok(lock) => {
                     let path = lock.read().await;
+                    let full_path = self.to_full_path(path.as_path());
                     NfsRes::Commit(
-                        self.backend.commit(path.as_path(), args.offset, args.count).await,
+                        self.backend.commit(full_path.as_path(), args.offset, args.count).await,
                     )
                 }
             },
