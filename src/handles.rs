@@ -60,10 +60,16 @@ impl HandleMap {
     }
 
     // not atomic by design; if lock needed, suggest it is taken before calling this function
-    pub async fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
-        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
-        if self.handle_to_path.remove(&handle).is_none() {
-            return Err(vfs::Error::StaleFile);
+    pub async fn remove_paths(&self, paths: Vec<(Handle, PathBuf)>) -> Result<(), vfs::Error> {
+        for (handle, path) in paths {
+            let (_, removed_handle) =
+                self.path_to_handle.remove(&path).ok_or(vfs::Error::StaleFile)?;
+            if removed_handle != handle {
+                return Err(vfs::Error::StaleFile);
+            }
+            if self.handle_to_path.remove(&handle).is_none() {
+                return Err(vfs::Error::StaleFile);
+            }
         }
 
         Ok(())
