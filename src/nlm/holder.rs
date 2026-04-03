@@ -1,3 +1,7 @@
+//! Defines NLMv4 lock holder structure.
+//!
+//! Contains [`Nlm4Holder`] which represents the current holder of a lock.
+
 use super::OpaqueHandle;
 
 /// This structure indicates the holder of a lock.

@@ -1,6 +1,6 @@
-//! Defines NLMv4 LOCK procedure structures.
+//! Defines NLMv4 basic lock structures.
 //!
-//! Contains types for NLMPROC4_LOCK.
+//! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
 use super::OpaqueHandle;
 use crate::consts::nlm;

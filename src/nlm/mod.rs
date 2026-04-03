@@ -52,7 +52,7 @@ pub struct OpaqueHandle {
 impl OpaqueHandle {
     /// Creates a new instance of [`OpaqueHandle`].
     ///
-    /// The field values correspond to the description in [`Nlm4Lock`].
+    /// The field values correspond to the description in [`OpaqueHandle`].
     #[allow(dead_code)]
     pub fn new(oh: Vec<u8>) -> Self {
         OpaqueHandle { opaque_handle: oh }
