@@ -1,6 +1,6 @@
 //! Defines NLMv4 file share structures.
 //!
-//! Contains [`Nlm4Share`], [`Fsh4Mode`] and [`Fsh4Access`] types for DOS file sharing.
+//! Contains [`Nlm4Share`], [`FileSharingMode`] and [`FileSharingAccess`] types for DOS file sharing.
 
 use super::OpaqueHandle;
 use crate::consts::nlm;
