@@ -8,14 +8,21 @@ mod tests;
 
 use std::future::Future;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use crossbeam_queue::ArrayQueue;
+use tokio::sync::Semaphore;
 
 pub use slice::Slice;
 
-type Sender<T> = mpsc::UnboundedSender<T>;
-type Receiver<T> = mpsc::UnboundedReceiver<T>;
 type Buffer = Box<[u8]>;
+
+/// Shared state of the allocator to allow return of buffers and permit restoration.
+#[derive(Debug)]
+pub struct AllocatorState {
+    pub pool: ArrayQueue<Buffer>,
+    pub semaphore: Semaphore,
+}
 
 /// Allocates [`Slice`]'s.
 pub trait Allocator {
@@ -27,14 +34,12 @@ pub trait Allocator {
     ///
     /// # Panic
     ///
-    /// This method panics if size is greater then allocator capacity.
-    fn allocate(&mut self, size: NonZeroUsize)
-        -> impl Future<Output = Option<slice::Slice>> + Send;
+    /// This method returns [`None`] if size is greater then allocator capacity.
+    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<slice::Slice>> + Send;
 }
 
 pub struct Impl {
-    receiver: Receiver<Buffer>,
-    sender: Sender<Buffer>,
+    state: Arc<AllocatorState>,
     buffer_size: NonZeroUsize,
     buffer_count: NonZeroUsize,
 }
@@ -47,15 +52,18 @@ impl Impl {
     /// - `size` --- size of each buffer to allocate
     /// - `count` --- number of buffers to allocate
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel::<Buffer>();
+        let pool = ArrayQueue::new(count.get());
+        let semaphore = Semaphore::new(count.get());
 
         for _ in 0..count.get() {
-            sender
-                .send(vec![0; size.get()].into_boxed_slice())
-                .expect("can't initialize allocator");
+            pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
         }
 
-        Self { sender, receiver, buffer_size: size, buffer_count: count }
+        Self {
+            state: Arc::new(AllocatorState { pool, semaphore }),
+            buffer_size: size,
+            buffer_count: count,
+        }
     }
 
     fn capacity(&self) -> usize {
@@ -64,22 +72,30 @@ impl Impl {
 }
 
 impl Allocator for Impl {
-    async fn allocate(&mut self, size: NonZeroUsize) -> Option<slice::Slice> {
+    async fn allocate(&self, size: NonZeroUsize) -> Option<slice::Slice> {
         if size.get() > self.capacity() {
             return None;
         }
 
-        let mut remain_size = size.get();
-        let mut buffers = Vec::with_capacity(remain_size.div_ceil(self.buffer_size.get()));
+        let remain_size = size.get();
+        let count_needed = remain_size.div_ceil(self.buffer_size.get());
 
-        while remain_size > 0 {
-            let buffer = self.receiver.recv().await?;
-            assert_eq!(buffer.len(), self.buffer_size.get());
+        let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
 
-            remain_size = remain_size.saturating_sub(buffer.len());
-            buffers.push(buffer);
+        let mut buffers = Vec::with_capacity(count_needed);
+        for _ in 0..count_needed {
+            if let Some(buf) = self.state.pool.pop() {
+                buffers.push(buf);
+            } else {
+                unreachable!("Semaphore permitted allocation but pool was empty");
+            }
         }
 
-        Some(Slice::new(buffers, 0..size.get(), self.sender.clone()))
+        permit.forget();
+
+        Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
     }
 }
