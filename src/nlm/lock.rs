@@ -2,34 +2,9 @@
 //!
 //! Contains types for NLMPROC4_LOCK.
 
+use super::OpaqueHandle;
 use crate::consts::nlm;
 use crate::vfs;
-
-/// Opaque lock owner identifier (`oh`).
-///
-/// # Fields
-/// - `owner_id`: the unique identifier of the lock owner.
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct OpaqueHandle {
-    opaque_handle: Vec<u8>,
-}
-
-impl OpaqueHandle {
-    /// Creates a new instance of [`OpaqueHandle`].
-    ///
-    /// The field values correspond to the description in [`Nlm4Lock`].
-    #[allow(dead_code)]
-    pub fn new(oh: Vec<u8>) -> Self {
-        OpaqueHandle { opaque_handle: oh }
-    }
-
-    /// Returns the underlying bytes of the opaque handle.
-    #[allow(dead_code)]
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.opaque_handle
-    }
-}
 
 /// This structure describes a lock request.
 ///
@@ -194,12 +169,5 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.to_string(), format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN));
-    }
-
-    #[test]
-    fn opaque_handle_bytes() {
-        let bytes = vec![0x01, 0x02];
-        let oh = OpaqueHandle::new(bytes.clone());
-        assert_eq!(oh.as_bytes(), bytes.as_slice());
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! This module contains types and structures for NLMv4 as defined in RFC 1813.
 
+pub mod holder;
 pub mod lock;
 use num_derive::{FromPrimitive, ToPrimitive};
 
@@ -36,4 +37,42 @@ pub enum Nlm4Stats {
     /// The call failed for some reason not already listed.
     /// The client should take this status as a strong hint not to retry the request.
     Failed = 9,
+}
+
+/// Opaque lock owner identifier (`oh`).
+///
+/// # Fields
+/// - `owner_id`: the unique identifier of the lock owner.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct OpaqueHandle {
+    opaque_handle: Vec<u8>,
+}
+
+impl OpaqueHandle {
+    /// Creates a new instance of [`OpaqueHandle`].
+    ///
+    /// The field values correspond to the description in [`Nlm4Lock`].
+    #[allow(dead_code)]
+    pub fn new(oh: Vec<u8>) -> Self {
+        OpaqueHandle { opaque_handle: oh }
+    }
+
+    /// Returns the underlying bytes of the opaque handle.
+    #[allow(dead_code)]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.opaque_handle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opaque_handle_bytes() {
+        let bytes = vec![0x01, 0x02];
+        let oh = OpaqueHandle::new(bytes.clone());
+        assert_eq!(oh.as_bytes(), bytes.as_slice());
+    }
 }
