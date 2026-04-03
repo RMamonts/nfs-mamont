@@ -39,7 +39,7 @@ impl Nlm4Holder {
     /// Returns the exclusive flag.
     ///
     /// This is a copy of the original value.
-    /// See the description of the `exclusive ` field in [`Nlm4Holder`].
+    /// See the description of the `exclusive` field in [`Nlm4Holder`].
     pub fn exclusive(&self) -> bool {
         self.exclusive
     }
@@ -81,7 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_holderer_succeeds() {
+    fn new_holder_succeeds() {
         let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
         let system_id = 12345;
         let offset = 0;
