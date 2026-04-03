@@ -42,7 +42,7 @@ pub async fn new(
         peer_addr,
         mount_sender,
         result_sender.clone(),
-        context.get_write_allocator(),
+        context.get_allocator(),
         context.get_vfs_pool().sender(),
     )
     .spawn();

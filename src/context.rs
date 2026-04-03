@@ -13,10 +13,8 @@ use crate::vfs;
 pub struct ServerContext {
     /// Pool of async workers that execute NFS procedures against [`crate::vfs::Vfs`].
     vfs_pool: VfsPool,
-    /// Allocator for read buffers (sliced from a pre-sized pool).
-    read_allocator: Arc<Impl>,
-    /// Allocator for write-side buffers when needed by the stack.
-    write_allocator: Arc<Impl>,
+    /// Allocator for read/write buffers (sliced from a pre-sized pool).
+    allocator: Arc<Impl>,
     /// Filesystem implementation backing all NFS operations.
     backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
 }
@@ -25,18 +23,14 @@ impl ServerContext {
     /// Creates a context with the given backend and buffer pool sizes.
     pub fn new(
         backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
-        read_buffer_size: NonZeroUsize,
-        read_buffer_count: NonZeroUsize,
-        write_buffer_size: NonZeroUsize,
-        write_buffer_count: NonZeroUsize,
+        buffer_size: NonZeroUsize,
+        buffer_count: NonZeroUsize,
         vfs_pool_size: NonZeroUsize,
     ) -> Self {
-        let read_allocator = Arc::new(Impl::new(read_buffer_size, read_buffer_count));
-        let write_allocator = Arc::new(Impl::new(write_buffer_size, write_buffer_count));
-        let vfs_pool =
-            VfsPool::new(vfs_pool_size, Arc::clone(&backend), Arc::clone(&read_allocator));
+        let allocator = Arc::new(Impl::new(buffer_size, buffer_count));
+        let vfs_pool = VfsPool::new(vfs_pool_size, Arc::clone(&backend), Arc::clone(&allocator));
 
-        Self { vfs_pool, read_allocator, write_allocator, backend }
+        Self { vfs_pool, allocator, backend }
     }
 
     /// Returns the shared VFS worker pool used to dispatch NFS procedure work.
@@ -49,13 +43,8 @@ impl ServerContext {
         Arc::clone(&self.backend)
     }
 
-    /// Returns a clone of the read buffer allocator.
-    pub fn get_read_allocator(&self) -> Arc<Impl> {
-        Arc::clone(&self.read_allocator)
-    }
-
-    /// Returns a clone of the write buffer allocator.
-    pub fn get_write_allocator(&self) -> Arc<Impl> {
-        Arc::clone(&self.write_allocator)
+    /// Returns a clone of the buffer allocator.
+    pub fn get_allocator(&self) -> Arc<Impl> {
+        Arc::clone(&self.allocator)
     }
 }
