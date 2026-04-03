@@ -6,6 +6,8 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error};
 
+use async_channel::Sender;
+
 use crate::allocator::Impl;
 use crate::mount::MountRes;
 use crate::parser::parser_struct::RpcParser;
@@ -19,11 +21,10 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
+/// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
-    command_sender: UnboundedSender<NfsArgWrapper>,
     // to send messages into mount task
     mount_sender: UnboundedSender<MountCommand>,
     // to pass into mount task as part of message,
@@ -32,6 +33,8 @@ pub struct ReadTask {
     // to bypass vfs with null procedure
     result_sender: UnboundedSender<ProcReply>,
     allocator: Arc<Impl>,
+    // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
+    pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
 impl ReadTask {
@@ -39,12 +42,12 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        command_sender: UnboundedSender<NfsArgWrapper>,
         mount_sender: UnboundedSender<MountCommand>,
         result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<Impl>,
+        pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, command_sender, mount_sender, result_sender, allocator }
+        Self { readhalf, client_addr, mount_sender, result_sender, allocator, pool_sender }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -80,7 +83,9 @@ impl ReadTask {
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
-                    if let Err(err) = self.command_sender.send(command) {
+                    if let Err(err) =
+                        self.pool_sender.send((command, self.result_sender.clone())).await
+                    {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }

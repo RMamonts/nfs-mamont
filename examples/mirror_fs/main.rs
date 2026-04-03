@@ -37,6 +37,7 @@ async fn main() -> std::io::Result<()> {
         NonZeroUsize::new(8).unwrap(),
         NonZeroUsize::new(64 * 1024).unwrap(),
         NonZeroUsize::new(8).unwrap(),
+        NonZeroUsize::new(10).unwrap(),
     );
 
     #[cfg(debug_assertions)]
