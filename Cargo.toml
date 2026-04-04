@@ -23,6 +23,7 @@ tracing = { version = "0.1", features = ["release_max_level_off"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
+dashmap = "7.0.0-rc2"
 
 [dev-dependencies]
 tempfile = "3.26.0"
