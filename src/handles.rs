@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! HandleMap provides a bidirectional mapping between NFS file handles and
 //! relative filesystem paths, along with a directory → children index.
 //!
