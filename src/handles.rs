@@ -84,10 +84,10 @@ impl HandleMap {
         handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root_relative.clone())));
 
         let path_to_handle = DashMap::new();
-        path_to_handle.insert(root_relative.clone(), root_handle.clone());
+        path_to_handle.insert(root_relative.clone(), root_handle);
 
         let directory_to_children = DashMap::new();
-        directory_to_children.insert(root_relative.clone(), BTreeSet::new());
+        directory_to_children.insert(root_relative, BTreeSet::new());
 
         Self {
             root,
