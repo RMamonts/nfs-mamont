@@ -145,7 +145,6 @@ impl HandleMap {
 
         self.directory_to_children.entry(path.to_path_buf()).or_default();
 
-        // Caller must have locked the parent directory.
         self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
 
         Ok(handle)
@@ -193,24 +192,17 @@ impl HandleMap {
 
         // If destination exists, remove it first.
         if let Some(handle) = to_handle {
+            // ignore if entry has already been deleted
             self.remove_child_from_directory(to_parent, &handle);
-
-            if self.path_to_handle.remove(to).is_none() {
-                unreachable!("Path must exist, since we hold write lock");
-            }
-            if self.handle_to_path.remove(&handle).is_none() {
-                unreachable!("Handle must exist, since we hold write lock");
-            }
-
+            self.path_to_handle.remove(to);
+            self.handle_to_path.remove(&handle);
             self.directory_to_children.remove(to);
         }
 
         self.remove_child_from_directory(from_parent, &from_handle);
         self.add_child_to_directory(to_parent, from_handle.clone());
 
-        if self.path_to_handle.remove(from).is_none() {
-            unreachable!("Path must exist, since we hold write lock");
-        }
+        self.path_to_handle.remove(from);
 
         self.path_to_handle.insert(to.to_path_buf(), from_handle.clone());
         self.handle_to_path.alter(&from_handle, |_, _| Arc::new(RwLock::new(to.to_path_buf())));
