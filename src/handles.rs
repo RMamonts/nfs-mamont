@@ -207,7 +207,7 @@ impl HandleMap {
     }
 
     /// Converts a relative path into an absolute path under the configured root.
-    fn to_full_path(&self, relative: &Path) -> PathBuf {
+    pub(crate) fn to_full_path(&self, relative: &Path) -> PathBuf {
         if relative.as_os_str().is_empty() {
             self.root.clone()
         } else {
