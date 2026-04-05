@@ -26,8 +26,6 @@
 //! # Full path resolution
 //!
 //! HandleMap stores only **relative** paths.
-//! Conversion to absolute filesystem paths is performed via [`HandleMap::`to_full_path`]
-//! using the configured root.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -121,10 +119,13 @@ impl HandleMap {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
         self.handle_to_path.insert(handle.clone(), relative.clone());
-        self.path_to_handle.insert(relative, handle.clone());
+        self.path_to_handle.insert(relative.clone(), handle.clone());
 
-        self.directory_to_children.entry(path.to_path_buf()).or_default();
-        self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
+        self.directory_to_children.entry(relative.clone()).or_default();
+        self.add_child_to_directory(
+            relative.parent().ok_or(vfs::Error::ServerFault)?,
+            handle.clone(),
+        );
 
         Ok(handle)
     }
@@ -139,12 +140,10 @@ impl HandleMap {
             self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
 
         if let Some(parent) = relative.parent() {
-            self.remove_child_from_directory(parent, &handle)?;
+            self.remove_child_from_directory(parent, &handle);
         }
 
-        if self.handle_to_path.remove(&handle).is_none() {
-            return Err(vfs::Error::StaleFile);
-        }
+        self.handle_to_path.remove(&handle).ok_or(vfs::Error::StaleFile)?;
 
         self.directory_to_children.remove(&relative);
         Ok(())
@@ -170,14 +169,14 @@ impl HandleMap {
         // If destination exists, remove it first.
         if let Some(handle) = to_handle {
             // ignore if entry has already been deleted
-            self.remove_child_from_directory(to_parent, &handle)?;
+            self.remove_child_from_directory(to_parent, &handle);
             self.path_to_handle.remove(to.as_path());
             self.handle_to_path.remove(&handle);
             self.directory_to_children.remove(to.as_path());
         }
 
-        self.remove_child_from_directory(from_parent, &from_handle)?;
-        self.add_child_to_directory(to_parent, from_handle.clone())?;
+        self.remove_child_from_directory(from_parent, &from_handle);
+        self.add_child_to_directory(to_parent, from_handle.clone());
 
         self.path_to_handle.remove(from.as_path());
 
@@ -216,32 +215,24 @@ impl HandleMap {
     }
 
     /// Adds a child handle to a directory entry.
-    fn add_child_to_directory(&self, directory: &Path, handle: Handle) -> Result<(), vfs::Error> {
-        let relative = self.to_relative_path(directory).ok_or(vfs::Error::StaleFile)?;
-        match self.directory_to_children.get_mut(relative.as_path()) {
+    fn add_child_to_directory(&self, relative: &Path, handle: Handle) {
+        match self.directory_to_children.get_mut(relative) {
             Some(mut children) => {
                 children.insert(handle);
             }
             None => {
                 let mut children = BTreeSet::new();
                 children.insert(handle);
-                self.directory_to_children.insert(relative, children);
+                self.directory_to_children.insert(relative.to_path_buf(), children);
             }
         }
-        Ok(())
     }
 
     /// Removes a child handle from a directory entry.
-    fn remove_child_from_directory(
-        &self,
-        directory: &Path,
-        handle: &Handle,
-    ) -> Result<(), vfs::Error> {
-        let relative = self.to_relative_path(directory).ok_or(vfs::Error::StaleFile)?;
-        if let Some(mut children) = self.directory_to_children.get_mut(relative.as_path()) {
+    fn remove_child_from_directory(&self, relative: &Path, handle: &Handle) {
+        if let Some(mut children) = self.directory_to_children.get_mut(relative) {
             children.remove(handle);
         }
-        Ok(())
     }
 
     /// Returns all **direct children** of the given directory.
@@ -252,8 +243,8 @@ impl HandleMap {
     ///
     /// If the directory has no children or is not tracked, an empty vector is
     /// returned.
-    fn get_children(&self, path: &Path) -> Vec<Handle> {
-        match self.directory_to_children.get(path) {
+    fn get_children(&self, relative: &Path) -> Vec<Handle> {
+        match self.directory_to_children.get(relative) {
             Some(children) => children.iter().cloned().collect(),
             None => Vec::new(),
         }
@@ -278,18 +269,10 @@ mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
 
-    /// Creates a fresh HandleMap with a dummy root.
     fn setup() -> HandleMap {
         HandleMap::new(PathBuf::from("/tmp"))
     }
 
-    /// Asserts that all internal tables of HandleMap match the expected state.
-    ///
-    /// `expected_paths` is a list of (path, handle) pairs that must exist.
-    /// This function checks:
-    /// - path_to_handle contains exactly these entries
-    /// - handle_to_path contains exactly these entries
-    /// - directory_to_children contains correct children sets
     fn assert_state(map: &HandleMap, exp: &[(Handle, PathBuf)]) {
         let mut paths: Vec<(Handle, PathBuf)> =
             map.path_to_handle.iter().map(|e| (e.value().clone(), e.key().clone())).collect();
@@ -318,18 +301,18 @@ mod tests {
     fn test_multiple_insertions_and_state() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("a")).is_err());
+        assert!(map.handle_for_path(Path::new("/tmp/a")).is_err());
         assert!(map.path_for_handle(&Handle([9; 8])).is_err());
 
         let h_root = map.root();
-        let h_a = map.create_handle(Path::new("a")).unwrap();
-        let h_b = map.create_handle(Path::new("a/b")).unwrap();
-        let h_c = map.create_handle(Path::new("a/c")).unwrap();
-        let h_d = map.create_handle(Path::new("a/d")).unwrap();
-        let h_e = map.create_handle(Path::new("a/d/e")).unwrap();
+        let h_a = map.create_handle(Path::new("/tmp/a")).unwrap();
+        let h_b = map.create_handle(Path::new("/tmp/a/b")).unwrap();
+        let h_c = map.create_handle(Path::new("/tmp/a/c")).unwrap();
+        let h_d = map.create_handle(Path::new("/tmp/a/d")).unwrap();
+        let h_e = map.create_handle(Path::new("/tmp/a/d/e")).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("a")).unwrap(), h_a);
-        assert_eq!(map.path_for_handle(&h_e).unwrap().as_path(), Path::new("a/d/e"));
+        assert_eq!(map.handle_for_path(Path::new("/tmp/a")).unwrap(), h_a);
+        assert_eq!(map.path_for_handle(&h_e).unwrap().as_path(), Path::new("/tmp/a/d/e"));
 
         assert_state(
             &map,
@@ -348,19 +331,20 @@ mod tests {
     fn test_children_population() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("x/1")).is_err());
+        assert!(map.handle_for_path(Path::new("/tmp/x/1")).is_err());
 
-        let h_x = map.create_handle(Path::new("x")).unwrap();
-        let h1 = map.create_handle(Path::new("x/1")).unwrap();
-        let h2 = map.create_handle(Path::new("x/2")).unwrap();
-        let h3 = map.create_handle(Path::new("x/3")).unwrap();
+        let h_x = map.create_handle(Path::new("/tmp/x")).unwrap();
+        let h1 = map.create_handle(Path::new("/tmp/x/1")).unwrap();
+        let h2 = map.create_handle(Path::new("/tmp/x/2")).unwrap();
+        let h3 = map.create_handle(Path::new("/tmp/x/3")).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("x/2")).unwrap(), h2);
-        assert_eq!(map.path_for_handle(&h3).unwrap().as_path(), Path::new("x/3"));
+        assert_eq!(map.handle_for_path(Path::new("/tmp/x/2")).unwrap(), h2);
+        assert_eq!(map.path_for_handle(&h3).unwrap().as_path(), Path::new("/tmp/x/3"));
 
         let mut children = map.get_children(Path::new("x"));
         children.sort();
-        let mut expected = vec![h1.clone(), h2.clone(), h3.clone()];
+
+        let mut expected = vec![h1, h2, h3];
         expected.sort();
 
         assert_eq!(children, expected);
@@ -370,9 +354,9 @@ mod tests {
             &[
                 (map.root(), PathBuf::new()),
                 (h_x, PathBuf::from("x")),
-                (h1, PathBuf::from("x/1")),
-                (h2, PathBuf::from("x/2")),
-                (h3, PathBuf::from("x/3")),
+                (expected[0].clone(), PathBuf::from("x/1")),
+                (expected[1].clone(), PathBuf::from("x/2")),
+                (expected[2].clone(), PathBuf::from("x/3")),
             ],
         );
     }
@@ -381,16 +365,16 @@ mod tests {
     fn test_existing_files_and_state() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("dir/a")).is_err());
+        assert!(map.handle_for_path(Path::new("/tmp/dir/a")).is_err());
 
-        let h_dir = map.create_handle(Path::new("dir")).unwrap();
-        let h1 = map.create_handle(Path::new("dir/a")).unwrap();
-        let h2 = map.create_handle(Path::new("dir/b")).unwrap();
+        let h_dir = map.create_handle(Path::new("/tmp/dir")).unwrap();
+        let h1 = map.create_handle(Path::new("/tmp/dir/a")).unwrap();
+        let h2 = map.create_handle(Path::new("/tmp/dir/b")).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("dir/a")).unwrap(), h1);
-        assert_eq!(map.path_for_handle(&h2).unwrap().as_path(), Path::new("dir/b"));
+        assert_eq!(map.handle_for_path(Path::new("/tmp/dir/a")).unwrap(), h1);
+        assert_eq!(map.path_for_handle(&h2).unwrap().as_path(), Path::new("/tmp/dir/b"));
 
-        let h1b = map.create_handle(Path::new("dir/a")).unwrap();
+        let h1b = map.create_handle(Path::new("/tmp/dir/a")).unwrap();
         assert_eq!(h1, h1b);
 
         assert_state(
@@ -408,15 +392,15 @@ mod tests {
     fn test_remove_updates_all_tables() {
         let map = setup();
 
-        let h_p = map.create_handle(Path::new("p")).unwrap();
-        let h1 = map.create_handle(Path::new("p/a")).unwrap();
-        let h2 = map.create_handle(Path::new("p/b")).unwrap();
+        let h_p = map.create_handle(Path::new("/tmp/p")).unwrap();
+        let h1 = map.create_handle(Path::new("/tmp/p/a")).unwrap();
+        let h2 = map.create_handle(Path::new("/tmp/p/b")).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1);
+        assert_eq!(map.handle_for_path(Path::new("/tmp/p/a")).unwrap(), h1);
 
-        map.remove_path(Path::new("p/a")).unwrap();
+        map.remove_path(Path::new("/tmp/p/a")).unwrap();
 
-        assert!(map.handle_for_path(Path::new("p/a")).is_err());
+        assert!(map.handle_for_path(Path::new("/tmp/p/a")).is_err());
         assert!(map.path_for_handle(&h1).is_err());
 
         assert_state(
@@ -429,15 +413,15 @@ mod tests {
     fn test_rename_updates_all_tables() {
         let map = setup();
 
-        let h_p = map.create_handle(Path::new("p")).unwrap();
-        let h1 = map.create_handle(Path::new("p/a")).unwrap();
+        let h_p = map.create_handle(Path::new("/tmp/p")).unwrap();
+        let h1 = map.create_handle(Path::new("/tmp/p/a")).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1.clone());
+        assert_eq!(map.handle_for_path(Path::new("/tmp/p/a")).unwrap(), h1);
 
-        map.rename_path(Path::new("p/a"), Path::new("p/z"), h1.clone(), None).unwrap();
+        map.rename_path(Path::new("/tmp/p/a"), Path::new("/tmp/p/z"), h1.clone(), None).unwrap();
 
-        assert!(map.handle_for_path(Path::new("p/a")).is_err());
-        assert_eq!(map.handle_for_path(Path::new("p/z")).unwrap(), h1);
+        assert!(map.handle_for_path(Path::new("/tmp/p/a")).is_err());
+        assert_eq!(map.handle_for_path(Path::new("/tmp/p/z")).unwrap(), h1);
 
         assert_state(
             &map,
