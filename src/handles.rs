@@ -86,6 +86,10 @@ impl HandleMap {
         file::Handle(ROOT.to_be_bytes())
     }
 
+    /// Returns `true` if the given relative path represents the logical root.
+    ///
+    /// The root is encoded as an empty `PathBuf` rather than `"."` or `"/"`,
+    /// which allows consistent relative path handling inside the map.
     pub fn is_root(path: &Path) -> bool {
         path.as_os_str().is_empty()
     }
@@ -196,8 +200,11 @@ impl HandleMap {
         }
     }
 
-    /// Converts an absolute path under the configured root into a relative path.
-    /// If the path is outside the root, returns None.
+    /// Converts an absolute filesystem path into a relative path under the
+    /// configured root directory.
+    ///
+    /// If the provided path does not lie within the root, returns `None`.
+    /// The root itself is represented as an empty `PathBuf`.
     fn to_relative_path(&self, full: &Path) -> Option<PathBuf> {
         full.strip_prefix(&self.root).ok().map(|path| {
             if Self::is_root(path) {
@@ -237,6 +244,14 @@ impl HandleMap {
         Ok(())
     }
 
+    /// Returns all **direct children** of the given directory.
+    ///
+    /// The returned list contains handles of entries whose parent directory
+    /// matches `path`. Only immediate children are included; this function does
+    /// not traverse recursively or return descendants.
+    ///
+    /// If the directory has no children or is not tracked, an empty vector is
+    /// returned.
     fn get_children(&self, path: &Path) -> Vec<Handle> {
         match self.directory_to_children.get(path) {
             Some(children) => children.iter().cloned().collect(),

@@ -150,29 +150,58 @@ impl VfsTask {
         }
     }
 
+    /// Creates a handle for the given path and panics on failure.
+    ///
+    /// This helper is used in NFS operations where the filesystem backend
+    /// succeeded but the inability to create a handle would indicate an
+    /// internal inconsistency. Any error is treated as unreachable.
     fn create_handle_or_panic(&self, path: &Path) -> Handle {
         match self.handles.create_handle(path) {
             Ok(handle) => handle,
             Err(err) => unreachable!("handle creation failed, fs consistency is broken: {:?}", err),
         }
     }
+
+    /// Attempts to create a handle for the given path and returns `None` on failure.
+    ///
+    /// This is used for NFS operations where the protocol allows returning an
+    /// optional post-operation file handle (e.g., CREATE, MKDIR, SYMLINK).
     fn create_handle_or_none(&self, path: &Path) -> Option<Handle> {
         // `post_op_fh3` from RFC allow to return Option
         // it is used in case vfs successfully finish operation, but handle could not be created
         self.handles.create_handle(path).ok()
     }
 
+    /// Removes the given path from the handle map, ignoring any errors.
+    ///
+    /// This is used after successful backend removal operations. Since the map
+    /// may have been concurrently modified, failures are silently ignored.
     fn remove_path(&self, path: &Path) {
         // since map could be concurrently updated, ignore errors
         let _ = self.handles.remove_path(path);
     }
 
+    /// Joins a parent directory path with a child name to form a full path.
+    ///
+    /// This is a small utility used throughout NFS operations to construct
+    /// absolute paths for backend calls and handle creation.
     fn join_name(parent: &Path, name: &str) -> PathBuf {
         let mut path = parent.to_path_buf();
         path.push(name);
         path
     }
 
+    /// Dispatches a single NFS procedure call to the backend and constructs the response.
+    ///
+    /// This function performs:
+    /// - handle resolution,
+    /// - name validation,
+    /// - backend invocation,
+    /// - handle creation or removal,
+    /// - error mapping into NFS result types.
+    ///
+    /// Contains the core logic for translating NFSv3 RPC arguments into
+    /// filesystem operations and assembling the corresponding NFS responses.
     async fn process_argument(&self, proc: Box<NfsArguments>) -> NfsRes {
         match *proc {
             NfsArguments::Null => NfsRes::Null,
