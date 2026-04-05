@@ -193,6 +193,11 @@ impl VfsTask {
             Err(err) => unreachable!("handle creation failed, fs consistency is broken: {:?}", err),
         }
     }
+    fn create_handle_or_none(&self, path: &Path) -> Option<Handle> {
+        // `post_op_fh3` from RFC allow to return Option
+        // it is used in case vfs successfully finish operation, but handle could not be created
+        self.handles.create_handle(path).ok()
+    }
 
     fn remove_path(&self, path: &Path) {
         // since map could be concurrently updated, ignore errors
@@ -257,7 +262,7 @@ impl VfsTask {
                     match self.backend.create(full_path.as_path(), args.how).await {
                         Err(err) => NfsRes::Create(Err(err)),
                         Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
-                            file: Some(self.create_handle_or_panic(&path)),
+                            file: self.create_handle_or_none(&path),
                             attr: ok.attr,
                             wcc_data: ok.wcc_data,
                         })),
@@ -278,7 +283,7 @@ impl VfsTask {
                     match self.backend.mk_dir(full_path.as_path(), args.attr).await {
                         Err(err) => NfsRes::MkDir(Err(err)),
                         Ok(ok) => NfsRes::MkDir(Ok(vfs::mk_dir::Success {
-                            file: Some(self.create_handle_or_panic(&path)),
+                            file: self.create_handle_or_none(&path),
                             attr: ok.attr,
                             wcc_data: ok.wcc_data,
                         })),
@@ -398,7 +403,7 @@ impl VfsTask {
                         to_handle,
                     ) {
                         Ok(_) => NfsRes::Rename(Ok(ok)),
-                        Err(_) => unreachable!("handle rename failed, fs consistency is broken"),
+                        Err(error) => FailRes::rename(error),
                     },
                 }
             }
@@ -426,7 +431,7 @@ impl VfsTask {
                 match self.backend.link(full_path.as_path(), real_full.as_path()).await {
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
-                        let _handle = self.create_handle_or_panic(&path);
+                        let _handle = self.create_handle_or_none(&path);
                         NfsRes::Link(Ok(vfs::link::Success {
                             file_attr: ok.file_attr,
                             dir_wcc: ok.dir_wcc,
@@ -452,14 +457,11 @@ impl VfsTask {
 
                 match self.backend.symlink(full_path.as_path(), obj.as_path(), args.attr).await {
                     Err(err) => NfsRes::SymLink(Err(err)),
-                    Ok(ok) => {
-                        let handle = self.create_handle_or_panic(&path);
-                        NfsRes::SymLink(Ok(vfs::symlink::Success {
-                            file: Some(handle),
-                            attr: ok.attr,
-                            wcc_data: ok.wcc_data,
-                        }))
-                    }
+                    Ok(ok) => NfsRes::SymLink(Ok(vfs::symlink::Success {
+                        file: self.create_handle_or_none(&path),
+                        attr: ok.attr,
+                        wcc_data: ok.wcc_data,
+                    })),
                 }
             }
             NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file) {
@@ -547,14 +549,11 @@ impl VfsTask {
 
                 match self.backend.mk_node(full_path.as_path(), args.what).await {
                     Err(err) => NfsRes::MkNod(Err(err)),
-                    Ok(ok) => {
-                        let handle = self.create_handle_or_panic(&path);
-                        NfsRes::MkNod(Ok(vfs::mk_node::Success {
-                            file: Some(handle),
-                            attr: ok.attr,
-                            wcc_data: ok.wcc_data,
-                        }))
-                    }
+                    Ok(ok) => NfsRes::MkNod(Ok(vfs::mk_node::Success {
+                        file: self.create_handle_or_none(&path),
+                        attr: ok.attr,
+                        wcc_data: ok.wcc_data,
+                    })),
                 }
             }
 
