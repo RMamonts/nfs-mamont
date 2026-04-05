@@ -48,10 +48,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 use dashmap::DashMap;
-use tokio::sync::RwLock;
 
 use crate::vfs;
 use crate::vfs::file;
@@ -65,7 +63,7 @@ const ROOT: u64 = 1;
 /// See module-level documentation for concurrency guarantees and expectations.
 pub struct HandleMap {
     root: PathBuf,
-    handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
+    handle_to_path: DashMap<Handle, PathBuf>,
     path_to_handle: DashMap<PathBuf, Handle>,
     directory_to_children: DashMap<PathBuf, BTreeSet<Handle>>,
     next_id: AtomicU64,
@@ -82,7 +80,7 @@ impl HandleMap {
         let root_relative = PathBuf::new();
 
         let handle_to_path = DashMap::new();
-        handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root_relative.clone())));
+        handle_to_path.insert(root_handle.clone(), root_relative.clone());
 
         let path_to_handle = DashMap::new();
         path_to_handle.insert(root_relative.clone(), root_handle);
@@ -111,10 +109,7 @@ impl HandleMap {
     /// The returned path is wrapped in an `Arc<RwLock<_>>` so that callers
     /// (typically VfsTask) can take read/write locks on the path before
     /// performing operations that depend on path stability.
-    pub fn path_for_handle(
-        &self,
-        handle: &file::Handle,
-    ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
+    pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
         Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
     }
 
@@ -139,8 +134,7 @@ impl HandleMap {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
 
-        let path_lock = Arc::new(RwLock::new(path.to_path_buf()));
-        self.handle_to_path.insert(handle.clone(), path_lock);
+        self.handle_to_path.insert(handle.clone(), path.to_path_buf());
         self.path_to_handle.insert(path.to_path_buf(), handle.clone());
 
         self.directory_to_children.entry(path.to_path_buf()).or_default();
@@ -205,7 +199,7 @@ impl HandleMap {
         self.path_to_handle.remove(from);
 
         self.path_to_handle.insert(to.to_path_buf(), from_handle.clone());
-        self.handle_to_path.alter(&from_handle, |_, _| Arc::new(RwLock::new(to.to_path_buf())));
+        self.handle_to_path.alter(&from_handle, |_, _| to.to_path_buf());
 
         if let Some((_, children)) = self.directory_to_children.remove(from) {
             self.directory_to_children.insert(to.to_path_buf(), children);
@@ -296,14 +290,8 @@ mod tests {
 
         assert_eq!(paths, exp_sorted);
 
-        let mut handles: Vec<(Handle, PathBuf)> = map
-            .handle_to_path
-            .iter()
-            .map(|ent| {
-                let path = ent.value().try_read().unwrap().clone();
-                (ent.key().clone(), path)
-            })
-            .collect();
+        let mut handles: Vec<(Handle, PathBuf)> =
+            map.handle_to_path.iter().map(|ent| (ent.key().clone(), ent.value().clone())).collect();
         handles.sort_by(|(_, h1), (_, h2)| h1.cmp(h2));
 
         assert_eq!(handles, exp_sorted);
@@ -331,10 +319,7 @@ mod tests {
         let h_e = map.create_handle(Path::new("a/d/e")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("a")).unwrap(), h_a);
-        assert_eq!(
-            map.path_for_handle(&h_e).unwrap().try_read().unwrap().as_path(),
-            Path::new("a/d/e")
-        );
+        assert_eq!(map.path_for_handle(&h_e).unwrap().as_path(), Path::new("a/d/e"));
 
         assert_state(
             &map,
@@ -361,10 +346,7 @@ mod tests {
         let h3 = map.create_handle(Path::new("x/3")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("x/2")).unwrap(), h2);
-        assert_eq!(
-            map.path_for_handle(&h3).unwrap().try_read().unwrap().as_path(),
-            Path::new("x/3")
-        );
+        assert_eq!(map.path_for_handle(&h3).unwrap().as_path(), Path::new("x/3"));
 
         let mut children = map.get_children(Path::new("x"));
         children.sort();
@@ -396,10 +378,7 @@ mod tests {
         let h2 = map.create_handle(Path::new("dir/b")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("dir/a")).unwrap(), h1);
-        assert_eq!(
-            map.path_for_handle(&h2).unwrap().try_read().unwrap().as_path(),
-            Path::new("dir/b")
-        );
+        assert_eq!(map.path_for_handle(&h2).unwrap().as_path(), Path::new("dir/b"));
 
         let h1b = map.create_handle(Path::new("dir/a")).unwrap();
         assert_eq!(h1, h1b);
