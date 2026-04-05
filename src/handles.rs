@@ -105,14 +105,14 @@ impl HandleMap {
     ///
     /// Returns `StaleFile` if the path is unknown.
     pub fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::InvalidArgument)?;
         let entry = self.path_to_handle.get(&relative).ok_or(vfs::Error::StaleFile)?;
         Ok(entry.value().clone())
     }
 
     /// Creates a handle for the given path if it does not already exist.
     pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::InvalidArgument)?;
         if let Some(prev) = self.path_to_handle.get(relative.as_path()) {
             return Ok(prev.value().clone());
         }
@@ -123,7 +123,7 @@ impl HandleMap {
 
         self.directory_to_children.entry(relative.clone()).or_default();
         self.add_child_to_directory(
-            relative.parent().ok_or(vfs::Error::ServerFault)?,
+            relative.parent().ok_or(vfs::Error::InvalidArgument)?,
             handle.clone(),
         );
 
@@ -135,17 +135,34 @@ impl HandleMap {
     /// # Non-recursive
     /// Only the specific path is removed. Descendants are not touched.
     pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
-        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::InvalidArgument)?;
         let (_, handle) =
             self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
 
         if let Some(parent) = relative.parent() {
-            self.remove_child_from_directory(parent, &handle);
+            self.remove_child_from_directory(parent, &handle)?;
         }
 
         self.handle_to_path.remove(&handle).ok_or(vfs::Error::StaleFile)?;
 
-        self.directory_to_children.remove(&relative);
+        self.directory_to_children.remove(&relative).ok_or(vfs::Error::StaleFile)?;
+        Ok(())
+    }
+
+    /// Removes a handle and its associated path.
+    ///
+    /// # Non-recursive
+    /// Only the specific path is removed. Descendants are not touched.
+    pub fn remove_handle(&self, handle: &file::Handle) -> Result<(), vfs::Error> {
+        // path already relative
+        let (_, path) = self.handle_to_path.remove(handle).ok_or(vfs::Error::StaleFile)?;
+        self.path_to_handle.remove(path.as_path()).ok_or(vfs::Error::StaleFile)?;
+
+        if let Some(parent) = path.parent() {
+            self.remove_child_from_directory(parent, handle)?;
+        }
+
+        self.directory_to_children.remove(&path).ok_or(vfs::Error::StaleFile)?;
         Ok(())
     }
 
@@ -160,22 +177,22 @@ impl HandleMap {
         from_handle: Handle,
         to_handle: Option<Handle>,
     ) -> Result<(), vfs::Error> {
-        let to = self.to_relative_path(to).ok_or(vfs::Error::StaleFile)?;
-        let from = self.to_relative_path(from).ok_or(vfs::Error::StaleFile)?;
+        let to = self.to_relative_path(to).ok_or(vfs::Error::InvalidArgument)?;
+        let from = self.to_relative_path(from).ok_or(vfs::Error::InvalidArgument)?;
 
-        let from_parent = from.parent().ok_or(vfs::Error::ServerFault)?;
-        let to_parent = to.parent().ok_or(vfs::Error::ServerFault)?;
+        let from_parent = from.parent().ok_or(vfs::Error::InvalidArgument)?;
+        let to_parent = to.parent().ok_or(vfs::Error::InvalidArgument)?;
 
         // If destination exists, remove it first.
         if let Some(handle) = to_handle {
             // ignore if entry has already been deleted
-            self.remove_child_from_directory(to_parent, &handle);
+            let _ = self.remove_child_from_directory(to_parent, &handle);
             self.path_to_handle.remove(to.as_path());
             self.handle_to_path.remove(&handle);
             self.directory_to_children.remove(to.as_path());
         }
 
-        self.remove_child_from_directory(from_parent, &from_handle);
+        let _ = self.remove_child_from_directory(from_parent, &from_handle);
         self.add_child_to_directory(to_parent, from_handle.clone());
 
         self.path_to_handle.remove(from.as_path());
@@ -229,10 +246,15 @@ impl HandleMap {
     }
 
     /// Removes a child handle from a directory entry.
-    fn remove_child_from_directory(&self, relative: &Path, handle: &Handle) {
+    fn remove_child_from_directory(
+        &self,
+        relative: &Path,
+        handle: &Handle,
+    ) -> Result<(), vfs::Error> {
         if let Some(mut children) = self.directory_to_children.get_mut(relative) {
-            children.remove(handle);
+            return if !children.remove(handle) { Err(vfs::Error::StaleFile) } else { Ok(()) };
         }
+        Ok(())
     }
 
     /// Returns all **direct children** of the given directory.

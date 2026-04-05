@@ -181,6 +181,15 @@ impl VfsTask {
         let _ = self.handles.remove_path(path);
     }
 
+    /// Removes the given handle from the handle map, ignoring any errors.
+    ///
+    /// This is used after successful backend removal operations. Since the map
+    /// may have been concurrently modified, failures are silently ignored.
+    fn remove_handle(&self, handle: &Handle) {
+        // since map could be concurrently updated, ignore errors
+        let _ = self.handles.remove_handle(handle);
+    }
+
     /// Joins a parent directory path with a child name to form a full path.
     ///
     /// This is a small utility used throughout NFS operations to construct
@@ -207,6 +216,11 @@ impl VfsTask {
             NfsArguments::Null => NfsRes::Null,
 
             NfsArguments::GetAttr(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::get_attr(err)
+                }
                 Err(error) => FailRes::get_attr(error),
                 Ok(path) => NfsRes::GetAttr(self.backend.get_attr(path.as_path()).await),
             },
@@ -221,6 +235,16 @@ impl VfsTask {
                     let path = Self::join_name(path_parent.as_path(), args.name.as_str());
 
                     match self.backend.lookup(path.as_path()).await {
+                        Err(err) if err.error == vfs::Error::StaleFile => {
+                            // it is necessary since we work without locks on handles,
+                            // there is possibility, that after a concurrent lookup and remove on same file
+                            // handle on stale file is created (suppose, in vfs happen lookup and then remove
+                            // but opposite order on HandleMap); nothing bad would happen
+                            // except that we should clean stale handles (otherwise they would be forever in
+                            // HandleMap and it could grow uncontrollably
+                            self.remove_path(&path);
+                            NfsRes::LookUp(Err(err))
+                        }
                         Err(err) => NfsRes::LookUp(Err(err)),
                         Ok(ok) => NfsRes::LookUp(Ok(vfs::lookup::Success {
                             file: self.create_handle_or_panic(&path),
@@ -240,6 +264,7 @@ impl VfsTask {
                     let path = Self::join_name(path_parent.as_path(), args.object.name.as_str());
 
                     match self.backend.create(path.as_path(), args.how).await {
+                        // no need to remove stale file - we create object
                         Err(err) => NfsRes::Create(Err(err)),
                         Ok(ok) => NfsRes::Create(Ok(vfs::create::Success {
                             file: self.create_handle_or_none(&path),
@@ -260,6 +285,7 @@ impl VfsTask {
                     let path = Self::join_name(path_parent.as_path(), args.object.name.as_str());
 
                     match self.backend.mk_dir(path.as_path(), args.attr).await {
+                        // no need to remove stale file - we create object
                         Err(err) => NfsRes::MkDir(Err(err)),
                         Ok(ok) => NfsRes::MkDir(Ok(vfs::mk_dir::Success {
                             file: self.create_handle_or_none(&path),
@@ -293,6 +319,7 @@ impl VfsTask {
                     };
 
                     match self.backend.remove(path.as_path()).await {
+                        // there is no need to remove anything from HandleMap if it is not there
                         Err(err) => NfsRes::Remove(Err(err)),
                         Ok(ok) => {
                             self.remove_path(path.as_path());
@@ -324,6 +351,7 @@ impl VfsTask {
                     };
 
                     match self.backend.rm_dir(path.as_path()).await {
+                        // there is no need to remove anything from HandleMap if it is not there
                         Err(err) => NfsRes::RmDir(Err(err)),
                         Ok(ok) => {
                             self.remove_path(path.as_path());
@@ -369,6 +397,8 @@ impl VfsTask {
                 };
 
                 match self.backend.rename(from.as_path(), to.as_path()).await {
+                    // probably we should not try to clean HandleMap, since there is
+                    // no way of telling, which path is stale
                     Err(err) => NfsRes::Rename(Err(err)),
                     Ok(ok) => match self.handles.rename_path(
                         from.as_path(),
@@ -400,6 +430,11 @@ impl VfsTask {
                 let path = Self::join_name(parent_path.as_path(), args.link.name.as_str());
 
                 match self.backend.link(path.as_path(), object.as_path()).await {
+                    Err(err) if err.error == vfs::Error::StaleFile => {
+                        // see Lookup branch for explanation
+                        self.remove_path(&object);
+                        NfsRes::Link(Err(err))
+                    }
                     Err(err) => NfsRes::Link(Err(err)),
                     Ok(ok) => {
                         let _handle = self.create_handle_or_none(&path);
@@ -426,6 +461,11 @@ impl VfsTask {
                 let obj = args.path.clone();
 
                 match self.backend.symlink(path.as_path(), obj.as_path(), args.attr).await {
+                    Err(err) if err.error == vfs::Error::StaleFile => {
+                        // see Lookup branch for explanation
+                        self.remove_path(obj.as_path());
+                        NfsRes::SymLink(Err(err))
+                    }
                     Err(err) => NfsRes::SymLink(Err(err)),
                     Ok(ok) => NfsRes::SymLink(Ok(vfs::symlink::Success {
                         file: self.create_handle_or_none(&path),
@@ -435,6 +475,11 @@ impl VfsTask {
                 }
             }
             NfsArguments::SetAttr(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::set_attr(err)
+                }
                 Err(error) => FailRes::set_attr(error),
                 Ok(path) => NfsRes::SetAttr(
                     self.backend.set_attr(path.as_path(), args.new_attr, args.guard).await,
@@ -442,16 +487,31 @@ impl VfsTask {
             },
 
             NfsArguments::Access(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::access(err)
+                }
                 Err(error) => FailRes::access(error),
                 Ok(path) => NfsRes::Access(self.backend.access(path.as_path(), args.mask).await),
             },
 
             NfsArguments::ReadLink(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::read_link(err)
+                }
                 Err(error) => FailRes::read_link(error),
                 Ok(path) => NfsRes::ReadLink(self.backend.read_link(path.as_path()).await),
             },
 
             NfsArguments::Read(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::read(err)
+                }
                 Err(error) => FailRes::read(error),
                 Ok(path) => {
                     let data_result = if args.count == 0 {
@@ -475,6 +535,11 @@ impl VfsTask {
             },
 
             NfsArguments::Write(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::write(err)
+                }
                 Err(error) => FailRes::write(error),
                 Ok(path) => NfsRes::Write(
                     self.backend
@@ -495,6 +560,7 @@ impl VfsTask {
                 path.push(args.object.name.as_str());
 
                 match self.backend.mk_node(path.as_path(), args.what).await {
+                    // could not get stale file error - we create object
                     Err(err) => NfsRes::MkNod(Err(err)),
                     Ok(ok) => NfsRes::MkNod(Ok(vfs::mk_node::Success {
                         file: self.create_handle_or_none(&path),
@@ -517,12 +583,14 @@ impl VfsTask {
                                 let name = &entry.file_name;
                                 let mut entry_path = path.clone();
                                 entry_path.push(name.as_str());
-                                match self.handles.create_handle(&entry_path) {
-                                    Ok(_) => continue,
-                                    Err(error) => return FailRes::read_dir(error),
-                                }
+                                let _ = self.handles.create_handle(&entry_path);
                             }
                             Ok(ok)
+                        }
+                        Err(err) if err.error == vfs::Error::StaleFile => {
+                            // see Lookup branch for explanation
+                            self.remove_path(path.as_path());
+                            Err(err)
                         }
                         error => error,
                     },
@@ -550,10 +618,15 @@ impl VfsTask {
                                 entry_path.push(name.as_str());
                                 match self.handles.create_handle(&entry_path) {
                                     Ok(handle) => entry.file_handle = Some(handle),
-                                    Err(error) => return FailRes::read_dir_plus(error),
+                                    Err(_) => continue,
                                 }
                             }
                             Ok(ok)
+                        }
+                        Err(err) if err.error == vfs::Error::StaleFile => {
+                            // see Lookup branch for explanation
+                            self.remove_path(path.as_path());
+                            Err(err)
                         }
                         Err(error) => Err(error),
                     },
@@ -561,6 +634,7 @@ impl VfsTask {
             },
 
             NfsArguments::FsStat(args) => match self.handles.path_for_handle(&args.root) {
+                // no cleaning for root
                 Err(error) => FailRes::fs_stat(error),
                 Ok(path) => {
                     //TODO("root in args required to determine, which of mounted fs to use;
@@ -571,16 +645,27 @@ impl VfsTask {
             },
 
             NfsArguments::FsInfo(args) => match self.handles.path_for_handle(&args.root) {
+                // no cleaning for root
                 Err(error) => FailRes::fs_info(error),
                 Ok(path) => NfsRes::FsInfo(self.backend.fs_info(path.as_path()).await),
             },
 
             NfsArguments::PathConf(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::path_conf(err)
+                }
                 Err(error) => FailRes::path_conf(error),
                 Ok(path) => NfsRes::PathConf(self.backend.path_conf(path.as_path()).await),
             },
 
             NfsArguments::Commit(args) => match self.handles.path_for_handle(&args.file) {
+                Err(err) if err == vfs::Error::StaleFile => {
+                    // see Lookup branch for explanation
+                    self.remove_handle(&args.file);
+                    FailRes::commit(err)
+                }
                 Err(error) => FailRes::commit(error),
                 Ok(path) => NfsRes::Commit(
                     self.backend.commit(path.as_path(), args.offset, args.count).await,
