@@ -7,6 +7,9 @@ description = "A Rust NFS Server implementation"
 publish = false
 rust-version = "1.75.0"
 
+[package.metadata.cargo-udeps.ignore]
+development = ["tempfile"]
+
 [lib]
 doctest = false
 
@@ -18,9 +21,10 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 tracing = { version = "0.1", features = ["release_max_level_off"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+async-channel = "2.5.0"
+crossbeam-queue = "0.3.12"
 
 [dev-dependencies]
-[package.metadata.cargo-udeps.ignore]
 tempfile = "3.26.0"
 
 [[example]]
