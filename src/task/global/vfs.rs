@@ -7,43 +7,6 @@
 //!
 //! VfsTask is responsible for **all synchronization** around HandleMap and
 //! filesystem structure modifications.
-//! HandleMap itself is not atomic, so VfsTask ensures correctness by taking
-//! appropriate locks before performing any operation.
-//!
-//! ### Write-locks
-//!
-//! A write-lock is taken whenever an operation may modify the filesystem
-//! structure or the HandleMap state:
-//!
-//! - CREATE
-//! - MKDIR
-//! - REMOVE
-//! - RMDIR
-//! - RENAME
-//! - LINK
-//! - SYMLINK
-//! - MKNOD
-//! - READDIR / READDIRPLUS
-//!   (these create new handles for directory entries, so HandleMap is mutated)
-//!
-//! These locks ensure that multi-table updates inside HandleMap behave as a
-//! logically atomic unit.
-//!
-//! ### Read-locks
-//!
-//! Read-only operations take only a read-lock on the path:
-//!
-//! - GETATTR
-//! - ACCESS
-//! - READLINK
-//! - READ
-//! - WRITE (does not modify directory structure)
-//! - FSSTAT
-//! - FSINFO
-//! - PATHCONF
-//! - COMMIT
-//!
-//! These operations do not change HandleMap or directory structure.
 //!
 //! ## Non-recursive structural operations
 //!

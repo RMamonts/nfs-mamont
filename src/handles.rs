@@ -9,22 +9,6 @@
 //! internal maps (`handle_to_path`, `path_to_handle`, `directory_to_children`),
 //! but these updates are **not performed atomically as a single transaction**.
 //!
-//! Instead, the caller (typically `VfsTask`) **must acquire the appropriate
-//! write-locks** on the affected paths *before* invoking any mutating operation.
-//! This external locking protocol ensures logical atomicity and prevents
-//! interleaving of structural modifications.
-//!
-//! # Locking expectations
-//!
-//! - Callers **must hold a write-lock** on the affected path(s) before calling:
-//!   - [`HandleMap::create_handle`]
-//!   - [`HandleMap::remove_path`]
-//!   - [`HandleMap::rename_path`]
-//!   - any operation that modifies directory membership
-//!
-//! HandleMap itself does not enforce locking; it assumes the caller has already
-//! serialized access at a higher layer.
-//!
 //! # Non-recursive semantics
 //!
 //! Path removal and renaming are **non-recursive**.
@@ -115,7 +99,7 @@ impl HandleMap {
         Ok(self.to_full_path(relative.as_path()))
     }
 
-    /// Resolves a relative path into its associated handle.
+    /// Resolves an absolute path into its associated handle.
     ///
     /// Returns `StaleFile` if the path is unknown.
     pub fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
@@ -125,10 +109,6 @@ impl HandleMap {
     }
 
     /// Creates a handle for the given path if it does not already exist.
-    ///
-    /// # Locking
-    /// The caller **must hold a write-lock** on the parent directory before
-    /// calling this function. HandleMap does not enforce atomicity.
     pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
         let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
         if let Some(prev) = self.path_to_handle.get(relative.as_path()) {
@@ -149,16 +129,13 @@ impl HandleMap {
     ///
     /// # Non-recursive
     /// Only the specific path is removed. Descendants are not touched.
-    ///
-    /// # Locking
-    /// Caller must hold a write-lock on the path and its parent.
     pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
         let (_, handle) =
             self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
 
         if let Some(parent) = relative.parent() {
-            self.remove_child_from_directory(parent, &handle);
+            self.remove_child_from_directory(parent, &handle)?;
         }
 
         if self.handle_to_path.remove(&handle).is_none() {
@@ -189,14 +166,14 @@ impl HandleMap {
         // If destination exists, remove it first.
         if let Some(handle) = to_handle {
             // ignore if entry has already been deleted
-            self.remove_child_from_directory(to_parent, &handle);
+            self.remove_child_from_directory(to_parent, &handle)?;
             self.path_to_handle.remove(to.as_path());
             self.handle_to_path.remove(&handle);
             self.directory_to_children.remove(to.as_path());
         }
 
-        self.remove_child_from_directory(from_parent, &from_handle);
-        self.add_child_to_directory(to_parent, from_handle.clone());
+        self.remove_child_from_directory(from_parent, &from_handle)?;
+        self.add_child_to_directory(to_parent, from_handle.clone())?;
 
         self.path_to_handle.remove(from.as_path());
 
@@ -232,8 +209,6 @@ impl HandleMap {
     }
 
     /// Adds a child handle to a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
     fn add_child_to_directory(&self, directory: &Path, handle: Handle) -> Result<(), vfs::Error> {
         let relative = self.to_relative_path(directory).ok_or(vfs::Error::StaleFile)?;
         match self.directory_to_children.get_mut(relative.as_path()) {
