@@ -102,22 +102,25 @@ impl HandleMap {
         file::Handle(ROOT.to_be_bytes())
     }
 
-    /// Resolves a handle into its associated relative path.
+    pub fn is_root(path: &Path) -> bool {
+        path.as_os_str().is_empty()
+    }
+
+    /// Resolves a handle into its associated absolute path.
     ///
     /// Returns `StaleFile` if the handle is unknown.
-    ///
-    /// The returned path is wrapped in an `Arc<RwLock<_>>` so that callers
-    /// (typically VfsTask) can take read/write locks on the path before
-    /// performing operations that depend on path stability.
     pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
+        let relative =
+            self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone();
+        Ok(self.to_full_path(relative.as_path()))
     }
 
     /// Resolves a relative path into its associated handle.
     ///
     /// Returns `StaleFile` if the path is unknown.
     pub fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let entry = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        let entry = self.path_to_handle.get(&relative).ok_or(vfs::Error::StaleFile)?;
         Ok(entry.value().clone())
     }
 
@@ -127,14 +130,14 @@ impl HandleMap {
     /// The caller **must hold a write-lock** on the parent directory before
     /// calling this function. HandleMap does not enforce atomicity.
     pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        if let Some(prev) = self.path_to_handle.get(path) {
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        if let Some(prev) = self.path_to_handle.get(relative.as_path()) {
             return Ok(prev.value().clone());
         }
-
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
-        self.handle_to_path.insert(handle.clone(), path.to_path_buf());
-        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
+        self.handle_to_path.insert(handle.clone(), relative.clone());
+        self.path_to_handle.insert(relative, handle.clone());
 
         self.directory_to_children.entry(path.to_path_buf()).or_default();
         self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
@@ -150,9 +153,11 @@ impl HandleMap {
     /// # Locking
     /// Caller must hold a write-lock on the path and its parent.
     pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
-        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
+        let relative = self.to_relative_path(path).ok_or(vfs::Error::StaleFile)?;
+        let (_, handle) =
+            self.path_to_handle.remove(relative.as_path()).ok_or(vfs::Error::StaleFile)?;
 
-        if let Some(parent) = path.parent() {
+        if let Some(parent) = relative.parent() {
             self.remove_child_from_directory(parent, &handle);
         }
 
@@ -160,7 +165,7 @@ impl HandleMap {
             return Err(vfs::Error::StaleFile);
         }
 
-        self.directory_to_children.remove(path);
+        self.directory_to_children.remove(&relative);
         Ok(())
     }
 
@@ -168,10 +173,6 @@ impl HandleMap {
     ///
     /// # Non-recursive
     /// Only the specific path is updated. Descendants are not rewritten.
-    ///
-    /// # Locking
-    /// Caller must hold write-locks on both `from` and `to` paths in the correct
-    /// order (handled by VfsTask).
     pub fn rename_path(
         &self,
         from: &Path,
@@ -179,6 +180,9 @@ impl HandleMap {
         from_handle: Handle,
         to_handle: Option<Handle>,
     ) -> Result<(), vfs::Error> {
+        let to = self.to_relative_path(to).ok_or(vfs::Error::StaleFile)?;
+        let from = self.to_relative_path(from).ok_or(vfs::Error::StaleFile)?;
+
         let from_parent = from.parent().ok_or(vfs::Error::ServerFault)?;
         let to_parent = to.parent().ok_or(vfs::Error::ServerFault)?;
 
@@ -186,20 +190,20 @@ impl HandleMap {
         if let Some(handle) = to_handle {
             // ignore if entry has already been deleted
             self.remove_child_from_directory(to_parent, &handle);
-            self.path_to_handle.remove(to);
+            self.path_to_handle.remove(to.as_path());
             self.handle_to_path.remove(&handle);
-            self.directory_to_children.remove(to);
+            self.directory_to_children.remove(to.as_path());
         }
 
         self.remove_child_from_directory(from_parent, &from_handle);
         self.add_child_to_directory(to_parent, from_handle.clone());
 
-        self.path_to_handle.remove(from);
+        self.path_to_handle.remove(from.as_path());
 
         self.path_to_handle.insert(to.to_path_buf(), from_handle.clone());
         self.handle_to_path.alter(&from_handle, |_, _| to.to_path_buf());
 
-        if let Some((_, children)) = self.directory_to_children.remove(from) {
+        if let Some((_, children)) = self.directory_to_children.remove(from.as_path()) {
             self.directory_to_children.insert(to.to_path_buf(), children);
         }
 
@@ -207,37 +211,55 @@ impl HandleMap {
     }
 
     /// Converts a relative path into an absolute path under the configured root.
-    pub(crate) fn to_full_path(&self, relative: &Path) -> PathBuf {
-        if relative.as_os_str().is_empty() {
+    fn to_full_path(&self, relative: &Path) -> PathBuf {
+        if Self::is_root(relative) {
             self.root.clone()
         } else {
             self.root.join(relative)
         }
     }
 
+    /// Converts an absolute path under the configured root into a relative path.
+    /// If the path is outside the root, returns None.
+    fn to_relative_path(&self, full: &Path) -> Option<PathBuf> {
+        full.strip_prefix(&self.root).ok().map(|path| {
+            if Self::is_root(path) {
+                PathBuf::new()
+            } else {
+                path.to_path_buf()
+            }
+        })
+    }
+
     /// Adds a child handle to a directory entry.
     ///
     /// Caller must hold the appropriate write-lock.
-    fn add_child_to_directory(&self, directory: &Path, handle: Handle) {
-        match self.directory_to_children.get_mut(directory) {
+    fn add_child_to_directory(&self, directory: &Path, handle: Handle) -> Result<(), vfs::Error> {
+        let relative = self.to_relative_path(directory).ok_or(vfs::Error::StaleFile)?;
+        match self.directory_to_children.get_mut(relative.as_path()) {
             Some(mut children) => {
                 children.insert(handle);
             }
             None => {
                 let mut children = BTreeSet::new();
                 children.insert(handle);
-                self.directory_to_children.insert(directory.to_path_buf(), children);
+                self.directory_to_children.insert(relative, children);
             }
         }
+        Ok(())
     }
 
     /// Removes a child handle from a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
-    fn remove_child_from_directory(&self, directory: &Path, handle: &Handle) {
-        if let Some(mut children) = self.directory_to_children.get_mut(directory) {
+    fn remove_child_from_directory(
+        &self,
+        directory: &Path,
+        handle: &Handle,
+    ) -> Result<(), vfs::Error> {
+        let relative = self.to_relative_path(directory).ok_or(vfs::Error::StaleFile)?;
+        if let Some(mut children) = self.directory_to_children.get_mut(relative.as_path()) {
             children.remove(handle);
         }
+        Ok(())
     }
 
     fn get_children(&self, path: &Path) -> Vec<Handle> {
