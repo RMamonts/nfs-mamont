@@ -9,22 +9,6 @@
 //! internal maps (`handle_to_path`, `path_to_handle`, `directory_to_children`),
 //! but these updates are **not performed atomically as a single transaction**.
 //!
-//! Instead, the caller (typically `VfsTask`) **must acquire the appropriate
-//! write-locks** on the affected paths *before* invoking any mutating operation.
-//! This external locking protocol ensures logical atomicity and prevents
-//! interleaving of structural modifications.
-//!
-//! # Locking expectations
-//!
-//! - Callers **must hold a write-lock** on the affected path(s) before calling:
-//!   - [`HandleMap::create_handle`]
-//!   - [`HandleMap::remove_path`]
-//!   - [`HandleMap::rename_path`]
-//!   - any operation that modifies directory membership
-//!
-//! HandleMap itself does not enforce locking; it assumes the caller has already
-//! serialized access at a higher layer.
-//!
 //! # Non-recursive semantics
 //!
 //! Path removal and renaming are **non-recursive**.
@@ -42,8 +26,6 @@
 //! # Full path resolution
 //!
 //! HandleMap stores only **relative** paths.
-//! Conversion to absolute filesystem paths is performed via [`HandleMap::`to_full_path`]
-//! using the configured root.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -105,10 +87,6 @@ impl HandleMap {
     /// Resolves a handle into its associated relative path.
     ///
     /// Returns `StaleFile` if the handle is unknown.
-    ///
-    /// The returned path is wrapped in an `Arc<RwLock<_>>` so that callers
-    /// (typically VfsTask) can take read/write locks on the path before
-    /// performing operations that depend on path stability.
     pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
         Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
     }
@@ -122,10 +100,6 @@ impl HandleMap {
     }
 
     /// Creates a handle for the given path if it does not already exist.
-    ///
-    /// # Locking
-    /// The caller **must hold a write-lock** on the parent directory before
-    /// calling this function. HandleMap does not enforce atomicity.
     pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
         if let Some(prev) = self.path_to_handle.get(path) {
             return Ok(prev.value().clone());
@@ -148,9 +122,6 @@ impl HandleMap {
     ///
     /// # Non-recursive
     /// Only the specific path is removed. Descendants are not touched.
-    ///
-    /// # Locking
-    /// Caller must hold a write-lock on the path and its parent.
     pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
 
@@ -170,10 +141,6 @@ impl HandleMap {
     ///
     /// # Non-recursive
     /// Only the specific path is updated. Descendants are not rewritten.
-    ///
-    /// # Locking
-    /// Caller must hold write-locks on both `from` and `to` paths in the correct
-    /// order (handled by VfsTask).
     pub fn rename_path(
         &self,
         from: &Path,
@@ -218,8 +185,6 @@ impl HandleMap {
     }
 
     /// Adds a child handle to a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
     fn add_child_to_directory(&self, directory: &Path, handle: Handle) {
         match self.directory_to_children.get_mut(directory) {
             Some(mut children) => {
@@ -234,8 +199,6 @@ impl HandleMap {
     }
 
     /// Removes a child handle from a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
     fn remove_child_from_directory(&self, directory: &Path, handle: &Handle) {
         if let Some(mut children) = self.directory_to_children.get_mut(directory) {
             children.remove(handle);
