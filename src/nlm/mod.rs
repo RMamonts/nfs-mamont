@@ -4,13 +4,13 @@
 
 pub mod holder;
 pub mod lock;
+pub mod procedures;
 pub mod share;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
-#[allow(dead_code)]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
     Granted = 0,
@@ -42,26 +42,18 @@ pub enum Nlm4Stats {
 }
 
 /// Opaque lock owner identifier (`oh`).
-///
-/// # Fields
-/// - `owner_id`: the unique identifier of the lock owner.
-#[derive(Debug)]
-#[allow(dead_code)]
 pub struct OpaqueHandle {
+    /// The unique identifier of the lock owner.
     opaque_handle: Vec<u8>,
 }
 
 impl OpaqueHandle {
-    /// Creates a new instance of [`OpaqueHandle`].
-    ///
-    /// The field values correspond to the description in [`OpaqueHandle`].
-    #[allow(dead_code)]
+    /// Creates a new opaque lock owner identifier.
     pub fn new(oh: Vec<u8>) -> Self {
         OpaqueHandle { opaque_handle: oh }
     }
 
     /// Returns the underlying bytes of the opaque handle.
-    #[allow(dead_code)]
     pub fn as_bytes(&self) -> &[u8] {
         &self.opaque_handle
     }

@@ -5,13 +5,13 @@
 use super::OpaqueHandle;
 use crate::consts::nlm;
 use crate::vfs;
+use std::io::Error;
 
 /// DOS-style file sharing mode.
 ///
 /// Defines what operations other clients are prohibited from performing.
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[allow(dead_code)]
-enum FileSharingMode {
+pub enum FileSharingMode {
     /// Other clients may perform any operation.
     None = 0,
     /// Other clients are prohibited from reading the file.
@@ -26,8 +26,7 @@ enum FileSharingMode {
 ///
 /// Defines what operations the requesting client is allowed to perform.
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[allow(dead_code)]
-enum FileSharingAccess {
+pub enum FileSharingAccess {
     /// Client has no access to the file.
     None = 0,
     /// Client may read the file.
@@ -39,27 +38,21 @@ enum FileSharingAccess {
 }
 
 /// This structure is used to support DOS file sharing.
-///
-/// # Fields
-/// - `caller_name`: host that is making the request.
-/// - `file_handle`: file to be operated on.
-/// - `opaque_handle`: host or process that is making the request.
-/// - `fsh4_mode`: specifies operations prohibited to other clients.
-/// - `fsh4_access`: specifies operations allowed to the requesting client.
-#[allow(dead_code)]
-struct Nlm4Share {
-    caller_name: String,
-    file_handle: vfs::file::Handle,
-    opaque_handle: OpaqueHandle,
-    fsh4_mode: FileSharingMode,
-    fsh4_access: FileSharingAccess,
+pub struct Nlm4Share {
+    /// Name of the client host making the lock request.
+    pub caller_name: String,
+    /// Handle to the file to share.
+    pub file_handle: vfs::file::Handle,
+    /// Host or process that is making the request.
+    pub opaque_handle: OpaqueHandle,
+    /// Specifies operations prohibited to other clients.
+    pub fsh4_mode: FileSharingMode,
+    /// Specifies operations allowed to the requesting client.
+    pub fsh4_access: FileSharingAccess,
 }
 
-#[allow(dead_code)]
 impl Nlm4Share {
-    /// Creates a new instance of [`Nlm4Share`] with the specified parameters.
-    ///
-    /// The field values correspond to the description in [`Nlm4Share`].
+    /// Creates a new file share request.
     ///
     /// # Errors
     /// Returns `Err` with a text message if:
@@ -71,51 +64,22 @@ impl Nlm4Share {
         opaque_handle: OpaqueHandle,
         fsh4_mode: FileSharingMode,
         fsh4_access: FileSharingAccess,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Error> {
         if caller_name.is_empty() {
-            return Err("caller_name must not be empty".into());
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "caller_name must not be empty",
+            ));
         }
 
         if caller_name.len() > nlm::LM_MAXSTRLEN {
-            return Err(format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN).into());
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
+            ));
         }
 
         Ok(Nlm4Share { caller_name, file_handle, opaque_handle, fsh4_mode, fsh4_access })
-    }
-
-    /// Returns the host name of the client.
-    ///
-    /// See the description of the `caller_name` field in [`Nlm4Share`].
-    pub fn caller_name(&self) -> &str {
-        &self.caller_name
-    }
-
-    /// Returns the file handle of the client.
-    ///
-    /// See the description of the `file_handle` field in [`Nlm4Share`].
-    pub fn file_handle(&self) -> &vfs::file::Handle {
-        &self.file_handle
-    }
-
-    /// Returns the opaque handle of the client.
-    ///
-    /// See the description of the `opaque_handle` field in [`Nlm4Share`].
-    pub fn opaque_handle(&self) -> &OpaqueHandle {
-        &self.opaque_handle
-    }
-
-    /// Returns the file sharing mode.
-    ///
-    /// See the description of the `fsh4_mode` field in [`Nlm4Share`].
-    pub fn fsh4_mode(&self) -> &FileSharingMode {
-        &self.fsh4_mode
-    }
-
-    /// Returns the file sharing access mode.
-    ///
-    /// See the description of the `fsh4_access` field in [`Nlm4Share`].
-    pub fn fsh4_access(&self) -> &FileSharingAccess {
-        &self.fsh4_access
     }
 }
 
@@ -138,10 +102,10 @@ mod tests {
             Nlm4Share::new(caller_name.clone(), file_handle, opaque_handle, fsh4_mode, fsh4_access)
                 .unwrap();
 
-        assert_eq!(lock.caller_name(), caller_name);
-        assert_eq!(lock.file_handle().0, [0; NFS3_FHSIZE]);
-        assert_eq!(lock.opaque_handle().as_bytes(), &[1, 2, 3]);
-        assert_eq!(*lock.fsh4_access(), fsh4_access);
-        assert_eq!(*lock.fsh4_mode(), fsh4_mode);
+        assert_eq!(lock.caller_name, caller_name);
+        assert_eq!(lock.file_handle.0, [0; NFS3_FHSIZE]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.fsh4_access, fsh4_access);
+        assert_eq!(lock.fsh4_mode, fsh4_mode);
     }
 }

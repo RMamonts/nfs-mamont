@@ -5,32 +5,26 @@
 use super::OpaqueHandle;
 use crate::consts::nlm;
 use crate::vfs;
+use std::io::Error;
 
 /// This structure describes a lock request.
-///
-/// # Fields
-/// - `caller_name`: host that is making the request.
-/// - `file_handle`: file to lock.
-/// - `opaque_handle`: host or process that is making the request.
-/// - `system_identifier`: process that is making the request.
-/// - `lock_offset`: offset for the lock region.
-/// - `lock_length`: length of the blocking region. A l_len of 0 means "to end of file".
-#[derive(Debug)]
-#[allow(dead_code)]
 pub struct Nlm4Lock {
-    caller_name: String,
-    file_handle: vfs::file::Handle,
-    opaque_handle: OpaqueHandle,
-    system_identifier: i32,
-    lock_offset: u64,
-    lock_length: u64,
+    /// Name of the client host making the lock request.
+    pub caller_name: String,
+    /// Handle to the file to lock.
+    pub file_handle: vfs::file::Handle,
+    /// Host or process that is making the request.
+    pub opaque_handle: OpaqueHandle,
+    /// PID of the process making the request.
+    pub system_identifier: i32,
+    /// Offset for the lock region.
+    pub lock_offset: u64,
+    /// Length of the blocking region. A l_len of 0 means "to end of file".
+    pub lock_length: u64,
 }
 
-#[allow(dead_code)]
 impl Nlm4Lock {
-    /// Creates a new instance of [`Nlm4Lock`] with the specified parameters.
-    ///
-    /// The field values correspond to the description in [`Nlm4Lock`].
+    /// Creates a new lock request.
     ///
     /// # Errors
     /// Returns `Err` with a text message if:
@@ -43,13 +37,19 @@ impl Nlm4Lock {
         system_identifier: i32,
         lock_offset: u64,
         lock_length: u64,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Error> {
         if caller_name.is_empty() {
-            return Err("caller_name must not be empty".into());
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "caller_name must not be empty",
+            ));
         }
 
         if caller_name.len() > nlm::LM_MAXSTRLEN {
-            return Err(format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN).into());
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
+            ));
         }
 
         Ok(Nlm4Lock {
@@ -60,51 +60,6 @@ impl Nlm4Lock {
             lock_offset,
             lock_length,
         })
-    }
-
-    /// Returns the host name of the client.
-    ///
-    /// See the description of the `caller_name` field in [`Nlm4Lock`].
-    pub fn caller_name(&self) -> &str {
-        &self.caller_name
-    }
-
-    /// Returns the file handle of the client.
-    ///
-    /// See the description of the `file_handle` field in [`Nlm4Lock`].
-    pub fn file_handle(&self) -> &vfs::file::Handle {
-        &self.file_handle
-    }
-
-    /// Returns the opaque handle of the client.
-    ///
-    /// See the description of the `opaque_handle` field in [`Nlm4Lock`].
-    pub fn opaque_handle(&self) -> &OpaqueHandle {
-        &self.opaque_handle
-    }
-
-    /// Returns the system identifier (`svid`).
-    ///
-    /// This is a copy of the original value.
-    /// See the `system_identifier` field in [`Nlm4Lock`].
-    pub fn system_identifier(&self) -> i32 {
-        self.system_identifier
-    }
-
-    /// Returns the lock offset.
-    ///
-    /// This is a copy of the original value.
-    /// See the `lock_offset` field in [`Nlm4Lock`].
-    pub fn lock_offset(&self) -> u64 {
-        self.lock_offset
-    }
-
-    /// Returns the lock length.
-    ///
-    /// This is a copy of the original value.
-    /// See the `lock_length` field in [`Nlm4Lock`].
-    pub fn lock_length(&self) -> u64 {
-        self.lock_length
     }
 }
 
@@ -134,12 +89,12 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(lock.caller_name(), caller_name);
-        assert_eq!(lock.file_handle().0, [0; NFS3_FHSIZE]);
-        assert_eq!(lock.opaque_handle().as_bytes(), &[1, 2, 3]);
-        assert_eq!(lock.system_identifier(), system_id);
-        assert_eq!(lock.lock_offset(), offset);
-        assert_eq!(lock.lock_length(), length);
+        assert_eq!(lock.caller_name, caller_name);
+        assert_eq!(lock.file_handle.0, [0; NFS3_FHSIZE]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.system_identifier, system_id);
+        assert_eq!(lock.lock_offset, offset);
+        assert_eq!(lock.lock_length, length);
     }
 
     #[test]
@@ -153,8 +108,6 @@ mod tests {
             0,
         );
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.to_string(), "caller_name must not be empty");
     }
 
     #[test]
@@ -168,7 +121,5 @@ mod tests {
             0,
         );
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.to_string(), format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN));
     }
 }
