@@ -18,7 +18,7 @@ pub struct Handle(pub [u8; NFS3_FHSIZE]);
 /// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
 /// It provides safe construction, accessors, and conversion back into the
 /// owned inner [`String`].
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub struct Name(String);
 
 impl Name {

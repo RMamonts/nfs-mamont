@@ -27,17 +27,29 @@
 //!
 //! HandleMap stores only **relative** paths.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-
-use dashmap::DashMap;
+use std::sync::Arc;
 
 use crate::vfs;
 use crate::vfs::file;
 use crate::vfs::file::Handle;
 
+use dashmap::DashMap;
+use tokio::sync::RwLock;
+
 const ROOT: u64 = 1;
+
+struct Descendant {
+    handle: Handle,
+    lock: Arc<RwLock<PathBuf>>,
+}
+
+struct Entry {
+    path: Arc<RwLock<PathBuf>>,
+    handle: Handle,
+    descendants: DashMap<file::Name, Descendant>,
+}
 
 /// A bidirectional mapping between NFS file handles and relative filesystem
 /// paths, plus a directory → children index.
@@ -45,9 +57,7 @@ const ROOT: u64 = 1;
 /// See module-level documentation for concurrency guarantees and expectations.
 pub struct HandleMap {
     root: PathBuf,
-    handle_to_path: DashMap<Handle, PathBuf>,
-    path_to_handle: DashMap<PathBuf, Handle>,
-    directory_to_children: DashMap<PathBuf, BTreeSet<Handle>>,
+    handle_to_path: DashMap<Handle, Entry>,
     next_id: AtomicU64,
 }
 
@@ -61,22 +71,18 @@ impl HandleMap {
         let root_handle = file::Handle(ROOT.to_be_bytes());
         let root_relative = PathBuf::new();
 
+        let entry = Entry {
+            path: Arc::new(RwLock::new(root_relative)),
+            handle: root_handle.clone(),
+            descendants: DashMap::new(),
+        };
+
         let handle_to_path = DashMap::new();
-        handle_to_path.insert(root_handle.clone(), root_relative.clone());
+        handle_to_path.entry(root_handle).or_insert(entry);
 
-        let path_to_handle = DashMap::new();
-        path_to_handle.insert(root_relative.clone(), root_handle);
+        let next_id = AtomicU64::new(ROOT + 1);
 
-        let directory_to_children = DashMap::new();
-        directory_to_children.insert(root_relative, BTreeSet::new());
-
-        Self {
-            root,
-            handle_to_path,
-            path_to_handle,
-            directory_to_children,
-            next_id: AtomicU64::new(ROOT + 1),
-        }
+        Self { root, handle_to_path, next_id }
     }
 
     /// Returns the fixed handle representing the root directory.
@@ -87,34 +93,45 @@ impl HandleMap {
     /// Resolves a handle into its associated relative path.
     ///
     /// Returns `StaleFile` if the handle is unknown.
-    pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
+    pub fn path_for_handle(
+        &self,
+        handle: &file::Handle,
+    ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
+        Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.path.clone())
     }
 
-    /// Resolves a relative path into its associated handle.
-    ///
-    /// Returns `StaleFile` if the path is unknown.
-    pub fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let entry = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
-        Ok(entry.value().clone())
+    pub fn handle_for_path(
+        &self,
+        parent: &Handle,
+        file: &file::Name,
+    ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
+        let entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let path = entry.descendants.get(file).ok_or(vfs::Error::StaleFile)?;
+        Ok(path.lock.clone())
     }
 
     /// Creates a handle for the given path if it does not already exist.
-    pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        if let Some(prev) = self.path_to_handle.get(path) {
-            return Ok(prev.value().clone());
-        }
-
+    pub fn create_handle(
+        &self,
+        parent: &Handle,
+        parent_path: &Path,
+        file: &file::Name,
+    ) -> Result<Handle, vfs::Error> {
+        let entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
-
-        self.handle_to_path.insert(handle.clone(), path.to_path_buf());
-        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
-
-        self.directory_to_children.entry(path.to_path_buf()).or_default();
-
-        self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
-
+        let mut path = parent_path.to_owned();
+        path.push(file.as_str());
+        let lock = Arc::new(RwLock::new(path.clone()));
+        entry
+            .descendants
+            .entry(file.clone())
+            .or_insert(Descendant { handle: handle.clone(), lock: lock.clone() });
+        self.handle_to_path.entry(handle.clone()).or_insert(Entry {
+            path: lock,
+            handle: handle.clone(),
+            descendants: DashMap::new(),
+        });
         Ok(handle)
     }
 
