@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use crate::vfs;
 use crate::vfs::file;
-use crate::vfs::file::{Handle, Name};
+use crate::vfs::file::Handle;
 
 use dashmap::DashMap;
 use tokio::sync::RwLock;
@@ -93,14 +93,14 @@ impl HandleMap {
     /// Resolves a handle into its associated relative path.
     ///
     /// Returns `StaleFile` if the handle is unknown.
-    pub fn lock_for_handle(
+    pub fn path_for_handle(
         &self,
         handle: &file::Handle,
     ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
         Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.path.clone())
     }
 
-    pub fn lock_for_name(
+    pub fn handle_for_path(
         &self,
         parent: &Handle,
         file: &file::Name,
@@ -139,48 +139,18 @@ impl HandleMap {
     ///
     /// # Non-recursive
     /// Only the specific path is removed. Descendants are not touched.
-    pub fn remove_path(
-        &self,
-        parent: &Handle,
-        name: &Name,
-        prefix: &Handle,
-    ) -> Result<(), vfs::Error> {
-        self.handle_to_path.entry(parent.clone()).and_modify(|entry| {
-            entry.descendants.remove(name);
-        });
+    pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
+        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
 
-        self.remove_entry(prefix)?;
-
-        Ok(())
-    }
-    fn remove_entry(&self, handle: &Handle) -> Result<(), vfs::Error> {
-        let (_, entry) = self.handle_to_path.remove(handle).ok_or(vfs::Error::StaleFile)?;
-
-        for child in entry.descendants.iter() {
-            self.remove_entry(&child.handle)?;
+        if let Some(parent) = path.parent() {
+            self.remove_child_from_directory(parent, &handle);
         }
-        Ok(())
-    }
 
-    pub fn collect_recursive_locks(
-        &self,
-        prefix: Handle,
-    ) -> Result<Vec<Arc<RwLock<PathBuf>>>, vfs::Error> {
-        let mut acc = Vec::new();
-        self.collect_locks_with_acc(&mut acc, prefix)?;
-        Ok(acc)
-    }
-
-    fn collect_locks_with_acc(
-        &self,
-        acc: &mut Vec<Arc<RwLock<PathBuf>>>,
-        handle: Handle,
-    ) -> Result<(), vfs::Error> {
-        let entry = self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?;
-        acc.push(entry.path.clone());
-        for child in entry.descendants.iter() {
-            self.collect_locks_with_acc(acc, child.handle.clone())?;
+        if self.handle_to_path.remove(&handle).is_none() {
+            return Err(vfs::Error::StaleFile);
         }
+
+        self.directory_to_children.remove(path);
         Ok(())
     }
 
