@@ -132,17 +132,6 @@ impl HandleMap {
         Ok(handle)
     }
 
-    /// Removes a direct child entry from a parent directory.
-    pub fn remove_child(&self, parent: &file::Handle, name: &file::Name) -> Result<(), vfs::Error> {
-        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
-        let child = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?.1;
-
-        if self.map.remove(&child.handle).is_none() {
-            return Err(vfs::Error::StaleFile);
-        }
-        Ok(())
-    }
-
     /// Converts a relative path into an absolute path under the configured root.
     fn to_full_path(&self, relative: &Path) -> PathBuf {
         if relative.as_os_str().is_empty() {
@@ -152,22 +141,36 @@ impl HandleMap {
         }
     }
 
-    fn remove_child_recursive(&self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
+    fn remove_child(&self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
         let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
-
-        self.remove_entry_recursive(&entry.handle)
+        self.map.remove(&entry.handle).ok_or(vfs::Error::StaleFile)?;
+        Ok(())
     }
 
-    fn remove_entry_recursive(&self, handle: &Handle) -> Result<(), vfs::Error> {
-        let entry = self.map.get(handle).ok_or(vfs::Error::StaleFile)?;
-
-        for child in entry.children.iter() {
-            self.remove_entry_recursive(&child.handle)?;
+    /// Renames a single path entry, leaving descendants untouched.
+    pub fn rename_path(
+        &self,
+        from_parent: &Handle,
+        to_parent: &Handle,
+        to_path: &Path,
+        from_name: &file::Name,
+        to_name: &file::Name,
+    ) -> Result<Handle, vfs::Error> {
+        if from_parent == to_parent && from_name == to_name {
+            return self.handle_for_child(from_parent, from_name);
         }
 
-        self.map.remove(handle).ok_or(vfs::Error::StaleFile)?;
-        Ok(())
+        // make sure nobody would interact with previous object
+        let _ = self.remove_child(to_parent, to_name);
+        let new_handle = self.ensure_child_handle(to_path, to_parent, to_name)?;
+        match self.remove_child(from_parent, from_name) {
+            Ok(()) => Ok(new_handle),
+            Err(err) => {
+                let _ = self.remove_child(to_parent, to_name);
+                Err(err)
+            }
+        }
     }
 }
 
@@ -219,7 +222,7 @@ mod tests {
 
         assert_eq!(actual, expected);
 
-        for (handle, path) in exp {
+        for (handle, _path) in exp {
             let Some(entry) = map.map.get(handle) else {
                 panic!("missing handle {handle:?}");
             };
@@ -229,11 +232,9 @@ mod tests {
 
             let mut expected_children = exp
                 .iter()
-                .filter_map(|(child_handle, child_path)| {
-                    child_path
-                        .parent()
-                        .filter(|parent| *parent == path)
-                        .map(|_| child_handle.clone())
+                .filter_map(|(child_handle, _)| {
+                    let child_entry = map.map.get(child_handle)?;
+                    (child_entry.parent.as_ref() == Some(handle)).then(|| child_handle.clone())
                 })
                 .collect::<Vec<_>>();
             expected_children.sort();
@@ -358,11 +359,19 @@ mod tests {
         assert!(map.handle_for_path(Path::new("p/a")).is_err());
         assert!(map.path_for_handle(&h1).is_err());
         assert!(map.handle_for_path(Path::new("p/a/x")).is_err());
-        assert!(map.path_for_handle(&h1_child).is_err());
+        assert_eq!(
+            map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/a/x")
+        );
 
         assert_state(
             &map,
-            &[(map.root(), PathBuf::new()), (h_p, PathBuf::from("p")), (h2, PathBuf::from("p/b"))],
+            &[
+                (map.root(), PathBuf::new()),
+                (h_p, PathBuf::from("p")),
+                (h1_child, PathBuf::from("p/a/x")),
+                (h2, PathBuf::from("p/b")),
+            ],
         );
     }
 
@@ -390,10 +399,13 @@ mod tests {
         );
         assert_eq!(
             map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
-            Path::new("p/z/x")
+            Path::new("p/a/x")
         );
         assert!(map.path_for_handle(&h_z).is_err());
-        assert!(map.path_for_handle(&h_z_child).is_err());
+        assert_eq!(
+            map.path_for_handle(&h_z_child).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/z/q")
+        );
 
         assert_state(
             &map,
@@ -401,7 +413,8 @@ mod tests {
                 (map.root(), PathBuf::new()),
                 (h_p, PathBuf::from("p")),
                 (h1, PathBuf::from("p/z")),
-                (h1_child, PathBuf::from("p/z/x")),
+                (h1_child, PathBuf::from("p/a/x")),
+                (h_z_child, PathBuf::from("p/z/q")),
             ],
         );
     }
