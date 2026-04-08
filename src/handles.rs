@@ -181,7 +181,7 @@ impl HandleMap {
 /// all other names are accepted.
 pub fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
     match name.as_str() {
-        "." => Err(vfs::Error::InvalidArgument),
+        "" | "." => Err(vfs::Error::InvalidArgument),
         ".." => Err(vfs::Error::Exist),
         _ => Ok(()),
     }
@@ -201,63 +201,48 @@ mod tests {
         file::Name::new(name.to_string()).unwrap()
     }
 
-    fn child_lock(path: &str) -> Arc<RwLock<PathBuf>> {
-        Arc::new(RwLock::new(PathBuf::from(path)))
-    }
-
     /// Asserts that the tree stored in HandleMap matches the expected state.
     fn assert_state(map: &HandleMap, exp: &[(Handle, PathBuf)]) {
-        let mut actual: Vec<(Handle, PathBuf)> = map
+        let mut actual = map
             .map
             .iter()
             .map(|entry| {
                 let path = entry.value().path.try_read().unwrap().clone();
                 (entry.key().clone(), path)
             })
-            .collect();
-        actual.sort_by(|(_, left), (_, right)| left.cmp(right));
+            .collect::<Vec<(Handle, PathBuf)>>();
+
+        actual.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let mut expected = exp.to_vec();
-        expected.sort_by(|(_, left), (_, right)| left.cmp(right));
+        expected.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         assert_eq!(actual, expected);
-
-        for (handle, _path) in exp {
-            let Some(entry) = map.map.get(handle) else {
-                panic!("missing handle {handle:?}");
-            };
-            let mut children =
-                entry.children.iter().map(|child| child.value().handle.clone()).collect::<Vec<_>>();
-            children.sort();
-
-            let mut expected_children = exp
-                .iter()
-                .filter_map(|(child_handle, _)| {
-                    let child_entry = map.map.get(child_handle)?;
-                    (child_entry.parent.as_ref() == Some(handle)).then(|| child_handle.clone())
-                })
-                .collect::<Vec<_>>();
-            expected_children.sort();
-
-            assert_eq!(children, expected_children);
-        }
     }
 
     #[test]
     fn test_multiple_insertions_and_state() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("a")).is_err());
         assert!(map.path_for_handle(&Handle([9; 8])).is_err());
 
         let h_root = map.root();
-        let h_a = map.ensure_child_handle(&h_root, &child_name("a"), child_lock("a")).unwrap();
-        let h_b = map.ensure_child_handle(&h_a, &child_name("b"), child_lock("a/b")).unwrap();
-        let h_c = map.ensure_child_handle(&h_a, &child_name("c"), child_lock("a/c")).unwrap();
-        let h_d = map.ensure_child_handle(&h_a, &child_name("d"), child_lock("a/d")).unwrap();
-        let h_e = map.ensure_child_handle(&h_d, &child_name("e"), child_lock("a/d/e")).unwrap();
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        let name_c = child_name("c");
+        let name_d = child_name("d");
+        let name_e = child_name("e");
 
-        assert_eq!(map.handle_for_path(Path::new("a")).unwrap(), h_a);
+        assert!(map.handle_for_child(&h_root, &name_a).is_err());
+        let h_a = map.ensure_child_handle(Path::new(""), &h_root, &name_a).unwrap();
+        let h_b = map.ensure_child_handle(Path::new("a"), &h_a, &name_b).unwrap();
+        let h_b2 = map.ensure_child_handle(Path::new("a"), &h_a, &name_b).unwrap();
+        let h_c = map.ensure_child_handle(Path::new("a"), &h_a, &name_c).unwrap();
+        let h_d = map.ensure_child_handle(Path::new("a"), &h_a, &name_d).unwrap();
+        let h_e = map.ensure_child_handle(Path::new("a/d"), &h_d, &name_e).unwrap();
+
+        assert_eq!(h_b, h_b2);
+        assert_eq!(map.handle_for_child(&h_a, &name_d).unwrap(), h_d);
         assert_eq!(
             map.path_for_handle(&h_e).unwrap().try_read().unwrap().as_path(),
             Path::new("a/d/e")
@@ -280,20 +265,29 @@ mod tests {
     fn test_children_population() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("x/1")).is_err());
+        let name_x = child_name("x");
+        let name_1 = child_name("1");
+        let name_2 = child_name("2");
+        let name_3 = child_name("3");
 
-        let h_x = map.ensure_child_handle(&map.root(), &child_name("x"), child_lock("x")).unwrap();
-        let h1 = map.ensure_child_handle(&h_x, &child_name("1"), child_lock("x/1")).unwrap();
-        let h2 = map.ensure_child_handle(&h_x, &child_name("2"), child_lock("x/2")).unwrap();
-        let h3 = map.ensure_child_handle(&h_x, &child_name("3"), child_lock("x/3")).unwrap();
+        assert!(map.handle_for_child(&map.root(), &name_x).is_err());
+        let h_x = map.ensure_child_handle(Path::new(""), &map.root(), &name_x).unwrap();
+        let h1 = map.ensure_child_handle(Path::new("x"), &h_x, &name_1).unwrap();
+        let h2 = map.ensure_child_handle(Path::new("x"), &h_x, &name_2).unwrap();
+        let h3 = map.ensure_child_handle(Path::new("x"), &h_x, &name_3).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("x/2")).unwrap(), h2);
+        assert_eq!(map.handle_for_child(&h_x, &name_2).unwrap(), h2);
+        assert_eq!(map.handle_for_child(&h_x, &name_3).unwrap(), h3);
         assert_eq!(
             map.path_for_handle(&h3).unwrap().try_read().unwrap().as_path(),
             Path::new("x/3")
         );
 
-        let mut children = map.get_children(Path::new("x"));
+        let mut children = vec![
+            map.handle_for_child(&h_x, &name_1).unwrap(),
+            map.handle_for_child(&h_x, &name_2).unwrap(),
+            map.handle_for_child(&h_x, &name_3).unwrap(),
+        ];
         children.sort();
         let mut expected = vec![h1.clone(), h2.clone(), h3.clone()];
         expected.sort();
@@ -316,20 +310,21 @@ mod tests {
     fn test_existing_files_and_state() {
         let map = setup();
 
-        assert!(map.handle_for_path(Path::new("dir/a")).is_err());
+        let name_dir = child_name("dir");
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        assert!(map.handle_for_child(&map.root(), &name_dir).is_err());
+        let h_dir = map.ensure_child_handle(Path::new(""), &map.root(), &name_dir).unwrap();
+        let h1 = map.ensure_child_handle(Path::new("dir"), &h_dir, &name_a).unwrap();
+        let h2 = map.ensure_child_handle(Path::new("dir"), &h_dir, &name_b).unwrap();
 
-        let h_dir =
-            map.ensure_child_handle(&map.root(), &child_name("dir"), child_lock("dir")).unwrap();
-        let h1 = map.ensure_child_handle(&h_dir, &child_name("a"), child_lock("dir/a")).unwrap();
-        let h2 = map.ensure_child_handle(&h_dir, &child_name("b"), child_lock("dir/b")).unwrap();
-
-        assert_eq!(map.handle_for_path(Path::new("dir/a")).unwrap(), h1);
+        assert_eq!(map.handle_for_child(&h_dir, &name_a).unwrap(), h1);
         assert_eq!(
-            map.path_for_handle(&h2).unwrap().try_read().unwrap().as_path(),
+            map.path_for_child(&h_dir, &name_b).unwrap().try_read().unwrap().as_path(),
             Path::new("dir/b")
         );
 
-        let h1b = map.ensure_child_handle(&h_dir, &child_name("a"), child_lock("dir/a")).unwrap();
+        let h1b = map.ensure_child_handle(Path::new("dir"), &h_dir, &name_a).unwrap();
         assert_eq!(h1, h1b);
 
         assert_state(
@@ -344,21 +339,26 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_updates_all_tables() {
+    fn test_remove_child_updates_all_tables() {
         let map = setup();
 
-        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
-        let h1 = map.ensure_child_handle(&h_p, &child_name("a"), child_lock("p/a")).unwrap();
-        let h1_child = map.ensure_child_handle(&h1, &child_name("x"), child_lock("p/a/x")).unwrap();
-        let h2 = map.ensure_child_handle(&h_p, &child_name("b"), child_lock("p/b")).unwrap();
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        let name_x = child_name("x");
+        let h_p = map.ensure_child_handle(Path::new(""), &map.root(), &name_p).unwrap();
+        let h1 = map.ensure_child_handle(Path::new("p"), &h_p, &name_a).unwrap();
+        let h1_child = map.ensure_child_handle(Path::new("p/a"), &h1, &name_x).unwrap();
+        let h2 = map.ensure_child_handle(Path::new("p"), &h_p, &name_b).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1);
+        assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
 
-        map.remove_path(Path::new("p/a")).unwrap();
+        map.remove_child(&h_p, &name_a).unwrap();
 
-        assert!(map.handle_for_path(Path::new("p/a")).is_err());
+        assert!(map.handle_for_child(&h_p, &name_a).is_err());
+        assert!(map.path_for_child(&h_p, &name_a).is_err());
         assert!(map.path_for_handle(&h1).is_err());
-        assert!(map.handle_for_path(Path::new("p/a/x")).is_err());
+        assert!(map.path_for_child(&h1, &name_x).is_err());
         assert_eq!(
             map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
             Path::new("p/a/x")
@@ -376,31 +376,40 @@ mod tests {
     }
 
     #[test]
-    fn test_rename_updates_all_tables() {
+    fn test_rename_path_updates_single_element() {
         let map = setup();
 
-        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
-        let h1 = map.ensure_child_handle(&h_p, &child_name("a"), child_lock("p/a")).unwrap();
-        let h1_child = map.ensure_child_handle(&h1, &child_name("x"), child_lock("p/a/x")).unwrap();
-        let h_z = map.ensure_child_handle(&h_p, &child_name("z"), child_lock("p/z")).unwrap();
-        let h_z_child =
-            map.ensure_child_handle(&h_z, &child_name("q"), child_lock("p/z/q")).unwrap();
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_x = child_name("x");
+        let name_z = child_name("z");
+        let name_q = child_name("q");
+        let h_p = map.ensure_child_handle(Path::new(""), &map.root(), &name_p).unwrap();
+        let h1 = map.ensure_child_handle(Path::new("p"), &h_p, &name_a).unwrap();
+        let h1_child = map.ensure_child_handle(Path::new("p/a"), &h1, &name_x).unwrap();
+        let h_z = map.ensure_child_handle(Path::new("p"), &h_p, &name_z).unwrap();
+        let h_z_child = map.ensure_child_handle(Path::new("p/z"), &h_z, &name_q).unwrap();
 
-        assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1.clone());
+        assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
 
-        map.rename_path(Path::new("p/a"), Path::new("p/z"), h1.clone(), None).unwrap();
+        let renamed = map.rename_path(&h_p, &h_p, Path::new("p"), &name_a, &name_z).unwrap();
 
-        assert!(map.handle_for_path(Path::new("p/a")).is_err());
-        assert_eq!(map.handle_for_path(Path::new("p/z")).unwrap(), h1);
-        assert_eq!(map.handle_for_path(Path::new("p/z/x")).unwrap(), h1_child);
+        assert!(map.handle_for_child(&h_p, &name_a).is_err());
+        assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
         assert_eq!(
-            map.path_for_handle(&h1).unwrap().try_read().unwrap().as_path(),
+            map.path_for_child(&h_p, &name_z).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/z")
+        );
+        assert!(map.handle_for_child(&renamed, &name_x).is_err());
+        assert_eq!(
+            map.path_for_handle(&renamed).unwrap().try_read().unwrap().as_path(),
             Path::new("p/z")
         );
         assert_eq!(
             map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
             Path::new("p/a/x")
         );
+        assert!(map.path_for_handle(&h1).is_err());
         assert!(map.path_for_handle(&h_z).is_err());
         assert_eq!(
             map.path_for_handle(&h_z_child).unwrap().try_read().unwrap().as_path(),
@@ -412,7 +421,7 @@ mod tests {
             &[
                 (map.root(), PathBuf::new()),
                 (h_p, PathBuf::from("p")),
-                (h1, PathBuf::from("p/z")),
+                (renamed, PathBuf::from("p/z")),
                 (h1_child, PathBuf::from("p/a/x")),
                 (h_z_child, PathBuf::from("p/z/q")),
             ],
@@ -422,9 +431,9 @@ mod tests {
     #[test]
     fn test_parent_child_helpers() {
         let map = setup();
-        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
+        let h_p = map.ensure_child_handle(Path::new(""), &map.root(), &child_name("p")).unwrap();
         let name = child_name("a");
-        let h_a = map.ensure_child_handle(&h_p, &name, child_lock("p/a")).unwrap();
+        let h_a = map.ensure_child_handle(Path::new("p"), &h_p, &name).unwrap();
 
         assert_eq!(map.handle_for_child(&h_p, &name).unwrap(), h_a);
         assert_eq!(
