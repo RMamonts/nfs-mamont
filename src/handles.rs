@@ -15,6 +15,7 @@
 //!
 //! - paths are stored relative to the configured root;
 //! - `path_for_handle` and `path_for_child` return the stored path locks;
+//! - `path_to_handle` mirrors `handle_to_path` for direct path lookups;
 //! - `ensure_child_handle` creates a direct child entry if it does not exist;
 //! - `remove_child` and `rename_path` operate on a single element only;
 //! - descendants are left untouched and remain valid through their own handles.
@@ -116,7 +117,8 @@ impl HandleMap {
     ///
     /// The caller must already hold any required external write-locks for the
     /// parent path and the child path prefix. The provided `parent_path` is used
-    /// to construct the new relative path lock for the child.
+    /// to construct the new relative path lock for the child. Both handle and
+    /// path lookup tables are updated for the new entry.
     pub fn ensure_child_handle(
         &self,
         parent_path: &Path,
@@ -165,11 +167,13 @@ impl HandleMap {
         Ok(())
     }
 
+    /// Resolves a relative path through the direct path-to-handle index.
     fn get_handle_by_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
         let path = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
         Ok(path.value().clone())
     }
 
+    /// Resolves the parent handle for a relative path.
     fn get_parent_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
         if self.to_full_path(path) == self.root {
             return Ok(Self::root());
