@@ -1,14 +1,24 @@
 #![allow(dead_code)]
-//! HandleMap stores a tree of handle-indexed entries.
+//! HandleMap stores a bidirectional mapping between NFS file handles and
+//! relative filesystem paths, plus a direct directory → children index.
 //!
-//! The map is intentionally split into structure and locking concerns:
-//! - the internal methods do not acquire `RwLock` guards;
-//! - callers are expected to take any required locks before they call mutating
-//!   operations;
-//! - HandleMap only rewires handles, path locks, and parent → child links.
+//! # Concurrency model
 //!
-//! This keeps the data model simple enough for external synchronization while
-//! still providing cheap handle lookups and parent/child navigation.
+//! HandleMap is intentionally non-atomic across multi-structure updates.
+//! The internal operations only rewire handles, path locks, and parent →
+//! child links; they do not take `RwLock` guards themselves.
+//!
+//! Callers must acquire the relevant write-locks before invoking mutating
+//! operations. That external locking protocol provides the atomicity that this
+//! structure does not enforce on its own.
+//!
+//! # Semantics
+//!
+//! - paths are stored relative to the configured root;
+//! - `path_for_handle` and `path_for_child` return the stored path locks;
+//! - `ensure_child_handle` creates a direct child entry if it does not exist;
+//! - `remove_child` and `rename_path` operate on a single element only;
+//! - descendants are left untouched and remain valid through their own handles.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,7 +34,7 @@ use crate::vfs::file::Handle;
 const ROOT: u64 = 1;
 
 #[derive(Clone)]
-struct Dasc {
+struct Descendant {
     handle: Handle,
     lock: Arc<RwLock<PathBuf>>,
 }
@@ -32,7 +42,7 @@ struct Dasc {
 struct Entry {
     path: Arc<RwLock<PathBuf>>,
     handle: Handle,
-    children: DashMap<file::Name, Dasc>,
+    children: DashMap<file::Name, Descendant>,
 }
 
 impl Entry {
@@ -52,11 +62,7 @@ pub struct HandleMap {
 }
 
 impl HandleMap {
-    /// Creates a new HandleMap rooted at the given absolute path.
-    ///
-    /// The root directory is always represented by:
-    /// - handle = fixed constant (`ROOT`)
-    /// - relative path = empty `PathBuf`
+    /// Creates a new handle map rooted at the given absolute path.
     pub fn new(root: PathBuf) -> Self {
         let root_handle = file::Handle(ROOT.to_be_bytes());
         let root_relative = PathBuf::new();
@@ -73,7 +79,7 @@ impl HandleMap {
         file::Handle(ROOT.to_be_bytes())
     }
 
-    /// Returns the `RwLock` holding the relative path for a handle.
+    /// Returns the stored path lock for a handle.
     pub fn path_for_handle(
         &self,
         handle: &file::Handle,
@@ -81,7 +87,7 @@ impl HandleMap {
         Ok(self.map.get(handle).ok_or(vfs::Error::StaleFile)?.value().path.clone())
     }
 
-    /// Returns the direct child lock for a parent directory and entry name.
+    /// Returns the stored path lock for a direct child entry.
     pub fn path_for_child(
         &self,
         parent: &file::Handle,
@@ -92,7 +98,7 @@ impl HandleMap {
         Ok(child.value().lock.clone())
     }
 
-    /// Returns the direct child handle for a parent handle and entry name.
+    /// Returns the direct child handle for a parent and entry name.
     pub fn handle_for_child(
         &self,
         parent: &file::Handle,
@@ -103,9 +109,11 @@ impl HandleMap {
         Ok(child.value().handle.clone())
     }
 
-    /// Returns the direct child handle or creates a new entry for it.
+    /// Returns the direct child handle or creates a new direct child entry.
     ///
-    /// The provided path lock is stored in the new entry as-is.
+    /// The caller must already hold any required external write-locks for the
+    /// parent path and the child path prefix. The provided `parent_path` is used
+    /// to construct the new relative path lock for the child.
     pub fn ensure_child_handle(
         &self,
         parent_path: &Path,
@@ -127,7 +135,7 @@ impl HandleMap {
         self.map.insert(handle.clone(), entry);
 
         let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
-        parent_entry.children.insert(name.clone(), Dasc { handle: handle.clone(), lock });
+        parent_entry.children.insert(name.clone(), Descendant { handle: handle.clone(), lock });
 
         Ok(handle)
     }
@@ -141,6 +149,7 @@ impl HandleMap {
         }
     }
 
+    /// Removes one direct child entry and drops its handle from the map.
     fn remove_child(&self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
         let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
@@ -148,7 +157,11 @@ impl HandleMap {
         Ok(())
     }
 
-    /// Renames a single path entry, leaving descendants untouched.
+    /// Renames a single entry and leaves descendants untouched.
+    ///
+    /// The destination entry is created first, then the source entry is removed.
+    /// Callers must hold the relevant external write-locks before calling this
+    /// method.
     pub fn rename_path(
         &self,
         from_parent: &Handle,
