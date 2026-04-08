@@ -1,51 +1,15 @@
 #![allow(dead_code)]
-//! HandleMap provides a bidirectional mapping between NFS file handles and
-//! relative filesystem paths, along with a directory → children index.
+//! HandleMap stores a tree of handle-indexed entries.
 //!
-//! # Concurrency model
+//! The map is intentionally split into structure and locking concerns:
+//! - the internal methods do not acquire `RwLock` guards;
+//! - callers are expected to take any required locks before they call mutating
+//!   operations;
+//! - HandleMap only rewires handles, path locks, and parent → child links.
 //!
-//! HandleMap is **not atomic** with respect to multi-table updates.
-//! Operations such as creating, removing, or renaming a path update several
-//! internal maps (`handle_to_path`, `path_to_handle`, `directory_to_children`),
-//! but these updates are **not performed atomically as a single transaction**.
-//!
-//! Instead, the caller (typically `VfsTask`) **must acquire the appropriate
-//! write-locks** on the affected paths *before* invoking any mutating operation.
-//! This external locking protocol ensures logical atomicity and prevents
-//! interleaving of structural modifications.
-//!
-//! # Locking expectations
-//!
-//! - Callers **must hold a write-lock** on the affected path(s) before calling:
-//!   - [`HandleMap::create_handle`]
-//!   - [`HandleMap::remove_path`]
-//!   - [`HandleMap::rename_path`]
-//!   - any operation that modifies directory membership
-//!
-//! HandleMap itself does not enforce locking; it assumes the caller has already
-//! serialized access at a higher layer.
-//!
-//! # Non-recursive semantics
-//!
-//! Path removal and renaming are **non-recursive**.
-//! Only the specific path entry is updated; descendants are *not* rewritten.
-//!
-//! This matches NFS semantics: child handles remain valid, and their paths will
-//! be lazily corrected when accessed (e.g., via LOOKUP or READDIR).
-//!
-//! # Directory children
-//!
-//! `directory_to_children` tracks only **direct** children.
-//! It is updated when handles are created, removed, or renamed, but does not
-//! attempt to maintain a full recursive tree.
-//!
-//! # Full path resolution
-//!
-//! HandleMap stores only **relative** paths.
-//! Conversion to absolute filesystem paths is performed via [`HandleMap::`to_full_path`]
-//! using the configured root.
+//! This keeps the data model simple enough for external synchronization while
+//! still providing cheap handle lookups and parent/child navigation.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -59,15 +23,31 @@ use crate::vfs::file::Handle;
 
 const ROOT: u64 = 1;
 
+#[derive(Clone)]
+struct Dasc {
+    handle: Handle,
+    lock: Arc<RwLock<PathBuf>>,
+}
+
+struct Entry {
+    path: Arc<RwLock<PathBuf>>,
+    handle: Handle,
+    children: DashMap<file::Name, Dasc>,
+}
+
+impl Entry {
+    fn new(handle: Handle, path: Arc<RwLock<PathBuf>>) -> Self {
+        Self { path, handle, children: DashMap::new() }
+    }
+}
+
 /// A bidirectional mapping between NFS file handles and relative filesystem
 /// paths, plus a directory → children index.
 ///
 /// See module-level documentation for concurrency guarantees and expectations.
 pub struct HandleMap {
     root: PathBuf,
-    handle_to_path: DashMap<Handle, Arc<RwLock<PathBuf>>>,
-    path_to_handle: DashMap<PathBuf, Handle>,
-    directory_to_children: DashMap<PathBuf, BTreeSet<Handle>>,
+    map: Arc<DashMap<Handle, Entry>>,
     next_id: AtomicU64,
 }
 
@@ -80,23 +60,12 @@ impl HandleMap {
     pub fn new(root: PathBuf) -> Self {
         let root_handle = file::Handle(ROOT.to_be_bytes());
         let root_relative = PathBuf::new();
+        let root_lock = Arc::new(RwLock::new(root_relative.clone()));
 
-        let handle_to_path = DashMap::new();
-        handle_to_path.insert(root_handle.clone(), Arc::new(RwLock::new(root_relative.clone())));
+        let map = DashMap::new();
+        map.insert(root_handle.clone(), Entry::new(root_handle.clone(), root_lock));
 
-        let path_to_handle = DashMap::new();
-        path_to_handle.insert(root_relative.clone(), root_handle);
-
-        let directory_to_children = DashMap::new();
-        directory_to_children.insert(root_relative, BTreeSet::new());
-
-        Self {
-            root,
-            handle_to_path,
-            path_to_handle,
-            directory_to_children,
-            next_id: AtomicU64::new(ROOT + 1),
-        }
+        Self { root, map: Arc::new(map), next_id: AtomicU64::new(ROOT + 1) }
     }
 
     /// Returns the fixed handle representing the root directory.
@@ -104,113 +73,73 @@ impl HandleMap {
         file::Handle(ROOT.to_be_bytes())
     }
 
-    /// Resolves a handle into its associated relative path.
-    ///
-    /// Returns `StaleFile` if the handle is unknown.
-    ///
-    /// The returned path is wrapped in an `Arc<RwLock<_>>` so that callers
-    /// (typically VfsTask) can take read/write locks on the path before
-    /// performing operations that depend on path stability.
+    /// Returns the `RwLock` holding the relative path for a handle.
     pub fn path_for_handle(
         &self,
         handle: &file::Handle,
     ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
-        Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.value().clone())
+        Ok(self.map.get(handle).ok_or(vfs::Error::StaleFile)?.value().path.clone())
     }
 
-    /// Resolves a relative path into its associated handle.
-    ///
-    /// Returns `StaleFile` if the path is unknown.
-    pub fn handle_for_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        let entry = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
-        Ok(entry.value().clone())
+    /// Returns the direct child lock for a parent directory and entry name.
+    pub fn path_for_child(
+        &self,
+        parent: &file::Handle,
+        name: &file::Name,
+    ) -> Result<Arc<RwLock<PathBuf>>, vfs::Error> {
+        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let child = parent_entry.children.get(name).ok_or(vfs::Error::StaleFile)?;
+        Ok(child.value().lock.clone())
     }
 
-    /// Creates a handle for the given path if it does not already exist.
+    /// Returns the direct child handle for a parent handle and entry name.
+    pub fn handle_for_child(
+        &self,
+        parent: &file::Handle,
+        name: &file::Name,
+    ) -> Result<Handle, vfs::Error> {
+        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let child = parent_entry.children.get(name).ok_or(vfs::Error::StaleFile)?;
+        Ok(child.value().handle.clone())
+    }
+
+    /// Returns the direct child handle or creates a new entry for it.
     ///
-    /// # Locking
-    /// The caller **must hold a write-lock** on the parent directory before
-    /// calling this function. HandleMap does not enforce atomicity.
-    pub fn create_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        if let Some(prev) = self.path_to_handle.get(path) {
-            return Ok(prev.value().clone());
+    /// The provided path lock is stored in the new entry as-is.
+    pub fn ensure_child_handle(
+        &self,
+        parent_path: &Path,
+        parent: &Handle,
+        name: &file::Name,
+    ) -> Result<Handle, vfs::Error> {
+        if let Ok(existing) = self.handle_for_child(parent, name) {
+            return Ok(existing);
         }
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
+        let mut new_path = parent_path.to_owned();
+        new_path.push(name.as_str());
+        let lock = Arc::new(RwLock::new(new_path.to_path_buf()));
 
-        let path_lock = Arc::new(RwLock::new(path.to_path_buf()));
-        self.handle_to_path.insert(handle.clone(), path_lock);
-        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
+        let entry = Entry::new(handle.clone(), lock.clone());
 
-        self.directory_to_children.entry(path.to_path_buf()).or_default();
+        self.map.insert(handle.clone(), entry);
 
-        self.add_child_to_directory(path.parent().ok_or(vfs::Error::ServerFault)?, handle.clone());
+        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
+        parent_entry.children.insert(name.clone(), Dasc { handle: handle.clone(), lock });
 
         Ok(handle)
     }
 
-    /// Removes a path and its associated handle.
-    ///
-    /// # Non-recursive
-    /// Only the specific path is removed. Descendants are not touched.
-    ///
-    /// # Locking
-    /// Caller must hold a write-lock on the path and its parent.
-    pub fn remove_path(&self, path: &Path) -> Result<(), vfs::Error> {
-        let (_, handle) = self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
+    /// Removes a direct child entry from a parent directory.
+    pub fn remove_child(&self, parent: &file::Handle, name: &file::Name) -> Result<(), vfs::Error> {
+        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let child = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?.1;
 
-        if let Some(parent) = path.parent() {
-            self.remove_child_from_directory(parent, &handle);
-        }
-
-        if self.handle_to_path.remove(&handle).is_none() {
+        if self.map.remove(&child.handle).is_none() {
             return Err(vfs::Error::StaleFile);
         }
-
-        self.directory_to_children.remove(path);
-        Ok(())
-    }
-
-    /// Renames a path from `from` to `to`, updating all internal tables.
-    ///
-    /// # Non-recursive
-    /// Only the specific path is updated. Descendants are not rewritten.
-    ///
-    /// # Locking
-    /// Caller must hold write-locks on both `from` and `to` paths in the correct
-    /// order (handled by VfsTask).
-    pub fn rename_path(
-        &self,
-        from: &Path,
-        to: &Path,
-        from_handle: Handle,
-        to_handle: Option<Handle>,
-    ) -> Result<(), vfs::Error> {
-        let from_parent = from.parent().ok_or(vfs::Error::ServerFault)?;
-        let to_parent = to.parent().ok_or(vfs::Error::ServerFault)?;
-
-        // If destination exists, remove it first.
-        if let Some(handle) = to_handle {
-            // ignore if entry has already been deleted
-            self.remove_child_from_directory(to_parent, &handle);
-            self.path_to_handle.remove(to);
-            self.handle_to_path.remove(&handle);
-            self.directory_to_children.remove(to);
-        }
-
-        self.remove_child_from_directory(from_parent, &from_handle);
-        self.add_child_to_directory(to_parent, from_handle.clone());
-
-        self.path_to_handle.remove(from);
-
-        self.path_to_handle.insert(to.to_path_buf(), from_handle.clone());
-        self.handle_to_path.alter(&from_handle, |_, _| Arc::new(RwLock::new(to.to_path_buf())));
-
-        if let Some((_, children)) = self.directory_to_children.remove(from) {
-            self.directory_to_children.insert(to.to_path_buf(), children);
-        }
-
         Ok(())
     }
 
@@ -223,36 +152,22 @@ impl HandleMap {
         }
     }
 
-    /// Adds a child handle to a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
-    fn add_child_to_directory(&self, directory: &Path, handle: Handle) {
-        match self.directory_to_children.get_mut(directory) {
-            Some(mut children) => {
-                children.insert(handle);
-            }
-            None => {
-                let mut children = BTreeSet::new();
-                children.insert(handle);
-                self.directory_to_children.insert(directory.to_path_buf(), children);
-            }
-        }
+    fn remove_child_recursive(&self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
+        let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
+
+        self.remove_entry_recursive(&entry.handle)
     }
 
-    /// Removes a child handle from a directory entry.
-    ///
-    /// Caller must hold the appropriate write-lock.
-    fn remove_child_from_directory(&self, directory: &Path, handle: &Handle) {
-        if let Some(mut children) = self.directory_to_children.get_mut(directory) {
-            children.remove(handle);
-        }
-    }
+    fn remove_entry_recursive(&self, handle: &Handle) -> Result<(), vfs::Error> {
+        let entry = self.map.get(handle).ok_or(vfs::Error::StaleFile)?;
 
-    fn get_children(&self, path: &Path) -> Vec<Handle> {
-        match self.directory_to_children.get(path) {
-            Some(children) => children.iter().cloned().collect(),
-            None => Vec::new(),
+        for child in entry.children.iter() {
+            self.remove_entry_recursive(&child.handle)?;
         }
+
+        self.map.remove(handle).ok_or(vfs::Error::StaleFile)?;
+        Ok(())
     }
 }
 
@@ -279,40 +194,51 @@ mod tests {
         HandleMap::new(PathBuf::from("/tmp"))
     }
 
-    /// Asserts that all internal tables of HandleMap match the expected state.
-    ///
-    /// `expected_paths` is a list of (path, handle) pairs that must exist.
-    /// This function checks:
-    /// - path_to_handle contains exactly these entries
-    /// - handle_to_path contains exactly these entries
-    /// - directory_to_children contains correct children sets
+    fn child_name(name: &str) -> file::Name {
+        file::Name::new(name.to_string()).unwrap()
+    }
+
+    fn child_lock(path: &str) -> Arc<RwLock<PathBuf>> {
+        Arc::new(RwLock::new(PathBuf::from(path)))
+    }
+
+    /// Asserts that the tree stored in HandleMap matches the expected state.
     fn assert_state(map: &HandleMap, exp: &[(Handle, PathBuf)]) {
-        let mut paths: Vec<(Handle, PathBuf)> =
-            map.path_to_handle.iter().map(|e| (e.value().clone(), e.key().clone())).collect();
-        paths.sort_by(|(_, h1), (_, h2)| h1.cmp(h2));
-
-        let mut exp_sorted = exp.to_vec();
-        exp_sorted.sort_by(|(_, h1), (_, h2)| h1.cmp(h2));
-
-        assert_eq!(paths, exp_sorted);
-
-        let mut handles: Vec<(Handle, PathBuf)> = map
-            .handle_to_path
+        let mut actual: Vec<(Handle, PathBuf)> = map
+            .map
             .iter()
-            .map(|ent| {
-                let path = ent.value().try_read().unwrap().clone();
-                (ent.key().clone(), path)
+            .map(|entry| {
+                let path = entry.value().path.try_read().unwrap().clone();
+                (entry.key().clone(), path)
             })
             .collect();
-        handles.sort_by(|(_, h1), (_, h2)| h1.cmp(h2));
+        actual.sort_by(|(_, left), (_, right)| left.cmp(right));
 
-        assert_eq!(handles, exp_sorted);
+        let mut expected = exp.to_vec();
+        expected.sort_by(|(_, left), (_, right)| left.cmp(right));
+
+        assert_eq!(actual, expected);
 
         for (handle, path) in exp {
-            if let Some(parent) = path.parent() {
-                let children = map.get_children(parent);
-                assert!(children.contains(handle));
-            }
+            let Some(entry) = map.map.get(handle) else {
+                panic!("missing handle {handle:?}");
+            };
+            let mut children =
+                entry.children.iter().map(|child| child.value().handle.clone()).collect::<Vec<_>>();
+            children.sort();
+
+            let mut expected_children = exp
+                .iter()
+                .filter_map(|(child_handle, child_path)| {
+                    child_path
+                        .parent()
+                        .filter(|parent| *parent == path)
+                        .map(|_| child_handle.clone())
+                })
+                .collect::<Vec<_>>();
+            expected_children.sort();
+
+            assert_eq!(children, expected_children);
         }
     }
 
@@ -324,11 +250,11 @@ mod tests {
         assert!(map.path_for_handle(&Handle([9; 8])).is_err());
 
         let h_root = map.root();
-        let h_a = map.create_handle(Path::new("a")).unwrap();
-        let h_b = map.create_handle(Path::new("a/b")).unwrap();
-        let h_c = map.create_handle(Path::new("a/c")).unwrap();
-        let h_d = map.create_handle(Path::new("a/d")).unwrap();
-        let h_e = map.create_handle(Path::new("a/d/e")).unwrap();
+        let h_a = map.ensure_child_handle(&h_root, &child_name("a"), child_lock("a")).unwrap();
+        let h_b = map.ensure_child_handle(&h_a, &child_name("b"), child_lock("a/b")).unwrap();
+        let h_c = map.ensure_child_handle(&h_a, &child_name("c"), child_lock("a/c")).unwrap();
+        let h_d = map.ensure_child_handle(&h_a, &child_name("d"), child_lock("a/d")).unwrap();
+        let h_e = map.ensure_child_handle(&h_d, &child_name("e"), child_lock("a/d/e")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("a")).unwrap(), h_a);
         assert_eq!(
@@ -355,10 +281,10 @@ mod tests {
 
         assert!(map.handle_for_path(Path::new("x/1")).is_err());
 
-        let h_x = map.create_handle(Path::new("x")).unwrap();
-        let h1 = map.create_handle(Path::new("x/1")).unwrap();
-        let h2 = map.create_handle(Path::new("x/2")).unwrap();
-        let h3 = map.create_handle(Path::new("x/3")).unwrap();
+        let h_x = map.ensure_child_handle(&map.root(), &child_name("x"), child_lock("x")).unwrap();
+        let h1 = map.ensure_child_handle(&h_x, &child_name("1"), child_lock("x/1")).unwrap();
+        let h2 = map.ensure_child_handle(&h_x, &child_name("2"), child_lock("x/2")).unwrap();
+        let h3 = map.ensure_child_handle(&h_x, &child_name("3"), child_lock("x/3")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("x/2")).unwrap(), h2);
         assert_eq!(
@@ -391,9 +317,10 @@ mod tests {
 
         assert!(map.handle_for_path(Path::new("dir/a")).is_err());
 
-        let h_dir = map.create_handle(Path::new("dir")).unwrap();
-        let h1 = map.create_handle(Path::new("dir/a")).unwrap();
-        let h2 = map.create_handle(Path::new("dir/b")).unwrap();
+        let h_dir =
+            map.ensure_child_handle(&map.root(), &child_name("dir"), child_lock("dir")).unwrap();
+        let h1 = map.ensure_child_handle(&h_dir, &child_name("a"), child_lock("dir/a")).unwrap();
+        let h2 = map.ensure_child_handle(&h_dir, &child_name("b"), child_lock("dir/b")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("dir/a")).unwrap(), h1);
         assert_eq!(
@@ -401,7 +328,7 @@ mod tests {
             Path::new("dir/b")
         );
 
-        let h1b = map.create_handle(Path::new("dir/a")).unwrap();
+        let h1b = map.ensure_child_handle(&h_dir, &child_name("a"), child_lock("dir/a")).unwrap();
         assert_eq!(h1, h1b);
 
         assert_state(
@@ -419,9 +346,10 @@ mod tests {
     fn test_remove_updates_all_tables() {
         let map = setup();
 
-        let h_p = map.create_handle(Path::new("p")).unwrap();
-        let h1 = map.create_handle(Path::new("p/a")).unwrap();
-        let h2 = map.create_handle(Path::new("p/b")).unwrap();
+        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
+        let h1 = map.ensure_child_handle(&h_p, &child_name("a"), child_lock("p/a")).unwrap();
+        let h1_child = map.ensure_child_handle(&h1, &child_name("x"), child_lock("p/a/x")).unwrap();
+        let h2 = map.ensure_child_handle(&h_p, &child_name("b"), child_lock("p/b")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1);
 
@@ -429,6 +357,8 @@ mod tests {
 
         assert!(map.handle_for_path(Path::new("p/a")).is_err());
         assert!(map.path_for_handle(&h1).is_err());
+        assert!(map.handle_for_path(Path::new("p/a/x")).is_err());
+        assert!(map.path_for_handle(&h1_child).is_err());
 
         assert_state(
             &map,
@@ -440,8 +370,12 @@ mod tests {
     fn test_rename_updates_all_tables() {
         let map = setup();
 
-        let h_p = map.create_handle(Path::new("p")).unwrap();
-        let h1 = map.create_handle(Path::new("p/a")).unwrap();
+        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
+        let h1 = map.ensure_child_handle(&h_p, &child_name("a"), child_lock("p/a")).unwrap();
+        let h1_child = map.ensure_child_handle(&h1, &child_name("x"), child_lock("p/a/x")).unwrap();
+        let h_z = map.ensure_child_handle(&h_p, &child_name("z"), child_lock("p/z")).unwrap();
+        let h_z_child =
+            map.ensure_child_handle(&h_z, &child_name("q"), child_lock("p/z/q")).unwrap();
 
         assert_eq!(map.handle_for_path(Path::new("p/a")).unwrap(), h1.clone());
 
@@ -449,10 +383,45 @@ mod tests {
 
         assert!(map.handle_for_path(Path::new("p/a")).is_err());
         assert_eq!(map.handle_for_path(Path::new("p/z")).unwrap(), h1);
+        assert_eq!(map.handle_for_path(Path::new("p/z/x")).unwrap(), h1_child);
+        assert_eq!(
+            map.path_for_handle(&h1).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/z")
+        );
+        assert_eq!(
+            map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/z/x")
+        );
+        assert!(map.path_for_handle(&h_z).is_err());
+        assert!(map.path_for_handle(&h_z_child).is_err());
 
         assert_state(
             &map,
-            &[(map.root(), PathBuf::new()), (h_p, PathBuf::from("p")), (h1, PathBuf::from("p/z"))],
+            &[
+                (map.root(), PathBuf::new()),
+                (h_p, PathBuf::from("p")),
+                (h1, PathBuf::from("p/z")),
+                (h1_child, PathBuf::from("p/z/x")),
+            ],
         );
+    }
+
+    #[test]
+    fn test_parent_child_helpers() {
+        let map = setup();
+        let h_p = map.ensure_child_handle(&map.root(), &child_name("p"), child_lock("p")).unwrap();
+        let name = child_name("a");
+        let h_a = map.ensure_child_handle(&h_p, &name, child_lock("p/a")).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name).unwrap(), h_a);
+        assert_eq!(
+            map.path_for_child(&h_p, &name).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/a")
+        );
+
+        map.remove_child(&h_p, &name).unwrap();
+
+        assert!(map.handle_for_child(&h_p, &name).is_err());
+        assert!(map.path_for_handle(&h_a).is_err());
     }
 }
