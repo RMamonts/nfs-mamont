@@ -160,7 +160,8 @@ impl HandleMap {
         let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
         self.handle_to_path.remove(&entry.handle).ok_or(vfs::Error::StaleFile)?;
-        self.path_to_handle.remove(parent_path).ok_or(vfs::Error::StaleFile)?;
+        let child_path = parent_path.join(name.as_str());
+        self.path_to_handle.remove(&child_path).ok_or(vfs::Error::StaleFile)?;
         Ok(())
     }
 
@@ -257,6 +258,21 @@ mod tests {
         expected.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         assert_eq!(actual, expected);
+
+        let mut actual_paths = map
+            .path_to_handle
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect::<Vec<(PathBuf, Handle)>>();
+        actual_paths.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        let mut expected_paths = exp
+            .iter()
+            .map(|(handle, path, _)| (path.clone(), handle.clone()))
+            .collect::<Vec<(PathBuf, Handle)>>();
+        expected_paths.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        assert_eq!(actual_paths, expected_paths);
 
         for (handle, _, children) in exp {
             let Some(entry) = map.handle_to_path.get(handle) else {
@@ -410,7 +426,7 @@ mod tests {
 
         assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
 
-        map.remove_child(&h_p, &name_a).unwrap();
+        map.remove_child(Path::new("p"), &h_p, &name_a).unwrap();
 
         assert!(map.handle_for_child(&h_p, &name_a).is_err());
         assert!(map.path_for_child(&h_p, &name_a).is_err());
@@ -449,7 +465,8 @@ mod tests {
 
         assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
 
-        let renamed = map.rename_path(&h_p, &h_p, Path::new("p"), &name_a, &name_z).unwrap();
+        let renamed =
+            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
 
         assert!(map.handle_for_child(&h_p, &name_a).is_err());
         assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
@@ -496,7 +513,8 @@ mod tests {
         let h_a = map.ensure_child_handle(Path::new("p"), &h_p, &name_a).unwrap();
         let h_z = map.ensure_child_handle(Path::new("p"), &h_p, &name_z).unwrap();
 
-        let renamed = map.rename_path(&h_p, &h_p, Path::new("p"), &name_a, &name_z).unwrap();
+        let renamed =
+            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
 
         assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
 
@@ -508,7 +526,8 @@ mod tests {
             Path::new("p/z")
         );
 
-        let renamed2 = map.rename_path(&h_p, &h_p, Path::new("p"), &name_z, &name_z).unwrap();
+        let renamed2 =
+            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_z, &name_z).unwrap();
 
         assert_eq!(renamed, renamed2);
 
@@ -536,7 +555,7 @@ mod tests {
             Path::new("p/a")
         );
 
-        map.remove_child(&h_p, &name).unwrap();
+        map.remove_child(Path::new("p"), &h_p, &name).unwrap();
 
         assert!(map.handle_for_child(&h_p, &name).is_err());
         assert!(map.path_for_handle(&h_a).is_err());
