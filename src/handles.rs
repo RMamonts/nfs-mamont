@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! HandleMap stores a bidirectional mapping between NFS file handles and
 //! relative filesystem paths, plus a direct directory → children index.
 //!
@@ -142,15 +141,12 @@ impl HandleMap {
 
     /// Converts a relative path into an absolute path under the configured root.
     fn to_full_path(&self, relative: &Path) -> PathBuf {
-        if relative.as_os_str().is_empty() {
-            self.root.clone()
-        } else {
-            self.root.join(relative)
-        }
+        self.root.join(relative)
     }
 
     /// Removes one direct child entry and drops its handle from the map.
     fn remove_child(&self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
+        // root cannot be removed since it has no parent
         let parent_entry = self.map.get(parent).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
         self.map.remove(&entry.handle).ok_or(vfs::Error::StaleFile)?;
@@ -170,6 +166,7 @@ impl HandleMap {
         from_name: &file::Name,
         to_name: &file::Name,
     ) -> Result<Handle, vfs::Error> {
+        // root cannot be renamed since it has no parent
         if from_parent == to_parent && from_name == to_name {
             return self.handle_for_child(from_parent, from_name);
         }
@@ -215,7 +212,7 @@ mod tests {
     }
 
     /// Asserts that the tree stored in HandleMap matches the expected state.
-    fn assert_state(map: &HandleMap, exp: &[(Handle, PathBuf)]) {
+    fn assert_state(map: &HandleMap, exp: &[(Handle, PathBuf, &[Handle])]) {
         let mut actual = map
             .map
             .iter()
@@ -227,10 +224,31 @@ mod tests {
 
         actual.sort_by(|(left, _), (right, _)| left.cmp(right));
 
-        let mut expected = exp.to_vec();
+        let mut expected = exp
+            .iter()
+            .map(|(handle, path, _)| (handle.clone(), path.clone()))
+            .collect::<Vec<(Handle, PathBuf)>>();
         expected.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         assert_eq!(actual, expected);
+
+        for (handle, _, children) in exp {
+            let Some(entry) = map.map.get(handle) else {
+                panic!("missing handle {handle:?}");
+            };
+
+            let mut actual_children = entry
+                .children
+                .iter()
+                .map(|child| child.value().handle.clone())
+                .collect::<Vec<Handle>>();
+            actual_children.sort();
+
+            let mut expected_children = children.to_vec();
+            expected_children.sort();
+
+            assert_eq!(actual_children, expected_children);
+        }
     }
 
     #[test]
@@ -264,12 +282,12 @@ mod tests {
         assert_state(
             &map,
             &[
-                (h_root, PathBuf::new()),
-                (h_a, PathBuf::from("a")),
-                (h_b, PathBuf::from("a/b")),
-                (h_c, PathBuf::from("a/c")),
-                (h_d, PathBuf::from("a/d")),
-                (h_e, PathBuf::from("a/d/e")),
+                (h_root, PathBuf::new(), &[h_a.clone()]),
+                (h_a, PathBuf::from("a"), &[h_b.clone(), h_c.clone(), h_d.clone()]),
+                (h_b, PathBuf::from("a/b"), &[]),
+                (h_c, PathBuf::from("a/c"), &[]),
+                (h_d, PathBuf::from("a/d"), &[h_e.clone()]),
+                (h_e, PathBuf::from("a/d/e"), &[]),
             ],
         );
     }
@@ -310,11 +328,11 @@ mod tests {
         assert_state(
             &map,
             &[
-                (map.root(), PathBuf::new()),
-                (h_x, PathBuf::from("x")),
-                (h1, PathBuf::from("x/1")),
-                (h2, PathBuf::from("x/2")),
-                (h3, PathBuf::from("x/3")),
+                (map.root(), PathBuf::new(), &[h_x.clone()]),
+                (h_x.clone(), PathBuf::from("x"), &[h1.clone(), h2.clone(), h3.clone()]),
+                (h1, PathBuf::from("x/1"), &[]),
+                (h2, PathBuf::from("x/2"), &[]),
+                (h3, PathBuf::from("x/3"), &[]),
             ],
         );
     }
@@ -343,10 +361,10 @@ mod tests {
         assert_state(
             &map,
             &[
-                (map.root(), PathBuf::new()),
-                (h_dir, PathBuf::from("dir")),
-                (h1, PathBuf::from("dir/a")),
-                (h2, PathBuf::from("dir/b")),
+                (map.root(), PathBuf::new(), &[h_dir.clone()]),
+                (h_dir.clone(), PathBuf::from("dir"), &[h1.clone(), h2.clone()]),
+                (h1, PathBuf::from("dir/a"), &[]),
+                (h2, PathBuf::from("dir/b"), &[]),
             ],
         );
     }
@@ -380,10 +398,10 @@ mod tests {
         assert_state(
             &map,
             &[
-                (map.root(), PathBuf::new()),
-                (h_p, PathBuf::from("p")),
-                (h1_child, PathBuf::from("p/a/x")),
-                (h2, PathBuf::from("p/b")),
+                (map.root(), PathBuf::new(), &[h_p.clone()]),
+                (h_p.clone(), PathBuf::from("p"), &[h2.clone()]),
+                (h1_child, PathBuf::from("p/a/x"), &[]),
+                (h2, PathBuf::from("p/b"), &[]),
             ],
         );
     }
@@ -432,11 +450,48 @@ mod tests {
         assert_state(
             &map,
             &[
-                (map.root(), PathBuf::new()),
-                (h_p, PathBuf::from("p")),
-                (renamed, PathBuf::from("p/z")),
-                (h1_child, PathBuf::from("p/a/x")),
-                (h_z_child, PathBuf::from("p/z/q")),
+                (map.root(), PathBuf::new(), &[h_p.clone()]),
+                (h_p.clone(), PathBuf::from("p"), &[renamed.clone()]),
+                (renamed, PathBuf::from("p/z"), &[]),
+                (h1_child, PathBuf::from("p/a/x"), &[]),
+                (h_z_child, PathBuf::from("p/z/q"), &[]),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_rename_path_replaces_existing_destination() {
+        let map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_z = child_name("z");
+        let h_p = map.ensure_child_handle(Path::new(""), &map.root(), &name_p).unwrap();
+        let h_a = map.ensure_child_handle(Path::new("p"), &h_p, &name_a).unwrap();
+        let h_z = map.ensure_child_handle(Path::new("p"), &h_p, &name_z).unwrap();
+
+        let renamed = map.rename_path(&h_p, &h_p, Path::new("p"), &name_a, &name_z).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
+
+        assert!(map.handle_for_child(&h_p, &name_a).is_err());
+        assert!(map.path_for_handle(&h_a).is_err());
+        assert!(map.path_for_handle(&h_z).is_err());
+        assert_eq!(
+            map.path_for_handle(&renamed).unwrap().try_read().unwrap().as_path(),
+            Path::new("p/z")
+        );
+
+        let renamed2 = map.rename_path(&h_p, &h_p, Path::new("p"), &name_z, &name_z).unwrap();
+
+        assert_eq!(renamed, renamed2);
+
+        assert_state(
+            &map,
+            &[
+                (map.root(), PathBuf::new(), &[h_p.clone()]),
+                (h_p.clone(), PathBuf::from("p"), &[renamed.clone()]),
+                (renamed, PathBuf::from("p/z"), &[]),
             ],
         );
     }
