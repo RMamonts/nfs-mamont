@@ -3,6 +3,7 @@
 mod allocator;
 pub mod consts;
 mod context;
+#[allow(dead_code)]
 mod handles;
 mod mount;
 mod parser;
