@@ -162,9 +162,10 @@ impl HandleMap {
         let mut new_path = parent_path.to_owned();
         new_path.push(name.as_str());
         let lock = Arc::new(RwLock::new(new_path.to_path_buf()));
-
         let entry = Entry::new(handle.clone(), lock.clone());
 
+        // atomicity updating both tables
+        let _lock_guard = lock.try_write().map_err(|_| vfs::Error::ServerFault)?;
         self.handle_to_path.insert(handle.clone(), entry);
         self.path_to_handle.insert(new_path, handle.clone());
 
@@ -172,7 +173,7 @@ impl HandleMap {
         let _ = parent_entry
             .children
             .entry(name.clone())
-            .insert(Descendant { handle: handle.clone(), lock });
+            .insert(Descendant { handle: handle.clone(), lock: lock.clone() });
 
         Ok(handle)
     }
@@ -196,11 +197,13 @@ impl HandleMap {
         let lock = Arc::new(RwLock::new(path.to_path_buf()));
         let entry = Entry::new(handle.clone(), lock.clone());
 
+        // atomicity updating both tables
+        let _lock_guard = lock.try_write().map_err(|_| vfs::Error::ServerFault)?;
         self.handle_to_path.insert(handle.clone(), entry);
         self.path_to_handle.insert(path.to_path_buf(), handle.clone());
 
         self.handle_to_path.entry(parent_handle).and_modify(|entry| {
-            entry.children.insert(name, Descendant { handle: handle.clone(), lock });
+            entry.children.insert(name, Descendant { handle: handle.clone(), lock: lock.clone() });
         });
 
         Ok(handle)
@@ -232,6 +235,7 @@ impl HandleMap {
     /// Descendant cleanup is best-effort: errors produced while removing nested
     /// children are ignored.
     fn remove_entry_recursive(&self, path: &Path, handle: &Handle) -> Result<(), vfs::Error> {
+        // since locks are held from outside, updating of both functions are atomic
         self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = self.handle_to_path.remove(handle).ok_or(vfs::Error::StaleFile)?;
         let children = entry
