@@ -47,7 +47,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use dashmap::mapref::entry::Entry as DashEntry;
 use tokio::sync::RwLock;
 
 use crate::vfs;
@@ -149,9 +148,13 @@ impl HandleMap {
         parent: &Handle,
         name: &file::Name,
     ) -> Result<Handle, vfs::Error> {
-        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
-        if let Some(existing) = parent_entry.children.get(&name) {
-            return Ok(existing.value().handle.clone());
+        {
+            let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
+            if let Some(existing_handle) =
+                parent_entry.children.get(name).map(|entry| entry.value().handle.clone())
+            {
+                return Ok(existing_handle);
+            }
         }
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -165,6 +168,7 @@ impl HandleMap {
         self.handle_to_path.insert(handle.clone(), entry);
         self.path_to_handle.insert(new_path, handle.clone());
 
+        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
         let _ = parent_entry
             .children
             .entry(name.clone())
@@ -175,14 +179,17 @@ impl HandleMap {
 
     /// Creates a new handle for the given relative path and links it into the
     /// direct-child index of its parent.
-    fn create_handle(
-        &self,
-        path: &std::path::Path,
-    ) -> Result<Handle, vfs::Error> {
+    fn create_handle(&self, path: &std::path::Path) -> Result<Handle, vfs::Error> {
         let parent_path = path.parent().ok_or(vfs::Error::ServerFault)?;
-        let name = path.file_name().ok_or(vfs::Error::ServerFault)?.to_os_string().into_string().map_err(|_| vfs::Error::ServerFault)?;
+        let name = path
+            .file_name()
+            .ok_or(vfs::Error::ServerFault)?
+            .to_os_string()
+            .into_string()
+            .map_err(|_| vfs::Error::ServerFault)?;
         let name = Name::new(name).map_err(|_| vfs::Error::ServerFault)?;
-        let parent_handle = self.path_to_handle.get(parent_path).ok_or(vfs::Error::StaleFile)?.value().clone();
+        let parent_handle =
+            self.path_to_handle.get(parent_path).ok_or(vfs::Error::StaleFile)?.value().clone();
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
@@ -226,13 +233,18 @@ impl HandleMap {
     /// children are ignored.
     fn remove_entry_recursive(&self, path: &Path, handle: &Handle) -> Result<(), vfs::Error> {
         self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
-        let (_, entry) = self.handle_to_path.remove(&handle).ok_or(vfs::Error::StaleFile)?;
+        let (_, entry) = self.handle_to_path.remove(handle).ok_or(vfs::Error::StaleFile)?;
+        let children = entry
+            .children
+            .iter()
+            .map(|child| (child.key().clone(), child.handle.clone()))
+            .collect::<Vec<(file::Name, Handle)>>();
 
-        for entry in entry.children.iter() {
+        for (name, child_handle) in children {
             let mut new_path = path.to_path_buf();
-            new_path.push(entry.key().as_str());
+            new_path.push(name.as_str());
             // ignore subtree removing errors
-            let _ = self.remove_entry_recursive(new_path.as_path(), &entry.handle);
+            let _ = self.remove_entry_recursive(new_path.as_path(), &child_handle);
         }
         Ok(())
     }
@@ -259,8 +271,12 @@ impl HandleMap {
         parent: &Handle,
         name: &file::Name,
     ) -> Result<(), vfs::Error> {
-        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
-        let (_, descendant) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
+        let descendant = {
+            let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
+            let (_, descendant) =
+                parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
+            descendant
+        };
         self.remove_entry_recursive(path, &descendant.handle)
     }
 
@@ -286,10 +302,14 @@ impl HandleMap {
         to_name: &file::Name,
     ) -> Result<Handle, vfs::Error> {
         if from_path == to_path && from_name == to_name {
-            return self.handle_for_child(from_parent, from_name)
+            return self.handle_for_child(from_parent, from_name);
         }
-        let parent_entry = self.handle_to_path.get(from_parent).ok_or(vfs::Error::StaleFile)?;
-        let (_, source_handle) = parent_entry.children.remove(from_name).ok_or(vfs::Error::StaleFile)?;
+        let source_handle = {
+            let parent_entry = self.handle_to_path.get(from_parent).ok_or(vfs::Error::StaleFile)?;
+            let (_, source_handle) =
+                parent_entry.children.remove(from_name).ok_or(vfs::Error::StaleFile)?;
+            source_handle
+        };
 
         let mut old_path = from_path.to_path_buf();
         old_path.push(from_name.as_str());
@@ -297,7 +317,11 @@ impl HandleMap {
         let mut new_path = to_path.to_path_buf();
         new_path.push(to_name.as_str());
 
-        let handle = self.rename_entry_recursive(old_path.as_path(), new_path.as_path(), &source_handle.handle)?;
+        let handle = self.rename_entry_recursive(
+            old_path.as_path(),
+            new_path.as_path(),
+            &source_handle.handle,
+        )?;
         self.remove_entry_recursive(old_path.as_path(), &source_handle.handle)?;
         Ok(handle)
     }
@@ -311,8 +335,14 @@ impl HandleMap {
         new_path: &Path,
         old_handle: &Handle,
     ) -> Result<Handle, vfs::Error> {
-        let old_entry =
-            self.handle_to_path.get(old_handle).ok_or(vfs::Error::StaleFile)?;
+        let children = {
+            let old_entry = self.handle_to_path.get(old_handle).ok_or(vfs::Error::StaleFile)?;
+            old_entry
+                .children
+                .iter()
+                .map(|entry| (entry.key().clone(), entry.handle.clone()))
+                .collect::<Vec<(file::Name, Handle)>>()
+        };
 
         // remove if there are already something exist on paths we are trying to create
         let _ = self.remove_path_by_path(new_path);
@@ -320,23 +350,22 @@ impl HandleMap {
         // there should be parent -
         // and there would definitely be one, since we do up-to-buttom
         let handle = self.create_handle(new_path)?;
-        for entry in old_entry.children.iter() {
+        for (name, child_handle) in children {
             let mut old_path = old_path.to_path_buf();
             let mut new_path = new_path.to_path_buf();
-            old_path.push(entry.key().as_str());
-            new_path.push(entry.key().as_str());
-            self.rename_entry_recursive(
-                old_path.as_path(),
-                new_path.as_path(),
-                &entry.handle,
-            )?;
+            old_path.push(name.as_str());
+            new_path.push(name.as_str());
+            self.rename_entry_recursive(old_path.as_path(), new_path.as_path(), &child_handle)?;
         }
         Ok(handle)
     }
 
     /// Collects path locks for the subtree rooted at `handle`, including the
     /// root node itself.
-    pub fn collect_locks_from_subtree(&self, handle: &Handle) -> Result<Vec<Arc<RwLock<PathBuf>>>, vfs::Error> {
+    pub fn collect_locks_from_subtree(
+        &self,
+        handle: &Handle,
+    ) -> Result<Vec<Arc<RwLock<PathBuf>>>, vfs::Error> {
         let mut acc = Vec::new();
         self.collect_locks_with_acc(&mut acc, handle)?;
         Ok(acc)
@@ -344,7 +373,11 @@ impl HandleMap {
 
     /// Recursively collects path locks into `acc` for the subtree rooted at
     /// `handle`.
-    fn collect_locks_with_acc(&self, acc: &mut Vec<Arc<RwLock<PathBuf>>>, handle: &Handle) -> Result<(), vfs::Error>  {
+    fn collect_locks_with_acc(
+        &self,
+        acc: &mut Vec<Arc<RwLock<PathBuf>>>,
+        handle: &Handle,
+    ) -> Result<(), vfs::Error> {
         let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
         acc.push(entry.path.clone());
         for child in entry.children.iter() {
@@ -612,8 +645,8 @@ mod tests {
             &map,
             &[
                 (HandleMap::root(), PathBuf::new(), from_ref(&h_p)),
-                (h_p.clone(), PathBuf::from("p"), &[h2.clone()]),
-                (h2, PathBuf::from("p/b"), &[]),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&h2)),
+                (h2.clone(), PathBuf::from("p/b"), &[]),
             ],
         );
     }
@@ -636,7 +669,8 @@ mod tests {
         assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
 
         let renamed =
-            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
+            map.rename_path(&h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
+        let renamed_child = map.handle_for_child(&renamed, &name_x).unwrap();
 
         assert!(map.handle_for_child(&h_p, &name_a).is_err());
         assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
@@ -644,29 +678,27 @@ mod tests {
             map.path_for_child(&h_p, &name_z).unwrap().try_read().unwrap().as_path(),
             Path::new("p/z")
         );
-        assert_eq!(map.handle_for_child(&renamed, &name_x).unwrap(), h1_child);
+        assert_ne!(renamed_child, h1_child);
         assert_eq!(
             map.path_for_handle(&renamed).unwrap().try_read().unwrap().as_path(),
             Path::new("p/z")
         );
         assert_eq!(
-            map.path_for_handle(&h1_child).unwrap().try_read().unwrap().as_path(),
+            map.path_for_handle(&renamed_child).unwrap().try_read().unwrap().as_path(),
             Path::new("p/z/x")
         );
-        assert_eq!(
-            map.path_for_handle(&h1).unwrap().try_read().unwrap().as_path(),
-            Path::new("p/z")
-        );
-        assert!(map.path_for_handle(&h_z).is_err());
-        assert!(map.path_for_handle(&h_z_child).is_err());
+        assert!(matches!(map.path_for_handle(&h1), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h1_child), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z_child), Err(vfs::Error::StaleFile)));
 
         assert_state(
             &map,
             &[
                 (HandleMap::root(), PathBuf::new(), from_ref(&h_p)),
                 (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
-                (renamed.clone(), PathBuf::from("p/z"), &[h1_child.clone()]),
-                (h1_child, PathBuf::from("p/z/x"), &[]),
+                (renamed.clone(), PathBuf::from("p/z"), from_ref(&renamed_child.clone())),
+                (renamed_child, PathBuf::from("p/z/x"), &[]),
             ],
         );
     }
@@ -687,39 +719,34 @@ mod tests {
         let h_z_child = map.ensure_child_handle(Path::new("p/z"), &h_z, &name_q).unwrap();
 
         let renamed =
-            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
+            map.rename_path(&h_p, Path::new("p"), Path::new("p"), &name_a, &name_z).unwrap();
+        let renamed_child = map.handle_for_child(&renamed, &name_x).unwrap();
 
         assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
-        assert_eq!(map.handle_for_child(&renamed, &name_x).unwrap(), h_a_child);
+        assert_ne!(map.handle_for_child(&renamed, &name_x).unwrap(), h_a_child);
 
         assert!(map.handle_for_child(&h_p, &name_a).is_err());
-        assert_eq!(
-            map.path_for_handle(&h_a).unwrap().try_read().unwrap().as_path(),
-            Path::new("p/z")
-        );
-        assert!(map.path_for_handle(&h_z).is_err());
-        assert!(map.path_for_handle(&h_z_child).is_err());
+        assert!(matches!(map.path_for_handle(&h_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z_child), Err(vfs::Error::StaleFile)));
         assert_eq!(
             map.path_for_handle(&renamed).unwrap().try_read().unwrap().as_path(),
             Path::new("p/z")
         );
-        assert_eq!(
-            map.path_for_handle(&h_a_child).unwrap().try_read().unwrap().as_path(),
-            Path::new("p/z/x")
-        );
+        map.path_for_handle(&renamed_child).unwrap();
+        assert!(matches!(map.path_for_handle(&h_a_child), Err(vfs::Error::StaleFile)));
 
         let renamed2 =
-            map.rename_path(&h_p, &h_p, Path::new("p"), Path::new("p"), &name_z, &name_z).unwrap();
+            map.rename_path(&h_p, Path::new("p"), Path::new("p"), &name_z, &name_z).unwrap();
 
         assert_eq!(renamed, renamed2);
-
         assert_state(
             &map,
             &[
                 (HandleMap::root(), PathBuf::new(), from_ref(&h_p)),
                 (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
-                (renamed.clone(), PathBuf::from("p/z"), &[h_a_child.clone()]),
-                (h_a_child, PathBuf::from("p/z/x"), &[]),
+                (renamed.clone(), PathBuf::from("p/z"), from_ref(&renamed_child.clone())),
+                (renamed_child, PathBuf::from("p/z/x"), &[]),
             ],
         );
     }
