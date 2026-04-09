@@ -1,29 +1,46 @@
-//! HandleMap stores a bidirectional mapping between NFS file handles and
-//! relative filesystem paths, plus a direct directory -> children index.
+//! HandleMap provides a bidirectional mapping between NFS file handles and
+//! relative filesystem paths, together with a direct directory -> children
+//! index.
 //!
 //! # Concurrency model
 //!
-//! HandleMap is intentionally non-atomic across multi-structure updates.
-//! The internal operations only rewire handles, path locks, and parent ->
-//! child links; they do not take `RwLock` guards themselves.
+//! HandleMap is not atomic with respect to multi-table updates.
+//! Mutating operations update several internal structures:
+//! - `handle_to_path`
+//! - `path_to_handle`
+//! - per-entry direct-child indexes stored in `Entry::children`
 //!
-//! Callers must acquire the relevant write-locks before invoking mutating
-//! operations. That external locking protocol provides the atomicity that this
-//! structure does not enforce on its own.
+//! These updates are not performed as one transaction inside `HandleMap`.
+//! Instead, callers are expected to acquire the necessary external write-locks
+//! before invoking any mutating operation. `HandleMap` itself does not enforce
+//! that locking discipline.
 //!
-//! # Semantics
+//! # Stored structure
 //!
-//! - paths are stored relative to the configured root;
-//! - `path_for_handle` and `path_for_child` return the stored path locks;
-//! - `path_to_handle` mirrors `handle_to_path` for direct path lookups;
+//! - all stored paths are relative to the configured root;
+//! - `handle_to_path` stores the canonical entry for each known handle;
+//! - `path_to_handle` provides the reverse lookup from relative path to handle;
+//! - each `Entry` stores only its direct children in `Entry::children`.
+//!
+//! There is no separate recursive tree index. Recursive operations walk the
+//! structure through direct-child links.
+//!
+//! # Mutation semantics
+//!
 //! - `ensure_child_handle` creates a direct child entry if it does not exist;
-//! - `remove_path` removes an entry recursively with its descendants;
-//! - `rename_path` creates a new subtree at the destination and removes the
-//!   original subtree only after the new one has been built successfully;
-//! - recursive delete and overwrite cleanup are best-effort for descendants:
-//!   child-removal errors are ignored during recursive cleanup;
+//! - removal is recursive and best-effort for descendants: if recursive
+//!   cleanup of a nested child fails, that child-removal error is ignored;
+//! - rename is implemented as "build destination subtree first, remove source
+//!   subtree second";
+//! - during rename, existing destination nodes are removed best-effort before a
+//!   replacement node is created at that path;
 //! - rename allocates fresh handles for moved nodes, so old source handles
-//!   become stale after source cleanup.
+//!   become stale after source cleanup completes.
+//!
+//! # Path conversion
+//!
+//! HandleMap stores relative paths only. Conversion to absolute filesystem
+//! paths is done via [`HandleMap::to_full_path`] using the configured root.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -52,6 +69,7 @@ struct Entry {
 }
 
 impl Entry {
+    /// Creates a new entry with an empty direct-child index.
     fn new(handle: Handle, path: Arc<RwLock<PathBuf>>) -> Self {
         Self { path, handle, children: DashMap::new() }
     }
@@ -132,8 +150,8 @@ impl HandleMap {
         name: &file::Name,
     ) -> Result<Handle, vfs::Error> {
         let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
-        if let DashEntry::Occupied(existing) = parent_entry.children.entry(name.clone()) {
-            return Ok(existing.get().handle.clone());
+        if let Some(existing) = parent_entry.children.get(&name) {
+            return Ok(existing.value().handle.clone());
         }
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -155,6 +173,8 @@ impl HandleMap {
         Ok(handle)
     }
 
+    /// Creates a new handle for the given relative path and links it into the
+    /// direct-child index of its parent.
     fn create_handle(
         &self,
         path: &std::path::Path,
@@ -199,6 +219,11 @@ impl HandleMap {
         self.get_handle_by_path(path)
     }
 
+    /// Removes the exact `path`/`handle` pair and then recursively removes all
+    /// descendants reachable through the entry's direct-child index.
+    ///
+    /// Descendant cleanup is best-effort: errors produced while removing nested
+    /// children are ignored.
     fn remove_entry_recursive(&self, path: &Path, handle: &Handle) -> Result<(), vfs::Error> {
         self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = self.handle_to_path.remove(&handle).ok_or(vfs::Error::StaleFile)?;
@@ -212,6 +237,8 @@ impl HandleMap {
         Ok(())
     }
 
+    /// Resolves a relative path to its parent handle and final component, then
+    /// removes that entry recursively.
     fn remove_path_by_path(&self, path: &Path) -> Result<(), vfs::Error> {
         let parent = self.get_parent_handle(path)?;
         let name = path
@@ -224,6 +251,8 @@ impl HandleMap {
         self.remove_path(path, &parent, &name)
     }
 
+    /// Removes a direct child from `parent` by name and recursively deletes the
+    /// subtree rooted at `path`.
     fn remove_path(
         &self,
         path: &Path,
@@ -313,6 +342,8 @@ impl HandleMap {
         Ok(acc)
     }
 
+    /// Recursively collects path locks into `acc` for the subtree rooted at
+    /// `handle`.
     fn collect_locks_with_acc(&self, acc: &mut Vec<Arc<RwLock<PathBuf>>>, handle: &Handle) -> Result<(), vfs::Error>  {
         let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
         acc.push(entry.path.clone());
