@@ -150,23 +150,24 @@ impl HandleMap {
 
     fn create_handle(
         &self,
-        parent_path: &Path,
-        parent: &Handle,
-        name: &Name,
+        path: &std::path::Path,
     ) -> Result<Handle, vfs::Error> {
+        let parent_path = path.parent().ok_or(vfs::Error::ServerFault)?;
+        let name = path.file_name().ok_or(vfs::Error::ServerFault)?.to_os_string().into_string().map_err(|_| vfs::Error::ServerFault)?;
+        let name = Name::new(name).map_err(|_| vfs::Error::ServerFault)?;
+        let parent_handle = self.path_to_handle.get(parent_path).ok_or(vfs::Error::StaleFile)?.value().clone();
+
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let handle = file::Handle(id.to_be_bytes());
-        let mut new_path = parent_path.to_owned();
-        new_path.push(name.as_str());
-        let lock = Arc::new(RwLock::new(new_path.to_path_buf()));
-
+        let lock = Arc::new(RwLock::new(path.to_path_buf()));
         let entry = Entry::new(handle.clone(), lock.clone());
 
         self.handle_to_path.insert(handle.clone(), entry);
-        self.path_to_handle.insert(new_path, handle.clone());
+        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
 
-        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
-        parent_entry.children.insert(name.clone(), Descendant { handle: handle.clone(), lock });
+        self.handle_to_path.entry(parent_handle).and_modify(|entry| {
+            entry.children.insert(name, Descendant { handle: handle.clone(), lock });
+        });
 
         Ok(handle)
     }
@@ -225,14 +226,23 @@ impl HandleMap {
     pub fn rename_path(
         &self,
         from_parent: &Handle,
-        to_parent: &Handle,
-        from_path: &Path,
-        to_path: &Path,
+        from_path: &std::path::Path,
+        to_path: &std::path::Path,
         from_name: &file::Name,
         to_name: &file::Name,
     ) -> Result<Handle, vfs::Error> {
         let parent_entry = self.handle_to_path.get(from_parent).ok_or(vfs::Error::StaleFile)?;
         let (_, entry) = parent_entry.children.remove(from_name).ok_or(vfs::Error::StaleFile)?;
+
+        let mut old_path = from_path.to_path_buf();
+        old_path.push(from_name.as_str());
+
+        let mut new_path = to_path.to_path_buf();
+        new_path.push(to_name.as_str());
+
+        let handle = self.rename_entry_recursive(old_path.as_path(), new_path.as_path(), from_parent)?;
+        self.remove_entry_recursive(old_path.as_path(), &entry.handle)?;
+        Ok(handle)
     }
 
     // create subtree copy on new path
@@ -240,12 +250,10 @@ impl HandleMap {
         &self,
         old_path: &Path,
         new_path: &Path,
-        old_parent: &Handle,
-        new_parent: &Handle,
-        name: &Name,
-    ) -> Result<(), vfs::Error> {
+        old_handle: &Handle,
+    ) -> Result<Handle, vfs::Error> {
         let (_, old_entry) =
-            self.handle_to_path.remove(&old_parent).ok_or(vfs::Error::StaleFile)?;
+            self.handle_to_path.remove(old_handle).ok_or(vfs::Error::StaleFile)?;
         self.path_to_handle.remove(old_path).ok_or(vfs::Error::StaleFile)?;
         // clean_existing
         let _ = self
@@ -253,7 +261,9 @@ impl HandleMap {
             .remove(new_path)
             .and_then(|(_, handle)| self.handle_to_path.remove(&handle));
 
-        let new_parent = self.ensure_child_handle(new_path, new_parent, name)?;
+        // there should be parent -
+        // and there would definitely be one, since we do up-to-buttom
+        let handle = self.create_handle(new_path)?;
         for entry in old_entry.children.iter() {
             let mut old_path = old_path.to_path_buf();
             let mut new_path = new_path.to_path_buf();
@@ -262,10 +272,23 @@ impl HandleMap {
             self.rename_entry_recursive(
                 old_path.as_path(),
                 new_path.as_path(),
-                &new_parent,
                 &old_entry.handle,
-                name,
             )?;
+        }
+        Ok(handle)
+    }
+
+    pub fn collect_locks_from_subtree(&self, handle: &Handle) -> Result<Vec<Arc<RwLock<PathBuf>>>, vfs::Error> {
+        let mut acc = Vec::new();
+        self.collect_locks_with_acc(&mut acc, handle)?;
+        Ok(acc)
+    }
+
+    fn collect_locks_with_acc(&self, acc: &mut Vec<Arc<RwLock<PathBuf>>>, handle: &Handle) -> Result<(), vfs::Error>  {
+        let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
+        let _ = entry.children.iter().map(|child| acc.push(child.lock.clone()));
+        for child in entry.children.iter() {
+            self.collect_locks_with_acc(acc, &child.handle)?;
         }
         Ok(())
     }
