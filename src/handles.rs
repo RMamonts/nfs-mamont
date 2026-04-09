@@ -17,6 +17,7 @@
 //! - `path_for_handle` and `path_for_child` return the stored path locks;
 //! - `path_to_handle` mirrors `handle_to_path` for direct path lookups;
 //! - `ensure_child_handle` creates a direct child entry if it does not exist;
+//! - `remove_path` removes an entry recursively with its descendants;
 //! - `remove_child` and `rename_path` operate on a single element only;
 //! - descendants are left untouched and remain valid through their own handles.
 
@@ -151,22 +152,6 @@ impl HandleMap {
         self.root.join(relative)
     }
 
-    /// Removes one direct child entry and drops its handle from the map.
-    fn remove_child(
-        &self,
-        parent_path: &Path,
-        parent: &Handle,
-        name: &file::Name,
-    ) -> Result<(), vfs::Error> {
-        // root cannot be removed since it has no parent
-        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
-        let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
-        self.handle_to_path.remove(&entry.handle).ok_or(vfs::Error::StaleFile)?;
-        let child_path = parent_path.join(name.as_str());
-        self.path_to_handle.remove(&child_path).ok_or(vfs::Error::StaleFile)?;
-        Ok(())
-    }
-
     /// Resolves a relative path through the direct path-to-handle index.
     fn get_handle_by_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
         let path = self.path_to_handle.get(path).ok_or(vfs::Error::StaleFile)?;
@@ -180,6 +165,32 @@ impl HandleMap {
         }
         let path = path.parent().ok_or(vfs::Error::StaleFile)?;
         self.get_handle_by_path(path)
+    }
+
+    fn remove_entry_recursive(&self, path: &Path, handle: &Handle) -> Result<(), vfs::Error> {
+        self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
+        let (_, entry) = self.handle_to_path.remove(&handle).ok_or(vfs::Error::StaleFile)?;
+
+        for entry in entry.children.iter() {
+            let mut new_path = path.to_path_buf();
+            new_path.push(entry.key().as_str());
+            // ignore subtree removing errors
+            let _ = self.remove_entry_recursive(new_path.as_path(), &entry.handle);
+        }
+        Ok(())
+    }
+
+    /// Removes a path entry together with all of its descendants.
+    pub fn remove_path(
+        &self,
+        path: &Path,
+        parent: &Handle,
+        name: &file::Name,
+    ) -> Result<(), vfs::Error> {
+        let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
+        let (_, entry) = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
+        // error would be returned, only if problem with name - subtree errors ignored
+        self.remove_entry_recursive(path, &entry.handle)
     }
 
     /// Renames a single entry and leaves descendants untouched.
@@ -448,6 +459,36 @@ mod tests {
                 (h_p.clone(), PathBuf::from("p"), from_ref(&h2)),
                 (h1_child, PathBuf::from("p/a/x"), &[]),
                 (h2.clone(), PathBuf::from("p/b"), &[]),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_remove_path_removes_subtree() {
+        let map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        let name_x = child_name("x");
+        let h_p = map.ensure_child_handle(Path::new(""), &HandleMap::root(), &name_p).unwrap();
+        let h1 = map.ensure_child_handle(Path::new("p"), &h_p, &name_a).unwrap();
+        let h1_child = map.ensure_child_handle(Path::new("p/a"), &h1, &name_x).unwrap();
+        let h2 = map.ensure_child_handle(Path::new("p"), &h_p, &name_b).unwrap();
+
+        map.remove_path(Path::new("p/a")).unwrap();
+
+        assert!(map.handle_for_child(&h_p, &name_a).is_err());
+        assert!(map.path_for_handle(&h1).is_err());
+        assert!(map.path_for_handle(&h1_child).is_err());
+        assert_eq!(map.handle_for_child(&h_p, &name_b).unwrap(), h2);
+
+        assert_state(
+            &map,
+            &[
+                (HandleMap::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), &[h2.clone()]),
+                (h2, PathBuf::from("p/b"), &[]),
             ],
         );
     }
