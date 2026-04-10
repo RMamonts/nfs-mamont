@@ -266,7 +266,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             }
             READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
             WRITE => NfsArguments::Write(
-                adapter_for_write(self.allocator.as_ref(), &mut self.buffer).await?,
+                adapter_for_write(&self.allocator, &mut self.buffer).await?,
             ),
             CREATE => NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?),
             MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
@@ -565,7 +565,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &impl Allocator,
+    alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     // Parse arguments for WRITE procedure.

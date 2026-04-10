@@ -54,25 +54,19 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections.
-pub async fn handle_forever<V>(
+pub async fn handle_forever<V: vfs::Vfs + Send + Sync + 'static>(
     listener: TcpListener,
     context: ServerContext<V>,
-) -> std::io::Result<()>
-where
-    V: vfs::Vfs + Send + Sync + 'static,
-{
+) -> std::io::Result<()> {
     handle_forever_with_exports(listener, context, Vec::new()).await
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever_with_exports<V>(
+pub async fn handle_forever_with_exports<V: vfs::Vfs + Send + Sync + 'static>(
     listener: TcpListener,
     context: ServerContext<V>,
     exports: Vec<MountExport>,
-) -> std::io::Result<()>
-where
-    V: vfs::Vfs + Send + Sync + 'static,
-{
+) -> std::io::Result<()> {
     let export_paths = exports
         .iter()
         .map(|entry| entry.export.directory.as_path().to_string_lossy().into_owned())
@@ -92,9 +86,6 @@ where
 
     loop {
         let (socket, _) = listener.accept().await?;
-
-        // !!! SLOWS US
-        // socket.set_nodelay(true)?;
 
         connection::new(socket, mount_sender.clone(), &context).await;
     }

@@ -1,5 +1,4 @@
 use std::fs as stdfs;
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
@@ -118,8 +117,7 @@ pub async fn alloc_slice(len: usize) -> Slice {
         return Slice::empty();
     }
 
-    let len = NonZeroUsize::new(len).unwrap().get();
-    Slice::new(vec![vec![0; len].into_boxed_slice()], 0..len, None)
+    Slice::new(vec![vec![0u8; len].into_boxed_slice()], 0..len, None)
 }
 
 pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {

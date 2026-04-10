@@ -2,8 +2,9 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use async_channel::Sender;
 use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc::{Sender, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info};
 
 use crate::allocator::Impl;
@@ -19,19 +20,20 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`crate::task::connection::vfs::VfsTask`] or global tasks.
+/// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
 pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
-    command_sender: Sender<NfsArgWrapper>,
     // to send messages into mount task
     mount_sender: UnboundedSender<MountCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
     // to bypass vfs with null procedure
-    result_sender: Sender<ProcReply>,
+    result_sender: UnboundedSender<ProcReply>,
     allocator: Arc<Impl>,
+    // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
+    pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
 impl ReadTask {
@@ -39,12 +41,12 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        command_sender: Sender<NfsArgWrapper>,
         mount_sender: UnboundedSender<MountCommand>,
-        result_sender: Sender<ProcReply>,
+        result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<Impl>,
+        pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, command_sender, mount_sender, result_sender, allocator }
+        Self { readhalf, client_addr, mount_sender, result_sender, allocator, pool_sender }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -70,8 +72,8 @@ impl ReadTask {
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, header.xid, err).await;
+                    if let Err(err) = self.result_sender.send(result) {
+                        return send_broken_pipe(&self.result_sender, header.xid, err);
                     }
                 }
 
@@ -80,8 +82,10 @@ impl ReadTask {
                     info!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
-                    if let Err(err) = self.command_sender.send(command).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) =
+                        self.pool_sender.send((command, self.result_sender.clone())).await
+                    {
+                        return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
 
@@ -96,8 +100,8 @@ impl ReadTask {
                         proc_result: Ok(ProcResult::Mount(Box::new(MountRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.result_sender.send(result) {
+                        return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
 
@@ -110,15 +114,15 @@ impl ReadTask {
                         client_addr: self.client_addr,
                     };
                     if let Err(err) = self.mount_sender.send(command) {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                        return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
                     error!(client=%self.client_addr, xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.result_sender.send(result) {
+                        return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
 
@@ -132,8 +136,8 @@ impl ReadTask {
     }
 }
 
-async fn send_broken_pipe(
-    sender: &Sender<ProcReply>,
+fn send_broken_pipe(
+    sender: &UnboundedSender<ProcReply>,
     xid: u32,
     err: impl std::fmt::Display,
 ) -> io::Result<()> {
@@ -142,6 +146,5 @@ async fn send_broken_pipe(
             xid,
             proc_result: Err(Error::IO(io::Error::new(io::ErrorKind::BrokenPipe, err.to_string()))),
         })
-        .await
         .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e))
 }

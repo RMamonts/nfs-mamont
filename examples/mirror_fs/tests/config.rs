@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::SocketAddr;
 
 use tempfile::tempdir;
 
@@ -30,12 +31,12 @@ paths = ["fs1", "nested/fs2"]
     )
     .unwrap();
 
-    let config = super::super::load_runtime_config(&config_path).unwrap();
-    assert_eq!(config.bind, "127.0.0.1:3049");
-    assert_eq!(config.allocator.read_buffer_size, 65536);
-    assert_eq!(config.allocator.read_buffer_count, 16);
-    assert_eq!(config.allocator.write_buffer_size, 131072);
-    assert_eq!(config.allocator.write_buffer_count, 8);
+    let config = crate::config::load_runtime_config(&config_path).unwrap();
+    assert_eq!(config.bind, "127.0.0.1:3049".parse::<SocketAddr>().unwrap());
+    assert_eq!(config.allocator.read_buffer_size.get(), 65536);
+    assert_eq!(config.allocator.read_buffer_count.get(), 16);
+    assert_eq!(config.allocator.write_buffer_size.get(), 131072);
+    assert_eq!(config.allocator.write_buffer_count.get(), 8);
     assert_eq!(config.exports.len(), 2);
     assert_eq!(config.exports[0].mount_path, "/fs1");
     assert_eq!(
@@ -68,7 +69,7 @@ paths = [".", "nested"]
     )
     .unwrap();
 
-    let error = super::super::load_runtime_config(&config_path).unwrap_err();
+    let error = crate::config::load_runtime_config(&config_path).unwrap_err();
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     assert!(error.to_string().contains("export path must not be empty"));
 }

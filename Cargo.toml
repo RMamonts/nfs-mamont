@@ -7,6 +7,9 @@ description = "A Rust NFS Server implementation"
 publish = false
 rust-version = "1.75.0"
 
+[package.metadata.cargo-udeps.ignore]
+development = ["tempfile"]
+
 [lib]
 doctest = false
 
@@ -30,8 +33,6 @@ io-uring = "0.7"
 libc = "0.2"
 
 [dev-dependencies]
-tempfile = "3"
-[package.metadata.cargo-udeps.ignore]
 tempfile = "3.26.0"
 
 [[example]]

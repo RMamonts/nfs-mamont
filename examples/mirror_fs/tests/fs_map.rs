@@ -64,6 +64,7 @@ async fn rename_path_moves_cached_descendants() {
     let dir_handle = ensure_handle_for_path(&fs_map, &from).await.unwrap();
     let child_handle = ensure_handle_for_path(&fs_map, &child_from).await.unwrap();
 
+    fs::rename(&from, &to).unwrap();
     fs_map.rename_path(&from, &to).await.unwrap();
 
     assert_eq!(path_for_handle(&fs_map, &dir_handle).await.unwrap(), to);
