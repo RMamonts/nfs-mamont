@@ -18,33 +18,40 @@
 //! - `path_to_handle` provides the reverse lookup from relative path to handle;
 //! - each `Entry` stores only its direct children in `Entry::children`.
 //!
-//! There is no separate recursive tree index. Recursive operations walk the
-//! structure through direct-child links.
-//!
 //! # Mutation semantics
 //!
+//! All multi-step mutations follow a two-phase protocol:
+//!
+//! 1. **Collection phase**: the operation traverses the relevant
+//!    subtrees and records everything it needs. If any lookup fails, the
+//!    operation returns an error without modifying state.
+//! 2. **Apply phase** (infallible writes): using the data collected in phase 1,
+//!    the operation removes old entries and creates new ones. Because every
+//!    needed handle and path was validated during collection, this phase
+//!    cannot fail.
+//!
+//! Specific operation notes:
+//!
 //! - `ensure_child_handle` creates a direct child entry if it does not exist;
-//! - removal is recursive and best-effort for descendants: if recursive
-//!   cleanup of a nested child fails, that child-removal error is ignored;
-//! - rename is implemented as "build destination subtree first, remove source
-//!   subtree second";
-//! - during rename, existing destination nodes are removed best-effort before a
-//!   replacement node is created at that path;
-//! - rename allocates fresh handles for moved nodes, so old source handles
-//!   become stale after source cleanup completes.
+//! - removal deletes the target and all its descendants in one batch;
+//! - rename creates a mirrored destination subtree, wires it into the
+//!   destination parent, then removes the source subtree. Existing destination
+//!   nodes are removed before the replacement is created;
+//! - rename allocates fresh handles for the destination, so old source handles
+//!   become stale after the operation completes.
 //!
 //! # Path conversion
 //!
 //! HandleMap stores relative paths only. Conversion to absolute filesystem
 //! paths is done via [`HandleMap::to_full_path`] using the configured root.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 use crate::vfs;
 use crate::vfs::file;
-use crate::vfs::file::{Handle, Name};
+use crate::vfs::file::Handle;
 
 const ROOT: u64 = 1;
 
@@ -56,10 +63,16 @@ struct Entry {
 }
 
 impl Entry {
-    /// Creates a new entry with the given handle and path.
     fn new(handle: Handle, path: PathBuf) -> Self {
         Self { path, handle, children: HashMap::new() }
     }
+}
+
+/// Snapshot of a single node captured during subtree collection.
+struct Snapshot {
+    path: PathBuf,
+    handle: Handle,
+    child_names: Vec<file::Name>,
 }
 
 /// The inner state of the handle map.
@@ -71,20 +84,6 @@ struct Inner {
 }
 
 impl Inner {
-    /// Returns the handle for the given path.
-    fn get_handle_by_path(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        self.path_to_handle.get(path).cloned().ok_or(vfs::Error::StaleFile)
-    }
-
-    /// Returns the parent handle for the given path.
-    fn get_parent_handle(&self, path: &Path) -> Result<Handle, vfs::Error> {
-        if self.root.join(path) == self.root {
-            return Ok(HandleMap::root());
-        }
-        let parent = path.parent().ok_or(vfs::Error::StaleFile)?;
-        self.get_handle_by_path(parent)
-    }
-
     /// Allocates a new handle ID.
     fn alloc_id(&mut self) -> u64 {
         let id = self.next_id;
@@ -92,116 +91,88 @@ impl Inner {
         id
     }
 
-    /// Creates a new handle for the given path.
-    fn create_handle(&mut self, path: &Path) -> Result<Handle, vfs::Error> {
-        let parent_path = path.parent().ok_or(vfs::Error::ServerFault)?;
-        let name = path
-            .file_name()
-            .ok_or(vfs::Error::ServerFault)?
-            .to_os_string()
-            .into_string()
-            .map_err(|_| vfs::Error::ServerFault)?;
-        let name = Name::new(name).map_err(|_| vfs::Error::ServerFault)?;
-        let parent_handle =
-            self.path_to_handle.get(parent_path).ok_or(vfs::Error::StaleFile)?.clone();
-
-        let handle = file::Handle(self.alloc_id().to_be_bytes());
-        let entry = Entry::new(handle.clone(), path.to_path_buf());
-
-        self.handle_to_path.insert(handle.clone(), entry);
-        self.path_to_handle.insert(path.to_path_buf(), handle.clone());
-
-        if let Some(parent_entry) = self.handle_to_path.get_mut(&parent_handle) {
-            parent_entry.children.insert(name, handle.clone());
-        }
-
-        Ok(handle)
-    }
-
-    /// Recursively deletes the entry specified by `path` and `handle`,
-    /// including all of its descendant entries from the handle and path maps.
-    fn remove_entry_recursive(&mut self, path: &Path, handle: &Handle) -> Result<(), vfs::Error> {
-        self.path_to_handle.remove(path).ok_or(vfs::Error::StaleFile)?;
-        let entry = self.handle_to_path.remove(handle).ok_or(vfs::Error::StaleFile)?;
-        let children: Vec<(file::Name, Handle)> = entry.children.into_iter().collect();
-
-        for (name, child_handle) in children {
-            let mut child_path = path.to_path_buf();
-            child_path.push(name.as_str());
-
-            let _ = self.remove_entry_recursive(child_path.as_path(), &child_handle);
-        }
-
-        Ok(())
-    }
-
-    /// Recursively removes the file or directory at the specified `path`,
-    /// including all of its descendant entries from the handle and path maps.
-    fn remove_path_by_path(&mut self, path: &Path) -> Result<(), vfs::Error> {
-        let parent = self.get_parent_handle(path)?;
-        let name = path
-            .file_name()
-            .ok_or(vfs::Error::StaleFile)?
-            .to_os_string()
-            .into_string()
-            .map_err(|_| vfs::Error::ServerFault)?;
-        let name = Name::new(name).map_err(|_| vfs::Error::ServerFault)?;
-        self.remove_path(path, &parent, &name)
-    }
-
-    /// Removes the entry at `path` by name.
-    fn remove_path(
-        &mut self,
-        path: &Path,
-        parent: &Handle,
-        name: &file::Name,
-    ) -> Result<(), vfs::Error> {
-        let parent_entry = self.handle_to_path.get_mut(parent).ok_or(vfs::Error::StaleFile)?;
-        let child_handle = parent_entry.children.remove(name).ok_or(vfs::Error::StaleFile)?;
-        self.remove_entry_recursive(path, &child_handle)
-    }
-
-    /// Creates a new subtree at `new_path` by walking the source subtree
-    /// rooted at `old_handle`. Existing destination nodes are removed
-    /// best-effort before each new node is created.
-    fn rename_entry_recursive(
-        &mut self,
-        old_path: &Path,
-        new_path: &Path,
-        old_handle: &Handle,
-    ) -> Result<Handle, vfs::Error> {
-        let children: Vec<(file::Name, Handle)> = {
-            let old_entry = self.handle_to_path.get(old_handle).ok_or(vfs::Error::StaleFile)?;
-            old_entry.children.iter().map(|(n, h)| (n.clone(), h.clone())).collect()
-        };
-
-        let _ = self.remove_path_by_path(new_path);
-
-        // Parent is guaranteed to exist because we walk top-to-bottom.
-        let handle = self.create_handle(new_path)?;
-        for (name, child_handle) in children {
-            let mut old_child = old_path.to_path_buf();
-            let mut new_child = new_path.to_path_buf();
-            old_child.push(name.as_str());
-            new_child.push(name.as_str());
-            self.rename_entry_recursive(old_child.as_path(), new_child.as_path(), &child_handle)?;
-        }
-
-        Ok(handle)
-    }
-
-    /// Collects all paths in the subtree rooted at `handle` into `acc`.
-    fn collect_paths_recursive(
+    /// Iteratively collects the subtree rooted at (`root_path`, `root_handle`).
+    ///
+    /// Returns nodes in parent-before-children order so that
+    /// [`Self::create_mirrored_subtree`] can rely on parents being listed
+    /// before their children.
+    fn collect_subtree(
         &self,
-        acc: &mut Vec<PathBuf>,
-        handle: &Handle,
-    ) -> Result<(), vfs::Error> {
-        let entry = self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?;
-        acc.push(entry.path.clone());
-        for child_handle in entry.children.values() {
-            self.collect_paths_recursive(acc, child_handle)?;
+        root_path: &Path,
+        root_handle: &Handle,
+    ) -> Result<Vec<Snapshot>, vfs::Error> {
+        let mut nodes = Vec::new();
+        let mut queue = VecDeque::new();
+
+        queue.push_back((root_path.to_path_buf(), root_handle.clone()));
+
+        while let Some((path, handle)) = queue.pop_front() {
+            let entry = self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?;
+
+            for (name, child_handle) in &entry.children {
+                queue.push_back((path.join(name.as_str()), child_handle.clone()));
+            }
+
+            let child_names = entry.children.keys().cloned().collect();
+            nodes.push(Snapshot { path, handle, child_names });
         }
-        Ok(())
+
+        Ok(nodes)
+    }
+
+    /// Removes all entries listed in `nodes` from both maps.
+    ///
+    /// Silently skips entries that are already absent.
+    fn purge_entries(&mut self, nodes: &[Snapshot]) {
+        for node in nodes {
+            self.path_to_handle.remove(&node.path);
+            self.handle_to_path.remove(&node.handle);
+        }
+    }
+
+    /// Creates a new subtree that mirrors the structure described by
+    /// `source_nodes`, translating every path from `old_root` to `new_root`
+    /// and allocating fresh handles.
+    ///
+    /// Returns the handle of the new root node.
+    fn create_mirrored_subtree(
+        &mut self,
+        old_root: &Path,
+        new_root: &Path,
+        source_nodes: &[Snapshot],
+    ) -> Handle {
+        let mut path_to_new_handle: HashMap<PathBuf, Handle> =
+            HashMap::with_capacity(source_nodes.len());
+
+        // Allocate handles and insert entries without children.
+        for node in source_nodes {
+            let suffix = node.path.strip_prefix(old_root).unwrap_or(Path::new(""));
+            let new_path = if suffix.as_os_str().is_empty() {
+                new_root.to_path_buf()
+            } else {
+                new_root.join(suffix)
+            };
+
+            let handle = file::Handle(self.alloc_id().to_be_bytes());
+            let entry = Entry::new(handle.clone(), new_path.clone());
+
+            self.handle_to_path.insert(handle.clone(), entry);
+            self.path_to_handle.insert(new_path, handle.clone());
+            path_to_new_handle.insert(node.path.clone(), handle);
+        }
+
+        // Wire parent-child relationships using the collected names.
+        for node in source_nodes {
+            let new_handle = &path_to_new_handle[&node.path];
+            let entry = self.handle_to_path.get_mut(new_handle).unwrap();
+            for name in &node.child_names {
+                let child_old_path = node.path.join(name.as_str());
+                let child_new_handle = path_to_new_handle[&child_old_path].clone();
+                entry.children.insert(name.clone(), child_new_handle);
+            }
+        }
+
+        path_to_new_handle[&source_nodes[0].path].clone()
     }
 }
 
@@ -313,21 +284,11 @@ impl HandleMap {
         parent_entry.children.get(name).cloned().ok_or(vfs::Error::StaleFile)
     }
 
-    /// Returns the direct child handle or creates a new direct child entry.
+    /// Returns the direct child handle, creating a new entry if it does not
+    /// already exist.
     ///
-    /// # Parameters
-    ///
-    /// - `parent_path`: The path to the parent directory.
-    /// - `parent`: The parent handle to create the child for.
-    /// - `name`: The name of the child to create.
-    ///
-    /// # Returns
-    ///
-    /// - The created handle for the given child.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`vfs::Error::StaleFile`] if the parent is not found.
+    /// Uses double-checked locking: first attempts a shared read lock, falling
+    /// back to an exclusive write lock only when the child must be created.
     pub fn ensure_child_handle(
         &self,
         parent_path: &Path,
@@ -363,8 +324,25 @@ impl HandleMap {
         Ok(handle)
     }
 
-    /// Removes a direct child from `parent` by name and recursively deletes
-    /// the subtree rooted at `path`.
+    /// Removes a direct child from `parent` by name together with all of its
+    /// descendants.
+    ///
+    /// Function works in transaction-like manner: it first collects the subtree to be removed,
+    /// then removes the child from the parent and purges the collected subtree.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The path to the child to remove.
+    /// - `parent`: The parent handle to remove the child from.
+    /// - `name`: The name of the child to remove.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if the child was removed successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the parent or child is not found.
     pub fn remove_path(
         &self,
         path: &Path,
@@ -372,19 +350,33 @@ impl HandleMap {
         name: &file::Name,
     ) -> Result<(), vfs::Error> {
         let mut inner = self.inner.write().unwrap();
-        inner.remove_path(path, parent, name)
+
+        // Collect the subtree to be removed.
+        let child_handle = {
+            let parent_entry = inner.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
+            parent_entry.children.get(name).cloned().ok_or(vfs::Error::StaleFile)?
+        };
+        let to_remove = inner.collect_subtree(path, &child_handle)?;
+
+        // Remove the child from the parent and purge the collected subtree.
+        if let Some(parent_entry) = inner.handle_to_path.get_mut(parent) {
+            parent_entry.children.remove(name);
+        }
+
+        inner.purge_entries(&to_remove);
+
+        Ok(())
     }
 
-    /// Renames a subtree by creating a new subtree at the destination.
+    /// Renames a subtree by creating a mirrored copy at the destination and
+    /// then removing the source.
     ///
-    /// If the source and destination are identical, this is a no-op and the
-    /// existing child handle is returned.
+    /// If source and destination are identical, returns the existing handle
+    /// without modification.
     ///
-    /// Existing destination entries are removed recursively before creating
-    /// each destination node. The original source subtree is removed only after
-    /// the destination subtree has been built successfully. This operation
-    /// allocates fresh handles for the new subtree, so old source handles
-    /// become stale after source cleanup.
+    /// Function works in transaction-like manner: it first collects the source and destination subtrees,
+    /// then removes the existing destination subtree and creates the mirrored subtree at the destination.
+    /// Finally, it detaches the source from its parent and purges the source subtree.
     ///
     /// # Parameters
     ///
@@ -398,7 +390,7 @@ impl HandleMap {
     ///
     /// - The handle of the renamed entry.
     ///
-    /// # Errors
+    /// # Error
     ///
     /// Returns [`vfs::Error::StaleFile`] if the source or destination is not found.
     pub fn rename_path(
@@ -415,21 +407,49 @@ impl HandleMap {
 
         let mut inner = self.inner.write().unwrap();
 
-        let parent_entry =
-            inner.handle_to_path.get_mut(from_parent).ok_or(vfs::Error::StaleFile)?;
-        let source_handle = parent_entry.children.remove(from_name).ok_or(vfs::Error::StaleFile)?;
+        let old_full = from_path.join(from_name.as_str());
+        let new_full = to_path.join(to_name.as_str());
 
-        let mut old_path = from_path.to_path_buf();
-        old_path.push(from_name.as_str());
+        let source_handle = {
+            let parent_entry =
+                inner.handle_to_path.get(from_parent).ok_or(vfs::Error::StaleFile)?;
+            parent_entry.children.get(from_name).cloned().ok_or(vfs::Error::StaleFile)?
+        };
 
-        let mut new_path = to_path.to_path_buf();
-        new_path.push(to_name.as_str());
+        let source_nodes = inner.collect_subtree(&old_full, &source_handle)?;
 
-        let handle =
-            inner.rename_entry_recursive(old_path.as_path(), new_path.as_path(), &source_handle)?;
-        inner.remove_entry_recursive(old_path.as_path(), &source_handle)?;
+        let dest_nodes = if let Some(dest_handle) = inner.path_to_handle.get(&new_full).cloned() {
+            inner.collect_subtree(&new_full, &dest_handle)?
+        } else {
+            Vec::new()
+        };
 
-        Ok(handle)
+        let dest_parent =
+            inner.path_to_handle.get(to_path).cloned().ok_or(vfs::Error::StaleFile)?;
+
+        // Remove existing destination subtree.
+        if !dest_nodes.is_empty() {
+            if let Some(parent_entry) = inner.handle_to_path.get_mut(&dest_parent) {
+                parent_entry.children.remove(to_name);
+            }
+            inner.purge_entries(&dest_nodes);
+        }
+
+        // Create mirrored subtree at destination.
+        let new_root_handle = inner.create_mirrored_subtree(&old_full, &new_full, &source_nodes);
+
+        // Wire new root into destination parent.
+        if let Some(parent_entry) = inner.handle_to_path.get_mut(&dest_parent) {
+            parent_entry.children.insert(to_name.clone(), new_root_handle.clone());
+        }
+
+        // Detach and purge source subtree.
+        if let Some(parent_entry) = inner.handle_to_path.get_mut(from_parent) {
+            parent_entry.children.remove(from_name);
+        }
+        inner.purge_entries(&source_nodes);
+
+        Ok(new_root_handle)
     }
 
     /// Collects relative paths for the subtree rooted at `handle`, including
@@ -444,9 +464,10 @@ impl HandleMap {
     /// A vector of relative paths for the subtree rooted at the given handle.
     pub fn collect_paths_from_subtree(&self, handle: &Handle) -> Result<Vec<PathBuf>, vfs::Error> {
         let inner = self.inner.read().unwrap();
-        let mut acc = Vec::new();
-        inner.collect_paths_recursive(&mut acc, handle)?;
-        Ok(acc)
+        let root_path = inner.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.path.clone();
+        let nodes = inner.collect_subtree(&root_path, handle)?;
+
+        Ok(nodes.into_iter().map(|n| n.path).collect())
     }
 
     /// Converts a relative path into an absolute path under the configured root.
