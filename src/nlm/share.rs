@@ -56,8 +56,22 @@ pub struct Nlm4Share {
 impl Nlm4Share {
     /// Creates a new file share request.
     ///
+    /// # Parameters
+    ///
+    /// - `caller_name`: Name of the client host making the lock request.
+    /// - `file_handle`: Handle to the file to share.
+    /// - `opaque_handle`: Host or process that is making the request.
+    /// - `fsh4_mode`: Specifies operations prohibited to other clients.
+    /// - `fsh4_access`: Specifies operations allowed to the requesting client.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new [`Nlm4Share`] instance if the request is valid.
+    ///
     /// # Errors
+    ///
     /// Returns `Err` with a text message if:
+    ///
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than `LM_MAXSTRLEN`.
     pub fn new(

@@ -17,7 +17,7 @@ pub struct Nlm4TestArgs {
 
 /// NLM TEST result.
 ///
-/// Returned by NLMPROC4_TEST procedure.
+/// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

@@ -20,6 +20,18 @@ pub struct Nlm4Holder {
 
 impl Nlm4Holder {
     /// Creates a new lock holder.
+    ///
+    /// # Parameters
+    ///
+    /// - `exclusive`: Tells whether the holder has an exclusive lock or a shared lock.
+    /// - `system_identifier`: PID of the process holding the lock.
+    /// - `opaque_handle`: Host or process that is holding the lock.
+    /// - `lock_offset`: Offset for the lock region.
+    /// - `lock_length`: Length of the blocking region.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new [`Nlm4Holder`] instance.
     pub fn new(
         exclusive: bool,
         system_identifier: i32,

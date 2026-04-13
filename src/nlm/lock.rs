@@ -2,10 +2,12 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
-use super::OpaqueHandle;
+use std::io::Error;
+
 use crate::consts::nlm;
 use crate::vfs;
-use std::io::Error;
+
+use super::OpaqueHandle;
 
 /// This structure describes a lock request.
 pub struct Nlm4Lock {
@@ -26,10 +28,25 @@ pub struct Nlm4Lock {
 impl Nlm4Lock {
     /// Creates a new lock request.
     ///
+    /// # Parameters
+    ///
+    /// - `caller_name`: Name of the client host making the lock request.
+    /// - `file_handle`: Handle to the file to lock.
+    /// - `opaque_handle`: Host or process that is making the request.
+    /// - `system_identifier`: PID of the process making the request.
+    /// - `lock_offset`: Offset for the lock region.
+    /// - `lock_length`: Length of the blocking region.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new [`Nlm4Lock`] instance if the request is valid.
+    ///
     /// # Errors
+    ///
     /// Returns `Err` with a text message if:
+    ///
     /// - `caller_name` is empty.
-    /// - `caller_name` is longer than `LM_MAXSTRLEN`.
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](crate::consts::nlm::LM_MAXSTRLEN).
     pub fn new(
         caller_name: String,
         file_handle: vfs::file::Handle,
