@@ -2,10 +2,12 @@
 //!
 //! Contains [`Nlm4Share`], [`FileSharingMode`] and [`FileSharingAccess`] types for DOS file sharing.
 
-use super::OpaqueHandle;
+use std::io::Error;
+
 use crate::consts::nlm;
 use crate::vfs;
-use std::io::Error;
+
+use super::OpaqueHandle;
 
 /// DOS-style file sharing mode.
 ///
