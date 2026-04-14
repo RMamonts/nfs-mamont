@@ -1,5 +1,14 @@
+mod args;
+mod config;
+pub mod fs;
+pub mod fs_map;
+
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
+use clap::Parser;
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -8,21 +17,15 @@ use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
 
-mod config;
-pub mod fs;
-pub mod fs_map;
-
-#[cfg(test)]
-mod tests;
+use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let config = config::parse_runtime_config(std::env::args_os())?;
-
     #[cfg(debug_assertions)]
     init_tracing();
 
-    info!(bind = %config.bind, exports = config.exports.len(), "mirrorfs startup");
+    let args = args::Args::parse();
+    let config = load_config(&args)?;
 
     let fs = Arc::new(fs::MirrorFS::new_many(
         config.exports.iter().map(|export| export.local_path.clone()).collect(),
@@ -59,6 +62,20 @@ async fn main() -> std::io::Result<()> {
         exports.push(export);
     }
 
-    let listener = TcpListener::bind(config.bind).await?;
+    let listener = TcpListener::bind(args.addr).await?;
     handle_forever_with_exports(listener, context, exports).await
+}
+
+pub fn load_config(args: &args::Args) -> std::io::Result<Config> {
+    let config = match &args.config_path {
+        Some(path) => {
+            info!(target: "startup", path = %path.display(), "Building configuration");
+            config::load_config(path)?
+        }
+        None => Config::default(),
+    };
+
+    info!(target: "startup", ?config, "Built and applied configuration");
+
+    Ok(config)
 }

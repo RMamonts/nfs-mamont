@@ -1,24 +1,18 @@
-use std::net::SocketAddr;
+use std::fmt::Formatter;
 use std::num::NonZeroUsize;
-use std::path::Component;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::fs::READ_WRITE_MAX;
-
-const DEFAULT_BIND: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 2049);
 const DEFAULT_VFS_POOL_SIZE: usize = 10;
+const MAX_EXPORTS_COUNT: usize = 256;
 
-#[derive(Debug)]
-pub struct RuntimeConfig {
-    pub bind: SocketAddr,
+pub struct Config {
     pub allocator: AllocatorConfig,
     pub vfs_pool_size: NonZeroUsize,
-    pub exports: Vec<ConfiguredExport>,
+    pub exports: Vec<ExportConfig>,
 }
 
-#[derive(Debug)]
 pub struct AllocatorConfig {
     pub read_buffer_size: NonZeroUsize,
     pub read_buffer_count: NonZeroUsize,
@@ -26,134 +20,150 @@ pub struct AllocatorConfig {
     pub write_buffer_count: NonZeroUsize,
 }
 
-#[derive(Debug)]
-pub struct ConfiguredExport {
+impl AllocatorConfig {
+    const DEFAULT_READ_BUFFER_SIZE: usize = crate::fs::READ_WRITE_MAX as usize;
+    const DEFAULT_READ_BUFFER_COUNT: usize = 2048;
+    const DEFAULT_WRITE_BUFFER_SIZE: usize = crate::fs::READ_WRITE_MAX as usize;
+    const DEFAULT_WRITE_BUFFER_COUNT: usize = 2048;
+}
+
+pub struct ExportConfig {
     pub local_path: PathBuf,
     pub mount_path: String,
 }
 
-#[derive(Deserialize)]
-struct FileConfig {
-    listen: Option<FileListenConfig>,
-    allocator: Option<FileAllocatorConfig>,
-    server: Option<FileServerConfig>,
-    exports: FileExportsConfig,
-}
-
-#[derive(Deserialize)]
-struct FileListenConfig {
-    addr: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FileAllocatorConfig {
-    read_buffer_size: Option<usize>,
-    read_buffer_count: Option<usize>,
-    write_buffer_size: Option<usize>,
-    write_buffer_count: Option<usize>,
-}
-
-#[derive(Deserialize)]
-struct FileServerConfig {
-    vfs_pool_size: Option<usize>,
-}
-
-#[derive(Deserialize)]
-struct FileExportsConfig {
-    root: PathBuf,
-    paths: Vec<PathBuf>,
-}
-
-pub fn parse_runtime_config(
-    args: impl IntoIterator<Item = std::ffi::OsString>,
-) -> std::io::Result<RuntimeConfig> {
-    let mut args = args.into_iter();
-    let binary_name = args
-        .next()
-        .unwrap_or_else(|| std::ffi::OsString::from("mirrorfs"))
-        .to_string_lossy()
-        .into_owned();
-    let Some(first_arg) = args.next() else {
-        return Err(invalid_input(format!(
-            "usage: {binary_name} <directory> [bind] | {binary_name} --config <file.toml>"
-        )));
-    };
-
-    if first_arg == std::ffi::OsStr::new("--config") {
-        let config_path = args
-            .next()
-            .ok_or_else(|| invalid_input(format!("usage: {binary_name} --config <file.toml>")))?;
-        if args.next().is_some() {
-            return Err(invalid_input("unexpected extra arguments after config path"));
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            allocator: AllocatorConfig::default(),
+            vfs_pool_size: NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap(),
+            exports: Vec::with_capacity(MAX_EXPORTS_COUNT),
         }
-        return load_runtime_config(Path::new(&config_path));
     }
-
-    let bind = match args.next() {
-        Some(value) => parse_socket_addr(&os_string_into_string(value, "bind address")?)?,
-        None => DEFAULT_BIND,
-    };
-    if args.next().is_some() {
-        return Err(invalid_input("unexpected extra arguments"));
-    }
-
-    let export_root = resolve_export_root(Path::new(&first_arg))?;
-    Ok(RuntimeConfig {
-        bind,
-        allocator: AllocatorConfig::default(),
-        vfs_pool_size: NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap(),
-        exports: vec![ConfiguredExport {
-            local_path: export_root.clone(),
-            mount_path: export_root.to_string_lossy().into_owned(),
-        }],
-    })
 }
 
-pub(crate) fn load_runtime_config(path: &Path) -> std::io::Result<RuntimeConfig> {
+impl Default for AllocatorConfig {
+    fn default() -> Self {
+        Self {
+            read_buffer_size: NonZeroUsize::new(AllocatorConfig::DEFAULT_READ_BUFFER_SIZE).unwrap(),
+            read_buffer_count: NonZeroUsize::new(AllocatorConfig::DEFAULT_READ_BUFFER_COUNT)
+                .unwrap(),
+            write_buffer_size: NonZeroUsize::new(AllocatorConfig::DEFAULT_WRITE_BUFFER_SIZE)
+                .unwrap(),
+            write_buffer_count: NonZeroUsize::new(AllocatorConfig::DEFAULT_WRITE_BUFFER_COUNT)
+                .unwrap(),
+        }
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("allocator", &self.allocator)
+            .field("vfs_pool_size", &self.vfs_pool_size)
+            .field("exports", &self.exports)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AllocatorConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AllocatorConfig")
+            .field("read_buffer_size", &self.read_buffer_size)
+            .field("read_buffer_count", &self.read_buffer_count)
+            .field("write_buffer_size", &self.write_buffer_size)
+            .field("write_buffer_count", &self.write_buffer_count)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ExportConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExportConfig")
+            .field("local_path", &self.local_path)
+            .field("mount_path", &self.mount_path)
+            .finish()
+    }
+}
+
+pub fn load_config(path: &Path) -> std::io::Result<Config> {
     let raw = std::fs::read_to_string(path)?;
-    let config: FileConfig = toml::from_str(&raw).map_err(|error| {
+    let raw_config: RawConfig = toml::from_str(&raw).map_err(|error| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!("failed to parse config {}: {error}", path.display()),
         )
     })?;
-    if config.exports.paths.is_empty() {
+
+    let defaults = AllocatorConfig::default();
+    let allocator = match raw_config.allocator {
+        Some(raw_alloc) => AllocatorConfig {
+            read_buffer_size: raw_alloc.read_buffer_size.unwrap_or(defaults.read_buffer_size),
+            read_buffer_count: raw_alloc.read_buffer_count.unwrap_or(defaults.read_buffer_count),
+            write_buffer_size: raw_alloc.write_buffer_size.unwrap_or(defaults.write_buffer_size),
+            write_buffer_count: raw_alloc.write_buffer_count.unwrap_or(defaults.write_buffer_count),
+        },
+        None => defaults,
+    };
+
+    let vfs_pool_size = raw_config
+        .vfs_pool_size
+        .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap());
+
+    let raw_exports = raw_config
+        .exports
+        .ok_or_else(|| invalid_input("config must contain an [exports] section"))?;
+
+    if raw_exports.paths.is_empty() {
         return Err(invalid_input("config must contain at least one export"));
     }
-    if config.exports.paths.len() > 256 {
-        return Err(invalid_input("config supports at most 256 exports"));
+    if raw_exports.paths.len() > MAX_EXPORTS_COUNT {
+        return Err(invalid_input(format!(
+            "config supports at most {} exports",
+            MAX_EXPORTS_COUNT
+        )));
     }
 
-    let root = resolve_export_root(&config.exports.root)?;
-    let mut exports = Vec::with_capacity(config.exports.paths.len());
-    for export_path in config.exports.paths {
-        let relative_export_path = normalize_export_path(&export_path)?;
-        let local_path = resolve_export_root(&root.join(&relative_export_path))?;
-        let mount_path = mount_path_for_export(&relative_export_path);
-        exports.push(ConfiguredExport { local_path, mount_path });
+    let root = resolve_export_root(&raw_exports.root)?;
+    let mut exports = Vec::with_capacity(raw_exports.paths.len());
+    for export_path in &raw_exports.paths {
+        let relative = normalize_export_path(export_path)?;
+        let local_path = resolve_export_root(&root.join(&relative))?;
+        let mount_path = mount_path_for_export(&relative);
+        exports.push(ExportConfig { local_path, mount_path });
     }
 
     validate_exports(&exports)?;
 
-    let vfs_pool_size = non_zero(
-        config.server.and_then(|s| s.vfs_pool_size).unwrap_or(DEFAULT_VFS_POOL_SIZE),
-        "server.vfs_pool_size",
-    )?;
-
-    let bind = match config.listen.and_then(|listen| listen.addr) {
-        Some(addr) => parse_socket_addr(&addr)?,
-        None => DEFAULT_BIND,
-    };
-
-    Ok(RuntimeConfig {
-        bind,
-        allocator: AllocatorConfig::from_file_config(config.allocator)?,
-        vfs_pool_size,
-        exports,
-    })
+    Ok(Config { allocator, vfs_pool_size, exports })
 }
 
-fn validate_exports(exports: &[ConfiguredExport]) -> std::io::Result<()> {
+#[derive(Deserialize)]
+struct RawConfig {
+    allocator: Option<RawAllocatorConfig>,
+    vfs_pool_size: Option<NonZeroUsize>,
+    exports: Option<RawExportsConfig>,
+}
+
+#[derive(Deserialize)]
+struct RawAllocatorConfig {
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    read_buffer_size: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    read_buffer_count: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    write_buffer_size: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    write_buffer_count: Option<NonZeroUsize>,
+}
+
+#[derive(Deserialize)]
+struct RawExportsConfig {
+    root: PathBuf,
+    paths: Vec<PathBuf>,
+}
+
+fn validate_exports(exports: &[ExportConfig]) -> std::io::Result<()> {
     let mut mount_paths = std::collections::HashSet::new();
     for export in exports {
         if !mount_paths.insert(export.mount_path.clone()) {
@@ -201,19 +211,6 @@ fn resolve_export_root(path: &Path) -> std::io::Result<PathBuf> {
     Ok(export_root)
 }
 
-fn parse_socket_addr(s: &str) -> std::io::Result<SocketAddr> {
-    s.parse::<SocketAddr>()
-        .map_err(|e| invalid_input(format!("invalid bind address \"{s}\": {e}")))
-}
-
-fn os_string_into_string(value: std::ffi::OsString, field_name: &str) -> std::io::Result<String> {
-    value.into_string().map_err(|_| invalid_input(format!("{field_name} must be valid UTF-8")))
-}
-
-fn invalid_input(message: impl Into<String>) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidInput, message.into())
-}
-
 fn normalize_export_path(path: &Path) -> std::io::Result<PathBuf> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
@@ -247,46 +244,92 @@ fn mount_path_for_export(path: &Path) -> String {
     format!("/{}", segments.join("/"))
 }
 
-fn non_zero(value: usize, field_name: &str) -> std::io::Result<NonZeroUsize> {
-    NonZeroUsize::new(value)
-        .ok_or_else(|| invalid_input(format!("{field_name} must be greater than zero")))
+fn invalid_input(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, message.into())
 }
 
-impl Default for AllocatorConfig {
-    fn default() -> Self {
-        Self {
-            read_buffer_size: NonZeroUsize::new(READ_WRITE_MAX as usize).unwrap(),
-            read_buffer_count: NonZeroUsize::new(2048).unwrap(),
-            write_buffer_size: NonZeroUsize::new(READ_WRITE_MAX as usize).unwrap(),
-            write_buffer_count: NonZeroUsize::new(2048).unwrap(),
+fn parse_humansize(value: &str) -> Result<NonZeroUsize, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("empty size string".to_string());
+    }
+
+    let (digits, suffix) = match value.find(|c: char| !c.is_ascii_digit()) {
+        Some(pos) => (&value[..pos], &value[pos..]),
+        None => (value, ""),
+    };
+
+    let base: usize = digits.parse().map_err(|e| format!("invalid number: {e}"))?;
+
+    let multiplier: usize = match suffix.to_ascii_lowercase().as_str() {
+        "" => 1,
+        "k" => 1024,
+        "m" => 1024 * 1024,
+        "g" => 1024 * 1024 * 1024,
+        "t" => 1024 * 1024 * 1024 * 1024,
+        _ => return Err(format!("unknown size suffix: {suffix}")),
+    };
+
+    let total = base.checked_mul(multiplier).ok_or_else(|| "size overflow".to_string())?;
+
+    NonZeroUsize::new(total).ok_or_else(|| "size must be greater than zero".to_string())
+}
+
+/// Deserializes positive values represented either as strings in human-readable format or as numbers.
+///
+/// Supports two data types:
+///
+/// 1) String: A non-negative decimal integer with an optional single-letter unit suffix:
+///    - 'k' or 'K' for KiB (1024 bytes)
+///    - 'm' or 'M' for MiB (1024 KiB)
+///    - 'g' or 'G' for GiB (1024 MiB)
+///    - 't' or 'T' for TiB (1024 GiB)
+///
+///    Examples: "10240K", "10M", "5g"
+///
+/// 2) Unsigned integer: The size directly as a number of bytes.
+fn dehumansize_nonzero<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<NonZeroUsize>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Visitor;
+
+    impl serde::de::Visitor<'_> for Visitor {
+        type Value = Option<NonZeroUsize>;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("a non-zero string or a non-zero unsigned integer")
+        }
+
+        fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            if value > 0 {
+                Ok(Some(NonZeroUsize::new(value as usize).unwrap()))
+            } else {
+                Err(E::custom("expected positive integer"))
+            }
+        }
+
+        fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            NonZeroUsize::new(value as usize)
+                .map(Some)
+                .ok_or_else(|| E::custom("expected non-zero integer"))
+        }
+
+        fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            parse_humansize(value).map(Some).map_err(E::custom)
         }
     }
-}
 
-impl AllocatorConfig {
-    fn from_file_config(config: Option<FileAllocatorConfig>) -> std::io::Result<Self> {
-        let defaults = Self::default();
-        let Some(config) = config else {
-            return Ok(defaults);
-        };
-
-        Ok(Self {
-            read_buffer_size: non_zero(
-                config.read_buffer_size.unwrap_or(defaults.read_buffer_size.get()),
-                "allocator.read_buffer_size",
-            )?,
-            read_buffer_count: non_zero(
-                config.read_buffer_count.unwrap_or(defaults.read_buffer_count.get()),
-                "allocator.read_buffer_count",
-            )?,
-            write_buffer_size: non_zero(
-                config.write_buffer_size.unwrap_or(defaults.write_buffer_size.get()),
-                "allocator.write_buffer_size",
-            )?,
-            write_buffer_count: non_zero(
-                config.write_buffer_count.unwrap_or(defaults.write_buffer_count.get()),
-                "allocator.write_buffer_count",
-            )?,
-        })
-    }
+    deserializer.deserialize_any(Visitor)
 }
