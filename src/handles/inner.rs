@@ -252,6 +252,7 @@ impl Inner {
         queue.push_back((root_path.to_path_buf(), root_handle.clone()));
 
         while let Some((path, handle)) = queue.pop_front() {
+            // how could that happen? In HandleMap scenario - since Inner accessed with write lock - never
             let entry = self.handle_to_path.get(&handle).ok_or(vfs::Error::StaleFile)?;
 
             for (name, child_handle) in &entry.children {
@@ -294,12 +295,7 @@ impl Inner {
 
         // Allocate handles and insert entries without children.
         for node in source_nodes {
-            let suffix = node.path.strip_prefix(old_root).unwrap_or(Path::new(""));
-            let new_path = if suffix.as_os_str().is_empty() {
-                new_root.to_path_buf()
-            } else {
-                new_root.join(suffix)
-            };
+            let new_path = Self::change_path(&node.path, old_root, new_root);
 
             let handle = self.alloc_handle();
             let entry = Entry::new(handle.clone(), new_path.clone());
@@ -319,6 +315,7 @@ impl Inner {
             }
         }
 
+        // source_nodes is definitely hot empty - at least deletion root is present
         path_to_new_handle[&source_nodes[0].path].clone()
     }
 
@@ -359,6 +356,7 @@ impl Inner {
 
         let old_full = self.path_for_child(from_parent, from_name)?;
         let new_full = self.path_for_handle(to_parent)?.join(to_name.as_str());
+
         if Self::is_destination_inside_source(&old_full, &new_full) {
             return Err(vfs::Error::InvalidArgument);
         }
