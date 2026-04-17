@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::nfsv3::NFS3_CREATEVERFSIZE;
+use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::vfs;
 
 use super::file;

@@ -1,9 +1,8 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
+use std::sync::Arc;
 
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
-#[cfg(feature = "arbitrary")]
-use tokio::sync::mpsc;
 
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
@@ -11,7 +10,7 @@ use tokio::sync::mpsc;
 pub struct Slice {
     buffers: Vec<Box<[u8]>>,
     range: std::ops::Range<usize>,
-    sender: super::Sender<Box<[u8]>>,
+    state: Option<Arc<super::AllocatorState>>,
 }
 
 impl Slice {
@@ -21,7 +20,7 @@ impl Slice {
     ///
     /// - `buffers` --- vec of buffers.
     /// - `range` --- range to which slice will allow access.
-    /// - `sender` --- sender to deallocated buffers in drop.
+    /// - `state` --- allocator state to return buffers and restore permits.
     ///
     /// # Panics
     ///
@@ -29,7 +28,7 @@ impl Slice {
     pub fn new(
         buffers: Vec<Box<[u8]>>,
         range: std::ops::Range<usize>,
-        sender: super::Sender<Box<[u8]>>,
+        state: Option<Arc<super::AllocatorState>>,
     ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 
@@ -44,7 +43,12 @@ impl Slice {
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
 
-        Self { buffers, range, sender }
+        Self { buffers, range, state }
+    }
+
+    // /// Returns an empty slice that owns no buffers.
+    pub fn empty() -> Self {
+        Self { buffers: Vec::new(), range: 0..0, state: None }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -55,13 +59,20 @@ impl Slice {
         self.into_iter()
     }
 
-    /// Deallocates all buffers i.e. send them via specified in the [`Self::new`] `sender`.
+    /// Deallocates all buffers by returning them to the allocator state (pool)
+    /// and restoring the corresponding permits on its semaphore.
+    ///
+    /// The allocator state is provided when constructing the slice via [`Self::new`].
     fn deallocate(&mut self) {
-        for mut buffer in self.buffers.drain(..) {
-            // No user data should exist after dealloc
-            buffer.fill(0u8);
-            // Ignore allocator drop
-            let _ = self.sender.send(buffer);
+        if let Some(state) = &self.state {
+            let count = self.buffers.len();
+            for buffer in self.buffers.drain(..) {
+                // Ignore allocator drop
+                let _ = state.pool.push(buffer);
+            }
+            if count > 0 {
+                state.semaphore.add_permits(count);
+            }
         }
     }
 }
@@ -179,7 +190,6 @@ impl PartialEq for Slice {
 #[cfg(feature = "arbitrary")]
 impl Arbitrary<'_> for Slice {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
-        let (sender, _) = mpsc::unbounded_channel();
         let length = u.int_in_range(1..=super::TEST_SIZE)?;
         let mut size = 0;
         let mut bufs = Vec::new();
@@ -188,6 +198,55 @@ impl Arbitrary<'_> for Slice {
             bufs.push(vec![8u8; n].into_boxed_slice());
             size += n;
         }
-        Ok(Self::new(bufs, 0..length, sender))
+        Ok(Self::new(bufs, 0..length, None))
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<[u8]> for Slice {
+    fn eq(&self, other: &[u8]) -> bool {
+        if self.range.len() == 1 && other.is_empty() {
+            return true;
+        }
+
+        if self.range.len() != other.len() {
+            return false;
+        }
+
+        let mut self_iter = self.iter();
+        let mut block_self = self_iter.next();
+
+        let mut other = other;
+
+        loop {
+            match block_self {
+                None => return other.is_empty(),
+                Some(mut cur_self) => {
+                    loop {
+                        let take = cur_self.len().min(other.len());
+
+                        if cur_self[..take] != other[..take] {
+                            return false;
+                        }
+
+                        cur_self = &cur_self[take..];
+                        other = &other[take..];
+
+                        if cur_self.is_empty() || other.is_empty() {
+                            break;
+                        }
+                    }
+
+                    block_self =
+                        if cur_self.is_empty() { self_iter.next() } else { Some(cur_self) };
+                }
+            }
+        }
+    }
+}
+#[cfg(test)]
+impl PartialEq<Slice> for [u8] {
+    fn eq(&self, other: &Slice) -> bool {
+        other == self
     }
 }

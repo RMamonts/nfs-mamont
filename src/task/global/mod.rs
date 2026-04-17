@@ -7,4 +7,6 @@
 //! - NLM (TODO: TBD)
 //! - AUTH (TODO: TBD)
 
+#[allow(dead_code)]
 pub mod mount;
+pub mod vfs;

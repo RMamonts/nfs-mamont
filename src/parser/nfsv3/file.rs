@@ -2,7 +2,7 @@
 
 use std::io::{self, Read};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
@@ -27,6 +27,7 @@ pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
 }
 
 /// Parses a [`file::Type`] from the provided `Read` source.
+#[allow(dead_code)]
 pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
     use file::Type::*;
 
@@ -43,6 +44,7 @@ pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
 }
 
 /// Parses a [`file::Attr`] structure from the provided `Read` source.
+#[allow(dead_code)]
 pub fn attr(src: &mut impl Read) -> Result<file::Attr> {
     Ok(file::Attr {
         file_type: r#type(src)?,
@@ -72,6 +74,7 @@ pub fn device(src: &mut impl Read) -> Result<file::Device> {
 }
 
 /// Parses a [`file::WccAttr`] structure from the provided `Read` source.
+#[allow(dead_code)]
 pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
     Ok(file::WccAttr { size: u64(src)?, mtime: time(src)?, ctime: time(src)? })
 }
