@@ -289,37 +289,55 @@ impl Inner {
         old_root: &Path,
         new_root: &Path,
         source_nodes: &[Snapshot],
-    ) -> Handle {
+    ) -> Result<Handle, vfs::Error> {
         let mut path_to_new_handle = HashMap::with_capacity(source_nodes.len());
+        let mut old_path_to_new_path = HashMap::with_capacity(source_nodes.len());
+        let mut new_path_to_handle = HashMap::with_capacity(source_nodes.len());
 
         // Allocate handles and insert entries without children.
         for node in source_nodes {
-            let suffix = node.path.strip_prefix(old_root).unwrap_or(Path::new(""));
-            let new_path = if suffix.as_os_str().is_empty() {
-                new_root.to_path_buf()
+            let (new_path, handle) = if node.path.starts_with(new_root) {
+                // entries that haven't been replaced in new root
+                (node.path.clone(), node.handle.clone())
             } else {
-                new_root.join(suffix)
+                let suffix = node.path.strip_prefix(old_root).unwrap_or(Path::new(""));
+                let mapped = if suffix.as_os_str().is_empty() {
+                    new_root.to_path_buf()
+                } else {
+                    new_root.join(suffix)
+                };
+                (mapped, self.alloc_handle())
             };
 
-            let handle = self.alloc_handle();
             let entry = Entry::new(handle.clone(), new_path.clone());
-
             self.handle_to_path.insert(handle.clone(), entry);
-            path_to_new_handle.insert(node.path.clone(), handle);
+
+            path_to_new_handle.insert(node.path.clone(), handle.clone());
+            old_path_to_new_path.insert(node.path.clone(), new_path.clone());
+            new_path_to_handle.insert(new_path, handle);
         }
 
-        // Wire parent-child relationships using the collected names.
-        for node in source_nodes {
-            let new_handle = &path_to_new_handle[&node.path];
-            let entry = self.handle_to_path.get_mut(new_handle).unwrap();
-            for name in &node.children {
-                let child_old_path = node.path.join(name.as_str());
-                let child_new_handle = path_to_new_handle[&child_old_path].clone();
-                entry.children.insert(name.clone(), child_new_handle);
+        // Wire parent-child relationships based on final paths, so preserved
+        // destination nodes are attached even when their parent is replaced.
+        for (old_path, new_path) in &old_path_to_new_path {
+            if new_path == new_root {
+                continue;
             }
+            let parent_new_path = new_path.parent().ok_or(vfs::Error::ServerFault)?;
+
+            let parent_handle =
+                new_path_to_handle.get(parent_new_path).ok_or(vfs::Error::ServerFault)?;
+            let file_name =
+                new_path.file_name().and_then(|s| s.to_str()).ok_or(vfs::Error::ServerFault)?;
+            let name =
+                file::Name::new(file_name.to_string()).map_err(|_| vfs::Error::ServerFault)?;
+            let child_handle = path_to_new_handle[old_path].clone();
+            let entry =
+                self.handle_to_path.get_mut(parent_handle).ok_or(vfs::Error::ServerFault)?;
+            entry.children.insert(name, child_handle);
         }
 
-        path_to_new_handle[&source_nodes[0].path].clone()
+        Ok(path_to_new_handle[new_root].clone())
     }
 
     /// Renames a subtree by creating a mirrored copy at the destination and
@@ -373,19 +391,50 @@ impl Inner {
             Vec::new()
         };
 
+        let old_copy = old_full.clone();
+        let dest_subtree_to_preserve = if old_full.starts_with(&new_full) {
+            dest_nodes
+                .iter()
+                .filter(|snap| {
+                    source_nodes
+                        .iter()
+                        .map(|source_snap| {
+                            new_full.join(
+                                source_snap.path.strip_prefix(&old_copy).unwrap_or(Path::new("")),
+                            )
+                        })
+                        .all(|x| x != snap.path)
+                })
+                .cloned()
+                .collect::<Vec<Snapshot>>()
+        } else {
+            dest_nodes
+                .iter()
+                .filter(|snap| {
+                    !snap.path.starts_with(&old_full) && snap.path.starts_with(&new_full)
+                })
+                .cloned()
+                .collect()
+        };
+
         // Remove existing destination subtree.
         if !dest_nodes.is_empty() {
-            if let Some(parent_entry) = self.handle_to_path.get_mut(to_parent) {
+            if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
                 parent_entry.children.remove(to_name);
             }
             self.purge_entries(&dest_nodes);
         }
 
+        // Build the resulting subtree from source plus preserved destination nodes.
+        let mut nodes_for_new_tree = source_nodes.clone();
+        nodes_for_new_tree.extend(dest_subtree_to_preserve);
+
         // Create mirrored subtree at destination.
-        let new_root_handle = self.create_mirrored_subtree(&old_full, &new_full, &source_nodes);
+        let new_root_handle =
+            self.create_mirrored_subtree(&old_full, &new_full, &nodes_for_new_tree)?;
 
         // Wire new root into destination parent.
-        if let Some(parent_entry) = self.handle_to_path.get_mut(to_parent) {
+        if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
             parent_entry.children.insert(to_name.clone(), new_root_handle.clone());
         }
 
