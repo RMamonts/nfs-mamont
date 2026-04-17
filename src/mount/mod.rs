@@ -1,7 +1,5 @@
 //! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
-#![allow(dead_code)]
-
 use std::io;
 
 use crate::vfs::file;
@@ -28,7 +26,7 @@ pub const UNMOUNTALL: u32 = 4;
 pub const EXPORT: u32 = 5;
 
 /// Client host name.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct HostName(String);
 
 impl HostName {
@@ -56,8 +54,8 @@ impl arbitrary::Arbitrary<'_> for HostName {
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
-#[derive(Clone)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
     pub hostname: HostName,
@@ -88,6 +86,8 @@ pub enum MountRes {
     UnmountAll,
 }
 
+// TODO: Remove mount trait
+#[allow(dead_code)]
 pub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
 
 impl<T> Mount for T where T: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}

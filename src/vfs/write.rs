@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
-use crate::nfsv3::NFS3_WRITEVERFSIZE;
+use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::vfs;
 
 use super::file;

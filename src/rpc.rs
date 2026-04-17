@@ -3,6 +3,9 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+#[cfg(feature = "arbitrary")]
+use crate::consts::nfsv3::NFS_VERSION;
+
 pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
@@ -49,7 +52,8 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-#[derive(Debug, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
+#[cfg_attr(test, derive(PartialEq))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AuthFlavor {
     None = 0,
@@ -59,7 +63,8 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
@@ -100,6 +105,7 @@ pub enum Error {
     /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
+    #[allow(dead_code)]
     IncorrectString(FromUtf8Error),
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
@@ -110,7 +116,7 @@ pub enum Error {
     /// An RPC version mismatch occurred.
     RpcVersionMismatch(VersionMismatch),
     /// An authentication error occurred.
-    AuthError(AuthStat),
+    Auth(AuthStat),
     /// A program mismatch occurred.
     ProgramMismatch,
     /// A procedure mismatch occurred.
@@ -132,7 +138,7 @@ impl arbitrary::Arbitrary<'_> for Error {
             5 => Error::ProcedureMismatch,
             6 => Error::ProgramMismatch,
             7 => Error::IncorrectString(String::from_utf8(vec![0xFF]).unwrap_err()),
-            8 => Error::AuthError(AuthStat::BadCred),
+            8 => Error::Auth(AuthStat::BadCred),
             9 => Error::IO(io::Error::from_raw_os_error(22)),
             10 => {
                 Error::RpcVersionMismatch(VersionMismatch { low: RPC_VERSION, high: RPC_VERSION })

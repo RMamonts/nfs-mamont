@@ -8,7 +8,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
-use crate::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::NFS3_FHSIZE;
 
 /// Unique file identifier.
 ///
@@ -75,7 +75,7 @@ impl Arbitrary<'_> for Name {
 /// [`Path`] ensures that the provided path string does not exceed
 /// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
 /// conversion back into the owned [`PathBuf`].
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Path(PathBuf);
 
 impl Path {

@@ -1,11 +1,12 @@
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::error;
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::ProcReply;
 
-/// Writes [`crate::task::connection::vfs::VfsTask`] responses to a network connection.
+/// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
 pub struct WriteTask {
     writehalf: OwnedWriteHalf,
     result_receiver: UnboundedReceiver<ProcReply>,
@@ -28,7 +29,7 @@ impl WriteTask {
 
     async fn run(self) {
         let mut result_receiver = self.result_receiver;
-        let mut serializer = serializer::serialize_struct::Serializer::new(self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
         while let Some(reply) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
@@ -39,7 +40,8 @@ impl WriteTask {
                 Ok(_) => {
                     // Reply successfully written to socket
                 }
-                Err(_e) => {
+                Err(e) => {
+                    error!(error=%e, "write task: failed to serialize/send reply");
                     // TODO: Consider closing connection or continuing based on error type
                     // For now, continue processing other replies
                 }

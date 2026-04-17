@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::nfsv3::NFS3_COOKIEVERFSIZE;
+use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::vfs;
 
 use super::file;
@@ -99,6 +99,8 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries. Represent linked list of [`Entry`]
     pub entries: Vec<Entry>,
+    /// `true` if the end of the directory has been reached for this request.
+    pub eof: bool,
 }
 
 /// Fail result.

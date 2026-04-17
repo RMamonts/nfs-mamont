@@ -9,15 +9,11 @@
 //!   big-endian (network byte order)
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
-#![allow(dead_code)]
-
-pub mod files;
-mod mount;
-pub mod nfs;
-pub mod rpc;
-pub mod serialize_struct;
 #[cfg(test)]
-mod tests;
+pub mod client;
+pub mod files;
+
+pub mod server;
 
 use std::io::{self, Error, ErrorKind, Write};
 
@@ -90,13 +86,14 @@ pub fn vec_max_size(dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::R
     vector(dest, vec)
 }
 
-pub fn string_max_size(dest: &mut impl Write, string: String, max_size: usize) -> io::Result<()> {
-    vec_max_size(dest, &string.into_bytes(), max_size)
+/// Serializes an XDR `string<max_size>` (UTF-8 bytes as counted opaque, bounded).
+pub fn string_max_size(dest: &mut impl Write, string: &str, max_size: usize) -> io::Result<()> {
+    vec_max_size(dest, string.as_bytes(), max_size)
 }
 
 /// Serializes an unbounded XDR `string<>` (UTF-8 bytes as counted opaque).
-pub fn string(dest: &mut impl Write, string: String) -> io::Result<()> {
-    vector(dest, &string.into_bytes())
+pub fn string(dest: &mut impl Write, string: &str) -> io::Result<()> {
+    vector(dest, string.as_bytes())
 }
 
 /// Serializes an XDR enum discriminant / union tag as a 32-bit integer.

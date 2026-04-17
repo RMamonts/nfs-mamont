@@ -6,6 +6,7 @@ pub mod parser_struct;
 pub mod primitive;
 pub mod read_buffer;
 pub mod rpc;
+
 #[cfg(test)]
 mod tests;
 
@@ -33,9 +34,12 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 
 /// Represents the RPC request header extracted during message parsing.
 /// Contains metadata required for identifying and authenticating an RPC call.
+#[cfg_attr(test, derive(PartialEq, Debug, Clone))]
 pub struct RpcHeader {
     pub xid: u32,
     pub cred: OpaqueAuth,
+    #[allow(dead_code)]
+    // TODO: use when auth will be provided
     pub verf: OpaqueAuth,
 }
 
@@ -57,6 +61,14 @@ pub struct MountArgWrapper {
 pub struct ArgWrapper {
     pub header: RpcHeader,
     pub proc: ProcArguments,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 /// Parsed RPC message grouped by top-level RPC program.

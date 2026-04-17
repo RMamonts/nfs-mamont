@@ -72,6 +72,9 @@ pub struct Args {
 
 #[async_trait]
 pub trait Read {
-    /// Reads data from a file.
-    async fn read(&self, args: Args) -> Result<Success, Fail>;
+    /// Reads data from a file into a server-provided buffer.
+    ///
+    /// The `data` buffer is allocated by NFS-Mamont allocator and must be
+    /// filled by implementation. This keeps allocation policy under server control.
+    async fn read(&self, args: Args, data: Slice) -> Result<Success, Fail>;
 }

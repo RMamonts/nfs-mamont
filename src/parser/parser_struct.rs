@@ -18,11 +18,14 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use tokio::io::AsyncRead;
-use tokio::sync::Mutex;
+use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
-use crate::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::nfsv3::{
+use crate::consts::mount::{
+    MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
+    MOUNT_VERSION,
+};
+use crate::consts::nfsv3::{
     ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
@@ -37,10 +40,10 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, MountArgWrapper, MountArguments, NfsArgWrapper,
-    NfsArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
+    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -61,7 +64,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 ///
 /// # Type Parameters
 ///
-/// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
+/// * `A` - An allocator type that implements `Allocator` for dynamic memory allocation
 /// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
 ///
 /// # Example
@@ -77,7 +80,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// # }
 /// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
-    allocator: Arc<Mutex<A>>,
+    allocator: Arc<A>,
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
@@ -95,7 +98,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: Arc<Mutex<A>>) -> Self {
+    pub fn new(socket: S, allocator: Arc<A>) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(DEFAULT_SIZE, socket),
@@ -115,7 +118,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: Arc<Mutex<A>>, size: usize) -> Self {
+    pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
         Self {
             allocator,
             buffer: CountBuffer::new(size, socket),
@@ -183,11 +186,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
         let msg_type = self.buffer.parse_with_retry(u32).await?;
         if msg_type != RpcBody::Call as u32 {
+            error!(msg_type, "rpc parse reject: unexpected msg_type");
             return Err(Error::MessageTypeMismatch);
         }
 
         let rpc_version = self.buffer.parse_with_retry(u32).await?;
         if rpc_version != RPC_VERSION {
+            error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
             return Err(Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
@@ -197,7 +202,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let program = self.buffer.parse_with_retry(u32).await?;
         let version = self.buffer.parse_with_retry(u32).await?;
         let procedure = self.buffer.parse_with_retry(u32).await?;
+        debug!(program, version, procedure, "rpc header parsed");
 
+        //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
         let (cred, verf) = self.parse_authentication().await?;
 
         Ok(RpcMessage { program, procedure, version, cred, verf })
@@ -205,14 +212,45 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     /// Parses and validates RPC authentication.
     ///
-    /// Currently only AUTH_NONE is supported.
+    /// NFS clients commonly send AUTH_SYS credentials, so both AUTH_NONE and
+    /// AUTH_SYS are accepted for credentials. Verifier must remain AUTH_NONE.
     ///
     /// # Returns
     ///
     /// Returns a pair of [`OpaqueAuth`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     async fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
-        Ok((self.buffer.parse_with_retry(auth).await?, self.buffer.parse_with_retry(auth).await?))
+        let cred = self.buffer.parse_with_retry(auth).await?;
+        let verf = self.buffer.parse_with_retry(auth).await?;
+        let cred_ok = match cred.flavor {
+            AuthFlavor::None => cred.body.is_empty(),
+            AuthFlavor::Sys => true,
+            _ => false,
+        };
+        if !cred_ok {
+            error!(
+                cred_flavor=?cred.flavor,
+                cred_len=%cred.body.len(),
+                "rpc auth reject: unsupported credential flavor",
+            );
+            return Err(Error::Auth(AuthStat::BadCred));
+        }
+        if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
+            error!(
+                verf_flavor=?verf.flavor,
+                verf_len=%verf.body.len(),
+                "rpc auth reject: invalid verifier",
+            );
+            return Err(Error::Auth(AuthStat::BadVerf));
+        }
+        debug!(
+            cred_flavor=?cred.flavor,
+            cred_len=%cred.body.len(),
+            verf_flavor=?verf.flavor,
+            verf_len=%verf.body.len(),
+            "rpc auth accepted",
+        );
+        Ok((cred, verf))
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
@@ -256,12 +294,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Parses MOUNT procedure arguments from the current frame.
     async fn parse_mount_proc(&mut self, procedure: u32) -> Result<MountArguments> {
         let args = match procedure {
-            0 => MountArguments::Null,
-            1 => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
-            2 => MountArguments::Dump,
-            3 => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
-            4 => MountArguments::UnmountAll,
-            5 => MountArguments::Export,
+            MOUNT_NULL => MountArguments::Null,
+            MOUNT_MNT => MountArguments::Mount(self.buffer.parse_with_retry(mount).await?),
+            MOUNT_DUMP => MountArguments::Dump,
+            MOUNT_UMNT => MountArguments::Unmount(self.buffer.parse_with_retry(unmount).await?),
+            MOUNT_UMNTALL => MountArguments::UnmountAll,
+            MOUNT_EXPORT => MountArguments::Export,
             _ => return Err(Error::ProcedureMismatch),
         };
         Ok(args)
@@ -306,23 +344,32 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// This is the generic entry point for call sites that do not know in advance
     /// whether the next frame contains NFSv3 or MOUNT data.
-    pub async fn next_message(&mut self) -> Result<ArgWrapper> {
-        let xid = self.read_message_header().await?;
+    pub async fn next_message(&mut self) -> core::result::Result<ArgWrapper, ErrorWrapper> {
+        let xid = match self.read_message_header().await {
+            Ok(xid) => xid,
+            Err(error) => return Err(ErrorWrapper { xid: None, error }),
+        };
         let rpc_header = match self.parse_rpc_header().await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+            }
         };
         let proc = match self.parse_next_message_with_header(&rpc_header).await {
             Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
+            Err(err) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+            }
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
-        self.finalize_parsing()?;
-        Ok(ArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
+        match self.finalize_parsing() {
+            Ok(_) => Ok(ArgWrapper {
+                header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
+                proc,
+            }),
+            Err(error) => Err(ErrorWrapper { xid: Some(xid), error }),
+        }
     }
 
     /// Parses a complete MOUNT RPC message from the stream.
@@ -355,15 +402,28 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 let args = self.parse_mount_message_with_header(head).await?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
-            _ => Err(Error::ProgramMismatch),
+            _ => {
+                warn!(program = head.program, "rpc parse reject: unknown program");
+                Err(Error::ProgramMismatch)
+            }
         }
     }
 
     async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
         if head.program != NFS_PROGRAM {
+            error!(
+                got = head.program,
+                expected = NFS_PROGRAM,
+                "rpc parse reject: nfs parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != NFS_VERSION {
+            error!(
+                got = head.version,
+                expected = NFS_VERSION,
+                "rpc parse reject: nfs version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: NFS_VERSION,
                 high: NFS_VERSION,
@@ -377,9 +437,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         head: &RpcMessage,
     ) -> Result<MountArguments> {
         if head.program != MOUNT_PROGRAM {
+            error!(
+                got = head.program,
+                expected = MOUNT_PROGRAM,
+                "rpc parse reject: mount parser got unexpected program",
+            );
             return Err(Error::ProgramMismatch);
         }
         if head.version != MOUNT_VERSION {
+            error!(
+                got = head.version,
+                expected = MOUNT_VERSION,
+                "rpc parse reject: mount version mismatch",
+            );
             return Err(Error::ProgramVersionMismatch(VersionMismatch {
                 low: MOUNT_VERSION,
                 high: MOUNT_VERSION,
@@ -438,7 +508,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         if let Error::RpcVersionMismatch(_)
         | Error::ProgramMismatch
         | Error::ProcedureMismatch
-        | Error::AuthError(_)
+        | Error::Auth(_)
         | Error::MessageTypeMismatch
         | Error::ProgramVersionMismatch(_) = &error
         {
@@ -495,7 +565,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &Arc<Mutex<impl Allocator>>,
+    alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
     // Parse arguments for WRITE procedure.
@@ -504,7 +574,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 
     // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.lock().await.allocate(non_zero_size).await.ok_or_else(|| {
+    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
         Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
     })?;
 
@@ -562,7 +632,11 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
                 .ok_or(Error::IO(io::Error::new(ErrorKind::InvalidInput, "invalid buffer size")))?;
             continue;
         }
-        let cur_write = min(left_skip + left_write, buf.len() - left_skip);
+        let cur_write = min(left_write, buf.len() - left_skip);
+        if cur_write == 0 {
+            left_skip = 0;
+            continue;
+        }
         src.read_from_async(&mut buf[left_skip..left_skip + cur_write]).await.map_err(Error::IO)?;
         left_write = left_write
             .checked_sub(cur_write)

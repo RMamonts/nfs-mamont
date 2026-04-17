@@ -18,6 +18,7 @@ pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
 }
 
 /// Parses a `u8` (byte) from the `Read` source.
+#[allow(dead_code)]
 pub fn u8(src: &mut impl Read) -> Result<u8> {
     src.read_u8().map_err(Error::IO)
 }
@@ -89,6 +90,7 @@ pub fn string_max_size(src: &mut impl Read, max_size: usize) -> Result<String> {
 }
 
 /// Parses an XDR string from the `Read` source.
+#[allow(dead_code)]
 pub fn string(src: &mut impl Read) -> Result<String> {
     let vec = vector(src)?;
     String::from_utf8(vec).map_err(Error::IncorrectString)
