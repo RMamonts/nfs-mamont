@@ -1,16 +1,18 @@
 use arbitrary::{Arbitrary, Unstructured};
 use nfs_mamont::allocator::Allocator;
 use nfs_mamont::allocator::TEST_SIZE;
-use nfs_mamont::client::arguments;
-use nfs_mamont::client::arguments::nfsv3::{
+use nfs_mamont::consts::nfsv3;
+use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
+use nfs_mamont::parser::parser_struct::RpcParser;
+use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
+use nfs_mamont::parser::{
+    ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, ProcArguments,
+};
+use nfs_mamont::serializer::client::arguments;
+use nfs_mamont::serializer::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
-use nfs_mamont::nfsv3;
-use nfs_mamont::parser::parser_struct::RpcParser;
-use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
-use nfs_mamont::parser::{ArgWrapper, MountArguments, NfsArguments, ProcArguments, Result};
 use nfs_mamont::{mount, rpc};
 
 const FAULT_VERSION: u32 = 7;
@@ -42,33 +44,87 @@ impl<'a> Arbitrary<'a> for RpcRequest {
         };
         let args = match (prog, proc) {
             (nfsv3::NFS_PROGRAM, nfsv3::NULL) => ProcArguments::Nfs3(Box::new(NfsArguments::Null)),
-            (nfsv3::NFS_PROGRAM, nfsv3::GETATTR) => ProcArguments::Nfs3(Box::new(NfsArguments::GetAttr(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::SETATTR) => ProcArguments::Nfs3(Box::new(NfsArguments::SetAttr(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::LOOKUP) => ProcArguments::Nfs3(Box::new(NfsArguments::LookUp(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::ACCESS) => ProcArguments::Nfs3(Box::new(NfsArguments::Access(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::READLINK) => ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::READ) => ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::WRITE) => ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::CREATE) => ProcArguments::Nfs3(Box::new(NfsArguments::Create(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::MKDIR) => ProcArguments::Nfs3(Box::new(NfsArguments::MkDir(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::SYMLINK) => ProcArguments::Nfs3(Box::new(NfsArguments::SymLink(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::MKNOD) => ProcArguments::Nfs3(Box::new(NfsArguments::MkNod(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::REMOVE) => ProcArguments::Nfs3(Box::new(NfsArguments::Remove(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::RMDIR) => ProcArguments::Nfs3(Box::new(NfsArguments::RmDir(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::RENAME) => ProcArguments::Nfs3(Box::new(NfsArguments::Rename(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::LINK) => ProcArguments::Nfs3(Box::new(NfsArguments::Link(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::READDIR) => ProcArguments::Nfs3(Box::new(NfsArguments::ReadDir(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::READDIRPLUS) => ProcArguments::Nfs3(Box::new(NfsArguments::ReadDirPlus(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::FSSTAT) => ProcArguments::Nfs3(Box::new(NfsArguments::FsStat(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::FSINFO) => ProcArguments::Nfs3(Box::new(NfsArguments::FsInfo(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::PATHCONF) => ProcArguments::Nfs3(Box::new(NfsArguments::PathConf(u.arbitrary()?))),
-            (nfsv3::NFS_PROGRAM, nfsv3::COMMIT) => ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?))),
-            (mount::MOUNT_PROGRAM, mount::NULL) => ProcArguments::Mount(Box::new(MountArguments::Null)),
-            (mount::MOUNT_PROGRAM, mount::MOUNT) => ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?))),
-            (mount::MOUNT_PROGRAM, mount::DUMP) => ProcArguments::Mount(Box::new(MountArguments::Dump)),
-            (mount::MOUNT_PROGRAM, mount::UNMOUNT) => ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?))),
-            (mount::MOUNT_PROGRAM, mount::UNMOUNTALL) => ProcArguments::Mount(Box::new(MountArguments::UnmountAll)),
-            (mount::MOUNT_PROGRAM, mount::EXPORT) => ProcArguments::Mount(Box::new(MountArguments::Export)),
+            (nfsv3::NFS_PROGRAM, nfsv3::GETATTR) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::GetAttr(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::SETATTR) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::SetAttr(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::LOOKUP) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::LookUp(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::ACCESS) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Access(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::READLINK) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::READ) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::WRITE) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::CREATE) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Create(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::MKDIR) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::MkDir(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::SYMLINK) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::SymLink(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::MKNOD) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::MkNod(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::REMOVE) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Remove(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::RMDIR) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::RmDir(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::RENAME) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Rename(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::LINK) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Link(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::READDIR) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::ReadDir(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::READDIRPLUS) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::ReadDirPlus(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::FSSTAT) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::FsStat(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::FSINFO) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::FsInfo(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::PATHCONF) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::PathConf(u.arbitrary()?)))
+            }
+            (nfsv3::NFS_PROGRAM, nfsv3::COMMIT) => {
+                ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?)))
+            }
+            (mount::MOUNT_PROGRAM, mount::NULL) => {
+                ProcArguments::Mount(Box::new(MountArguments::Null))
+            }
+            (mount::MOUNT_PROGRAM, mount::MOUNT) => {
+                ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?)))
+            }
+            (mount::MOUNT_PROGRAM, mount::DUMP) => {
+                ProcArguments::Mount(Box::new(MountArguments::Dump))
+            }
+            (mount::MOUNT_PROGRAM, mount::UNMOUNT) => {
+                ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?)))
+            }
+            (mount::MOUNT_PROGRAM, mount::UNMOUNTALL) => {
+                ProcArguments::Mount(Box::new(MountArguments::UnmountAll))
+            }
+            (mount::MOUNT_PROGRAM, mount::EXPORT) => {
+                ProcArguments::Mount(Box::new(MountArguments::Export))
+            }
             _ => u.arbitrary::<ProcArguments>()?,
         };
         Ok(Self {
@@ -126,78 +182,91 @@ impl<A: Allocator> ParserWrapper<A> {
         tmp_buffer.extend_from_slice(&arg.auth_verf.to_be_bytes());
         match arg.args {
             ProcArguments::Nfs3(nfs) => match *nfs {
-                NfsArguments::GetAttr(get) =>
-                    get_attr::get_attr_args(&mut tmp_buffer, get).unwrap(),
+                NfsArguments::GetAttr(get) => {
+                    get_attr::get_attr_args(&mut tmp_buffer, get).unwrap()
+                }
 
-                NfsArguments::SetAttr(set) =>
-                    set_attr::set_attr_args(&mut tmp_buffer, set).unwrap(),
+                NfsArguments::SetAttr(set) => {
+                    set_attr::set_attr_args(&mut tmp_buffer, set).unwrap()
+                }
 
-                NfsArguments::LookUp(lookup) =>
-                    lookup::lookup_args(&mut tmp_buffer, lookup).unwrap(),
+                NfsArguments::LookUp(lookup) => {
+                    lookup::lookup_args(&mut tmp_buffer, lookup).unwrap()
+                }
 
-                NfsArguments::Access(access) =>
-                    access::access_args(&mut tmp_buffer, access).unwrap(),
+                NfsArguments::Access(access) => {
+                    access::access_args(&mut tmp_buffer, access).unwrap()
+                }
 
-                NfsArguments::ReadLink(link) =>
-                    read_link::read_link_args(&mut tmp_buffer, link).unwrap(),
+                NfsArguments::ReadLink(link) => {
+                    read_link::read_link_args(&mut tmp_buffer, link).unwrap()
+                }
 
-                NfsArguments::Read(read) =>
-                    read::read_args(&mut tmp_buffer, read).unwrap(),
+                NfsArguments::Read(read) => read::read_args(&mut tmp_buffer, read).unwrap(),
 
-                NfsArguments::Write(write) =>
-                    write::write_args(&mut tmp_buffer, write).unwrap(),
+                NfsArguments::Write(write) => write::write_args(&mut tmp_buffer, write).unwrap(),
 
-                NfsArguments::Create(create) =>
-                    create::create_args(&mut tmp_buffer, create).unwrap(),
+                NfsArguments::Create(create) => {
+                    create::create_args(&mut tmp_buffer, create).unwrap()
+                }
 
-                NfsArguments::MkDir(mkdir) =>
-                    mk_dir::mk_dir_args(&mut tmp_buffer, mkdir).unwrap(),
+                NfsArguments::MkDir(mkdir) => mk_dir::mk_dir_args(&mut tmp_buffer, mkdir).unwrap(),
 
-                NfsArguments::SymLink(symlink) =>
-                    symlink::symlink_args(&mut tmp_buffer, symlink).unwrap(),
+                NfsArguments::SymLink(symlink) => {
+                    symlink::symlink_args(&mut tmp_buffer, symlink).unwrap()
+                }
 
-                NfsArguments::MkNod(mknod) =>
-                    mk_node::mk_node_args(&mut tmp_buffer, mknod).unwrap(),
+                NfsArguments::MkNod(mknod) => {
+                    mk_node::mk_node_args(&mut tmp_buffer, mknod).unwrap()
+                }
 
-                NfsArguments::Remove(remove) =>
-                    remove::remove_args(&mut tmp_buffer, remove).unwrap(),
+                NfsArguments::Remove(remove) => {
+                    remove::remove_args(&mut tmp_buffer, remove).unwrap()
+                }
 
-                NfsArguments::RmDir(rmdir) =>
-                    rm_dir::rm_dir_args(&mut tmp_buffer, rmdir).unwrap(),
+                NfsArguments::RmDir(rmdir) => rm_dir::rm_dir_args(&mut tmp_buffer, rmdir).unwrap(),
 
-                NfsArguments::Rename(rename) =>
-                    rename::rename_args(&mut tmp_buffer, rename).unwrap(),
+                NfsArguments::Rename(rename) => {
+                    rename::rename_args(&mut tmp_buffer, rename).unwrap()
+                }
 
-                NfsArguments::Link(link) =>
-                    link::link_args(&mut tmp_buffer, link).unwrap(),
+                NfsArguments::Link(link) => link::link_args(&mut tmp_buffer, link).unwrap(),
 
-                NfsArguments::ReadDir(read_dir) =>
-                    read_dir::read_dir_args(&mut tmp_buffer, read_dir).unwrap(),
+                NfsArguments::ReadDir(read_dir) => {
+                    read_dir::read_dir_args(&mut tmp_buffer, read_dir).unwrap()
+                }
 
-                NfsArguments::ReadDirPlus(read_dir_plus) =>
-                    read_dir_plus::read_dir_plus_args(&mut tmp_buffer, read_dir_plus).unwrap(),
+                NfsArguments::ReadDirPlus(read_dir_plus) => {
+                    read_dir_plus::read_dir_plus_args(&mut tmp_buffer, read_dir_plus).unwrap()
+                }
 
-                NfsArguments::FsStat(fs_stat) =>
-                    fs_stat::fs_stat_args(&mut tmp_buffer, fs_stat).unwrap(),
+                NfsArguments::FsStat(fs_stat) => {
+                    fs_stat::fs_stat_args(&mut tmp_buffer, fs_stat).unwrap()
+                }
 
-                NfsArguments::FsInfo(fs_info) =>
-                    fs_info::fs_info_args(&mut tmp_buffer, fs_info).unwrap(),
+                NfsArguments::FsInfo(fs_info) => {
+                    fs_info::fs_info_args(&mut tmp_buffer, fs_info).unwrap()
+                }
 
-                NfsArguments::PathConf(path) =>
-                    path_conf::path_conf_args(&mut tmp_buffer, path).unwrap(),
+                NfsArguments::PathConf(path) => {
+                    path_conf::path_conf_args(&mut tmp_buffer, path).unwrap()
+                }
 
-                NfsArguments::Commit(commit) =>
-                    commit::commit_args(&mut tmp_buffer, commit).unwrap(),
+                NfsArguments::Commit(commit) => {
+                    commit::commit_args(&mut tmp_buffer, commit).unwrap()
+                }
 
                 NfsArguments::Null => (),
             },
 
             ProcArguments::Mount(mnt) => match *mnt {
-                MountArguments::Mount(mount) =>
-                    arguments::mount::mnt::mount_args(&mut tmp_buffer, mount).unwrap(),
+                MountArguments::Mount(mount) => {
+                    arguments::mount::mnt::mount_args(&mut tmp_buffer, mount).unwrap()
+                }
 
-                MountArguments::Unmount(unmount) =>
-                    arguments::mount::unmnt::unmount_args(&mut tmp_buffer, unmount).unwrap(),
+                MountArguments::Unmount(unmount) => {
+                    arguments::mount::unmnt::unmount_args(&mut tmp_buffer, unmount).unwrap()
+                }
 
                 MountArguments::Export => (),
                 MountArguments::Dump => (),
@@ -213,7 +282,7 @@ impl<A: Allocator> ParserWrapper<A> {
         // there should be sending to mpsc
         self.sender.send_data(tmp_buffer);
     }
-    pub async fn parse_message(&mut self) -> Result<ArgWrapper> {
+    pub async fn parse_message(&mut self) -> core::result::Result<ArgWrapper, ErrorWrapper> {
         self.parser.next_message().await
     }
 }

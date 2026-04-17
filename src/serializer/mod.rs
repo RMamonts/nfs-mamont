@@ -9,7 +9,6 @@
 //!   big-endian (network byte order)
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
-#[cfg(test)]
 pub mod client;
 pub mod files;
 

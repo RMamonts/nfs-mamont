@@ -3,7 +3,7 @@
 #[allow(dead_code)]
 pub mod nlm;
 
-mod allocator;
+pub mod allocator;
 pub mod consts;
 mod context;
 #[cfg(any(feature = "arbitrary", test))]
