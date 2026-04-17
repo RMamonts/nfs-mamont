@@ -1,9 +1,10 @@
-use crate::vfs;
-use crate::vfs::file;
-use crate::vfs::file::Handle;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use tokio::sync::RwLock;
+
+use crate::vfs;
+use crate::vfs::file;
+use crate::vfs::file::Handle;
 
 const ROOT: u64 = 1;
 
@@ -167,53 +168,42 @@ impl Inner {
         old_root: &Path,
         new_root: &Path,
         source_nodes: &[Snapshot],
-    ) -> Handle {
-        let mut path_to_new_handle = HashMap::with_capacity(source_nodes.len());
-        let mut old_path_to_new_path = HashMap::with_capacity(source_nodes.len());
-        let mut new_path_to_handle = HashMap::with_capacity(source_nodes.len());
+    ) -> Result<Handle, vfs::Error> {
+        let mut path_to_new_handle = HashMap::new();
+        let mut new_path_to_handle = HashMap::new();
 
-        // Allocate handles and insert entries without children.
         for node in source_nodes {
-            let (new_path, handle) = if node.path.starts_with(new_root) {
-                (node.path.clone(), node.handle.clone())
-            } else {
-                let suffix = node.path.strip_prefix(old_root).unwrap_or(Path::new(""));
-                let mapped = if suffix.as_os_str().is_empty() {
-                    new_root.to_path_buf()
-                } else {
-                    new_root.join(suffix)
-                };
-                (mapped, self.alloc_handle())
-            };
+            let new_path = Self::change_path(&node.path, old_root, new_root);
 
+            let handle = self.alloc_handle();
             let entry = Entry::new(handle.clone(), new_path.clone());
-            self.handle_to_path.insert(handle.clone(), entry);
 
+            self.handle_to_path.insert(handle.clone(), entry);
             path_to_new_handle.insert(node.path.clone(), handle.clone());
-            old_path_to_new_path.insert(node.path.clone(), new_path.clone());
             new_path_to_handle.insert(new_path, handle);
         }
 
-        // Wire parent-child relationships based on final paths, so preserved
-        // destination nodes are attached even when their parent is replaced.
-        for (old_path, new_path) in &old_path_to_new_path {
-            if new_path == new_root {
-                continue;
-            }
+        for node in source_nodes {
+            let new_path = Self::change_path(&node.path, old_root, new_root);
 
-            if let Some(parent_new_path) = new_path.parent() {
-                if let Some(parent_handle) = new_path_to_handle.get(parent_new_path) {
-                    if let Some(name) = new_path.file_name().and_then(|n| n.to_str()) {
-                        let name = file::Name::new(name.to_string()).unwrap();
-                        let child_handle = path_to_new_handle[old_path].clone();
-                        let entry = self.handle_to_path.get_mut(parent_handle).unwrap();
-                        entry.children.insert(name, child_handle);
-                    }
+            let parent_new_path = match new_path.parent() {
+                Some(p) => p,
+                None => return Err(vfs::Error::ServerFault),
+            };
+
+            if let Some(parent_handle) = new_path_to_handle.get(parent_new_path) {
+                let entry =
+                    self.handle_to_path.get_mut(parent_handle).ok_or(vfs::Error::StaleFile)?;
+
+                for child_name in &node.children {
+                    let old_child_path = node.path.join(child_name.as_str());
+                    let child_handle = path_to_new_handle[&old_child_path].clone();
+                    entry.children.insert(child_name.clone(), child_handle);
                 }
             }
         }
 
-        path_to_new_handle[&source_nodes[0].path].clone()
+        Ok(new_path_to_handle[new_root].clone())
     }
 
     fn rename_path(
@@ -243,21 +233,6 @@ impl Inner {
             Vec::new()
         };
 
-        let old_copy = old_full.clone();
-        let dest_subtree_to_preserve = dest_nodes
-            .iter()
-            .filter(|snap| {
-                source_nodes
-                    .iter()
-                    .map(|source_snap| {
-                        new_full
-                            .join(source_snap.path.strip_prefix(&old_copy).unwrap_or(Path::new("")))
-                    })
-                    .all(|x| x != snap.path)
-            })
-            .cloned()
-            .collect::<Vec<Snapshot>>();
-
         // Remove existing destination subtree.
         if !dest_nodes.is_empty() {
             if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
@@ -266,13 +241,8 @@ impl Inner {
             self.purge_entries(&dest_nodes);
         }
 
-        // Build the resulting subtree from source plus preserved destination nodes.
-        let mut nodes_for_new_tree = source_nodes.clone();
-        nodes_for_new_tree.extend(dest_subtree_to_preserve);
-
         // Create mirrored subtree at destination.
-        let new_root_handle =
-            self.create_mirrored_subtree(&old_full, &new_full, &nodes_for_new_tree);
+        let new_root_handle = self.create_mirrored_subtree(&old_full, &new_full, &source_nodes)?;
 
         // Wire new root into destination parent.
         if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
@@ -286,6 +256,15 @@ impl Inner {
         self.purge_entries(&source_nodes);
 
         Ok(new_root_handle)
+    }
+
+    fn change_path(path: &Path, old_root: &Path, new_root: &Path) -> PathBuf {
+        let suffix = path.strip_prefix(old_root).unwrap_or(Path::new(""));
+        if suffix.as_os_str().is_empty() {
+            new_root.to_path_buf()
+        } else {
+            new_root.join(suffix)
+        }
     }
 }
 
@@ -698,7 +677,11 @@ mod tests {
             &[
                 (Inner::root(), PathBuf::new(), from_ref(&h_p)),
                 (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
-                (renamed.clone(), PathBuf::from("p/z"), &[h_x_new.clone(), h_q.clone(), h_r.clone()]),
+                (
+                    renamed.clone(),
+                    PathBuf::from("p/z"),
+                    &[h_x_new.clone(), h_q.clone(), h_r.clone()],
+                ),
                 (h_x_new, PathBuf::from("p/z/x"), &[]),
                 (h_q, PathBuf::from("p/z/q"), &[]),
                 (h_r.clone(), PathBuf::from("p/z/r"), from_ref(&h_u)),
