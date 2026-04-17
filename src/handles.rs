@@ -644,6 +644,109 @@ mod tests {
         );
     }
 
+    ///             /
+    ///             |
+    ///             p
+    ///          /     \
+    ///         a       z
+    ///         |      / \
+    ///         x     q   r
+    ///                   |
+    ///                   u
+    ///
+    /// Change: rename `p/a -> p/z`; destination's non-conflicting `q` and `r/u` are preserved.
+    #[test]
+    fn test_rename_path_preserves_multiple_non_conflicting_nodes() {
+        let mut map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_x = child_name("x");
+        let name_z = child_name("z");
+        let name_q = child_name("q");
+        let name_r = child_name("r");
+        let name_u = child_name("u");
+
+        let h_p = map.ensure_child_handle(&Inner::root(), &name_p).unwrap();
+        let h_a = map.ensure_child_handle(&h_p, &name_a).unwrap();
+        let _h_a_x = map.ensure_child_handle(&h_a, &name_x).unwrap();
+
+        let h_z = map.ensure_child_handle(&h_p, &name_z).unwrap();
+        let h_q = map.ensure_child_handle(&h_z, &name_q).unwrap();
+        let h_r = map.ensure_child_handle(&h_z, &name_r).unwrap();
+        let h_u = map.ensure_child_handle(&h_r, &name_u).unwrap();
+
+        let renamed = map.rename_path(&h_p, &name_a, &h_p, &name_z).unwrap();
+
+        let h_x_new = map.handle_for_child(&renamed, &name_x).unwrap();
+        let h_q_kept = map.handle_for_child(&renamed, &name_q).unwrap();
+        let h_r_kept = map.handle_for_child(&renamed, &name_r).unwrap();
+        let h_u_kept = map.handle_for_child(&h_r_kept, &name_u).unwrap();
+
+        assert_eq!(h_q_kept, h_q);
+        assert_eq!(h_r_kept, h_r);
+        assert_eq!(h_u_kept, h_u);
+        assert!(matches!(map.path_for_handle(&h_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z), Err(vfs::Error::StaleFile)));
+        assert_eq!(map.path_for_handle(&h_x_new).unwrap(), Path::new("p/z/x"));
+        assert_eq!(map.path_for_handle(&h_q).unwrap(), Path::new("p/z/q"));
+        assert_eq!(map.path_for_handle(&h_r).unwrap(), Path::new("p/z/r"));
+        assert_eq!(map.path_for_handle(&h_u).unwrap(), Path::new("p/z/r/u"));
+
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
+                (renamed.clone(), PathBuf::from("p/z"), &[h_x_new.clone(), h_q.clone(), h_r.clone()]),
+                (h_x_new, PathBuf::from("p/z/x"), &[]),
+                (h_q, PathBuf::from("p/z/q"), &[]),
+                (h_r.clone(), PathBuf::from("p/z/r"), from_ref(&h_u)),
+                (h_u.clone(), PathBuf::from("p/z/r/u"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          p
+    ///          |
+    ///          a
+    ///          |
+    ///          x
+    ///
+    /// Change: reject rename `p/a -> p/a/z` (destination inside source subtree).
+    #[test]
+    fn test_rename_path_rejects_destination_inside_source_subtree() {
+        let mut map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_x = child_name("x");
+        let name_z = child_name("z");
+
+        let h_p = map.ensure_child_handle(&Inner::root(), &name_p).unwrap();
+        let h_a = map.ensure_child_handle(&h_p, &name_a).unwrap();
+        let h_x = map.ensure_child_handle(&h_a, &name_x).unwrap();
+
+        let err = map.rename_path(&h_p, &name_a, &h_a, &name_z).unwrap_err();
+        assert_eq!(err, vfs::Error::InvalidArgument);
+
+        assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h_a);
+        assert_eq!(map.handle_for_child(&h_a, &name_x).unwrap(), h_x);
+        assert!(matches!(map.handle_for_child(&h_a, &name_z), Err(vfs::Error::StaleFile)));
+
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&h_a)),
+                (h_a.clone(), PathBuf::from("p/a"), from_ref(&h_x)),
+                (h_x.clone(), PathBuf::from("p/a/x"), &[]),
+            ],
+        );
+    }
+
     ///          /
     ///          |
     ///          p
