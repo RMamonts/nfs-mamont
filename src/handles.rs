@@ -298,3 +298,379 @@ impl HandleMap {
         Self { map: RwLock::new(Inner::new(root)) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::array::from_ref;
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+
+    fn setup() -> Inner {
+        Inner::new(PathBuf::from("/tmp"))
+    }
+
+    fn child_name(name: &str) -> file::Name {
+        file::Name::new(name.to_string()).unwrap()
+    }
+
+    /// Asserts state of `Inner::handle_to_path` and child links.
+    fn assert_state(map: &Inner, exp: &[(Handle, PathBuf, &[Handle])]) {
+        let mut actual: Vec<(Handle, PathBuf)> = map
+            .handle_to_path
+            .iter()
+            .map(|(handle, entry)| (handle.clone(), entry.path.clone()))
+            .collect();
+        actual.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        let mut expected: Vec<(Handle, PathBuf)> =
+            exp.iter().map(|(handle, path, _)| (handle.clone(), path.clone())).collect();
+        expected.sort_by(|(left, _), (right, _)| left.cmp(right));
+
+        assert_eq!(actual, expected);
+
+        for (handle, _, children) in exp {
+            let entry = map
+                .handle_to_path
+                .get(handle)
+                .unwrap_or_else(|| panic!("missing handle {handle:?}"));
+
+            let mut actual_children: Vec<Handle> = entry.children.values().cloned().collect();
+            actual_children.sort();
+
+            let mut expected_children = children.to_vec();
+            expected_children.sort();
+
+            assert_eq!(actual_children, expected_children);
+        }
+    }
+
+    ///          /
+    ///          |
+    ///          a
+    ///       /  |  \
+    ///      b   c   d
+    ///              |
+    ///              e
+    ///
+    /// Change: repeated create for `a/b` returns the same handle.
+    #[test]
+    fn test_multiple_insertions() {
+        let mut map = setup();
+
+        assert!(matches!(map.path_for_handle(&Handle([9; 8])), Err(vfs::Error::StaleFile)));
+
+        let h_root = Inner::root();
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        let name_c = child_name("c");
+        let name_d = child_name("d");
+        let name_e = child_name("e");
+
+        assert!(matches!(map.handle_for_child(&h_root, &name_a), Err(vfs::Error::StaleFile)));
+        let h_a = map.ensure_child_handle(&h_root, &name_a).unwrap();
+        let h_b = map.ensure_child_handle(&h_a, &name_b).unwrap();
+        let h_b2 = map.ensure_child_handle(&h_a, &name_b).unwrap();
+        let _h_c = map.ensure_child_handle(&h_a, &name_c).unwrap();
+        let h_d = map.ensure_child_handle(&h_a, &name_d).unwrap();
+        let h_e = map.ensure_child_handle(&h_d, &name_e).unwrap();
+
+        assert_eq!(h_b, h_b2);
+        assert_eq!(map.handle_for_child(&h_a, &name_d).unwrap(), h_d);
+        assert_eq!(map.path_for_handle(&h_e).unwrap(), Path::new("a/d/e"));
+
+        let h_c = map.handle_for_child(&h_a, &name_c).unwrap();
+        assert_state(
+            &map,
+            &[
+                (h_root, PathBuf::new(), from_ref(&h_a)),
+                (h_a.clone(), PathBuf::from("a"), &[h_b.clone(), h_c.clone(), h_d.clone()]),
+                (h_b, PathBuf::from("a/b"), &[]),
+                (h_c, PathBuf::from("a/c"), &[]),
+                (h_d, PathBuf::from("a/d"), from_ref(&h_e)),
+                (h_e.clone(), PathBuf::from("a/d/e"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          x
+    ///       /  |  \
+    ///      1   2   3
+    ///
+    /// Change: siblings under `x` are reachable with correct paths.
+    #[test]
+    fn test_children_population() {
+        let mut map = setup();
+
+        let name_x = child_name("x");
+        let name_1 = child_name("1");
+        let name_2 = child_name("2");
+        let name_3 = child_name("3");
+
+        assert!(matches!(
+            map.handle_for_child(&Inner::root(), &name_x),
+            Err(vfs::Error::StaleFile)
+        ));
+        let h_x = map.ensure_child_handle(&Inner::root(), &name_x).unwrap();
+        let h1 = map.ensure_child_handle(&h_x, &name_1).unwrap();
+        let h2 = map.ensure_child_handle(&h_x, &name_2).unwrap();
+        let h3 = map.ensure_child_handle(&h_x, &name_3).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_x, &name_2).unwrap(), h2);
+        assert_eq!(map.handle_for_child(&h_x, &name_3).unwrap(), h3);
+        assert_eq!(map.path_for_handle(&h3).unwrap(), Path::new("x/3"));
+
+        let mut children = vec![
+            map.handle_for_child(&h_x, &name_1).unwrap(),
+            map.handle_for_child(&h_x, &name_2).unwrap(),
+            map.handle_for_child(&h_x, &name_3).unwrap(),
+        ];
+        children.sort();
+        let mut expected = vec![h1.clone(), h2.clone(), h3.clone()];
+        expected.sort();
+
+        assert_eq!(children, expected);
+
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_x)),
+                (h_x.clone(), PathBuf::from("x"), &[h1.clone(), h2.clone(), h3.clone()]),
+                (h1, PathBuf::from("x/1"), &[]),
+                (h2, PathBuf::from("x/2"), &[]),
+                (h3, PathBuf::from("x/3"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///         dir
+    ///        /   \
+    ///       a     b
+    ///
+    /// Change: second create of `dir/a` reuses existing handle.
+    #[test]
+    fn test_existing_files() {
+        let mut map = setup();
+
+        let name_dir = child_name("dir");
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        assert!(matches!(
+            map.handle_for_child(&Inner::root(), &name_dir),
+            Err(vfs::Error::StaleFile)
+        ));
+        let h_dir = map.ensure_child_handle(&Inner::root(), &name_dir).unwrap();
+        let h1 = map.ensure_child_handle(&h_dir, &name_a).unwrap();
+        let _h2 = map.ensure_child_handle(&h_dir, &name_b).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_dir, &name_a).unwrap(), h1);
+        assert_eq!(map.path_for_child(&h_dir, &name_b).unwrap(), Path::new("dir/b"));
+
+        let h1b = map.ensure_child_handle(&h_dir, &name_a).unwrap();
+        assert_eq!(h1, h1b);
+
+        let h2 = map.handle_for_child(&h_dir, &name_b).unwrap();
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_dir)),
+                (h_dir.clone(), PathBuf::from("dir"), &[h1.clone(), h2.clone()]),
+                (h1, PathBuf::from("dir/a"), &[]),
+                (h2, PathBuf::from("dir/b"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          p
+    ///       /     \
+    ///      a       b
+    ///      |
+    ///      x
+    ///
+    /// Change: remove `p/a`; subtree `a -> x` becomes stale, `p/b` remains.
+    #[test]
+    fn test_remove_child_removes_subtree() {
+        let mut map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_b = child_name("b");
+        let name_x = child_name("x");
+        let h_p = map.ensure_child_handle(&Inner::root(), &name_p).unwrap();
+        let h1 = map.ensure_child_handle(&h_p, &name_a).unwrap();
+        let h1_child = map.ensure_child_handle(&h1, &name_x).unwrap();
+        let h2 = map.ensure_child_handle(&h_p, &name_b).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
+
+        map.remove_path(&h_p, &name_a).unwrap();
+
+        assert!(matches!(map.handle_for_child(&h_p, &name_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_child(&h_p, &name_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h1), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.handle_for_child(&h1, &name_x), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h1_child), Err(vfs::Error::StaleFile)));
+        assert_eq!(map.handle_for_child(&h_p, &name_b).unwrap(), h2);
+
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&h2)),
+                (h2.clone(), PathBuf::from("p/b"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          p
+    ///       /     \
+    ///      a       z
+    ///      |       |
+    ///      x       q
+    ///
+    /// Change: rename `p/a -> p/z`; `x` replaces destination root content, `q` is preserved.
+    #[test]
+    fn test_rename_path_updates_subtree() {
+        let mut map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_x = child_name("x");
+        let name_z = child_name("z");
+        let name_q = child_name("q");
+        let h_p = map.ensure_child_handle(&Inner::root(), &name_p).unwrap();
+        let h1 = map.ensure_child_handle(&h_p, &name_a).unwrap();
+        let h1_child = map.ensure_child_handle(&h1, &name_x).unwrap();
+        let h_z = map.ensure_child_handle(&h_p, &name_z).unwrap();
+        let h_z_child = map.ensure_child_handle(&h_z, &name_q).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name_a).unwrap(), h1);
+
+        let renamed = map.rename_path(&h_p, &name_a, &h_p, &name_z).unwrap();
+        let renamed_child = map.handle_for_child(&renamed, &name_x).unwrap();
+
+        assert!(matches!(map.handle_for_child(&h_p, &name_a), Err(vfs::Error::StaleFile)));
+        assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
+        assert_eq!(map.path_for_child(&h_p, &name_z).unwrap(), Path::new("p/z"));
+        assert_ne!(renamed_child, h1_child);
+        assert_eq!(map.path_for_handle(&renamed).unwrap(), Path::new("p/z"));
+        assert_eq!(map.path_for_handle(&renamed_child).unwrap(), Path::new("p/z/x"));
+        assert!(matches!(map.path_for_handle(&h1), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h1_child), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z), Err(vfs::Error::StaleFile)));
+        assert_eq!(map.path_for_handle(&h_z_child).unwrap(), Path::new("p/z/q"));
+        assert_eq!(map.handle_for_child(&renamed, &name_q).unwrap(), h_z_child);
+
+        let renamed_child = map.handle_for_child(&renamed, &name_x).unwrap();
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
+                (
+                    renamed.clone(),
+                    PathBuf::from("p/z"),
+                    &[renamed_child.clone(), h_z_child.clone()],
+                ),
+                (renamed_child, PathBuf::from("p/z/x"), &[]),
+                (h_z_child, PathBuf::from("p/z/q"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          p
+    ///       /     \
+    ///      a       z
+    ///      |       |
+    ///      x       q
+    ///
+    /// Change: after `p/a -> p/z`, no-op rename `p/z -> p/z` keeps the same root handle.
+    #[test]
+    fn test_rename_path_replaces_existing_destination() {
+        let mut map = setup();
+
+        let name_p = child_name("p");
+        let name_a = child_name("a");
+        let name_x = child_name("x");
+        let name_z = child_name("z");
+        let name_q = child_name("q");
+        let h_p = map.ensure_child_handle(&Inner::root(), &name_p).unwrap();
+        let h_a = map.ensure_child_handle(&h_p, &name_a).unwrap();
+        let h_a_child = map.ensure_child_handle(&h_a, &name_x).unwrap();
+        let h_z = map.ensure_child_handle(&h_p, &name_z).unwrap();
+        let h_z_child = map.ensure_child_handle(&h_z, &name_q).unwrap();
+
+        let renamed = map.rename_path(&h_p, &name_a, &h_p, &name_z).unwrap();
+        let renamed_child = map.handle_for_child(&renamed, &name_x).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name_z).unwrap(), renamed);
+        assert_ne!(map.handle_for_child(&renamed, &name_x).unwrap(), h_a_child);
+
+        assert!(matches!(map.handle_for_child(&h_p, &name_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_a), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_z), Err(vfs::Error::StaleFile)));
+        assert_eq!(map.path_for_handle(&h_z_child).unwrap(), Path::new("p/z/q"));
+        assert_eq!(map.handle_for_child(&renamed, &name_q).unwrap(), h_z_child);
+        assert_eq!(map.path_for_handle(&renamed).unwrap(), Path::new("p/z"));
+        map.path_for_handle(&renamed_child).unwrap();
+        assert!(matches!(map.path_for_handle(&h_a_child), Err(vfs::Error::StaleFile)));
+
+        let renamed2 = map.rename_path(&h_p, &name_z, &h_p, &name_z).unwrap();
+
+        assert_eq!(renamed, renamed2);
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), from_ref(&renamed)),
+                (
+                    renamed.clone(),
+                    PathBuf::from("p/z"),
+                    &[renamed_child.clone(), h_z_child.clone()],
+                ),
+                (renamed_child, PathBuf::from("p/z/x"), &[]),
+                (h_z_child, PathBuf::from("p/z/q"), &[]),
+            ],
+        );
+    }
+
+    ///          /
+    ///          |
+    ///          p
+    ///          |
+    ///          a
+    ///
+    /// Change: create/lookup/remove for `p/a`, then verify `a` is stale.
+    #[test]
+    fn test_parent_child_helpers() {
+        let mut map = setup();
+        let h_p = map.ensure_child_handle(&Inner::root(), &child_name("p")).unwrap();
+        let name = child_name("a");
+        let h_a = map.ensure_child_handle(&h_p, &name).unwrap();
+
+        assert_eq!(map.handle_for_child(&h_p, &name).unwrap(), h_a);
+        assert_eq!(map.path_for_child(&h_p, &name).unwrap(), Path::new("p/a"));
+
+        map.remove_path(&h_p, &name).unwrap();
+
+        assert!(matches!(map.handle_for_child(&h_p, &name), Err(vfs::Error::StaleFile)));
+        assert!(matches!(map.path_for_handle(&h_a), Err(vfs::Error::StaleFile)));
+        assert_state(
+            &map,
+            &[
+                (Inner::root(), PathBuf::new(), from_ref(&h_p)),
+                (h_p.clone(), PathBuf::from("p"), &[]),
+            ],
+        );
+    }
+}
