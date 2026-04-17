@@ -153,6 +153,10 @@ impl Inner {
         }
     }
 
+    fn is_destination_inside_source(source: &Path, destination: &Path) -> bool {
+        destination != source && destination.starts_with(source)
+    }
+
     /// Creates a new subtree that mirrors the structure described by
     /// `source_nodes`, translating every path from `old_root` to `new_root`
     /// and allocating fresh handles.
@@ -225,6 +229,9 @@ impl Inner {
 
         let old_full = self.path_for_child(from_parent, from_name)?;
         let new_full = self.path_for_handle(to_parent)?.join(to_name.as_str());
+        if Self::is_destination_inside_source(&old_full, &new_full) {
+            return Err(vfs::Error::InvalidArgument);
+        }
 
         let source_handle = self.handle_for_child(from_parent, from_name)?;
 
