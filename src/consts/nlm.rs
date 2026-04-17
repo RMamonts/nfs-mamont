@@ -21,3 +21,5 @@ pub const NLMPROC4_SHARE: u32 = 20;
 pub const NLMPROC4_UNSHARE: u32 = 21;
 pub const NLMPROC4_NM_LOCK: u32 = 22;
 pub const NLMPROC4_FREE_ALL: u32 = 23;
+
+pub const LM_MAXSTRLEN: usize = 1024;
