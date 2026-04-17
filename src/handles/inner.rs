@@ -1,6 +1,48 @@
+//! Internal state for the handle map.
+//!
+//! # Stored structure
+//!
+//! - all paths are stored relative to the configured root;
+//! - `handle_to_path` holds the canonical entry for each handle;
+//! - `path_to_handle` provides the reverse lookup from relative path to handle;
+//! - each `Entry` stores only its direct children;
+//! - `next_id` generates monotonically increasing handle identifiers.
+//!
+//! # Concurrency model
+//! Mutations and access to `Inner` is regulated by `RwLock` inside [`super::handle_map::HandleMap`]
+//!
+//! # Subtree operations
+//!
+//! The `Inner` type implements all low‑level tree manipulations used by
+//! [`super::handle_map::HandleMap`]. These operations follow a strict two‑phase protocol:
+//!
+//! 1. **Collection phase** — the operation traverses the relevant subtree(s)
+//!    and records all required information. Any failure aborts the operation
+//!    without modifying state.
+//! 2. **Apply phase** — using the collected data, the operation performs all
+//!    structural updates (insertion, removal, rewiring). This phase is
+//!    infallible because all required handles and paths were validated earlier.
+//!
+//! # Mutation semantics
+//!
+//! - subtree collection is breadth‑first and returns nodes in
+//!   parent‑before‑children order;
+//! - removal purges all collected nodes from both maps;
+//! - rename creates a mirrored destination subtree with fresh handles,
+//!   wires it into the destination parent, and then removes the source;
+//! - rename never preserves source handles — the entire source subtree is
+//!   recreated under the new path;
+//! - existing destination nodes are removed before the replacement subtree
+//!   is created.
+//!
+//! # Path translation
+//!
+//! `create_mirrored_subtree` rewrites every source path by stripping the
+//! `old_root` prefix and joining the remainder onto `new_root`. This ensures
+//! that the resulting subtree preserves structure while receiving fresh
+//! handles and canonical paths.
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use tokio::sync::RwLock;
 
 use crate::vfs;
 use crate::vfs::file;
@@ -8,6 +50,7 @@ use crate::vfs::file::Handle;
 
 const ROOT: u64 = 1;
 
+/// A directory entry in the handle map.
 struct Entry {
     path: PathBuf,
     handle: Handle,
@@ -20,6 +63,7 @@ impl Entry {
     }
 }
 
+/// Snapshot of a single node captured during subtree collection.
 #[derive(Clone)]
 struct Snapshot {
     path: PathBuf,
@@ -27,14 +71,15 @@ struct Snapshot {
     children: Vec<file::Name>,
 }
 
-struct Inner {
+/// The inner state of the handle map.
+pub(super) struct Inner {
     root: PathBuf,
     generation: u64,
     handle_to_path: HashMap<Handle, Entry>,
 }
 
 impl Inner {
-    fn new(root: PathBuf) -> Self {
+    pub(super) fn new(root: PathBuf) -> Self {
         let root_handle = file::Handle(ROOT.to_be_bytes());
         let root_relative = PathBuf::new();
 
@@ -45,20 +90,49 @@ impl Inner {
         Self { root, generation: ROOT + 1, handle_to_path }
     }
 
+    /// Allocates a new handle.
     fn alloc_handle(&mut self) -> Handle {
         let id = self.generation;
         self.generation += 1;
         Handle(id.to_be_bytes())
     }
 
+    /// Returns the fixed handle representing the root directory.
     fn root() -> file::Handle {
         file::Handle(ROOT.to_be_bytes())
     }
 
+    /// Returns the stored relative path for a handle.
+    ///
+    /// # Parameters
+    ///
+    /// - `handle`: The handle to get the path for.
+    ///
+    /// # Returns
+    ///
+    /// - The stored relative path for the given handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the handle is not found.
     fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
         Ok(self.handle_to_path.get(handle).ok_or(vfs::Error::StaleFile)?.path.clone())
     }
 
+    /// Returns the stored relative path for a direct child entry.\
+    ///
+    /// # Parameters
+    ///
+    /// - `parent`: The parent handle to get the child path for.
+    /// - `name`: The name of the child to get the path for.
+    ///
+    /// # Returns
+    ///
+    /// - The stored relative path for the given child.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the parent or child is not found.
     fn path_for_child(
         &self,
         parent: &file::Handle,
@@ -69,6 +143,20 @@ impl Inner {
         Ok(self.handle_to_path.get(child_handle).ok_or(vfs::Error::StaleFile)?.path.clone())
     }
 
+    /// Returns the direct child handle for a parent and entry name.
+    ///
+    /// # Parameters
+    ///
+    /// - `parent`: The parent handle to get the child handle for.
+    /// - `name`: The name of the child to get the handle for.
+    ///
+    /// # Returns
+    ///
+    /// - The stored handle for the given child.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the parent or child is not found.
     fn handle_for_child(
         &self,
         parent: &file::Handle,
@@ -78,6 +166,11 @@ impl Inner {
         parent_entry.children.get(name).cloned().ok_or(vfs::Error::StaleFile)
     }
 
+    /// Returns the direct child handle, creating a new entry if it does not
+    /// already exist.
+    ///
+    /// Uses double-checked locking: first attempts a shared read lock, falling
+    /// back to an exclusive write lock only when the child must be created.
     fn ensure_child_handle(
         &mut self,
         parent: &Handle,
@@ -104,6 +197,25 @@ impl Inner {
         Ok(handle)
     }
 
+    /// Removes a direct child from `parent` by name together with all of its
+    /// descendants.
+    ///
+    /// Function works in transaction-like manner: it first collects the subtree to be removed,
+    /// then removes the child from the parent and purges the collected subtree.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The path to the child to remove.
+    /// - `parent`: The parent handle to remove the child from.
+    /// - `name`: The name of the child to remove.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if the child was removed successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the parent or child is not found.
     fn remove_path(&mut self, parent: &Handle, name: &file::Name) -> Result<(), vfs::Error> {
         let child_handle = {
             let parent_entry = self.handle_to_path.get(parent).ok_or(vfs::Error::StaleFile)?;
@@ -124,6 +236,11 @@ impl Inner {
         Ok(())
     }
 
+    /// Iteratively collects the subtree rooted at (`root_path`, `root_handle`).
+    ///
+    /// Returns nodes in parent-before-children order so that
+    /// [`Self::create_mirrored_subtree`] can rely on parents being listed
+    /// before their children.
     fn collect_subtree(
         &self,
         root_path: &Path,
@@ -148,12 +265,16 @@ impl Inner {
         Ok(nodes)
     }
 
+    /// Removes all entries listed in `nodes` from both maps.
+    ///
+    /// Silently skips entries that are already absent.
     fn purge_entries(&mut self, nodes: &[Snapshot]) {
         for node in nodes {
             self.handle_to_path.remove(&node.handle);
         }
     }
 
+    /// Checks that destination is not a subdirectory of source (used in `rename`)
     fn is_destination_inside_source(source: &Path, destination: &Path) -> bool {
         destination != source && destination.starts_with(source)
     }
@@ -201,6 +322,30 @@ impl Inner {
         path_to_new_handle[&source_nodes[0].path].clone()
     }
 
+    /// Renames a subtree by creating a mirrored copy at the destination and
+    /// then removing the source.
+    ///
+    /// If source and destination are identical, returns the existing handle
+    /// without modification.
+    ///
+    /// Function works in transaction-like manner: it first collects the source and destination subtrees,
+    /// then removes the existing destination subtree and creates the mirrored subtree at the destination.
+    /// Finally, it detaches the source from its parent and purges the source subtree.
+    ///
+    /// # Parameters
+    ///
+    /// - `from_parent`: The parent handle of the source entry.
+    /// - `from_name`: The name of the source entry.
+    /// - `to_parent`: The parent handle of the destination entry.
+    /// - `to_name`: The name of the destination entry.
+    ///
+    /// # Returns
+    ///
+    /// - The handle of the renamed entry.
+    ///
+    /// # Error
+    ///
+    /// Returns [`vfs::Error::StaleFile`] if the source or destination is not found.
     fn rename_path(
         &mut self,
         from_parent: &Handle,
@@ -230,7 +375,7 @@ impl Inner {
 
         // Remove existing destination subtree.
         if !dest_nodes.is_empty() {
-            if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
+            if let Some(parent_entry) = self.handle_to_path.get_mut(to_parent) {
                 parent_entry.children.remove(to_name);
             }
             self.purge_entries(&dest_nodes);
@@ -240,7 +385,7 @@ impl Inner {
         let new_root_handle = self.create_mirrored_subtree(&old_full, &new_full, &source_nodes);
 
         // Wire new root into destination parent.
-        if let Some(parent_entry) = self.handle_to_path.get_mut(&to_parent) {
+        if let Some(parent_entry) = self.handle_to_path.get_mut(to_parent) {
             parent_entry.children.insert(to_name.clone(), new_root_handle.clone());
         }
 
@@ -253,6 +398,7 @@ impl Inner {
         Ok(new_root_handle)
     }
 
+    /// Replaces prefix `old_root` to `new_root`
     fn change_path(path: &Path, old_root: &Path, new_root: &Path) -> PathBuf {
         let suffix = path.strip_prefix(old_root).unwrap_or(Path::new(""));
         if suffix.as_os_str().is_empty() {
@@ -261,15 +407,33 @@ impl Inner {
             new_root.join(suffix)
         }
     }
-}
 
-struct HandleMap {
-    map: RwLock<Inner>,
-}
-
-impl HandleMap {
-    fn new(root: PathBuf) -> Self {
-        Self { map: RwLock::new(Inner::new(root)) }
+    /// Validates that a filename is allowed for NFS operations.
+    ///
+    /// `"."` is rejected as `InvalidArgument`,
+    /// `".."` is rejected as `Exist`,
+    /// all other names are accepted.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: The name to check.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the name is allowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns the following errors:
+    ///
+    /// - [`vfs::Error::InvalidArgument`] if the name is `"."`.
+    /// - [`vfs::Error::Exist`] if the name is `".."`.
+    pub fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
+        match name.as_str() {
+            "." => Err(vfs::Error::InvalidArgument),
+            ".." => Err(vfs::Error::Exist),
+            _ => Ok(()),
+        }
     }
 }
 
