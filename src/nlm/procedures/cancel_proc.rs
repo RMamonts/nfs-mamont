@@ -1,6 +1,6 @@
+use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
-use crate::vfs::read_dir::Cookie;
 
 /// Defines the information needed to cancel an outstanding lock request.
 /// The data in the `Nlm4CancelArgs` structure must exactly match the corresponding information in the `Nlm4LockArgs` structure of the outstanding lock request to be cancelled.
