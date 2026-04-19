@@ -238,9 +238,8 @@ impl Inner {
 
     /// Iteratively collects the subtree rooted at (`root_path`, `root_handle`).
     ///
-    /// Returns nodes in parent-before-children order so that
-    /// [`Self::create_mirrored_subtree`] can rely on parents being listed
-    /// before their children.
+    /// Returns nodes in parent-before-children order, which corresponds to sorting by the number of path components (depth).
+    /// This ordering is crucial for functions like [`Self::create_mirrored_subtree`] that rely on parents being processed before children.
     fn collect_subtree(
         &self,
         root_path: &Path,
@@ -283,6 +282,9 @@ impl Inner {
     /// Creates a new subtree that mirrors the structure described by
     /// `source_nodes`, translating every path from `old_root` to `new_root`
     /// and allocating fresh handles.
+    ///
+    /// This function assumes that `source_nodes` and `existed_nodes` are sorted by path depth
+    /// (number of components), as returned by [`Self::collect_subtree`], to ensure correct parent-child wiring.
     ///
     /// Returns the handle of the new root node.
     fn create_mirrored_subtree(
@@ -342,6 +344,24 @@ impl Inner {
         Ok(new_path_to_handle[new_root].clone())
     }
 
+    /// Collects nodes from `dest_nodes` that do not conflict with any node in `source_nodes`.
+    ///
+    /// A conflict occurs when a source node, after path translation from `old_full` to `new_full`,
+    /// would map to the same path as a destination node.
+    ///
+    /// This function uses an efficient two-pointer approach, assuming both `dest_nodes` and `source_nodes`
+    /// are sorted by path depth (as returned by [`Self::collect_subtree`]).
+    ///
+    /// # Parameters
+    ///
+    /// - `old_full`: The original root path of the source subtree.
+    /// - `new_full`: The new root path where the source subtree is being moved.
+    /// - `dest_nodes`: Nodes in the destination subtree, sorted by depth.
+    /// - `source_nodes`: Nodes in the source subtree, sorted by depth.
+    ///
+    /// # Returns
+    ///
+    /// A vector of destination nodes that can be preserved without conflicts.
     fn collect_entries_to_preserve(
         old_full: &Path,
         new_full: &Path,
@@ -376,7 +396,7 @@ impl Inner {
                 }
 
                 let mapped =
-                    new_full.join(source.path.strip_prefix(&old_full).unwrap_or(Path::new("")));
+                    new_full.join(source.path.strip_prefix(old_full).unwrap_or(Path::new("")));
 
                 if mapped == dest.path {
                     conflict = true;
