@@ -1,7 +1,7 @@
-pub mod cancel_proc;
-pub mod lock_proc;
-pub mod test_proc;
-pub mod unlock_proc;
+pub mod cancel;
+pub mod lock;
+pub mod test;
+pub mod unlock;
 
 /// NLMv4 RPC procedure numbers.
 ///
