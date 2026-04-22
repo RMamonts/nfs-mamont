@@ -87,8 +87,6 @@ pub async fn handle_forever_with_exports(
     loop {
         let (socket, _) = listener.accept().await?;
 
-        socket.set_nodelay(true)?;
-
         connection::new(socket, mount_sender.clone(), &context).await;
     }
 }
