@@ -1,7 +1,7 @@
+use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
-use crate::vfs::read_dir::Cookie;
 
 /// NLM TEST arguments.
 ///
