@@ -2,6 +2,7 @@
 //!
 //! This module contains types and structures for NLMv4 as defined in RFC 1813.
 
+pub mod cookie;
 pub mod holder;
 pub mod lock;
 pub mod procedures;
