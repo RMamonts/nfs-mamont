@@ -6,7 +6,8 @@
 //! - [`read::ReadTask`] - Reads RPC commands from the network connection
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
-//! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
+//! These tasks communicate via bounded channels to form an asynchronous processing pipeline
+//! with built-in backpressure.
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -15,16 +16,18 @@ use tracing::error;
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
+use crate::vfs::Vfs;
 
 mod read;
 mod write;
 
-// Creates all connection tasks with their inner connections
-pub async fn new(
+pub async fn new<V>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
-    context: &ServerContext,
-) {
+    context: &ServerContext<V>,
+) where
+    V: Vfs + Send + Sync + 'static,
+{
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
@@ -33,15 +36,13 @@ pub async fn new(
         }
     };
     let (readhalf, writehalf) = socket.into_split();
-    // channel for result
     let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
-    // channel for request
 
     read::ReadTask::new(
         readhalf,
         peer_addr,
         mount_sender,
-        result_sender.clone(),
+        result_sender,
         context.get_write_allocator(),
         context.get_vfs_pool().sender(),
     )

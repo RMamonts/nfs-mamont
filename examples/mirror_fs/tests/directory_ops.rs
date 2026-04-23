@@ -1,6 +1,7 @@
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::get_attr;
+use nfs_mamont::vfs::link;
 use nfs_mamont::vfs::lookup;
 use nfs_mamont::vfs::mk_dir;
 use nfs_mamont::vfs::read_link;
@@ -11,7 +12,7 @@ use nfs_mamont::vfs::symlink;
 
 use super::helpers::{
     assert_wcc_present, create_dir, dir_op, expect_err, expect_ok, file_path, name, write_file,
-    TestContext,
+    MultiExportTestContext, TestContext,
 };
 
 #[tokio::test]
@@ -404,4 +405,72 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     );
     assert_wcc_present(&removed_dir.wcc_data);
     assert!(!ctx.root_path().join("docs-renamed").exists());
+}
+
+#[tokio::test]
+async fn lookup_dotdot_stays_inside_each_export_root() {
+    let ctx = MultiExportTestContext::new(2);
+    create_dir(ctx.root_path(0), "nested");
+    create_dir(ctx.root_path(1), "nested");
+
+    let export_a_root = ctx.root_handle(0).await;
+    let export_b_root = ctx.root_handle(1).await;
+    let export_a_nested = ctx.lookup_handle(export_a_root.clone(), "nested").await;
+    let export_b_nested = ctx.lookup_handle(export_b_root.clone(), "nested").await;
+
+    let export_a_parent = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: export_a_nested, name: name("..") })
+            .await,
+        "lookup '..' in first export should resolve to first root",
+    );
+    let export_b_parent = expect_ok(
+        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: export_b_nested, name: name("..") })
+            .await,
+        "lookup '..' in second export should resolve to second root",
+    );
+
+    assert_eq!(export_a_parent.file, export_a_root);
+    assert_eq!(export_b_parent.file, export_b_root);
+}
+
+#[tokio::test]
+async fn link_rejects_cross_export_targets() {
+    let ctx = MultiExportTestContext::new(2);
+    write_file(ctx.root_path(0), "source.txt", b"hello");
+
+    let source_root = ctx.root_handle(0).await;
+    let target_root = ctx.root_handle(1).await;
+    let source = ctx.lookup_handle(source_root, "source.txt").await;
+
+    let fail = expect_err(
+        link::Link::link(
+            &ctx.fs,
+            link::Args { file: source, link: dir_op(target_root, "linked.txt") },
+        )
+        .await,
+        "cross-export hard link should fail",
+    );
+    assert_eq!(fail.error, vfs::Error::XDev);
+}
+
+#[tokio::test]
+async fn rename_rejects_cross_export_targets() {
+    let ctx = MultiExportTestContext::new(2);
+    write_file(ctx.root_path(0), "source.txt", b"hello");
+
+    let source_root = ctx.root_handle(0).await;
+    let target_root = ctx.root_handle(1).await;
+
+    let fail = expect_err(
+        rename::Rename::rename(
+            &ctx.fs,
+            rename::Args {
+                from: dir_op(source_root, "source.txt"),
+                to: dir_op(target_root, "moved.txt"),
+            },
+        )
+        .await,
+        "cross-export rename should fail",
+    );
+    assert_eq!(fail.error, vfs::Error::XDev);
 }

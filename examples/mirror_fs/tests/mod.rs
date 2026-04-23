@@ -1,3 +1,4 @@
+mod config;
 mod create_ops;
 mod directory_ops;
 mod fs_map;

@@ -54,6 +54,37 @@ impl TestContext {
     }
 }
 
+pub struct MultiExportTestContext {
+    tempdirs: Vec<TempDir>,
+    pub fs: MirrorFS,
+}
+
+impl MultiExportTestContext {
+    pub fn new(export_count: usize) -> Self {
+        let tempdirs = (0..export_count).map(|_| tempfile::tempdir().unwrap()).collect::<Vec<_>>();
+        let fs = MirrorFS::new_many(
+            tempdirs.iter().map(|tempdir| tempdir.path().to_path_buf()).collect(),
+        );
+        Self { tempdirs, fs }
+    }
+
+    pub fn root_path(&self, export_id: usize) -> &Path {
+        self.tempdirs[export_id].path()
+    }
+
+    pub async fn root_handle(&self, export_id: usize) -> file::Handle {
+        self.fs.root_handle_for_export(export_id).await
+    }
+
+    pub async fn lookup_handle(&self, parent: file::Handle, child_name: &str) -> file::Handle {
+        expect_ok(
+            lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await,
+            "lookup should succeed",
+        )
+        .file
+    }
+}
+
 pub fn name(value: &str) -> file::Name {
     file::Name::new(value.to_owned()).unwrap()
 }

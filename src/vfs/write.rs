@@ -1,6 +1,5 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
@@ -88,7 +87,6 @@ pub struct ArgsPartial {
     pub stable: StableHow,
 }
 
-#[async_trait]
 pub trait Write {
     /// Writes data to a file.
     ///
@@ -97,5 +95,5 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args) -> Result<Success, Fail>;
+    fn write(&self, args: Args) -> impl std::future::Future<Output = Result<Success, Fail>> + Send;
 }

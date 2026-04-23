@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, symlink};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl symlink::Symlink for MirrorFS {
     async fn symlink(&self, args: symlink::Args) -> Result<symlink::Success, symlink::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
@@ -14,8 +11,8 @@ impl symlink::Symlink for MirrorFS {
             });
         }
 
-        let dir_path = match self.path_for_handle(&args.object.dir).await {
-            Ok(path) => path,
+        let (export_id, dir_path) = match self.path_for_handle_with_export(&args.object.dir).await {
+            Ok(value) => value,
             Err(error) => {
                 return Err(symlink::Fail {
                     error,
@@ -45,12 +42,15 @@ impl symlink::Symlink for MirrorFS {
                 return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
-        let handle = match self.ensure_handle_for_path(&link_path).await {
+        let handle = match self.ensure_handle_for_path(export_id, &link_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
+
+        self.invalidate_attr_cache_path(&link_path).await;
+        self.invalidate_attr_cache_path(&dir_path).await;
 
         Ok(symlink::Success {
             file: Some(handle),

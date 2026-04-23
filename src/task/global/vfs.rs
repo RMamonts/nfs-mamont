@@ -18,12 +18,13 @@ pub type VfsCommandSender = Sender<VfsCommand>;
 type VfsCommandReceiver = Receiver<VfsCommand>;
 
 /// Fixed-size pool of [`VfsTask`] workers fed from a single unbounded command channel.
-pub struct VfsPool {
+pub struct VfsPool<V: Vfs + Send + Sync + 'static> {
     /// Sender to enqueue work in the pool for execution.
     sender: VfsCommandSender,
+    _marker: std::marker::PhantomData<V>,
 }
 
-impl VfsPool {
+impl<V: Vfs + Send + Sync + 'static> VfsPool<V> {
     /// Creates a new [`VfsPool`] with the given number of workers.
     ///
     /// # Parameters
@@ -35,11 +36,7 @@ impl VfsPool {
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new(
-        num: NonZeroUsize,
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
-        allocator: Arc<Impl>,
-    ) -> Self {
+    pub fn new(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<Impl>) -> Self {
         let (tx, rx) = async_channel::unbounded::<VfsCommand>();
 
         (0..num.get()).for_each(|_| {
@@ -47,7 +44,7 @@ impl VfsPool {
             VfsTask::new(Arc::clone(&backend), Arc::clone(&allocator), rx_clone).spawn();
         });
 
-        Self { sender: tx }
+        Self { sender: tx, _marker: std::marker::PhantomData }
     }
 
     /// Returns a clone of the command sender for enqueueing work in the pool.
@@ -56,7 +53,7 @@ impl VfsPool {
     }
 }
 
-impl Drop for VfsPool {
+impl<V: Vfs + Send + Sync + 'static> Drop for VfsPool<V> {
     /// Closes the pool's sender so workers stop after channel is empty.
     fn drop(&mut self) {
         self.sender.close();
@@ -64,16 +61,16 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask {
+pub struct VfsTask<V: Vfs + Send + Sync + 'static> {
     /// Shared filesystem implementation.
-    backend: Arc<dyn Vfs + Send + Sync + 'static>,
+    backend: Arc<V>,
     /// Allocator used for read buffers.
     allocator: Arc<Impl>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
-impl VfsTask {
+impl<V: Vfs + Send + Sync + 'static> VfsTask<V> {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
@@ -86,7 +83,7 @@ impl VfsTask {
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
     pub fn new(
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
+        backend: Arc<V>,
         allocator: Arc<Impl>,
         command_receiver: VfsCommandReceiver,
     ) -> Self {

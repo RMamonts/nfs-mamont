@@ -265,9 +265,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
             }
             READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
-            WRITE => {
-                NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
-            }
+            WRITE => NfsArguments::Write(
+                adapter_for_write(&self.allocator, &mut self.buffer).await?,
+            ),
             CREATE => NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?),
             MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
             SYMLINK => NfsArguments::SymLink(self.buffer.parse_with_retry(symlink::args).await?),

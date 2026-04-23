@@ -1,25 +1,21 @@
-use async_trait::async_trait;
-
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
         &self,
         args: read_dir_plus::Args,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
-        let dir_path = match self.path_for_handle(&args.dir).await {
-            Ok(path) => path,
+        let (export_id, dir_path) = match self.path_for_handle_with_export(&args.dir).await {
+            Ok(value) => value,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
         };
-        let dir_meta = match Self::metadata(&dir_path) {
-            Ok(meta) => meta,
+        let dir_attr = match self.attr_for_path(&dir_path).await {
+            Ok(attr) => attr,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: None }),
         };
-        let dir_attr = Self::attr_from_metadata(&dir_meta);
         if let Err(error) = Self::validate_directory(&dir_attr) {
             return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) });
         }
@@ -32,38 +28,56 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             });
         }
 
-        let entries = match self.list_directory_entries(&dir_path) {
+        let entries = match self.directory_entries_for(&dir_path, verifier).await {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
         };
 
+        let total_entries = entries.len();
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
-        let mut result = Vec::new();
-        for (index, (name, path, meta)) in entries.iter().cloned().enumerate().skip(start) {
+        let mut selected_paths = Vec::new();
+        let mut selected_entries = Vec::new();
+        for (index, entry) in entries.iter().enumerate().skip(start) {
+            let name = entry.name.clone();
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
-            if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
+            if !selected_entries.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
-            let attr = Self::attr_from_metadata(&meta);
-            let handle = match self.ensure_handle_for_path(&path).await {
-                Ok(handle) => handle,
-                Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
-            };
-            result.push(read_dir_plus::Entry {
-                file_id: attr.file_id,
-                file_name: name,
-                cookie: read_dir::Cookie::new((index + 1) as u64),
-                file_attr: Some(attr),
-                file_handle: Some(handle),
-            });
+            selected_entries.push((entry.file_id, name, read_dir::Cookie::new((index + 1) as u64)));
+            selected_paths.push(entry.path.clone());
             used = used.saturating_add(estimated);
+        }
+
+        let selected_attrs = match self.attrs_for_paths_parallel(&selected_paths).await {
+            Ok(attrs) => attrs,
+            Err(error) => {
+                return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) });
+            }
+        };
+
+        let handles = match self.ensure_handles_for_paths(export_id, &selected_paths).await {
+            Ok(handles) => handles,
+            Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
+        };
+
+        let mut result = Vec::with_capacity(selected_entries.len());
+        for (((file_id, file_name, cookie), file_attr), file_handle) in
+            selected_entries.into_iter().zip(selected_attrs).zip(handles)
+        {
+            result.push(read_dir_plus::Entry {
+                file_id,
+                file_name,
+                cookie,
+                file_attr: Some(file_attr),
+                file_handle: Some(file_handle),
+            });
         }
 
         Ok(read_dir_plus::Success {
             dir_attr: Some(dir_attr),
             cookie_verifier: verifier,
-            eof: start >= entries.len() || start.saturating_add(result.len()) >= entries.len(),
+            eof: start >= total_entries || start.saturating_add(result.len()) >= total_entries,
             entries: result,
         })
     }

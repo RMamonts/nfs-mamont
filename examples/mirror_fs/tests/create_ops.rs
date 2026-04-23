@@ -16,6 +16,7 @@ use nfs_mamont::vfs::remove;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::symlink;
 use nfs_mamont::vfs::write;
+use nfs_mamont::Slice;
 
 use super::helpers::{
     alloc_slice, assert_wcc_present, create_dir, default_new_attr, dir_op, expect_err, expect_ok,
@@ -342,6 +343,73 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
         "commit after write should succeed",
     );
     assert_eq!(commit_result.verifier.0, write_result.verifier.0);
+}
+
+#[tokio::test]
+async fn unstable_write_reports_unstable_and_commit_succeeds() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "file.txt", b"");
+    let root = ctx.root_handle().await;
+    let handle = ctx.lookup_handle(root, "file.txt").await;
+
+    let write_result = expect_ok(
+        write::Write::write(
+            &ctx.fs,
+            write::Args {
+                file: handle.clone(),
+                offset: 0,
+                size: 4,
+                stable: write::StableHow::Unstable,
+                data: slice_from_bytes(b"data").await,
+            },
+        )
+        .await,
+        "unstable write should succeed",
+    );
+    assert_eq!(write_result.count, 4);
+    assert_eq!(write_result.commited, write::StableHow::Unstable);
+
+    let commit_result = expect_ok(
+        commit::Commit::commit(&ctx.fs, commit::Args { file: handle, offset: 0, count: 0 }).await,
+        "commit after unstable write should succeed",
+    );
+    assert_eq!(commit_result.verifier.0, write_result.verifier.0);
+    assert_eq!(stdfs::read(ctx.root_path().join("file.txt")).unwrap(), b"data");
+}
+
+#[tokio::test]
+async fn write_supports_segmented_slice_ranges() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "file.txt", b"");
+    let root = ctx.root_handle().await;
+    let handle = ctx.lookup_handle(root, "file.txt").await;
+
+    let data = Slice::new(
+        vec![
+            b"abc".to_vec().into_boxed_slice(),
+            b"def".to_vec().into_boxed_slice(),
+            b"ghi".to_vec().into_boxed_slice(),
+        ],
+        1..8,
+        None,
+    );
+    let write_result = expect_ok(
+        write::Write::write(
+            &ctx.fs,
+            write::Args {
+                file: handle,
+                offset: 0,
+                size: 5,
+                stable: write::StableHow::Unstable,
+                data,
+            },
+        )
+        .await,
+        "segmented write should succeed",
+    );
+
+    assert_eq!(write_result.count, 5);
+    assert_eq!(stdfs::read(ctx.root_path().join("file.txt")).unwrap(), b"bcdef");
 }
 
 #[tokio::test]

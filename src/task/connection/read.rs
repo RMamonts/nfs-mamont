@@ -2,11 +2,10 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use async_channel::Sender;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::{debug, error};
-
-use async_channel::Sender;
+use tracing::{error, info};
 
 use crate::allocator::Impl;
 use crate::mount::MountRes;
@@ -67,7 +66,7 @@ impl ReadTask {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    debug!(client=%self.client_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
+                    info!(client=%self.client_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
@@ -80,7 +79,7 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
+                    info!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
                     if let Err(err) =
@@ -94,7 +93,7 @@ impl ReadTask {
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
+                    info!(client=%self.client_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
 
                     let result = ProcReply {
                         xid: header.xid,
@@ -108,7 +107,7 @@ impl ReadTask {
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
+                    info!(client=%self.client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
                     let command = MountCommand {
                         result_tx: self.result_sender.clone(),
                         args: MountArgWrapper { header, proc },

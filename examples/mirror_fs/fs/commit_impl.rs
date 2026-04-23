@@ -1,15 +1,11 @@
-use async_trait::async_trait;
-use tokio::fs::OpenOptions;
-
 use nfs_mamont::vfs::commit;
 
 use super::*;
 
-#[async_trait]
 impl commit::Commit for MirrorFS {
     async fn commit(&self, args: commit::Args) -> Result<commit::Success, commit::Fail> {
-        let path = match self.path_for_handle(&args.file).await {
-            Ok(path) => path,
+        let (_, path, attr) = match self.path_and_attr_for_handle(&args.file).await {
+            Ok(path_and_attr) => path_and_attr,
             Err(error) => {
                 return Err(commit::Fail {
                     error,
@@ -17,32 +13,44 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
-        let before_meta = std::fs::symlink_metadata(&path).ok();
-        let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
-        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
-            if let Err(error) = Self::validate_regular(&attr) {
-                return Err(commit::Fail { error, file_wcc: Self::wcc_data(&path, before) });
-            }
-        }
-
-        let file = match OpenOptions::new().write(true).open(&path).await {
-            Ok(file) => file,
-            Err(error) => {
-                return Err(commit::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_wcc: Self::wcc_data(&path, before),
-                });
-            }
-        };
-        if let Err(error) = file.sync_all().await {
+        if let Err(error) = Self::validate_regular(&attr) {
             return Err(commit::Fail {
-                error: Self::io_error_to_vfs(&error),
-                file_wcc: Self::wcc_data(&path, before),
+                error,
+                file_wcc: vfs::WccData {
+                    before: Some(Self::wcc_attr_from_attr(&attr)),
+                    after: Some(attr),
+                },
             });
         }
+        let before = Some(Self::wcc_attr_from_attr(&attr));
+
+        let file = match self.get_cached_write_file(&path).await {
+            Ok(file) => file,
+            Err(error) => {
+                return Err(commit::Fail { error, file_wcc: vfs::WccData { before, after: None } })
+            }
+        };
+
+        match tokio::task::spawn_blocking(move || file.sync_all()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                return Err(commit::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    file_wcc: vfs::WccData { before, after: Self::file_attr(&path) },
+                });
+            }
+            Err(_) => {
+                return Err(commit::Fail {
+                    error: vfs::Error::IO,
+                    file_wcc: vfs::WccData { before, after: Self::file_attr(&path) },
+                });
+            }
+        }
+
+        self.clear_pending_unstable_write(&path).await;
 
         Ok(commit::Success {
-            file_wcc: Self::wcc_data(&path, before),
+            file_wcc: vfs::WccData { before, after: Some(attr) },
             verifier: self.write_verifier(),
         })
     }
