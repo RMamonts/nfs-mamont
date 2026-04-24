@@ -57,7 +57,7 @@ impl Slice {
     }
 
     /// Deallocates all buffers by returning them to the allocator state (pool)
-    /// and restoring the corresponding permits on its semaphore.
+    /// and restoring the corresponding permit tokens.
     ///
     /// The allocator state is provided when constructing the slice via [`Self::new`].
     fn deallocate(&mut self) {
@@ -68,7 +68,9 @@ impl Slice {
                 let _ = state.pool.push(buffer);
             }
             if count > 0 {
-                state.semaphore.add_permits(count);
+                for _ in 0..count {
+                    let _ = state.permits_tx.try_send(());
+                }
             }
         }
     }

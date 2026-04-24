@@ -9,7 +9,6 @@ use std::io;
 use std::io::{ErrorKind, Write};
 
 use async_trait::async_trait;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
 use crate::mount::MountRes;
@@ -30,16 +29,6 @@ use super::rpc::auth;
 #[async_trait(?Send)]
 pub trait WriteSink {
     async fn write_all_bytes(&mut self, buf: &[u8]) -> io::Result<()>;
-}
-
-#[async_trait(?Send)]
-impl<T> WriteSink for T
-where
-    T: AsyncWrite + Unpin,
-{
-    async fn write_all_bytes(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.write_all(buf).await
-    }
 }
 
 /// Minimum buffer size, that could hold complete RPC message

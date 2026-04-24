@@ -1,8 +1,8 @@
 use std::cmp::min;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, ReadBuf};
+use async_trait::async_trait;
+
+use crate::parser::read_buffer::ReadSource;
 
 const SEPARATE: usize = 15;
 
@@ -17,28 +17,38 @@ impl MockSocket {
     }
 }
 
-impl AsyncRead for MockSocket {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        let inner = self.get_mut();
-        if inner.position >= inner.data.len() {
-            return Poll::Ready(Ok(()));
+#[async_trait(?Send)]
+impl ReadSource for MockSocket {
+    async fn read_into(&mut self, dest: &mut [u8]) -> std::io::Result<usize> {
+        if self.position >= self.data.len() {
+            return Ok(0);
         }
-        let remaining_data = inner.data.len() - inner.position;
 
-        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
+        let remaining_data = self.data.len() - self.position;
+        let to_read = min(SEPARATE, min(dest.len(), remaining_data));
 
         if to_read > 0 {
-            let start = inner.position;
-            let end = inner.position + to_read;
-            buf.put_slice(&inner.data[start..end]);
-
-            inner.position += to_read;
+            let start = self.position;
+            let end = self.position + to_read;
+            dest[..to_read].copy_from_slice(&self.data[start..end]);
+            self.position += to_read;
         }
 
-        Poll::Ready(Ok(()))
+        Ok(to_read)
+    }
+
+    async fn read_exact_into(&mut self, dest: &mut [u8]) -> std::io::Result<()> {
+        let mut total = 0;
+        while total < dest.len() {
+            let n = self.read_into(&mut dest[total..]).await?;
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "mock socket EOF",
+                ));
+            }
+            total += n;
+        }
+        Ok(())
     }
 }

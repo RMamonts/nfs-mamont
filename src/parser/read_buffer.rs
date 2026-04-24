@@ -14,7 +14,6 @@ use std::io;
 use std::io::{ErrorKind, Read};
 
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
 
@@ -22,20 +21,6 @@ use crate::parser::{Error, Result};
 pub trait ReadSource {
     async fn read_into(&mut self, dest: &mut [u8]) -> io::Result<usize>;
     async fn read_exact_into(&mut self, dest: &mut [u8]) -> io::Result<()>;
-}
-
-#[async_trait(?Send)]
-impl<T> ReadSource for T
-where
-    T: AsyncRead + Unpin,
-{
-    async fn read_into(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.read(dest).await
-    }
-
-    async fn read_exact_into(&mut self, dest: &mut [u8]) -> io::Result<()> {
-        self.read_exact(dest).await.map(|_| ())
-    }
 }
 
 /// A buffered reader that wraps an async stream and provides synchronous reading
