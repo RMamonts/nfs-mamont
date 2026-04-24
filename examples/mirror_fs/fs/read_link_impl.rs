@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, file, read_link};
 
 use super::MirrorFS;
@@ -28,7 +26,7 @@ impl read_link::ReadLink for MirrorFS {
                 symlink_attr: Some(attr),
             });
         }
-        let target = match fs::read_link(&path).await {
+        let target = match std::fs::read_link(&path) {
             Ok(target) => target,
             Err(error) => {
                 return Err(read_link::Fail {

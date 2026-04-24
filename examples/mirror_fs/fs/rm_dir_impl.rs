@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, rm_dir};
 
 use super::MirrorFS;
@@ -50,7 +48,7 @@ impl rm_dir::RmDir for MirrorFS {
             });
         }
 
-        match fs::remove_dir(&child_path).await {
+        match std::fs::remove_dir(&child_path) {
             Ok(()) => {
                 self.remove_cached_path(export_id, &child_path).await;
                 self.invalidate_attr_cache_path(&dir_path).await;

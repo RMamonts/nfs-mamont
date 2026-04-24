@@ -1,5 +1,3 @@
-use std::os::unix::fs::FileExt;
-
 use nfs_mamont::vfs::read;
 use nfs_mamont::Slice;
 
@@ -7,9 +5,6 @@ use super::MirrorFS;
 
 impl read::Read for MirrorFS {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
-        const SENDFILE_MIN_BYTES: usize = 32 * 1024;
-        const READ_AHEAD_TRIGGER_BYTES: usize = 256 * 1024;
-
         let (_, path, attr) = match self.path_and_attr_for_handle(&args.file).await {
             Ok(path_and_attr) => path_and_attr,
             Err(error) => {
@@ -37,13 +32,16 @@ impl read::Read for MirrorFS {
         let block_size = super::READ_AHEAD_BLOCK_SIZE as u64;
 
         let sequential = self.update_read_sequence(&path, start, end).await;
-        let should_prefetch = requested >= READ_AHEAD_TRIGGER_BYTES || sequential;
+        let small_random =
+            requested > 0 && requested <= self.read_path_config.small_io_threshold.get() && !sequential;
+        let should_prefetch = !small_random
+            && (requested >= self.read_path_config.read_ahead_trigger_bytes.get() || sequential);
         if should_prefetch {
             let start_block_index = end / block_size;
             self.schedule_read_ahead_window(&path, file.clone(), start_block_index, file_len).await;
         }
 
-        if requested > 0 && sendfile_source.is_none() {
+        if requested > 0 && sendfile_source.is_none() && !small_random {
             if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await
             {
                 read_count = cached;
@@ -51,73 +49,28 @@ impl read::Read for MirrorFS {
         }
 
         #[cfg(target_os = "linux")]
-        if requested >= SENDFILE_MIN_BYTES && read_count == 0 && !should_prefetch {
+        if !small_random
+            && requested >= self.read_path_config.sendfile_min_bytes.get()
+            && read_count == 0
+            && !should_prefetch
+        {
             read_count = requested;
-            sendfile_source = Some(read::SendfileSource { file: file.clone(), offset: start });
+            sendfile_source = Some(read::SendfileSource { file: file.backing_file(), offset: start });
             data = Slice::empty();
         }
 
         if requested > 0 && sendfile_source.is_none() && read_count < requested {
-            let read_file = file.clone();
             let read_start = start.saturating_add(read_count as u64);
             let read_remaining = requested - read_count;
             let data_offset = read_count;
-            let read_result = tokio::task::spawn_blocking(move || {
-                let mut remaining = read_remaining;
-                let mut local_offset = read_start;
-                let mut local_read_count = 0usize;
-                let mut slice_offset = data_offset;
-
-                for chunk in data.iter_mut() {
-                    if slice_offset >= chunk.len() {
-                        slice_offset -= chunk.len();
-                        continue;
-                    }
-
-                    if remaining == 0 {
-                        break;
-                    }
-
-                    let writable = chunk.len() - slice_offset;
-                    let to_read = writable.min(remaining);
-                    let mut chunk_offset = 0usize;
-
-                    while chunk_offset < to_read {
-                        let bytes = read_file.read_at(
-                            &mut chunk[slice_offset + chunk_offset..slice_offset + to_read],
-                            local_offset + chunk_offset as u64,
-                        )?;
-
-                        if bytes == 0 {
-                            return Ok((data, local_read_count));
-                        }
-
-                        chunk_offset += bytes;
-                        local_read_count += bytes;
-                    }
-
-                    local_offset = local_offset.saturating_add(to_read as u64);
-                    remaining -= to_read;
-                    slice_offset = 0;
-                }
-
-                Ok::<(Slice, usize), std::io::Error>((data, local_read_count))
-            })
-            .await;
-
-            let (filled_data, filled_count) = match read_result {
-                Ok(Ok(ok)) => ok,
-                Ok(Err(error)) => {
-                    return Err(read::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        file_attr: Some(attr),
-                    });
-                }
-                Err(_) => {
-                    return Err(read::Fail {
-                        error: nfs_mamont::vfs::Error::IO,
-                        file_attr: Some(attr),
-                    });
+            let (filled_data, filled_count) = match self
+                .disk_io
+                .read_into(file.clone(), read_start, data, data_offset, read_remaining)
+                .await
+            {
+                Ok(ok) => ok,
+                Err(error) => {
+                    return Err(read::Fail { error, file_attr: Some(attr) });
                 }
             };
 

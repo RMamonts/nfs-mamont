@@ -1,5 +1,6 @@
 mod args;
 mod config;
+mod disk_io;
 pub mod fs;
 pub mod fs_map;
 
@@ -29,6 +30,8 @@ async fn main() -> std::io::Result<()> {
 
     let fs = Arc::new(fs::MirrorFS::new_many(
         config.exports.iter().map(|export| export.local_path.clone()).collect(),
+        config.disk_io.clone(),
+        config.read_path.clone(),
     ));
 
     let context = ServerContext::new(

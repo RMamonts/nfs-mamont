@@ -14,6 +14,8 @@ use nfs_mamont::vfs::read;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::read_dir_plus;
 use nfs_mamont::vfs::read_link;
+use nfs_mamont::vfs::write;
+use tokio::time::{sleep, Duration};
 
 use crate::fs::READ_WRITE_MAX;
 
@@ -220,6 +222,102 @@ async fn read_reads_requested_window_and_rejects_directories() {
         "read on directory should fail",
     );
     assert_eq!(fail.error, vfs::Error::InvalidArgument);
+}
+
+#[tokio::test]
+async fn write_invalidates_prefetched_read_ahead_blocks() {
+    let ctx = TestContext::new();
+    let mut payload = vec![b'a'; READ_WRITE_MAX as usize * 2];
+    payload[READ_WRITE_MAX as usize..].fill(b'b');
+    write_file(ctx.root_path(), "large.bin", &payload);
+    let cached_path = ctx.root_path().join("large.bin");
+    let root = ctx.root_handle().await;
+    let handle = ctx.lookup_handle(root, "large.bin").await;
+
+    let warmup = expect_ok(
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: handle.clone(), offset: 0, count: 512 * 1024 },
+            alloc_slice(512 * 1024).await,
+        )
+        .await,
+        "warmup read should succeed",
+    );
+    assert_eq!(warmup.head.count, 512 * 1024);
+
+    for _ in 0..50 {
+        if ctx.fs.cached_read_ahead_blocks_for(&cached_path) > 0 {
+            break;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    assert!(ctx.fs.cached_read_ahead_blocks_for(&cached_path) > 0);
+
+    let write_result = expect_ok(
+        write::Write::write(
+            &ctx.fs,
+            write::Args {
+                file: handle.clone(),
+                offset: READ_WRITE_MAX as u64,
+                size: 1,
+                stable: write::StableHow::FileSync,
+                data: super::helpers::slice_from_bytes(b"Z").await,
+            },
+        )
+        .await,
+        "write after warmup should succeed",
+    );
+    assert_eq!(write_result.count, 1);
+    assert_eq!(ctx.fs.cached_read_ahead_blocks_for(&cached_path), 0);
+
+    let refreshed = expect_ok(
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: handle, offset: READ_WRITE_MAX as u64, count: 1 },
+            alloc_slice(1).await,
+        )
+        .await,
+        "read after invalidation should succeed",
+    );
+    assert_eq!(slice_to_vec(&refreshed.data), b"Z");
+}
+
+#[tokio::test]
+async fn repeated_reads_keep_stable_cached_shard_affinity() {
+    let ctx = TestContext::new();
+    write_file(ctx.root_path(), "stable.bin", b"abcdefgh");
+    let cached_path = ctx.root_path().join("stable.bin");
+    let handle = ctx.lookup_handle(ctx.root_handle().await, "stable.bin").await;
+
+    expect_ok(
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: handle.clone(), offset: 0, count: 4 },
+            alloc_slice(4).await,
+        )
+        .await,
+        "first read should succeed",
+    );
+    let first_shard = ctx
+        .fs
+        .cached_read_file_shard_for(&cached_path)
+        .expect("cached shard should exist after first read");
+
+    expect_ok(
+        read::Read::read(
+            &ctx.fs,
+            read::Args { file: handle, offset: 4, count: 4 },
+            alloc_slice(4).await,
+        )
+        .await,
+        "second read should succeed",
+    );
+    let second_shard = ctx
+        .fs
+        .cached_read_file_shard_for(&cached_path)
+        .expect("cached shard should exist after second read");
+
+    assert_eq!(first_shard, second_shard);
 }
 
 #[tokio::test]

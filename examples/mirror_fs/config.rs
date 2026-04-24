@@ -1,6 +1,7 @@
 use std::fmt::Formatter;
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
+use std::thread;
 
 use serde::Deserialize;
 
@@ -9,6 +10,8 @@ const MAX_EXPORTS_COUNT: usize = 256;
 
 pub struct Config {
     pub allocator: AllocatorConfig,
+    pub disk_io: DiskIoConfig,
+    pub read_path: ReadPathConfig,
     pub vfs_pool_size: NonZeroUsize,
     pub exports: Vec<ExportConfig>,
 }
@@ -32,10 +35,32 @@ pub struct ExportConfig {
     pub mount_path: String,
 }
 
+#[derive(Clone)]
+pub struct DiskIoConfig {
+    pub worker_count: NonZeroUsize,
+    pub ring_entries: u32,
+    pub max_inflight_per_worker: NonZeroUsize,
+    pub channel_capacity: NonZeroUsize,
+    pub prefetch_budget_per_worker: NonZeroUsize,
+    pub enable_fixed_files: bool,
+}
+
+#[derive(Clone)]
+pub struct ReadPathConfig {
+    pub small_io_threshold: NonZeroUsize,
+    pub read_ahead_trigger_bytes: NonZeroUsize,
+    pub read_ahead_window_blocks: NonZeroUsize,
+    pub read_ahead_per_file_limit: NonZeroUsize,
+    pub sequential_detection_window_ms: NonZeroUsize,
+    pub sendfile_min_bytes: NonZeroUsize,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             allocator: AllocatorConfig::default(),
+            disk_io: DiskIoConfig::default(),
+            read_path: ReadPathConfig::default(),
             vfs_pool_size: NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap(),
             exports: Vec::with_capacity(MAX_EXPORTS_COUNT),
         }
@@ -56,10 +81,40 @@ impl Default for AllocatorConfig {
     }
 }
 
+impl Default for DiskIoConfig {
+    fn default() -> Self {
+        let worker_count =
+            thread::available_parallelism().map_or(4, usize::from).clamp(2, 8);
+        Self {
+            worker_count: NonZeroUsize::new(worker_count).unwrap(),
+            ring_entries: 256,
+            max_inflight_per_worker: NonZeroUsize::new(512).unwrap(),
+            channel_capacity: NonZeroUsize::new(1024).unwrap(),
+            prefetch_budget_per_worker: NonZeroUsize::new(32).unwrap(),
+            enable_fixed_files: false,
+        }
+    }
+}
+
+impl Default for ReadPathConfig {
+    fn default() -> Self {
+        Self {
+            small_io_threshold: NonZeroUsize::new(32 * 1024).unwrap(),
+            read_ahead_trigger_bytes: NonZeroUsize::new(256 * 1024).unwrap(),
+            read_ahead_window_blocks: NonZeroUsize::new(8).unwrap(),
+            read_ahead_per_file_limit: NonZeroUsize::new(16).unwrap(),
+            sequential_detection_window_ms: NonZeroUsize::new(6_000).unwrap(),
+            sendfile_min_bytes: NonZeroUsize::new(32 * 1024).unwrap(),
+        }
+    }
+}
+
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
             .field("allocator", &self.allocator)
+            .field("disk_io", &self.disk_io)
+            .field("read_path", &self.read_path)
             .field("vfs_pool_size", &self.vfs_pool_size)
             .field("exports", &self.exports)
             .finish()
@@ -73,6 +128,32 @@ impl std::fmt::Debug for AllocatorConfig {
             .field("read_buffer_count", &self.read_buffer_count)
             .field("write_buffer_size", &self.write_buffer_size)
             .field("write_buffer_count", &self.write_buffer_count)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for DiskIoConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiskIoConfig")
+            .field("worker_count", &self.worker_count)
+            .field("ring_entries", &self.ring_entries)
+            .field("max_inflight_per_worker", &self.max_inflight_per_worker)
+            .field("channel_capacity", &self.channel_capacity)
+            .field("prefetch_budget_per_worker", &self.prefetch_budget_per_worker)
+            .field("enable_fixed_files", &self.enable_fixed_files)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for ReadPathConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReadPathConfig")
+            .field("small_io_threshold", &self.small_io_threshold)
+            .field("read_ahead_trigger_bytes", &self.read_ahead_trigger_bytes)
+            .field("read_ahead_window_blocks", &self.read_ahead_window_blocks)
+            .field("read_ahead_per_file_limit", &self.read_ahead_per_file_limit)
+            .field("sequential_detection_window_ms", &self.sequential_detection_window_ms)
+            .field("sendfile_min_bytes", &self.sendfile_min_bytes)
             .finish()
     }
 }
@@ -96,6 +177,8 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
     })?;
 
     let defaults = AllocatorConfig::default();
+    let disk_io_defaults = DiskIoConfig::default();
+    let read_path_defaults = ReadPathConfig::default();
     let allocator = match raw_config.allocator {
         Some(raw_alloc) => AllocatorConfig {
             read_buffer_size: raw_alloc.read_buffer_size.unwrap_or(defaults.read_buffer_size),
@@ -104,6 +187,50 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
             write_buffer_count: raw_alloc.write_buffer_count.unwrap_or(defaults.write_buffer_count),
         },
         None => defaults,
+    };
+
+    let disk_io = match raw_config.disk_io {
+        Some(raw_disk_io) => DiskIoConfig {
+            worker_count: raw_disk_io.worker_count.unwrap_or(disk_io_defaults.worker_count),
+            ring_entries: raw_disk_io.ring_entries.unwrap_or(disk_io_defaults.ring_entries),
+            max_inflight_per_worker: raw_disk_io
+                .max_inflight_per_worker
+                .unwrap_or(disk_io_defaults.max_inflight_per_worker),
+            channel_capacity: raw_disk_io
+                .channel_capacity
+                .unwrap_or(disk_io_defaults.channel_capacity),
+            prefetch_budget_per_worker: raw_disk_io
+                .prefetch_budget_per_worker
+                .unwrap_or(disk_io_defaults.prefetch_budget_per_worker),
+            enable_fixed_files: raw_disk_io
+                .enable_fixed_files
+                .unwrap_or(disk_io_defaults.enable_fixed_files),
+        },
+        None => disk_io_defaults,
+    };
+
+    let read_path = match raw_config.read_path {
+        Some(raw_read_path) => ReadPathConfig {
+            small_io_threshold: raw_read_path
+                .small_io_threshold
+                .unwrap_or(read_path_defaults.small_io_threshold),
+            read_ahead_trigger_bytes: raw_read_path
+                .read_ahead_trigger_bytes
+                .unwrap_or(read_path_defaults.read_ahead_trigger_bytes),
+            read_ahead_window_blocks: raw_read_path
+                .read_ahead_window_blocks
+                .unwrap_or(read_path_defaults.read_ahead_window_blocks),
+            read_ahead_per_file_limit: raw_read_path
+                .read_ahead_per_file_limit
+                .unwrap_or(read_path_defaults.read_ahead_per_file_limit),
+            sequential_detection_window_ms: raw_read_path
+                .sequential_detection_window_ms
+                .unwrap_or(read_path_defaults.sequential_detection_window_ms),
+            sendfile_min_bytes: raw_read_path
+                .sendfile_min_bytes
+                .unwrap_or(read_path_defaults.sendfile_min_bytes),
+        },
+        None => read_path_defaults,
     };
 
     let vfs_pool_size = raw_config
@@ -135,12 +262,14 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
 
     validate_exports(&exports)?;
 
-    Ok(Config { allocator, vfs_pool_size, exports })
+    Ok(Config { allocator, disk_io, read_path, vfs_pool_size, exports })
 }
 
 #[derive(Deserialize)]
 struct RawConfig {
     allocator: Option<RawAllocatorConfig>,
+    disk_io: Option<RawDiskIoConfig>,
+    read_path: Option<RawReadPathConfig>,
     vfs_pool_size: Option<NonZeroUsize>,
     exports: Option<RawExportsConfig>,
 }
@@ -155,6 +284,36 @@ struct RawAllocatorConfig {
     write_buffer_size: Option<NonZeroUsize>,
     #[serde(deserialize_with = "dehumansize_nonzero", default)]
     write_buffer_count: Option<NonZeroUsize>,
+}
+
+#[derive(Deserialize)]
+struct RawDiskIoConfig {
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    worker_count: Option<NonZeroUsize>,
+    ring_entries: Option<u32>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    max_inflight_per_worker: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    channel_capacity: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    prefetch_budget_per_worker: Option<NonZeroUsize>,
+    enable_fixed_files: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct RawReadPathConfig {
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    small_io_threshold: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    read_ahead_trigger_bytes: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    read_ahead_window_blocks: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    read_ahead_per_file_limit: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    sequential_detection_window_ms: Option<NonZeroUsize>,
+    #[serde(deserialize_with = "dehumansize_nonzero", default)]
+    sendfile_min_bytes: Option<NonZeroUsize>,
 }
 
 #[derive(Deserialize)]

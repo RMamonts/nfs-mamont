@@ -1,5 +1,3 @@
-use std::os::unix::fs::FileExt;
-
 use nfs_mamont::vfs::{self, write};
 
 use super::MirrorFS;
@@ -37,68 +35,17 @@ impl write::Write for MirrorFS {
         let size = args.size as usize;
         let offset = args.offset;
         let data = args.data;
-        let write_result = tokio::task::spawn_blocking(move || -> Result<_, std::io::Error> {
-            let mut remaining_payload = size;
-            let mut local_offset = offset;
-            let mut written = 0usize;
-
-            for part in &data {
-                if remaining_payload == 0 {
-                    break;
+        let (after_attr, written) =
+            match self.disk_io.write_from(file.clone(), offset, size, stable, data).await {
+                Ok(result) => result,
+                Err(error) => {
+                    return Err(write::Fail {
+                        error,
+                        wcc_data: vfs::WccData { before, after: Self::file_attr(&path) },
+                    });
                 }
-
-                let to_write = part.len().min(remaining_payload);
-                let mut chunk_offset = 0usize;
-                while chunk_offset < to_write {
-                    let bytes = file.write_at(
-                        &part[chunk_offset..to_write],
-                        local_offset + chunk_offset as u64,
-                    )?;
-                    if bytes == 0 {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::WriteZero,
-                            "write_at returned zero bytes",
-                        ));
-                    }
-                    chunk_offset += bytes;
-                    written += bytes;
-                }
-
-                local_offset = local_offset.saturating_add(to_write as u64);
-                remaining_payload -= to_write;
-            }
-
-            match stable {
-                write::StableHow::Unstable => {}
-                write::StableHow::DataSync => {
-                    file.sync_data()?;
-                }
-                write::StableHow::FileSync => {
-                    file.sync_all()?;
-                }
-            }
-
-            Ok((file.metadata()?, written as u32))
-        })
-        .await;
-
-        let (after_meta, written) = match write_result {
-            Ok(Ok(result)) => result,
-            Ok(Err(error)) => {
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: vfs::WccData { before, after: Self::file_attr(&path) },
-                });
-            }
-            Err(_) => {
-                return Err(write::Fail {
-                    error: vfs::Error::IO,
-                    wcc_data: vfs::WccData { before, after: Self::file_attr(&path) },
-                });
-            }
-        };
-        let after_attr = Self::attr_from_metadata(&after_meta);
-        self.store_attr_cache_metadata(path.clone(), after_meta).await;
+            };
+        self.store_attr_cache_attr(path.clone(), after_attr.clone()).await;
 
         match stable {
             write::StableHow::Unstable => {

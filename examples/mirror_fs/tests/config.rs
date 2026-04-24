@@ -18,6 +18,22 @@ read_buffer_count = 16
 write_buffer_size = 131072
 write_buffer_count = 8
 
+[disk_io]
+worker_count = 6
+ring_entries = 512
+max_inflight_per_worker = 1024
+channel_capacity = 2048
+prefetch_budget_per_worker = 24
+enable_fixed_files = true
+
+[read_path]
+small_io_threshold = 16384
+read_ahead_trigger_bytes = 524288
+read_ahead_window_blocks = 4
+read_ahead_per_file_limit = 12
+sequential_detection_window_ms = 2500
+sendfile_min_bytes = 65536
+
 [exports]
 root = "{}"
 paths = ["fs1", "nested/fs2"]
@@ -32,6 +48,18 @@ paths = ["fs1", "nested/fs2"]
     assert_eq!(config.allocator.read_buffer_count.get(), 16);
     assert_eq!(config.allocator.write_buffer_size.get(), 131072);
     assert_eq!(config.allocator.write_buffer_count.get(), 8);
+    assert_eq!(config.disk_io.worker_count.get(), 6);
+    assert_eq!(config.disk_io.ring_entries, 512);
+    assert_eq!(config.disk_io.max_inflight_per_worker.get(), 1024);
+    assert_eq!(config.disk_io.channel_capacity.get(), 2048);
+    assert_eq!(config.disk_io.prefetch_budget_per_worker.get(), 24);
+    assert!(config.disk_io.enable_fixed_files);
+    assert_eq!(config.read_path.small_io_threshold.get(), 16384);
+    assert_eq!(config.read_path.read_ahead_trigger_bytes.get(), 524288);
+    assert_eq!(config.read_path.read_ahead_window_blocks.get(), 4);
+    assert_eq!(config.read_path.read_ahead_per_file_limit.get(), 12);
+    assert_eq!(config.read_path.sequential_detection_window_ms.get(), 2500);
+    assert_eq!(config.read_path.sendfile_min_bytes.get(), 65536);
     assert_eq!(config.exports.len(), 2);
     assert_eq!(config.exports[0].mount_path, "/fs1");
     assert_eq!(

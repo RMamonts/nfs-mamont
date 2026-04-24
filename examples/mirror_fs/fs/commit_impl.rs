@@ -31,20 +31,11 @@ impl commit::Commit for MirrorFS {
             }
         };
 
-        match tokio::task::spawn_blocking(move || file.sync_all()).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                return Err(commit::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_wcc: vfs::WccData { before, after: Self::file_attr(&path) },
-                });
-            }
-            Err(_) => {
-                return Err(commit::Fail {
-                    error: vfs::Error::IO,
-                    file_wcc: vfs::WccData { before, after: Self::file_attr(&path) },
-                });
-            }
+        if let Err(error) = self.disk_io.fsync(file.clone(), false).await {
+            return Err(commit::Fail {
+                error,
+                file_wcc: vfs::WccData { before, after: Self::file_attr(&path) },
+            });
         }
 
         self.clear_pending_unstable_write(&path).await;

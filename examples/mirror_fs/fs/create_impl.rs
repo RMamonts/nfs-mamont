@@ -1,5 +1,3 @@
-use tokio::fs::OpenOptions;
-
 use nfs_mamont::vfs::{self, create};
 
 use super::{MirrorFS, DEFAULT_SET_ATTR};
@@ -42,12 +40,11 @@ impl create::Create for MirrorFS {
 
         let apply_attr = match &args.how {
             create::How::Unchecked(attr) => {
-                if let Err(error) = OpenOptions::new()
+                if let Err(error) = std::fs::OpenOptions::new()
                     .write(true)
                     .create(true)
                     .truncate(false)
                     .open(&child_path)
-                    .await
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -58,7 +55,7 @@ impl create::Create for MirrorFS {
             }
             create::How::Guarded(attr) => {
                 if let Err(error) =
-                    OpenOptions::new().write(true).create_new(true).open(&child_path).await
+                    std::fs::OpenOptions::new().write(true).create_new(true).open(&child_path)
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -68,7 +65,7 @@ impl create::Create for MirrorFS {
                 attr
             }
             create::How::Exclusive(ref verifier) => {
-                match OpenOptions::new().write(true).create_new(true).open(&child_path).await {
+                match std::fs::OpenOptions::new().write(true).create_new(true).open(&child_path) {
                     Ok(_) => {
                         Self::store_exclusive_verifier(&child_path, &verifier.0);
                     }

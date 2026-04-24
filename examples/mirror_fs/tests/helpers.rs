@@ -9,6 +9,7 @@ use nfs_mamont::vfs::lookup;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::Slice;
 
+use crate::config::{DiskIoConfig, ReadPathConfig};
 use crate::fs::MirrorFS;
 
 pub fn expect_ok<T, E>(result: Result<T, E>, message: &str) -> T {
@@ -33,7 +34,11 @@ pub struct TestContext {
 impl TestContext {
     pub fn new() -> Self {
         let tempdir = tempfile::tempdir().unwrap();
-        let fs = MirrorFS::new(tempdir.path().to_path_buf());
+        let fs = MirrorFS::new_many(
+            vec![tempdir.path().to_path_buf()],
+            DiskIoConfig::default(),
+            ReadPathConfig::default(),
+        );
         Self { tempdir, fs }
     }
 
@@ -46,11 +51,10 @@ impl TestContext {
     }
 
     pub async fn lookup_handle(&self, parent: file::Handle, child_name: &str) -> file::Handle {
-        expect_ok(
-            lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await,
-            "lookup should succeed",
-        )
-        .file
+        match lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await {
+            Ok(success) => success.file,
+            Err(error) => panic!("lookup should succeed: {:?}", error.error),
+        }
     }
 }
 
@@ -64,6 +68,8 @@ impl MultiExportTestContext {
         let tempdirs = (0..export_count).map(|_| tempfile::tempdir().unwrap()).collect::<Vec<_>>();
         let fs = MirrorFS::new_many(
             tempdirs.iter().map(|tempdir| tempdir.path().to_path_buf()).collect(),
+            DiskIoConfig::default(),
+            ReadPathConfig::default(),
         );
         Self { tempdirs, fs }
     }
@@ -77,11 +83,10 @@ impl MultiExportTestContext {
     }
 
     pub async fn lookup_handle(&self, parent: file::Handle, child_name: &str) -> file::Handle {
-        expect_ok(
-            lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await,
-            "lookup should succeed",
-        )
-        .file
+        match lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await {
+            Ok(success) => success.file,
+            Err(error) => panic!("lookup should succeed: {:?}", error.error),
+        }
     }
 }
 

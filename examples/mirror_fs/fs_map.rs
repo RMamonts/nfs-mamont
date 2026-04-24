@@ -1,12 +1,9 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-
-use tokio::sync::{Mutex, RwLock};
-use whirlwind::ShardMap;
+use std::sync::{Mutex, RwLock};
 
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -17,12 +14,16 @@ const FS_MAP_MUTATION_SHARDS: usize = 64;
 pub struct FsMap {
     root: PathBuf,
     next_id: AtomicU64,
-    id_to_key: ShardMap<u64, ObjectKey>,
-    key_to_id: ShardMap<ObjectKey, u64>,
-    key_to_paths: ShardMap<ObjectKey, Arc<RwLock<BTreeSet<PathBuf>>>>,
-    relative_to_key: ShardMap<PathBuf, ObjectKey>,
-    relative_index: RwLock<BTreeSet<PathBuf>>,
+    state: RwLock<FsMapState>,
     mutation_locks: Vec<Mutex<()>>,
+}
+
+struct FsMapState {
+    id_to_key: HashMap<u64, ObjectKey>,
+    key_to_id: HashMap<ObjectKey, u64>,
+    key_to_paths: HashMap<ObjectKey, BTreeSet<PathBuf>>,
+    relative_to_key: HashMap<PathBuf, ObjectKey>,
+    relative_index: BTreeSet<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -36,11 +37,13 @@ impl FsMap {
         Self {
             root,
             next_id: AtomicU64::new(2),
-            id_to_key: ShardMap::new(),
-            key_to_id: ShardMap::new(),
-            key_to_paths: ShardMap::new(),
-            relative_to_key: ShardMap::new(),
-            relative_index: RwLock::new(BTreeSet::new()),
+            state: RwLock::new(FsMapState {
+                id_to_key: HashMap::new(),
+                key_to_id: HashMap::new(),
+                key_to_paths: HashMap::new(),
+                relative_to_key: HashMap::new(),
+                relative_index: BTreeSet::new(),
+            }),
             mutation_locks: (0..FS_MAP_MUTATION_SHARDS).map(|_| Mutex::new(())).collect(),
         }
     }
@@ -58,17 +61,9 @@ impl FsMap {
             return Ok(vec![self.root.clone()]);
         }
 
-        let key = {
-            let key_ref = self.id_to_key.get(&id).await.ok_or(vfs::Error::StaleFile)?;
-            *key_ref.value()
-        };
-
-        let paths_lock = {
-            let paths_ref = self.key_to_paths.get(&key).await.ok_or(vfs::Error::StaleFile)?;
-            Arc::clone(paths_ref.value())
-        };
-
-        let paths = paths_lock.read().await;
+        let state = self.state.read().unwrap();
+        let key = *state.id_to_key.get(&id).ok_or(vfs::Error::StaleFile)?;
+        let paths = state.key_to_paths.get(&key).ok_or(vfs::Error::StaleFile)?;
         let full_paths = paths.iter().map(|relative| self.to_full_path(relative)).collect();
         Ok(full_paths)
     }
@@ -86,21 +81,24 @@ impl FsMap {
         }
 
         let shard = Self::mutation_shard_for_relative(&relative);
-        let _guard = self.mutation_locks[shard].lock().await;
+        let _guard = self.mutation_locks[shard].lock().unwrap();
 
         let key = ObjectKey { dev: attr.fs_id, ino: attr.file_id };
-        if let Some(id) = { self.key_to_id.get(&key).await.map(|id_ref| *id_ref.value()) } {
-            self.insert_relative_alias(relative, key).await;
-            return Ok(Self::encode_handle(id));
+        {
+            let mut state = self.state.write().unwrap();
+            if let Some(id) = state.key_to_id.get(&key).copied() {
+                Self::insert_relative_alias_locked(&mut state, relative, key);
+                return Ok(Self::encode_handle(id));
+            }
+
+            let reserved = Self::reserve_next_id(&self.next_id);
+            state.key_to_id.insert(key, reserved);
+            state.id_to_key.insert(reserved, key);
+            state.key_to_paths.entry(key).or_default();
+            Self::insert_relative_alias_locked(&mut state, relative, key);
+
+            return Ok(Self::encode_handle(reserved));
         }
-
-        let reserved = Self::reserve_next_id(&self.next_id);
-        self.key_to_id.insert(key, reserved).await;
-        self.id_to_key.insert(reserved, key).await;
-        self.key_to_paths.insert(key, Arc::new(RwLock::new(BTreeSet::new()))).await;
-        self.insert_relative_alias(relative, key).await;
-
-        Ok(Self::encode_handle(reserved))
     }
 
     pub async fn remove_path(&self, path: &Path) {
@@ -110,39 +108,32 @@ impl FsMap {
         let relative = relative.to_path_buf();
 
         let shard = Self::mutation_shard_for_relative(&relative);
-        let _guard = self.mutation_locks[shard].lock().await;
+        let _guard = self.mutation_locks[shard].lock().unwrap();
 
-        let to_remove = {
-            let index = self.relative_index.read().await;
-            index
-                .iter()
-                .filter(|known_relative| {
-                    *known_relative == &relative || known_relative.starts_with(&relative)
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        };
+        let mut state = self.state.write().unwrap();
+        let to_remove = state
+            .relative_index
+            .iter()
+            .filter(|known_relative| *known_relative == &relative || known_relative.starts_with(&relative))
+            .cloned()
+            .collect::<Vec<_>>();
 
         if to_remove.is_empty() {
             return;
         }
 
         for known_relative in to_remove {
-            let Some(key) = self.relative_to_key.remove(&known_relative).await else {
+            let Some(key) = state.relative_to_key.remove(&known_relative) else {
                 continue;
             };
-            self.relative_index.write().await.remove(&known_relative);
+            state.relative_index.remove(&known_relative);
 
-            if let Some(paths_lock) = self.paths_lock_for_key(&key).await {
-                let mut paths = paths_lock.write().await;
+            if let Some(paths) = state.key_to_paths.get_mut(&key) {
                 paths.remove(&known_relative);
-                let empty = paths.is_empty();
-                drop(paths);
-
-                if empty {
-                    self.key_to_paths.remove(&key).await;
-                    if let Some(id) = self.key_to_id.remove(&key).await {
-                        self.id_to_key.remove(&id).await;
+                if paths.is_empty() {
+                    state.key_to_paths.remove(&key);
+                    if let Some(id) = state.key_to_id.remove(&key) {
+                        state.id_to_key.remove(&id);
                     }
                 }
             }
@@ -160,29 +151,27 @@ impl FsMap {
         let (first, second) =
             if from_shard <= to_shard { (from_shard, to_shard) } else { (to_shard, from_shard) };
 
-        let _first_guard = self.mutation_locks[first].lock().await;
-        let _second_guard =
-            if second != first { Some(self.mutation_locks[second].lock().await) } else { None };
-
-        let to_rename = {
-            let index = self.relative_index.read().await;
-            index
-                .iter()
-                .filter(|known_relative| {
-                    *known_relative == &from_relative || known_relative.starts_with(&from_relative)
-                })
-                .cloned()
-                .collect::<Vec<_>>()
+        let _first_guard = self.mutation_locks[first].lock().unwrap();
+        let _second_guard = if second != first {
+            Some(self.mutation_locks[second].lock().unwrap())
+        } else {
+            None
         };
+
+        let mut state = self.state.write().unwrap();
+        let to_rename = state
+            .relative_index
+            .iter()
+            .filter(|known_relative| *known_relative == &from_relative || known_relative.starts_with(&from_relative))
+            .cloned()
+            .collect::<Vec<_>>();
 
         if to_rename.is_empty() {
             return Ok(());
         }
 
         for old_relative in to_rename {
-            let Some(key) =
-                ({ self.relative_to_key.get(&old_relative).await.map(|key_ref| *key_ref.value()) })
-            else {
+            let Some(key) = state.relative_to_key.get(&old_relative).copied() else {
                 continue;
             };
 
@@ -195,17 +184,12 @@ impl FsMap {
                 new_relative.push(suffix);
             }
 
-            self.relative_to_key.remove(&old_relative).await;
-            self.relative_to_key.insert(new_relative.clone(), key).await;
+            state.relative_to_key.remove(&old_relative);
+            state.relative_to_key.insert(new_relative.clone(), key);
+            state.relative_index.remove(&old_relative);
+            state.relative_index.insert(new_relative.clone());
 
-            {
-                let mut index = self.relative_index.write().await;
-                index.remove(&old_relative);
-                index.insert(new_relative.clone());
-            }
-
-            if let Some(paths_lock) = self.paths_lock_for_key(&key).await {
-                let mut paths = paths_lock.write().await;
+            if let Some(paths) = state.key_to_paths.get_mut(&key) {
                 paths.remove(&old_relative);
                 paths.insert(new_relative);
             }
@@ -214,17 +198,10 @@ impl FsMap {
         Ok(())
     }
 
-    async fn insert_relative_alias(&self, relative: PathBuf, key: ObjectKey) {
-        self.relative_to_key.insert(relative.clone(), key).await;
-        self.relative_index.write().await.insert(relative.clone());
-
-        if let Some(paths_lock) = self.paths_lock_for_key(&key).await {
-            paths_lock.write().await.insert(relative);
-        }
-    }
-
-    async fn paths_lock_for_key(&self, key: &ObjectKey) -> Option<Arc<RwLock<BTreeSet<PathBuf>>>> {
-        self.key_to_paths.get(key).await.map(|paths_ref| Arc::clone(paths_ref.value()))
+    fn insert_relative_alias_locked(state: &mut FsMapState, relative: PathBuf, key: ObjectKey) {
+        state.relative_to_key.insert(relative.clone(), key);
+        state.relative_index.insert(relative.clone());
+        state.key_to_paths.entry(key).or_default().insert(relative);
     }
 
     fn to_full_path(&self, relative: &Path) -> PathBuf {

@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, rename};
 
 use super::MirrorFS;
@@ -85,7 +83,7 @@ impl rename::Rename for MirrorFS {
                 });
             }
             if target_meta.is_dir() {
-                let mut iter = match fs::read_dir(&to_path).await {
+                let mut iter = match std::fs::read_dir(&to_path) {
                     Ok(iter) => iter,
                     Err(error) => {
                         return Err(rename::Fail {
@@ -99,8 +97,8 @@ impl rename::Rename for MirrorFS {
                     }
                 };
 
-                match iter.next_entry().await {
-                    Ok(Some(_)) => {
+                match iter.next() {
+                    Some(Ok(_)) => {
                         return Err(rename::Fail {
                             error: vfs::Error::Exist,
                             from_dir_wcc: vfs::WccData {
@@ -110,8 +108,8 @@ impl rename::Rename for MirrorFS {
                             to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                         });
                     }
-                    Ok(None) => {}
-                    Err(error) => {
+                    None => {}
+                    Some(Err(error)) => {
                         return Err(rename::Fail {
                             error: Self::io_error_to_vfs(&error),
                             from_dir_wcc: vfs::WccData {
@@ -126,7 +124,7 @@ impl rename::Rename for MirrorFS {
             self.remove_cached_path(to_export_id, &to_path).await;
         }
 
-        if let Err(error) = fs::rename(&from_path, &to_path).await {
+        if let Err(error) = std::fs::rename(&from_path, &to_path) {
             return Err(rename::Fail {
                 error: Self::io_error_to_vfs(&error),
                 from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),

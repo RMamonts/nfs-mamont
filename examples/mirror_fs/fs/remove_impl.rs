@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, remove};
 
 use super::MirrorFS;
@@ -44,7 +42,7 @@ impl remove::Remove for MirrorFS {
             });
         }
 
-        if let Err(error) = fs::remove_file(&child_path).await {
+        if let Err(error) = std::fs::remove_file(&child_path) {
             return Err(remove::Fail {
                 error: Self::io_error_to_vfs(&error),
                 dir_wcc: Self::wcc_data(&dir_path, before),
