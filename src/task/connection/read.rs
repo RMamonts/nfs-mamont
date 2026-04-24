@@ -54,9 +54,9 @@ impl ReadTask {
     ///
     /// # Panics
     ///
-    /// If called outside of tokio runtime context.
+    /// If called outside of tokio-uring runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        tokio_uring::spawn(async move { self.run().await });
     }
 
     async fn run(self) -> io::Result<()> {
