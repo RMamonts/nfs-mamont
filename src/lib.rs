@@ -14,7 +14,7 @@ mod service;
 mod task;
 pub mod vfs;
 
-use tokio::net::TcpListener;
+use tokio_uring::net::TcpListener;
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
 
@@ -85,8 +85,8 @@ pub async fn handle_forever_with_exports(
     mount_task.spawn();
 
     loop {
-        let (socket, _) = listener.accept().await?;
+        let (socket, peer_addr) = listener.accept().await?;
 
-        connection::new(socket, mount_sender.clone(), &context).await;
+        connection::new(socket, peer_addr, mount_sender.clone(), &context).await;
     }
 }

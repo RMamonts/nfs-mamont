@@ -1,8 +1,9 @@
 use std::num::NonZeroUsize;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::net::TcpListener;
+use tokio_uring::net::TcpListener;
 use tracing::info;
 
 use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
@@ -45,7 +46,13 @@ fn main() -> std::io::Result<()> {
 
         info!(export_root = %export_root.display(), bind = %bind, "mirrorfs startup");
 
-        let listener = TcpListener::bind(&bind).await?;
+        let bind_addr: SocketAddr = bind.parse().map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("invalid bind address {bind}: {error}"),
+            )
+        })?;
+        let listener = TcpListener::bind(bind_addr)?;
         let export = MountExport::from_directory_path(export_root.to_string_lossy(), root_handle)?;
 
         handle_forever_with_exports(listener, context, vec![export]).await

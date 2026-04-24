@@ -8,9 +8,13 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
-use tokio::net::TcpStream;
+use std::io;
+use std::net::{SocketAddr, TcpStream as StdTcpStream};
+use std::os::fd::{AsRawFd, FromRawFd};
+
 use async_channel::Sender;
 use tracing::error;
+use tokio_uring::net::TcpStream;
 
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
@@ -22,13 +26,14 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub async fn new(
     socket: TcpStream,
+    peer_addr: SocketAddr,
     mount_sender: Sender<MountCommand>,
     context: &ServerContext,
 ) {
-    let peer_addr = match socket.peer_addr() {
-        Ok(addr) => addr,
+    let socket = match duplicate_into_tokio_stream(socket) {
+        Ok(socket) => socket,
         Err(err) => {
-            error!(error=%err, "failed to determine peer address");
+            error!(error=%err, "failed to adapt tokio-uring socket into tokio stream");
             return;
         }
     };
@@ -48,4 +53,16 @@ pub async fn new(
     .spawn();
 
     write::WriteTask::new(writehalf, result_receiver).spawn();
+}
+
+fn duplicate_into_tokio_stream(socket: TcpStream) -> io::Result<tokio::net::TcpStream> {
+    let fd = socket.as_raw_fd();
+    let dup_fd = unsafe { libc::dup(fd) };
+    if dup_fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let std_stream = unsafe { StdTcpStream::from_raw_fd(dup_fd) };
+    std_stream.set_nonblocking(true)?;
+    tokio::net::TcpStream::from_std(std_stream)
 }
