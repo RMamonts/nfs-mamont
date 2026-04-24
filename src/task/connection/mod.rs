@@ -9,7 +9,7 @@
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use async_channel::Sender;
 use tracing::error;
 
 use crate::context::ServerContext;
@@ -22,7 +22,7 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub async fn new(
     socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand>,
+    mount_sender: Sender<MountCommand>,
     context: &ServerContext,
 ) {
     let peer_addr = match socket.peer_addr() {
@@ -34,7 +34,7 @@ pub async fn new(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply>();
     // channel for request
 
     read::ReadTask::new(

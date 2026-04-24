@@ -2,11 +2,9 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::net::tcp::OwnedReadHalf;
-use tokio::sync::mpsc::UnboundedSender;
-use tracing::{debug, error};
-
 use async_channel::Sender;
+use tokio::net::tcp::OwnedReadHalf;
+use tracing::{debug, error};
 
 use crate::allocator::Impl;
 use crate::mount::MountRes;
@@ -26,15 +24,15 @@ pub struct ReadTask {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     // to send messages into mount task
-    mount_sender: UnboundedSender<MountCommand>,
+    mount_sender: Sender<MountCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
     // to bypass vfs with null procedure
-    result_sender: UnboundedSender<ProcReply>,
+    result_sender: Sender<ProcReply>,
     allocator: Arc<Impl>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
-    pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
+    pool_sender: Sender<(NfsArgWrapper, Sender<ProcReply>)>,
 }
 
 impl ReadTask {
@@ -42,10 +40,10 @@ impl ReadTask {
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        mount_sender: UnboundedSender<MountCommand>,
-        result_sender: UnboundedSender<ProcReply>,
+        mount_sender: Sender<MountCommand>,
+        result_sender: Sender<ProcReply>,
         allocator: Arc<Impl>,
-        pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
+        pool_sender: Sender<(NfsArgWrapper, Sender<ProcReply>)>,
     ) -> Self {
         Self { readhalf, client_addr, mount_sender, result_sender, allocator, pool_sender }
     }
@@ -73,7 +71,7 @@ impl ReadTask {
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result) {
+                    if let Err(err) = self.result_sender.send(result).await {
                         return send_broken_pipe(&self.result_sender, header.xid, err);
                     }
                 }
@@ -101,7 +99,7 @@ impl ReadTask {
                         proc_result: Ok(ProcResult::Mount(Box::new(MountRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result) {
+                    if let Err(err) = self.result_sender.send(result).await {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
@@ -114,7 +112,7 @@ impl ReadTask {
                         args: MountArgWrapper { header, proc },
                         client_addr: self.client_addr,
                     };
-                    if let Err(err) = self.mount_sender.send(command) {
+                    if let Err(err) = self.mount_sender.send(command).await {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
@@ -122,7 +120,7 @@ impl ReadTask {
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
                     error!(client=%self.client_addr, xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
-                    if let Err(err) = self.result_sender.send(result) {
+                    if let Err(err) = self.result_sender.send(result).await {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }
@@ -138,12 +136,12 @@ impl ReadTask {
 }
 
 fn send_broken_pipe(
-    sender: &UnboundedSender<ProcReply>,
+    sender: &Sender<ProcReply>,
     xid: u32,
     err: impl std::fmt::Display,
 ) -> io::Result<()> {
     sender
-        .send(ProcReply {
+        .try_send(ProcReply {
             xid,
             proc_result: Err(Error::IO(io::Error::new(io::ErrorKind::BrokenPipe, err.to_string()))),
         })
