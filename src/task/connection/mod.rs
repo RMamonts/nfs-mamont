@@ -9,11 +9,10 @@
 //! These tasks communicate via bounded channels to form an asynchronous processing pipeline
 //! with built-in backpressure.
 
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::context::ServerContext;
+use crate::runtime;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
@@ -22,8 +21,8 @@ mod read;
 mod write;
 
 pub async fn new<V>(
-    socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand>,
+    socket: runtime::net::TcpStream,
+    mount_sender: runtime::sync::mpsc::UnboundedSender<MountCommand>,
     context: &ServerContext<V>,
 ) where
     V: Vfs + Send + Sync + 'static,
@@ -36,7 +35,7 @@ pub async fn new<V>(
         }
     };
     let (readhalf, writehalf) = socket.into_split();
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
+    let (result_sender, result_receiver) = runtime::sync::mpsc::unbounded_channel::<ProcReply>();
 
     read::ReadTask::new(
         readhalf,

@@ -6,12 +6,12 @@ mod context;
 mod mount;
 mod parser;
 mod rpc;
+mod runtime;
 mod serializer;
 mod service;
 mod task;
 pub mod vfs;
 
-use tokio::net::TcpListener;
 use tracing::debug;
 use tracing_subscriber::EnvFilter;
 
@@ -55,7 +55,7 @@ pub fn init_tracing() {
 
 /// Starts the NFS server and processes client connections.
 pub async fn handle_forever<V: vfs::Vfs + Send + Sync + 'static>(
-    listener: TcpListener,
+    listener: runtime::net::TcpListener,
     context: ServerContext<V>,
 ) -> std::io::Result<()> {
     handle_forever_with_exports(listener, context, Vec::new()).await
@@ -63,7 +63,7 @@ pub async fn handle_forever<V: vfs::Vfs + Send + Sync + 'static>(
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever_with_exports<V: vfs::Vfs + Send + Sync + 'static>(
-    listener: TcpListener,
+    listener: runtime::net::TcpListener,
     context: ServerContext<V>,
     exports: Vec<MountExport>,
 ) -> std::io::Result<()> {

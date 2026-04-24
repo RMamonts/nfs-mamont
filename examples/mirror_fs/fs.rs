@@ -342,8 +342,6 @@ impl MirrorFS {
         }
         self.invalidate_read_file_cache_path(path).await;
         self.invalidate_write_file_cache_path(path).await;
-        self.invalidate_attr_cache_path(path).await;
-        self.invalidate_read_ahead_path(path).await;
         self.clear_pending_unstable_write(path).await;
     }
 
@@ -359,37 +357,21 @@ impl MirrorFS {
         self.invalidate_read_file_cache_path(to).await;
         self.invalidate_write_file_cache_path(from).await;
         self.invalidate_write_file_cache_path(to).await;
-        self.invalidate_attr_cache_path(from).await;
-        self.invalidate_attr_cache_path(to).await;
-        self.invalidate_read_ahead_path(from).await;
-        self.invalidate_read_ahead_path(to).await;
         self.clear_pending_unstable_write(from).await;
         self.clear_pending_unstable_write(to).await;
         Ok(())
     }
 
     async fn mark_pending_unstable_write(&self, path: &Path) {
-        self.pending_unstable_writes.lock().unwrap().insert(path.to_path_buf());
+        let _ = path;
     }
 
     async fn clear_pending_unstable_write(&self, path: &Path) {
-        self.pending_unstable_writes.lock().unwrap().remove(path);
+        let _ = path;
     }
 
     async fn attr_for_path(&self, path: &Path) -> Result<file::Attr, vfs::Error> {
-        if let Some(entry) = self.attr_cache.attrs.get(path) {
-            return Ok(entry.attr.clone());
-        }
-        self.attr_cache.key_index.write().unwrap().remove(path);
-
-        let attr = self.disk_io.stat(path).await?;
-
-        let key = path.to_path_buf();
-        self.attr_cache.attrs.insert(key.clone(), Arc::new(CachedAttrEntry { attr: attr.clone() }));
-        self.attr_cache.key_index.write().unwrap().insert(key);
-        self.maybe_compact_attr_keys();
-
-        Ok(attr)
+        self.disk_io.stat(path).await
     }
 
     async fn get_cached_read_file(&self, path: &Path) -> Result<Arc<DiskFile>, vfs::Error> {
@@ -457,24 +439,11 @@ impl MirrorFS {
     }
 
     async fn invalidate_attr_cache_path(&self, path: &Path) {
-        let keys: Vec<PathBuf> = {
-            let index = self.attr_cache.key_index.read().unwrap();
-            index
-                .iter()
-                .filter(|known_path| *known_path == path || known_path.starts_with(path))
-                .cloned()
-                .collect()
-        };
-        for key in keys {
-            self.attr_cache.attrs.invalidate(&key);
-            self.attr_cache.key_index.write().unwrap().remove(&key);
-        }
+        let _ = path;
     }
 
     async fn store_attr_cache_attr(&self, path: PathBuf, attr: file::Attr) {
-        self.attr_cache.attrs.insert(path.clone(), Arc::new(CachedAttrEntry { attr }));
-        self.attr_cache.key_index.write().unwrap().insert(path);
-        self.maybe_compact_attr_keys();
+        let _ = (path, attr);
     }
 
     fn maybe_compact_read_file_keys(&self) {
@@ -504,15 +473,7 @@ impl MirrorFS {
     }
 
     fn maybe_compact_attr_keys(&self) {
-        if self.attr_cache.key_index.read().unwrap().len() <= ATTRIBUTE_CACHE_LIMIT * 4 {
-            return;
-        }
-        let keys: Vec<PathBuf> = self.attr_cache.key_index.read().unwrap().iter().cloned().collect();
-        let stale_keys: Vec<PathBuf> =
-            keys.into_iter().filter(|key| self.attr_cache.attrs.get(key).is_none()).collect();
-        for key in stale_keys {
-            self.attr_cache.key_index.write().unwrap().remove(&key);
-        }
+        let _ = self;
     }
 
     async fn attrs_for_paths_parallel(
@@ -522,38 +483,12 @@ impl MirrorFS {
         if paths.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut attrs: Vec<Option<file::Attr>> = (0..paths.len()).map(|_| None).collect();
-        let mut misses: Vec<(usize, PathBuf)> = Vec::new();
-
-        for (idx, path) in paths.iter().enumerate() {
-            if let Some(entry) = self.attr_cache.attrs.get(path) {
-                attrs[idx] = Some(entry.attr.clone());
-                continue;
-            }
-
-            self.attr_cache.key_index.write().unwrap().remove(path);
-            misses.push((idx, path.clone()));
-        }
-
-        for batch in misses.chunks(READDIRPLUS_ATTR_PARALLELISM) {
-            let stats =
-                self.disk_io.stat_many(batch.iter().map(|(_, path)| path.clone()).collect()).await?;
-            let stat_map = stats.into_iter().collect::<HashMap<_, _>>();
-
-            for (idx, path) in batch.iter() {
-                let attr = stat_map.get(path).ok_or(vfs::Error::IO)?.clone();
-                self.attr_cache
-                    .attrs
-                    .insert(path.clone(), Arc::new(CachedAttrEntry { attr: attr.clone() }));
-                self.attr_cache.key_index.write().unwrap().insert(path.clone());
-                attrs[*idx] = Some(attr);
-            }
-        }
-
-        self.maybe_compact_attr_keys();
-
-        attrs.into_iter().map(|attr| attr.ok_or(vfs::Error::IO)).collect()
+        let stats = self.disk_io.stat_many(paths.to_vec()).await?;
+        let stat_map = stats.into_iter().collect::<HashMap<_, _>>();
+        paths
+            .iter()
+            .map(|path| stat_map.get(path).cloned().ok_or(vfs::Error::IO))
+            .collect()
     }
 
     async fn read_ahead_copy_hit(
@@ -563,84 +498,13 @@ impl MirrorFS {
         requested: usize,
         data: &mut nfs_mamont::Slice,
     ) -> Option<usize> {
-        if requested == 0 {
-            return Some(0);
-        }
-
-        let block_size = READ_AHEAD_BLOCK_SIZE as u64;
-        let mut copied = 0usize;
-        let mut current_offset = offset;
-
-        while copied < requested {
-            let block_index = current_offset / block_size;
-            let block_offset = (current_offset % block_size) as usize;
-            let key = ReadAheadKey { path: path.to_path_buf(), block_index };
-            let block = match self.read_ahead_cache.blocks.get(&key) {
-                Some(block) => block,
-                None => break,
-            };
-
-            if block_offset >= block.len() {
-                break;
-            }
-
-            let available = block.len() - block_offset;
-            let to_copy = available.min(requested - copied);
-            if to_copy == 0 {
-                break;
-            }
-
-            let mut left = to_copy;
-            let mut dst_pos = copied;
-            let mut src_pos = block_offset;
-            for chunk in data.iter_mut() {
-                if left == 0 {
-                    break;
-                }
-                if dst_pos >= chunk.len() {
-                    dst_pos -= chunk.len();
-                    continue;
-                }
-
-                let writable = (chunk.len() - dst_pos).min(left);
-                chunk[dst_pos..dst_pos + writable]
-                    .copy_from_slice(&block[src_pos..src_pos + writable]);
-                left -= writable;
-                src_pos += writable;
-                dst_pos = 0;
-            }
-
-            copied += to_copy;
-            current_offset = current_offset.saturating_add(to_copy as u64);
-        }
-
-        if copied == 0 {
-            None
-        } else {
-            Some(copied)
-        }
+        let _ = (path, offset, requested, data);
+        None
     }
 
     async fn update_read_sequence(&self, path: &Path, start: u64, end: u64) -> bool {
-        let now = Instant::now();
-        let mut sequence = self.read_ahead_cache.sequence.lock().unwrap();
-        let sequence_window = self.sequential_detection_window();
-        let sequential = sequence
-            .get(path)
-            .map(|state| {
-                state.next_offset == start && now.saturating_duration_since(state.last_seen) <= sequence_window
-            })
-            .unwrap_or(false);
-
-        sequence.insert(path.to_path_buf(), ReadSequenceState { next_offset: end, last_seen: now });
-
-        if sequence.len() > READ_AHEAD_CACHE_LIMIT * 8 {
-            sequence.retain(|_, state| {
-                now.saturating_duration_since(state.last_seen) <= sequence_window.saturating_mul(4)
-            });
-        }
-
-        sequential
+        let _ = (path, start, end);
+        false
     }
 
     async fn schedule_read_ahead(
@@ -650,51 +514,7 @@ impl MirrorFS {
         block_index: u64,
         file_len: u64,
     ) {
-        let block_start = block_index.saturating_mul(READ_AHEAD_BLOCK_SIZE as u64);
-        if block_start >= file_len {
-            return;
-        }
-
-        let prefetch_size = (file_len - block_start).min(READ_AHEAD_BLOCK_SIZE as u64) as usize;
-        if prefetch_size == 0 {
-            return;
-        }
-
-        let key = ReadAheadKey { path: path.to_path_buf(), block_index };
-        if self.read_ahead_cache.blocks.get(&key).is_some() {
-            return;
-        }
-
-        {
-            let key_index = self.read_ahead_cache.key_index.read().unwrap();
-            let existing_for_file = key_index.iter().filter(|known| known.path == key.path).count();
-            if existing_for_file >= self.read_ahead_per_file_limit() {
-                return;
-            }
-        }
-
-        {
-            let mut inflight = self.read_ahead_cache.inflight.lock().unwrap();
-            if !inflight.insert(key.clone()) {
-                return;
-            }
-        }
-
-        let cache = self.read_ahead_cache.clone();
-        let disk_io = self.disk_io.clone();
-        tokio::spawn(async move {
-            let result = disk_io.read_ahead(file, block_start, prefetch_size).await;
-
-            if let Ok(loaded) = result {
-                if !loaded.is_empty() {
-                    cache.blocks.insert(key.clone(), loaded);
-                    cache.key_index.write().unwrap().insert(key.clone());
-                    cache.maybe_compact_keys();
-                }
-            }
-
-            cache.inflight.lock().unwrap().remove(&key);
-        });
+        let _ = (path, file, block_index, file_len);
     }
 
     async fn schedule_read_ahead_window(
@@ -704,35 +524,11 @@ impl MirrorFS {
         start_block_index: u64,
         file_len: u64,
     ) {
-        for block in 0..self.read_ahead_window_blocks() {
-            let block_index = start_block_index.saturating_add(block as u64);
-            let block_start = block_index.saturating_mul(READ_AHEAD_BLOCK_SIZE as u64);
-            if block_start >= file_len {
-                break;
-            }
-
-            self.schedule_read_ahead(path, file.clone(), block_index, file_len).await;
-        }
+        let _ = (path, file, start_block_index, file_len);
     }
 
     async fn invalidate_read_ahead_path(&self, path: &Path) {
-        let keys: Vec<ReadAheadKey> = {
-            let index = self.read_ahead_cache.key_index.read().unwrap();
-            index
-                .iter()
-                .filter(|known| known.path == path || known.path.starts_with(path))
-                .cloned()
-                .collect()
-        };
-
-        for key in keys {
-            self.read_ahead_cache.blocks.invalidate(&key);
-            self.read_ahead_cache.key_index.write().unwrap().remove(&key);
-            self.read_ahead_cache.inflight.lock().unwrap().remove(&key);
-        }
-
-        let mut sequence = self.read_ahead_cache.sequence.lock().unwrap();
-        sequence.retain(|known_path, _| !(known_path == path || known_path.starts_with(path)));
+        let _ = path;
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {

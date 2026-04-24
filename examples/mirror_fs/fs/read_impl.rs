@@ -28,32 +28,10 @@ impl read::Read for MirrorFS {
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut read_count = 0usize;
-        let block_size = super::READ_AHEAD_BLOCK_SIZE as u64;
-
-        let sequential = self.update_read_sequence(&path, start, end).await;
-        let small_random =
-            requested > 0 && requested <= self.read_path_config.small_io_threshold.get() && !sequential;
-        let should_prefetch = !small_random
-            && (requested >= self.read_path_config.read_ahead_trigger_bytes.get() || sequential);
-        if should_prefetch {
-            let start_block_index = end / block_size;
-            self.schedule_read_ahead_window(&path, file.clone(), start_block_index, file_len).await;
-        }
-
-        if requested > 0 && !small_random {
-            if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await
-            {
-                read_count = cached;
-            }
-        }
-
-        if requested > 0 && read_count < requested {
-            let read_start = start.saturating_add(read_count as u64);
-            let read_remaining = requested - read_count;
-            let data_offset = read_count;
+        if requested > 0 {
             let (filled_data, filled_count) = match self
                 .disk_io
-                .read_into(file.clone(), read_start, data, data_offset, read_remaining)
+                .read_into(file, start, data, 0, requested)
                 .await
             {
                 Ok(ok) => ok,
@@ -61,9 +39,8 @@ impl read::Read for MirrorFS {
                     return Err(read::Fail { error, file_attr: Some(attr) });
                 }
             };
-
             data = filled_data;
-            read_count += filled_count;
+            read_count = filled_count;
         }
 
         Ok(read::Success {

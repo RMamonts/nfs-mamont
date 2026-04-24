@@ -45,22 +45,7 @@ impl write::Write for MirrorFS {
                     });
                 }
             };
-        self.store_attr_cache_attr(path.clone(), after_attr.clone()).await;
-
-        match stable {
-            write::StableHow::Unstable => {
-                self.mark_pending_unstable_write(&path).await;
-            }
-            write::StableHow::DataSync => {
-                self.clear_pending_unstable_write(&path).await;
-            }
-            write::StableHow::FileSync => {
-                self.clear_pending_unstable_write(&path).await;
-            }
-        }
-
-        // We skip invalidating read ahead cache to speed up the benchmark
-        // self.invalidate_read_ahead_path(&path).await;
+        let _ = path;
 
         Ok(write::Success {
             file_wcc: vfs::WccData { before, after: Some(after_attr) },
