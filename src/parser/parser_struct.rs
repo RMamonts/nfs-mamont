@@ -17,7 +17,6 @@ use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
@@ -37,7 +36,7 @@ use crate::parser::nfsv3::{
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
-use crate::parser::read_buffer::CountBuffer;
+use crate::parser::read_buffer::{CountBuffer, ReadSource};
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
@@ -79,7 +78,7 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// let args = parser.next_message().await?;
 /// # }
 /// ```
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub struct RpcParser<A: Allocator, S: ReadSource> {
     allocator: Arc<A>,
     buffer: CountBuffer<S>,
     last: bool,
@@ -87,7 +86,7 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 }
 
 #[allow(dead_code)]
-impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+impl<A: Allocator, S: ReadSource> RpcParser<A, S> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
     /// # Arguments
@@ -564,7 +563,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Parsing fails
 /// - Memory allocation fails
 /// - Reading the data fails
-async fn adapter_for_write<S: AsyncRead + Unpin>(
+async fn adapter_for_write<S: ReadSource>(
     alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
@@ -616,7 +615,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub async fn read_in_slice_async<S: ReadSource>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
@@ -662,7 +661,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub fn read_in_slice_sync<S: ReadSource>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,

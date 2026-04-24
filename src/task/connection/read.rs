@@ -3,12 +3,14 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_channel::Sender;
-use tokio::net::tcp::OwnedReadHalf;
+use async_trait::async_trait;
+use tokio_uring::net::TcpStream;
 use tracing::{debug, error};
 
 use crate::allocator::Impl;
 use crate::mount::MountRes;
 use crate::parser::parser_struct::RpcParser;
+use crate::parser::read_buffer::ReadSource;
 use crate::parser::{
     ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
     ProcArguments,
@@ -18,10 +20,42 @@ use crate::task::global::mount::MountCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
+struct UringReadStream {
+    socket: Arc<TcpStream>,
+}
+
+impl UringReadStream {
+    fn new(socket: Arc<TcpStream>) -> Self {
+        Self { socket }
+    }
+}
+
+#[async_trait(?Send)]
+impl ReadSource for UringReadStream {
+    async fn read_into(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+        let (result, buf) = self.socket.read(vec![0u8; dest.len()]).await;
+        let n = result?;
+        dest[..n].copy_from_slice(&buf[..n]);
+        Ok(n)
+    }
+
+    async fn read_exact_into(&mut self, dest: &mut [u8]) -> io::Result<()> {
+        let mut total = 0;
+        while total < dest.len() {
+            let read_now = self.read_into(&mut dest[total..]).await?;
+            if read_now == 0 {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Connection closed"));
+            }
+            total += read_now;
+        }
+        Ok(())
+    }
+}
+
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
 pub struct ReadTask {
-    readhalf: OwnedReadHalf,
+    socket: Arc<TcpStream>,
     client_addr: SocketAddr,
     // to send messages into mount task
     mount_sender: Sender<MountCommand>,
@@ -38,14 +72,14 @@ pub struct ReadTask {
 impl ReadTask {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
-        readhalf: OwnedReadHalf,
+        socket: Arc<TcpStream>,
         client_addr: SocketAddr,
         mount_sender: Sender<MountCommand>,
         result_sender: Sender<ProcReply>,
         allocator: Arc<Impl>,
         pool_sender: Sender<(NfsArgWrapper, Sender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, mount_sender, result_sender, allocator, pool_sender }
+        Self { socket, client_addr, mount_sender, result_sender, allocator, pool_sender }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -58,7 +92,7 @@ impl ReadTask {
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let mut parser = RpcParser::new(UringReadStream::new(self.socket), self.allocator);
 
         loop {
             match parser.next_message().await {

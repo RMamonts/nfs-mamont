@@ -314,7 +314,6 @@ dependencies = [
  "async-trait",
  "byteorder",
  "crossbeam-queue",
- "libc",
  "num-derive",
  "num-traits",
  "tempfile",

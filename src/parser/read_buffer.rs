@@ -13,9 +13,30 @@ use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
 
+use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
+
+#[async_trait(?Send)]
+pub trait ReadSource {
+    async fn read_into(&mut self, dest: &mut [u8]) -> io::Result<usize>;
+    async fn read_exact_into(&mut self, dest: &mut [u8]) -> io::Result<()>;
+}
+
+#[async_trait(?Send)]
+impl<T> ReadSource for T
+where
+    T: AsyncRead + Unpin,
+{
+    async fn read_into(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+        self.read(dest).await
+    }
+
+    async fn read_exact_into(&mut self, dest: &mut [u8]) -> io::Result<()> {
+        self.read_exact(dest).await.map(|_| ())
+    }
+}
 
 /// A buffered reader that wraps an async stream and provides synchronous reading
 /// with retry capability.
@@ -40,7 +61,7 @@ use crate::parser::{Error, Result};
 /// // Use parse_with_retry to parse XDR-encoded data
 /// # }
 /// ```
-pub struct CountBuffer<S: AsyncRead + Unpin> {
+pub struct CountBuffer<S: ReadSource> {
     // actually, there are definitely two
     bufs: Vec<ReadBuffer>,
     read: usize,
@@ -50,7 +71,7 @@ pub struct CountBuffer<S: AsyncRead + Unpin> {
     total_bytes: usize,
 }
 
-impl<S: AsyncRead + Unpin> CountBuffer<S> {
+impl<S: ReadSource> CountBuffer<S> {
     /// Creates a new `CountBuffer` with the specified capacity for each internal buffer.
     ///
     /// # Arguments
@@ -80,7 +101,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(0);
         }
 
-        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
+        let bytes_read = self.socket.read_into(self.bufs[self.write].write_slice()).await?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
@@ -167,7 +188,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// Returns the number of bytes read (equal to `dest.len()`), or an error
     /// if the connection is closed before the buffer can be filled.
     pub async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
+        self.socket.read_exact_into(dest).await?;
         self.total_bytes += dest.len();
         Ok(dest.len())
     }
@@ -237,16 +258,18 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(());
         }
 
-        let mut src = (&mut self.socket).take(from_socket as u64);
-
         let mut actual = 0;
+        let mut left = from_socket;
+        let mut scratch = [0u8; 1024];
 
-        loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
+        while left > 0 {
+            let chunk = left.min(scratch.len());
+            let n = self.socket.read_into(&mut scratch[..chunk]).await?;
             if n == 0 {
                 break;
             }
             actual += n;
+            left -= n;
         }
 
         self.total_bytes += actual;
@@ -263,7 +286,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     }
 }
 
-impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
+impl<S: ReadSource> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n1 = self.bufs[self.read].read(buf)?;
         let n2 = self.bufs[self.write].read(&mut buf[n1..])?;

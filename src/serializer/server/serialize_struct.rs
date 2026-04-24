@@ -8,6 +8,7 @@
 use std::io;
 use std::io::{ErrorKind, Write};
 
+use async_trait::async_trait;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
@@ -25,6 +26,21 @@ use super::nfs::{
     write,
 };
 use super::rpc::auth;
+
+#[async_trait(?Send)]
+pub trait WriteSink {
+    async fn write_all_bytes(&mut self, buf: &[u8]) -> io::Result<()>;
+}
+
+#[async_trait(?Send)]
+impl<T> WriteSink for T
+where
+    T: AsyncWrite + Unpin,
+{
+    async fn write_all_bytes(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.write_all(buf).await
+    }
+}
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
@@ -60,11 +76,11 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<T: AsyncWrite + Unpin> {
+pub struct Serializer<T: WriteSink> {
     buffer: WriteBuffer<T>,
 }
 
-impl<T: AsyncWrite + Unpin> Serializer<T> {
+impl<T: WriteSink> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
         Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
@@ -271,12 +287,12 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<T: AsyncWrite + Unpin> {
+struct WriteBuffer<T: WriteSink> {
     socket: T,
     buf: Vec<u8>,
 }
 
-impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
+impl<T: WriteSink> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -289,7 +305,7 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     }
 }
 
-impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
+impl<T: WriteSink> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
         let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
@@ -324,7 +340,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
-        self.socket.write_all(&self.buf).await?;
+        self.socket.write_all_bytes(&self.buf).await?;
         self.clean();
         Ok(())
     }
@@ -343,16 +359,16 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
-        self.socket.write_all(&self.buf).await?;
+        self.socket.write_all_bytes(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
         for buf in slice.iter() {
-            self.socket.write_all(buf).await?;
+            self.socket.write_all_bytes(buf).await?;
         }
 
         // write padding directly to socket
         let slice = [0u8; ALIGNMENT];
-        self.socket.write_all(&slice[..padding]).await?;
+        self.socket.write_all_bytes(&slice[..padding]).await?;
         self.clean();
         Ok(())
     }

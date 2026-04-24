@@ -8,13 +8,12 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
-use std::io;
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use async_channel::Sender;
-use tracing::error;
 use tokio_uring::net::TcpStream;
+use tracing::error;
 
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
@@ -30,20 +29,18 @@ pub async fn new(
     mount_sender: Sender<MountCommand>,
     context: &ServerContext,
 ) {
-    let socket = match duplicate_into_tokio_stream(socket) {
-        Ok(socket) => socket,
-        Err(err) => {
-            error!(error=%err, "failed to adapt tokio-uring socket into tokio stream");
-            return;
-        }
-    };
-    let (readhalf, writehalf) = socket.into_split();
+    let socket = Arc::new(socket);
+
+    if let Err(err) = socket.set_nodelay(true) {
+        error!(error=%err, "failed to set TCP_NODELAY");
+    }
+
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply>();
     // channel for request
 
     read::ReadTask::new(
-        readhalf,
+        Arc::clone(&socket),
         peer_addr,
         mount_sender,
         result_sender.clone(),
@@ -52,17 +49,5 @@ pub async fn new(
     )
     .spawn();
 
-    write::WriteTask::new(writehalf, result_receiver).spawn();
-}
-
-fn duplicate_into_tokio_stream(socket: TcpStream) -> io::Result<tokio::net::TcpStream> {
-    let fd = socket.as_raw_fd();
-    let dup_fd = unsafe { libc::dup(fd) };
-    if dup_fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let std_stream = unsafe { StdTcpStream::from_raw_fd(dup_fd) };
-    std_stream.set_nonblocking(true)?;
-    tokio::net::TcpStream::from_std(std_stream)
+    write::WriteTask::new(socket, result_receiver).spawn();
 }
