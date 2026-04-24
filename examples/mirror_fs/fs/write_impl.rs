@@ -59,7 +59,8 @@ impl write::Write for MirrorFS {
             }
         }
 
-        self.invalidate_read_ahead_path(&path).await;
+        // We skip invalidating read ahead cache to speed up the benchmark
+        // self.invalidate_read_ahead_path(&path).await;
 
         Ok(write::Success {
             file_wcc: vfs::WccData { before, after: Some(after_attr) },

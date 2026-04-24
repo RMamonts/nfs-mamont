@@ -99,12 +99,12 @@ struct DirectoryListingCache {
 }
 
 struct ReadFileCache {
-    files: Cache<PathBuf, Arc<DiskFile>>,
+    files: Cache<PathBuf, Arc<tokio::sync::OnceCell<Arc<DiskFile>>>>,
     key_index: RwLock<BTreeSet<PathBuf>>,
 }
 
 struct WriteFileCache {
-    files: Cache<PathBuf, Arc<DiskFile>>,
+    files: Cache<PathBuf, Arc<tokio::sync::OnceCell<Arc<DiskFile>>>>,
     key_index: RwLock<BTreeSet<PathBuf>>,
 }
 
@@ -393,41 +393,35 @@ impl MirrorFS {
     }
 
     async fn get_cached_read_file(&self, path: &Path) -> Result<Arc<DiskFile>, vfs::Error> {
-        if let Some(file) = self.read_file_cache.files.get(path) {
-            return Ok(file);
-        }
-
-        let opened = self.disk_io.open_read(path).await?;
-
-        if let Some(existing) = self.read_file_cache.files.get(path) {
-            return Ok(existing);
-        }
-
         let key = path.to_path_buf();
-        self.read_file_cache.files.insert(key.clone(), opened.clone());
-        self.read_file_cache.key_index.write().unwrap().insert(key);
-        self.maybe_compact_read_file_keys();
+        
+        let cell = self.read_file_cache.files.get_with(key.clone(), || {
+            self.read_file_cache.key_index.write().unwrap().insert(key.clone());
+            self.maybe_compact_read_file_keys();
+            Arc::new(tokio::sync::OnceCell::new())
+        });
 
-        Ok(opened)
+        let opened = cell.get_or_try_init(|| async {
+            self.disk_io.open_read(path).await
+        }).await?;
+
+        Ok(opened.clone())
     }
 
     async fn get_cached_write_file(&self, path: &Path) -> Result<Arc<DiskFile>, vfs::Error> {
-        if let Some(file) = self.write_file_cache.files.get(path) {
-            return Ok(file);
-        }
-
-        let opened = self.disk_io.open_write(path).await?;
-
-        if let Some(existing) = self.write_file_cache.files.get(path) {
-            return Ok(existing);
-        }
-
         let key = path.to_path_buf();
-        self.write_file_cache.files.insert(key.clone(), opened.clone());
-        self.write_file_cache.key_index.write().unwrap().insert(key);
-        self.maybe_compact_write_file_keys();
 
-        Ok(opened)
+        let cell = self.write_file_cache.files.get_with(key.clone(), || {
+            self.write_file_cache.key_index.write().unwrap().insert(key.clone());
+            self.maybe_compact_write_file_keys();
+            Arc::new(tokio::sync::OnceCell::new())
+        });
+
+        let opened = cell.get_or_try_init(|| async {
+            self.disk_io.open_write(path).await
+        }).await?;
+
+        Ok(opened.clone())
     }
 
     async fn invalidate_read_file_cache_path(&self, path: &Path) {
@@ -1014,6 +1008,6 @@ impl MirrorFS {
     }
 
     pub(crate) fn cached_read_file_shard_for(&self, path: &Path) -> Option<usize> {
-        self.read_file_cache.files.get(path).map(|file| file.shard())
+        self.read_file_cache.files.get(path).and_then(|cell| cell.get().map(|f| f.shard()))
     }
 }

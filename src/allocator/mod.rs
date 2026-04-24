@@ -15,7 +15,56 @@ use tokio::sync::Semaphore;
 
 pub use slice::Slice;
 
-type Buffer = Box<[u8]>;
+#[derive(Debug)]
+pub struct AlignedBuffer {
+    ptr: *mut u8,
+    len: usize,
+}
+unsafe impl Send for AlignedBuffer {}
+unsafe impl Sync for AlignedBuffer {}
+
+impl AlignedBuffer {
+    pub fn new(size: usize) -> Self {
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            panic!("mmap failed");
+        }
+        // Prefault pages to avoid page faults on I/O
+        unsafe { std::ptr::write_bytes(ptr, 0, size); }
+        Self { ptr: ptr as *mut u8, len: size }
+    }
+}
+
+impl Drop for AlignedBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.ptr as *mut libc::c_void, self.len);
+        }
+    }
+}
+
+impl std::ops::Deref for AlignedBuffer {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+    }
+}
+impl std::ops::DerefMut for AlignedBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+}
+
+pub type Buffer = AlignedBuffer;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
@@ -56,7 +105,7 @@ impl Impl {
         let semaphore = Semaphore::new(count.get());
 
         for _ in 0..count.get() {
-            pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
+            pool.push(AlignedBuffer::new(size.get())).expect("can't initialize allocator");
         }
 
         Self {

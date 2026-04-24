@@ -28,7 +28,6 @@ impl read::Read for MirrorFS {
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut read_count = 0usize;
-        let mut sendfile_source = None;
         let block_size = super::READ_AHEAD_BLOCK_SIZE as u64;
 
         let sequential = self.update_read_sequence(&path, start, end).await;
@@ -41,25 +40,14 @@ impl read::Read for MirrorFS {
             self.schedule_read_ahead_window(&path, file.clone(), start_block_index, file_len).await;
         }
 
-        if requested > 0 && sendfile_source.is_none() && !small_random {
+        if requested > 0 && !small_random {
             if let Some(cached) = self.read_ahead_copy_hit(&path, start, requested, &mut data).await
             {
                 read_count = cached;
             }
         }
 
-        #[cfg(target_os = "linux")]
-        if !small_random
-            && requested >= self.read_path_config.sendfile_min_bytes.get()
-            && read_count == 0
-            && !should_prefetch
-        {
-            read_count = requested;
-            sendfile_source = Some(read::SendfileSource { file: file.backing_file(), offset: start });
-            data = Slice::empty();
-        }
-
-        if requested > 0 && sendfile_source.is_none() && read_count < requested {
+        if requested > 0 && read_count < requested {
             let read_start = start.saturating_add(read_count as u64);
             let read_remaining = requested - read_count;
             let data_offset = read_count;
@@ -85,7 +73,7 @@ impl read::Read for MirrorFS {
                 eof: start.saturating_add(read_count as u64) >= file_len,
             },
             data,
-            sendfile_source,
+            sendfile_source: None,
         })
     }
 }

@@ -17,8 +17,8 @@ impl MockAllocator {
 impl Allocator for MockAllocator {
     async fn allocate(&self, size: NonZeroUsize) -> Option<Slice> {
         if size.get() <= self.max_size {
-            let (_, _) = mpsc::unbounded_channel::<Box<[u8]>>();
-            Some(Slice::new(vec![vec![0; size.get()].into_boxed_slice()], 0..size.get(), None))
+            let (_, _) = mpsc::unbounded_channel::<crate::allocator::Buffer>();
+            Some(Slice::new(vec![crate::allocator::Buffer::new(size.get())], 0..size.get(), None))
         } else {
             None
         }

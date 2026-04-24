@@ -14,10 +14,9 @@ where
 
     let mut result = Vec::with_capacity(buffers.len());
     for slice in buffers {
-        let mut buf = Vec::with_capacity(slice.len());
-        buf.extend_from_slice(slice);
-
-        result.push(buf.into_boxed_slice())
+        let mut buffer = crate::allocator::Buffer::new(slice.len());
+        buffer[..slice.len()].copy_from_slice(slice);
+        result.push(buffer)
     }
 
     Slice::new(result, range, None)

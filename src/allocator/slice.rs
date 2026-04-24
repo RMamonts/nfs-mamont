@@ -5,7 +5,7 @@ use std::sync::Arc;
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
-    buffers: Vec<Box<[u8]>>,
+    buffers: Vec<crate::allocator::Buffer>,
     range: std::ops::Range<usize>,
     state: Option<Arc<super::AllocatorState>>,
 }
@@ -23,7 +23,7 @@ impl Slice {
     ///
     /// This function will panics if called if length range bound greater then length of `buffers`.
     pub fn new(
-        buffers: Vec<Box<[u8]>>,
+        buffers: Vec<crate::allocator::Buffer>,
         range: std::ops::Range<usize>,
         state: Option<Arc<super::AllocatorState>>,
     ) -> Self {
@@ -84,7 +84,7 @@ impl Drop for Slice {
 ///
 /// Return shared slices accordingly to [`Slice`] bounds.
 pub struct Iter<'a> {
-    slice_iter: std::slice::Iter<'a, Box<[u8]>>,
+    slice_iter: std::slice::Iter<'a, crate::allocator::Buffer>,
     range: std::ops::Range<usize>,
 }
 
@@ -128,7 +128,7 @@ impl<'a> IntoIterator for &'a Slice {
 ///
 /// Return mutable slices accordingly to [`Slice`] bounds.
 pub struct IterMut<'a> {
-    slice_iter: std::slice::IterMut<'a, Box<[u8]>>,
+    slice_iter: std::slice::IterMut<'a, crate::allocator::Buffer>,
     range: std::ops::Range<usize>,
 }
 
