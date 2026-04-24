@@ -1,20 +1,20 @@
-use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
+use async_channel::Receiver;
 use tracing::error;
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
+use crate::rpc_io::RpcWrite;
 use crate::serializer;
 use crate::task::ProcReply;
 
 /// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
-pub struct WriteTask {
-    writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<ProcReply>,
+pub struct WriteTask<W: RpcWrite> {
+    writehalf: W,
+    result_receiver: Receiver<ProcReply>,
 }
 
-impl WriteTask {
+impl<W: RpcWrite + 'static> WriteTask<W> {
     /// Creates new instance of [`WriteTask`]
-    pub fn new(writehalf: OwnedWriteHalf, result_receiver: UnboundedReceiver<ProcReply>) -> Self {
+    pub fn new(writehalf: W, result_receiver: Receiver<ProcReply>) -> Self {
         Self { writehalf, result_receiver }
     }
 
@@ -24,14 +24,14 @@ impl WriteTask {
     ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        tokio_uring::spawn(async move { self.run().await });
     }
 
     async fn run(self) {
-        let mut result_receiver = self.result_receiver;
+        let result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
-        while let Some(reply) = result_receiver.recv().await {
+        while let Ok(reply) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };

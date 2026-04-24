@@ -8,11 +8,13 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
-use tracing::error;
+use async_channel::Sender;
+use std::net::SocketAddr;
+use std::rc::Rc;
+use tokio_uring::net::TcpStream;
 
 use crate::context::ServerContext;
+use crate::rpc_io::{UringReadHalf, UringWriteHalf};
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 
@@ -22,19 +24,15 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub async fn new(
     socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand>,
+    peer_addr: SocketAddr,
+    mount_sender: Sender<MountCommand>,
     context: &ServerContext,
 ) {
-    let peer_addr = match socket.peer_addr() {
-        Ok(addr) => addr,
-        Err(err) => {
-            error!(error=%err, "failed to determine peer address");
-            return;
-        }
-    };
-    let (readhalf, writehalf) = socket.into_split();
+    let shared = Rc::new(socket);
+    let readhalf = UringReadHalf::new(shared.clone());
+    let writehalf = UringWriteHalf::new(shared);
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply>();
     // channel for request
 
     read::ReadTask::new(

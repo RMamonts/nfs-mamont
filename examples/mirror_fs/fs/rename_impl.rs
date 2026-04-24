@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio::fs;
 
 use nfs_mamont::vfs::{self, rename};
 
@@ -94,7 +93,7 @@ impl rename::Rename for MirrorFS {
             self.remove_cached_path(&to_path).await;
         }
 
-        if let Err(error) = fs::rename(&from_path, &to_path).await {
+        if let Err(error) = std::fs::rename(&from_path, &to_path) {
             return Err(rename::Fail {
                 error: Self::io_error_to_vfs(&error),
                 from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),

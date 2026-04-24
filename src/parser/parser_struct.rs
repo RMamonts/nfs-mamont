@@ -17,7 +17,6 @@ use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
@@ -44,6 +43,7 @@ use crate::parser::{
     NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc_io::RpcRead;
 use crate::vfs;
 
 const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -65,21 +65,20 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// # Type Parameters
 ///
 /// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
-/// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
+/// * `S` - An async stream type that implements [`RpcRead`]
 ///
 /// # Example
 ///
 /// ```no_run
-/// use tokio::io::AsyncRead;
 /// use crate::parser::parser_struct::RpcParser;
 /// use crate::allocator::Allocator;
 ///
-/// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
+/// # async fn example<A: Allocator, S: crate::rpc_io::RpcRead>(socket: S, alloc: A) {
 /// let mut parser = RpcParser::new(socket, alloc);
 /// let args = parser.next_message().await?;
 /// # }
 /// ```
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub struct RpcParser<A: Allocator, S: RpcRead> {
     allocator: Arc<A>,
     buffer: CountBuffer<S>,
     last: bool,
@@ -87,7 +86,7 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
 }
 
 #[allow(dead_code)]
-impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+impl<A: Allocator, S: RpcRead> RpcParser<A, S> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
     /// # Arguments
@@ -564,7 +563,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Parsing fails
 /// - Memory allocation fails
 /// - Reading the data fails
-async fn adapter_for_write<S: AsyncRead + Unpin>(
+async fn adapter_for_write<S: RpcRead>(
     alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
@@ -616,7 +615,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub async fn read_in_slice_async<S: RpcRead>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
@@ -662,7 +661,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub fn read_in_slice_sync<S: RpcRead>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,

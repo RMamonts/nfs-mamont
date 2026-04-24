@@ -1,7 +1,6 @@
 use async_trait::async_trait;
-use std::io::SeekFrom;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 
 use nfs_mamont::vfs::read;
 use nfs_mamont::Slice;
@@ -28,7 +27,11 @@ impl read::Read for MirrorFS {
             return Err(read::Fail { error, file_attr: Some(attr) });
         }
 
-        let mut file = match File::open(&path).await {
+        let file_len = meta.len();
+        let start = args.offset.min(file_len);
+        let end = args.offset.saturating_add(args.count as u64).min(file_len);
+        let requested = end.saturating_sub(start) as usize;
+        let mut file = match File::open(&path) {
             Ok(file) => file,
             Err(error) => {
                 return Err(read::Fail {
@@ -38,13 +41,9 @@ impl read::Read for MirrorFS {
             }
         };
 
-        let file_len = meta.len();
-        let start = args.offset.min(file_len);
-        let end = args.offset.saturating_add(args.count as u64).min(file_len);
-        let requested = end.saturating_sub(start) as usize;
         let mut remaining = requested;
         let mut read_count = 0usize;
-        if let Err(error) = file.seek(SeekFrom::Start(start)).await {
+        if let Err(error) = file.seek(SeekFrom::Start(start)) {
             return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
         }
 
@@ -58,7 +57,7 @@ impl read::Read for MirrorFS {
                 let mut chunk_offset = 0usize;
 
                 while chunk_offset < to_read {
-                    match file.read(&mut chunk[chunk_offset..to_read]).await {
+                    match file.read(&mut chunk[chunk_offset..to_read]) {
                         Ok(0) => {
                             remaining = 0;
                             break;

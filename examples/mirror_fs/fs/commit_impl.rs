@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use tokio::fs::OpenOptions;
+use std::fs::OpenOptions;
 
 use nfs_mamont::vfs::commit;
 
@@ -25,7 +25,7 @@ impl commit::Commit for MirrorFS {
             }
         }
 
-        let file = match OpenOptions::new().write(true).open(&path).await {
+        let file = match OpenOptions::new().write(true).open(&path) {
             Ok(file) => file,
             Err(error) => {
                 return Err(commit::Fail {
@@ -34,7 +34,7 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
-        if let Err(error) = file.sync_all().await {
+        if let Err(error) = file.sync_all() {
             return Err(commit::Fail {
                 error: Self::io_error_to_vfs(&error),
                 file_wcc: Self::wcc_data(&path, before),

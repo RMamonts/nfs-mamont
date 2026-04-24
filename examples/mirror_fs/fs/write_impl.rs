@@ -1,7 +1,6 @@
 use async_trait::async_trait;
-use std::io::SeekFrom;
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use std::fs::OpenOptions;
+use std::io::{Seek, SeekFrom, Write};
 
 use nfs_mamont::vfs::{self, write};
 
@@ -28,7 +27,7 @@ impl write::Write for MirrorFS {
             }
         }
 
-        let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
+        let mut file = match OpenOptions::new().write(true).truncate(false).open(&path) {
             Ok(file) => file,
             Err(error) => {
                 return Err(write::Fail {
@@ -39,13 +38,14 @@ impl write::Write for MirrorFS {
         };
 
         let data = Self::collect_slice_bytes(&args.data, args.size);
-        if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
+        let count = data.len() as u32;
+        if let Err(error) = file.seek(SeekFrom::Start(args.offset)) {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
                 wcc_data: Self::wcc_data(&path, before),
             });
         }
-        if let Err(error) = file.write_all(&data).await {
+        if let Err(error) = file.write_all(&data) {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
                 wcc_data: Self::wcc_data(&path, before),
@@ -53,8 +53,8 @@ impl write::Write for MirrorFS {
         }
         let sync_result = match args.stable {
             write::StableHow::Unstable => Ok(()),
-            write::StableHow::DataSync => file.sync_data().await,
-            write::StableHow::FileSync => file.sync_all().await,
+            write::StableHow::DataSync => file.sync_data(),
+            write::StableHow::FileSync => file.sync_all(),
         };
         if let Err(error) = sync_result {
             return Err(write::Fail {
@@ -65,7 +65,7 @@ impl write::Write for MirrorFS {
 
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
-            count: data.len() as u32,
+            count,
             commited: args.stable,
             verifier: self.write_verifier(),
         })

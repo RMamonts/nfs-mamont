@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use tokio::fs::OpenOptions;
+use std::fs::OpenOptions;
 
 use nfs_mamont::vfs::{self, create};
 
@@ -51,7 +51,6 @@ impl create::Create for MirrorFS {
                         .create(true)
                         .truncate(false)
                         .open(&child_path)
-                        .await
                     {
                         return Err(create::Fail {
                             error: Self::io_error_to_vfs(&error),
@@ -68,8 +67,7 @@ impl create::Create for MirrorFS {
                         wcc_data: Self::wcc_data(&dir_path, before),
                     });
                 }
-                if let Err(error) =
-                    OpenOptions::new().write(true).create_new(true).open(&child_path).await
+                if let Err(error) = OpenOptions::new().write(true).create_new(true).open(&child_path)
                 {
                     return Err(create::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -79,7 +77,7 @@ impl create::Create for MirrorFS {
                 attr
             }
             create::How::Exclusive(ref verifier) => {
-                match OpenOptions::new().write(true).create_new(true).open(&child_path).await {
+                match OpenOptions::new().write(true).create_new(true).open(&child_path) {
                     Ok(_) => {
                         Self::store_exclusive_verifier(&child_path, &verifier.0);
                     }

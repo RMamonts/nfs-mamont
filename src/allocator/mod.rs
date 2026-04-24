@@ -10,8 +10,8 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use async_channel::{Receiver, Sender};
 use crossbeam_queue::ArrayQueue;
-use tokio::sync::Semaphore;
 
 pub use slice::Slice;
 
@@ -21,7 +21,8 @@ type Buffer = Box<[u8]>;
 #[derive(Debug)]
 pub struct AllocatorState {
     pub pool: ArrayQueue<Buffer>,
-    pub semaphore: Semaphore,
+    pub permit_sender: Sender<()>,
+    pub permit_receiver: Receiver<()>,
 }
 
 /// Allocates [`Slice`]'s.
@@ -53,14 +54,17 @@ impl Impl {
     /// - `count` --- number of buffers to allocate
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let pool = ArrayQueue::new(count.get());
-        let semaphore = Semaphore::new(count.get());
+        let (permit_sender, permit_receiver) = async_channel::bounded(count.get());
 
         for _ in 0..count.get() {
             pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
+            permit_sender
+                .try_send(())
+                .expect("can't initialize allocator permits");
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore }),
+            state: Arc::new(AllocatorState { pool, permit_sender, permit_receiver }),
             buffer_size: size,
             buffer_count: count,
         }
@@ -80,10 +84,11 @@ impl Allocator for Impl {
         let remain_size = size.get();
         let count_needed = remain_size.div_ceil(self.buffer_size.get());
 
-        let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
-            Ok(p) => p,
-            Err(_) => return None,
-        };
+        for _ in 0..count_needed {
+            if self.state.permit_receiver.recv().await.is_err() {
+                return None;
+            }
+        }
 
         let mut buffers = Vec::with_capacity(count_needed);
         for _ in 0..count_needed {
@@ -93,8 +98,6 @@ impl Allocator for Impl {
                 unreachable!("Semaphore permitted allocation but pool was empty");
             }
         }
-
-        permit.forget();
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
     }

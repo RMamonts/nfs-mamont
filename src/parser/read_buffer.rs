@@ -13,9 +13,8 @@ use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
-
 use crate::parser::{Error, Result};
+use crate::rpc_io::RpcRead;
 
 /// A buffered reader that wraps an async stream and provides synchronous reading
 /// with retry capability.
@@ -35,12 +34,12 @@ use crate::parser::{Error, Result};
 /// use tokio::io::AsyncRead;
 /// use crate::parser::read_buffer::CountBuffer;
 ///
-/// # async fn example<S: AsyncRead + Unpin>(socket: S) {
+/// # async fn example<S: crate::rpc_io::RpcRead>(socket: S) {
 /// let mut buffer = CountBuffer::new(4096, socket);
 /// // Use parse_with_retry to parse XDR-encoded data
 /// # }
 /// ```
-pub struct CountBuffer<S: AsyncRead + Unpin> {
+pub struct CountBuffer<S: RpcRead> {
     // actually, there are definitely two
     bufs: Vec<ReadBuffer>,
     read: usize,
@@ -50,7 +49,7 @@ pub struct CountBuffer<S: AsyncRead + Unpin> {
     total_bytes: usize,
 }
 
-impl<S: AsyncRead + Unpin> CountBuffer<S> {
+impl<S: RpcRead> CountBuffer<S> {
     /// Creates a new `CountBuffer` with the specified capacity for each internal buffer.
     ///
     /// # Arguments
@@ -80,7 +79,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(0);
         }
 
-        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
+        let bytes_read = self.socket.read_some(self.bufs[self.write].write_slice()).await?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
@@ -167,7 +166,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// Returns the number of bytes read (equal to `dest.len()`), or an error
     /// if the connection is closed before the buffer can be filled.
     pub async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
+        self.socket.read_exact_into(dest).await?;
         self.total_bytes += dest.len();
         Ok(dest.len())
     }
@@ -237,12 +236,12 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(());
         }
 
-        let mut src = (&mut self.socket).take(from_socket as u64);
+        let mut actual = 0usize;
+        let mut scratch = [0u8; 4096];
 
-        let mut actual = 0;
-
-        loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
+        while actual < from_socket {
+            let to_read = (from_socket - actual).min(scratch.len());
+            let n = self.socket.read_some(&mut scratch[..to_read]).await?;
             if n == 0 {
                 break;
             }
@@ -263,7 +262,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     }
 }
 
-impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
+impl<S: RpcRead> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n1 = self.bufs[self.read].read(buf)?;
         let n2 = self.bufs[self.write].read(&mut buf[n1..])?;
