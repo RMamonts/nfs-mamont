@@ -1,8 +1,11 @@
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
-use crate::{nlm::NlmRes, parser::{NlmArgWrapper, NlmArguments}};
 use crate::task::{ProcReply, ProcResult};
+use crate::{
+    nlm::NlmRes,
+    parser::{NlmArgWrapper, NlmArguments},
+};
 
 pub struct NlmCommand {
     /// Channel used to pass the result to write task.
@@ -43,11 +46,11 @@ impl NlmTask {
         while let Some(command) = receiver.recv().await {
             let NlmCommand { result_tx, args } = command;
             let NlmArgWrapper { header, proc } = args;
-            debug!(xid=header.xid, "nlm task: command received");
+            debug!(xid = header.xid, "nlm task: command received");
 
             let nlm_result = match *proc {
                 NlmArguments::Null => NlmRes::Null,
-                _ => todo!()
+                _ => todo!(),
             };
 
             // TODO:

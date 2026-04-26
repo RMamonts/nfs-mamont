@@ -21,7 +21,6 @@ use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
-use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION, NLMPROC4_NULL};
 use crate::consts::mount::{
     MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
     MOUNT_VERSION,
@@ -31,6 +30,7 @@ use crate::consts::nfsv3::{
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
 };
+use crate::consts::nlm::{NLMPROC4_NULL, NLM_PROGRAM, NLM_VERSION};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -42,7 +42,7 @@ use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
-    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader, NlmArguments,
+    NfsArgWrapper, NfsArguments, NlmArguments, ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -472,10 +472,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         self.parse_mount_proc(head.procedure).await
     }
 
-    async fn parse_nlm_message_with_header(
-        &mut self,
-        head: &RpcMessage,
-    ) -> Result<NlmArguments> {
+    async fn parse_nlm_message_with_header(&mut self, head: &RpcMessage) -> Result<NlmArguments> {
         if head.program != NLM_PROGRAM {
             error!(
                 got = head.program,

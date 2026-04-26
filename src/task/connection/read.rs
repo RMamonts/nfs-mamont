@@ -13,7 +13,8 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
-    ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments, NlmArguments, ProcArguments, NlmArgWrapper,
+    ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
+    NlmArgWrapper, NlmArguments, ProcArguments,
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
@@ -51,7 +52,15 @@ impl ReadTask {
         allocator: Arc<Impl>,
         pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, mount_sender, nlm_sender, result_sender, allocator, pool_sender }
+        Self {
+            readhalf,
+            client_addr,
+            mount_sender,
+            nlm_sender,
+            result_sender,
+            allocator,
+            pool_sender,
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -137,8 +146,7 @@ impl ReadTask {
                     }
                 }
 
-                Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) =>
-                {
+                Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {

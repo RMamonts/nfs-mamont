@@ -168,10 +168,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 
     async fn process_nlm(&mut self, data: Box<NlmRes>) -> io::Result<()> {
         match *data {
-            NlmRes::Null => {
-                self.buffer.send_inner_buffer().await
-            }
-            _ => todo!()
+            NlmRes::Null => self.buffer.send_inner_buffer().await,
+            _ => todo!(),
         }
     }
 
