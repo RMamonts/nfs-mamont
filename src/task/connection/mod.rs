@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::context::ServerContext;
+use crate::task::global::nlm::NlmCommand;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
 
@@ -23,6 +24,7 @@ mod write;
 pub async fn new(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
+    nlm_sender: mpsc::UnboundedSender<NlmCommand>,
     context: &ServerContext,
 ) {
     let peer_addr = match socket.peer_addr() {
@@ -41,6 +43,7 @@ pub async fn new(
         readhalf,
         peer_addr,
         mount_sender,
+        nlm_sender,
         result_sender.clone(),
         context.get_write_allocator(),
         context.get_vfs_pool().sender(),
