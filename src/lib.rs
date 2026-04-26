@@ -4,6 +4,7 @@ mod allocator;
 pub mod consts;
 mod context;
 mod mount;
+#[allow(dead_code)]
 mod nlm;
 mod parser;
 mod rpc;
