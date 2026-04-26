@@ -12,12 +12,10 @@ mod tests;
 
 use std::future::Future;
 
-use crate::nlm::procedures::{
-    lock::Nlm4LockArgs,
-    cancel::Nlm4CancelArgs,
-    test::Nlm4TestArgs,
-    unlock::Nlm4UnlockArgs};
 use crate::mount::{mnt, umnt};
+use crate::nlm::procedures::{
+    cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
+};
 use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,

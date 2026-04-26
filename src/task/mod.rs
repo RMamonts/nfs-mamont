@@ -4,9 +4,9 @@
 //! including connection-specific tasks and global task coordination.
 
 use crate::mount::MountRes;
+use crate::nlm::NlmRes;
 use crate::rpc::Error;
 use crate::vfs::NfsRes;
-use crate::nlm::NlmRes;
 
 pub mod connection;
 pub mod global;
