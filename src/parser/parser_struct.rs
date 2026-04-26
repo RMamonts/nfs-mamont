@@ -21,6 +21,7 @@ use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
+use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION, NLMPROC4_NULL};
 use crate::consts::mount::{
     MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
     MOUNT_VERSION,
@@ -41,7 +42,7 @@ use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
-    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader,
+    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader, NlmArguments,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -305,6 +306,15 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(args)
     }
 
+    /// Parses NLM procedure arguments from the current frame.
+    async fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmArguments> {
+        let args = match procedure {
+            NLMPROC4_NULL => NlmArguments::Null,
+            _ => return Err(Error::ProcedureMismatch),
+        };
+        Ok(args)
+    }
+
     /// Parses a complete NFSv3 RPC message from the stream.
     ///
     /// This is the main entry point for parsing. It performs the following steps:
@@ -402,6 +412,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 let args = self.parse_mount_message_with_header(head).await?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
+            NLM_PROGRAM => {
+                let args = self.parse_nlm_message_with_header(head).await?;
+                Ok(ProcArguments::Nlm4(Box::new(args)))
+            }
             _ => {
                 warn!(program = head.program, "rpc parse reject: unknown program");
                 Err(Error::ProgramMismatch)
@@ -456,6 +470,32 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             }));
         }
         self.parse_mount_proc(head.procedure).await
+    }
+
+    async fn parse_nlm_message_with_header(
+        &mut self,
+        head: &RpcMessage,
+    ) -> Result<NlmArguments> {
+        if head.program != NLM_PROGRAM {
+            error!(
+                got = head.program,
+                expected = NLM_PROGRAM,
+                "rpc parse reject: NLM parser got unexpected program",
+            );
+            return Err(Error::ProgramMismatch);
+        }
+        if head.version != NLM_VERSION {
+            error!(
+                got = head.version,
+                expected = NLM_VERSION,
+                "rpc parse reject: NLM version mismatch",
+            );
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: NLM_VERSION,
+                high: NLM_VERSION,
+            }));
+        }
+        self.parse_nlm_proc(head.procedure).await
     }
 
     /// Finalizes parsing by validating that all frame data was consumed.

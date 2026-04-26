@@ -12,6 +12,11 @@ mod tests;
 
 use std::future::Future;
 
+use crate::nlm::procedures::{
+    lock::Nlm4LockArgs,
+    cancel::Nlm4CancelArgs,
+    test::Nlm4TestArgs,
+    unlock::Nlm4UnlockArgs};
 use crate::mount::{mnt, umnt};
 use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
@@ -56,6 +61,12 @@ pub struct MountArgWrapper {
     pub proc: Box<MountArguments>,
 }
 
+/// Wrapper for NLM protocol procedure arguments along with the RPC header.
+pub struct NlmArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NlmArguments>,
+}
+
 /// Generic wrapper for RPC arguments used when the protocol type
 /// (NFS, MOUNT, or others) is already resolved at a higher layer.
 pub struct ArgWrapper {
@@ -78,6 +89,7 @@ pub struct ErrorWrapper {
 pub enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
+    Nlm4(Box<NlmArguments>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
@@ -142,4 +154,18 @@ pub enum MountArguments {
     Dump,
     /// Arguments for the UnmountAll operation.
     UnmountAll,
+}
+
+/// Enumerates supported NLMv4 protocol procedure arguments.
+pub enum NlmArguments {
+    /// Null operation arguments.
+    Null,
+    /// Arguments for the Lock operation.
+    Lock(Nlm4LockArgs),
+    /// Arguments for the Unlock operation.
+    Unlock(Nlm4UnlockArgs),
+    /// Arguments for the Test operation.
+    Test(Nlm4TestArgs),
+    /// Arguments for the Cancel operation.
+    Cancel(Nlm4CancelArgs),
 }

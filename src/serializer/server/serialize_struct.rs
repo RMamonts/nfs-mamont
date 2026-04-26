@@ -12,6 +12,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Slice;
 use crate::mount::MountRes;
+use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
@@ -80,6 +81,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
+            ProcResult::Nlm4(data) => self.process_nlm(data).await,
         }
     }
 
@@ -161,6 +163,15 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             NfsRes::Commit(res) => {
                 nfs_result!(self, res, commit::result_ok, commit::result_fail)
             }
+        }
+    }
+
+    async fn process_nlm(&mut self, data: Box<NlmRes>) -> io::Result<()> {
+        match *data {
+            NlmRes::Null => {
+                self.buffer.send_inner_buffer().await
+            }
+            _ => todo!()
         }
     }
 

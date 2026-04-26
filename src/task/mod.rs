@@ -6,6 +6,7 @@
 use crate::mount::MountRes;
 use crate::rpc::Error;
 use crate::vfs::NfsRes;
+use crate::nlm::NlmRes;
 
 pub mod connection;
 pub mod global;
@@ -14,6 +15,7 @@ pub mod global;
 pub enum ProcResult {
     Nfs3(Box<NfsRes>),
     Mount(Box<MountRes>),
+    Nlm4(Box<NlmRes>),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
