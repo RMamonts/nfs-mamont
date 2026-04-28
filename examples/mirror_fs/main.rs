@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
+use nfs_mamont::{handle_forever_with_exports, Impl, MountExport, ServerContext};
 
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
@@ -33,10 +33,8 @@ async fn main() -> std::io::Result<()> {
     let root_handle = fs.root_handle().await;
     let context = ServerContext::new(
         fs.clone(),
-        NonZeroUsize::new(64 * 1024).unwrap(),
-        NonZeroUsize::new(8).unwrap(),
-        NonZeroUsize::new(64 * 1024).unwrap(),
-        NonZeroUsize::new(8).unwrap(),
+        Impl::new(NonZeroUsize::new(1024 * 1024).unwrap(), NonZeroUsize::new(32).unwrap()),
+        Impl::new(NonZeroUsize::new(1024 * 1024).unwrap(), NonZeroUsize::new(32).unwrap()),
         NonZeroUsize::new(10).unwrap(),
     );
 
