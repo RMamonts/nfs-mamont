@@ -3,8 +3,6 @@
 //! as defined in RFC 1813 section 5.2.5.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.5>.
 
-use async_trait::async_trait;
-
 use super::ExportEntry;
 
 /// Success result.
@@ -14,8 +12,7 @@ pub struct Success {
     /// to mount the specified directory.
     pub exports: Vec<ExportEntry>,
 }
-
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.

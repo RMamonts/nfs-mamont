@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, remove};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl remove::Remove for MirrorFS {
     async fn remove(&self, args: remove::Args) -> Result<remove::Success, remove::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {

@@ -35,9 +35,9 @@ impl VfsPool {
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new(
+    pub fn new<V: Vfs + Send + Sync + 'static>(
         num: NonZeroUsize,
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
+        backend: Arc<V>,
         allocator: Arc<Impl>,
     ) -> Self {
         let (tx, rx) = async_channel::unbounded::<VfsCommand>();
@@ -64,16 +64,16 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask {
+pub struct VfsTask<V: Vfs + Send + Sync + 'static> {
     /// Shared filesystem implementation.
-    backend: Arc<dyn Vfs + Send + Sync + 'static>,
+    backend: Arc<V>,
     /// Allocator used for read buffers.
     allocator: Arc<Impl>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
-impl VfsTask {
+impl<V: Vfs + Send + Sync + 'static> VfsTask<V> {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
@@ -86,7 +86,7 @@ impl VfsTask {
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
     pub fn new(
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
+        backend: Arc<V>,
         allocator: Arc<Impl>,
         command_receiver: VfsCommandReceiver,
     ) -> Self {

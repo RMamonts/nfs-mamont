@@ -57,14 +57,17 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections.
-pub async fn handle_forever(listener: TcpListener, context: ServerContext) -> std::io::Result<()> {
+pub async fn handle_forever<V: vfs::Vfs + Send + Sync + 'static>(
+    listener: TcpListener,
+    context: ServerContext<V>,
+) -> std::io::Result<()> {
     handle_forever_with_exports(listener, context, Vec::new()).await
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever_with_exports(
+pub async fn handle_forever_with_exports<V: vfs::Vfs + Send + Sync + 'static>(
     listener: TcpListener,
-    context: ServerContext,
+    context: ServerContext<V>,
     exports: Vec<MountExport>,
 ) -> std::io::Result<()> {
     let export_paths = exports

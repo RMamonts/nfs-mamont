@@ -15,15 +15,16 @@ use tracing::error;
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
+use crate::vfs;
 
 mod read;
 mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new(
+pub async fn new<V: vfs::Vfs + Send + Sync + 'static>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
-    context: &ServerContext,
+    context: &ServerContext<V>,
 ) {
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,

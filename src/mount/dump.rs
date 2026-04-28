@@ -3,8 +3,6 @@
 //! as defined in RFC 1813 section 5.2.2.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
 
-use async_trait::async_trait;
-
 use super::MountEntry;
 
 /// Success result.
@@ -15,8 +13,7 @@ pub struct Success {
     /// of clients that have requested file handles with the MNT procedure.
     pub mount_list: Vec<MountEntry>,
 }
-
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.
     ///
