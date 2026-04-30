@@ -9,27 +9,27 @@ pub struct Args {
     #[arg(short, long)]
     pub path: String,
 
-    /// Adress with port to listen
+    /// Address with port to listen
     #[arg(short, long)]
     pub bind: String,
 
-    /// Name of the person to greet
+    /// Size of read buffer in bytes
     #[arg(long, default_value_t = NonZeroUsize::new(1048576).unwrap())]
     pub read_buffer_size: NonZeroUsize,
 
-    /// Name of the person to greet
+    /// Number of read buffers
     #[arg(long, default_value_t = NonZeroUsize::new(512).unwrap())]
     pub read_buffer_count: NonZeroUsize,
 
-    /// Name of the person to greet
+    /// Size of write buffer in bytes
     #[arg(short, long, default_value_t = NonZeroUsize::new(1048576).unwrap())]
     pub write_buffer_size: NonZeroUsize,
 
-    /// Name of the person to greet
+    /// Number of write buffers
     #[arg(long, default_value_t = NonZeroUsize::new(512).unwrap())]
     pub write_buffer_count: NonZeroUsize,
 
-    /// Name of the person to greet
+    /// Size of VFS pool
     #[arg(long, default_value_t = NonZeroUsize::new(10).unwrap())]
     pub vfs_pool_size: NonZeroUsize,
 }
