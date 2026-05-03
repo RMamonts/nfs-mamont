@@ -29,7 +29,7 @@ impl NlmTask {
         (task, sender)
     }
 
-    /// Spawns a [`NlmTask`]  that processes mount commands received from
+    /// Spawns a [`NlmTask`]  that processes nlm commands received from
     /// `ReadTask` and returns results to
     /// `WriteTask`.
     ///

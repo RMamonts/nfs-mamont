@@ -1,4 +1,4 @@
-//! RPC message parser for NFS and MOUNT protocols.
+//! RPC message parser for NFS, MOUNT and NLM protocols.
 //!
 //! This module provides the [`RpcParser`] struct, which parses XDR-encoded RPC messages
 //! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
@@ -7,6 +7,7 @@
 //! - Authentication (currently only AUTH_NONE)
 //! - NFSv3 procedure parsing (all 22 procedures)
 //! - MOUNT protocol procedure parsing
+//! - NLM procedure parsing
 //! - Error handling and message discarding on protocol errors
 //!
 //! The parser uses a [`CountBuffer`] to efficiently read from async streams while
