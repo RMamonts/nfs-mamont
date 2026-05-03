@@ -1,4 +1,4 @@
-//! Implements parsing for [`commit::Args`] structure.
+//! Implements parsing for [`Nlm4LockArgs`] structure.
 
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
