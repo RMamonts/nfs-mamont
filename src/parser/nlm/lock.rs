@@ -1,14 +1,14 @@
 //! Implements parsing for [`commit::Args`] structure.
 
-use std::io::Read;
 use crate::consts::nlm;
-use crate::parser::nfsv3::file;
-use crate::parser::primitive::{bool, u64, u32, string_max_size, vector};
-use crate::parser::Result;
-use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
+use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::OpaqueHandle;
+use crate::parser::nfsv3::file;
+use crate::parser::primitive::{bool, string_max_size, u32, u64, vector};
+use crate::parser::Result;
+use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `LOCK` operation from the provided `Read` source.
 pub fn lock(src: &mut impl Read) -> Result<Nlm4LockArgs> {
@@ -24,7 +24,8 @@ pub fn lock(src: &mut impl Read) -> Result<Nlm4LockArgs> {
             u32(src)?,
             u64(src)?,
             u64(src)?,
-        ).unwrap(), // We can use "?", but then you will lose information about the constructor error
+        )
+        .unwrap(), // We can use "?", but then you will lose information about the constructor error
         reclaim: bool(src)?,
         state: u32(src)?,
     })

@@ -31,14 +31,14 @@ use crate::consts::nfsv3::{
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
 };
-use crate::consts::nlm::{NLMPROC4_NULL, NLMPROC4_LOCK, NLM_PROGRAM, NLM_VERSION};
-use crate::parser::nlm::lock::lock;
+use crate::consts::nlm::{NLMPROC4_LOCK, NLMPROC4_NULL, NLM_PROGRAM, NLM_VERSION};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
+use crate::parser::nlm::lock::lock;
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
