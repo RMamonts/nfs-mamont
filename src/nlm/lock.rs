@@ -18,10 +18,10 @@ pub struct Nlm4Lock {
     /// Host or process that is making the request.
     pub opaque_handle: OpaqueHandle,
     /// PID of the process making the request.
-    pub system_identifier: i32,
+    pub system_identifier: u32,
     /// Offset for the lock region.
     pub lock_offset: u64,
-    /// Length of the blocking region. A l_len of 0 means "to end of file".
+    /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
 }
 
@@ -51,7 +51,7 @@ impl Nlm4Lock {
         caller_name: String,
         file_handle: vfs::file::Handle,
         opaque_handle: OpaqueHandle,
-        system_identifier: i32,
+        system_identifier: u32, // Or i32 ?
         lock_offset: u64,
         lock_length: u64,
     ) -> Result<Self, Error> {

@@ -31,7 +31,8 @@ use crate::consts::nfsv3::{
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
 };
-use crate::consts::nlm::{NLMPROC4_NULL, NLM_PROGRAM, NLM_VERSION};
+use crate::consts::nlm::{NLMPROC4_NULL, NLMPROC4_LOCK, NLM_PROGRAM, NLM_VERSION};
+use crate::parser::nlm::lock::lock;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -311,6 +312,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmArguments> {
         let args = match procedure {
             NLMPROC4_NULL => NlmArguments::Null,
+            NLMPROC4_LOCK => NlmArguments::Lock(self.buffer.parse_with_retry(lock).await?),
             _ => return Err(Error::ProcedureMismatch),
         };
         Ok(args)
