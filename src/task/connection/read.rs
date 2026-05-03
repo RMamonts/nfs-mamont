@@ -29,7 +29,7 @@ pub struct ReadTask {
     client_addr: SocketAddr,
     // to send messages into mount task
     mount_sender: UnboundedSender<MountCommand>,
-    // to send messages into mount task
+    // to send messages into nlm task
     nlm_sender: UnboundedSender<NlmCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
