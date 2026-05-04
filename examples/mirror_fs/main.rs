@@ -20,6 +20,9 @@ mod tests;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(debug_assertions)]
+    init_tracing();
+
     let args = args::Args::parse();
 
     let config = config::load_config(&args.config_path)?;
@@ -32,9 +35,6 @@ async fn main() -> std::io::Result<()> {
         config.allocator.write_buffer_count,
         config.vfs_pool_size,
     );
-
-    #[cfg(debug_assertions)]
-    init_tracing();
 
     info!(export_root = %config.export_root.display(), bind = %args.addr, "mirrorfs startup");
 
