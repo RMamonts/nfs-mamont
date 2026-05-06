@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, warn};
 
-use crate::allocator::{Allocator, Impl, Slice};
+use crate::allocator::{Allocator, Slice};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
@@ -35,11 +35,11 @@ impl VfsPool {
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new<V: Vfs + Send + Sync + 'static>(
-        num: NonZeroUsize,
-        backend: Arc<V>,
-        allocator: Arc<Impl>,
-    ) -> Self {
+    pub fn new<A, V>(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self
+    where
+        A: Allocator + Send + Sync + 'static,
+        V: Vfs + Send + Sync + 'static,
+    {
         let (tx, rx) = async_channel::unbounded::<VfsCommand>();
 
         (0..num.get()).for_each(|_| {
@@ -64,16 +64,24 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask<V: Vfs + Send + Sync + 'static> {
+pub struct VfsTask<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Shared filesystem implementation.
     backend: Arc<V>,
     /// Allocator used for read buffers.
-    allocator: Arc<Impl>,
+    allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
-impl<V: Vfs + Send + Sync + 'static> VfsTask<V> {
+impl<A, V> VfsTask<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
@@ -85,11 +93,7 @@ impl<V: Vfs + Send + Sync + 'static> VfsTask<V> {
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(
-        backend: Arc<V>,
-        allocator: Arc<Impl>,
-        command_receiver: VfsCommandReceiver,
-    ) -> Self {
+    pub fn new(backend: Arc<V>, allocator: Arc<A>, command_receiver: VfsCommandReceiver) -> Self {
         Self { backend, allocator, command_receiver }
     }
 

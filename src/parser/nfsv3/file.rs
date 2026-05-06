@@ -27,7 +27,6 @@ pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
 }
 
 /// Parses a [`file::Type`] from the provided `Read` source.
-#[allow(dead_code)]
 pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
     use file::Type::*;
 

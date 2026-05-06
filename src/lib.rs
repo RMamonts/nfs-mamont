@@ -21,7 +21,7 @@ use tracing_subscriber::EnvFilter;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
 
-pub use allocator::Slice;
+pub use allocator::{Allocator, Impl, Slice};
 pub use context::ServerContext;
 
 /// Public export description used to configure MOUNT roots for the server.
@@ -57,17 +57,23 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections.
-pub async fn handle_forever<V: vfs::Vfs + Send + Sync + 'static>(
+pub async fn handle_forever<
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+>(
     listener: TcpListener,
-    context: ServerContext<V>,
+    context: ServerContext<A, V>,
 ) -> std::io::Result<()> {
     handle_forever_with_exports(listener, context, Vec::new()).await
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever_with_exports<V: vfs::Vfs + Send + Sync + 'static>(
+pub async fn handle_forever_with_exports<
+    V: vfs::Vfs + Send + Sync + 'static,
+    A: Allocator + Send + Sync + 'static,
+>(
     listener: TcpListener,
-    context: ServerContext<V>,
+    context: ServerContext<A, V>,
     exports: Vec<MountExport>,
 ) -> std::io::Result<()> {
     let export_paths = exports

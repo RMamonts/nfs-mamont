@@ -283,7 +283,6 @@ pub struct ReadBuffer {
     write_pos: usize,
 }
 
-#[allow(dead_code)]
 impl ReadBuffer {
     /// Creates a new `ReadBuffer` with the specified capacity.
     ///

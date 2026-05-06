@@ -5,7 +5,7 @@ use clap::Parser;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use nfs_mamont::{handle_forever_with_exports, MountExport, ServerContext};
+use nfs_mamont::{handle_forever_with_exports, Impl, MountExport, ServerContext};
 
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
@@ -27,12 +27,11 @@ async fn main() -> std::io::Result<()> {
 
     let config = config::load_config(&args.config_path)?;
     let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
+
     let context = ServerContext::new(
         fs.clone(),
-        config.allocator.read_buffer_size,
-        config.allocator.read_buffer_count,
-        config.allocator.write_buffer_size,
-        config.allocator.write_buffer_count,
+        Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count),
+        Impl::new(config.allocator.write_buffer_size, config.allocator.write_buffer_count),
         config.vfs_pool_size,
     );
 
