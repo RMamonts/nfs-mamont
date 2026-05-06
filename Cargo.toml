@@ -26,6 +26,9 @@ trait-variant = "0.1.2"
 
 [dev-dependencies]
 tempfile = "3.26.0"
+clap = { version = "4.5.61", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9.6"
 
 [[example]]
 name = "mirrorfs"
