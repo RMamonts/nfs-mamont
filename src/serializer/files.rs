@@ -19,6 +19,7 @@ pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
 }
 
 /// Serializes [`vfs::Error`] as an XDR enum discriminant (NFS status).
+#[allow(dead_code)]
 pub fn error(dest: &mut impl Write, stat: vfs::Error) -> io::Result<()> {
     variant(dest, stat)
 }
@@ -75,6 +76,7 @@ pub fn file_path(dest: &mut impl Write, file_name: file::Path) -> io::Result<()>
 }
 
 /// Serializes [`DirOpArgs`] as XDR `diroparg3`.
+#[allow(dead_code)]
 pub fn dir_op_arg(dest: &mut impl Write, arg: DirOpArgs) -> io::Result<()> {
     file_handle(dest, arg.dir).and_then(|_| file_name(dest, arg.name))
 }
