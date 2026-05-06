@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::error;
 
+use crate::allocator::Allocator;
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
@@ -20,10 +21,10 @@ mod read;
 mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new(
+pub async fn new<A: Allocator + Send + Sync + 'static>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
-    context: &ServerContext,
+    context: &ServerContext<A>,
 ) {
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
