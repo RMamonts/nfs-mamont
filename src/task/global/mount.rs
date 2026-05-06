@@ -24,7 +24,6 @@ pub struct MountCommand {
 }
 
 pub struct MountTask {
-    #[allow(dead_code)]
     mount_service: MountService,
     // channel for commands from client connection tasks
     receiver: UnboundedReceiver<MountCommand>,
