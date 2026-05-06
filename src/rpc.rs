@@ -88,7 +88,6 @@ pub enum Error {
     /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
-    #[allow(dead_code)]
     IncorrectString(FromUtf8Error),
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
