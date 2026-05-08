@@ -69,8 +69,8 @@ pub async fn handle_forever<
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever_with_exports<
-    V: vfs::Vfs + Send + Sync + 'static,
     A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
 >(
     listener: TcpListener,
     context: ServerContext<A, V>,

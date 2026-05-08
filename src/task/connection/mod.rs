@@ -16,17 +16,20 @@ use crate::allocator::Allocator;
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::ProcReply;
-use crate::vfs;
+use crate::vfs::Vfs;
 
 mod read;
 mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new<V: vfs::Vfs + Send + Sync + 'static, A: Allocator + Send + Sync + 'static>(
+pub async fn new<A, V>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
     context: &ServerContext<A, V>,
-) {
+) where
+    A: Allocator + Send + Sync + 'static,
+    V: Vfs + Send + Sync + 'static,
+{
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
