@@ -42,7 +42,6 @@ pub enum MountRes {
     UnmountAll,
 }
 
-// TODO: Remove mount trait
 #[allow(dead_code)]
 pub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
 

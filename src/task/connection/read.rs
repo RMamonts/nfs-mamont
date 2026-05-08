@@ -8,7 +8,7 @@ use tracing::{debug, error};
 
 use async_channel::Sender;
 
-use crate::allocator::Impl;
+use crate::allocator::Allocator;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -24,7 +24,7 @@ use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
-pub struct ReadTask {
+pub struct ReadTask<A: Allocator + Send + Sync + 'static> {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     // to send messages into mount task
@@ -36,12 +36,12 @@ pub struct ReadTask {
     // and
     // to bypass vfs with null procedure
     result_sender: UnboundedSender<ProcReply>,
-    allocator: Arc<Impl>,
+    allocator: Arc<A>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
     pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
 }
 
-impl ReadTask {
+impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
@@ -49,7 +49,7 @@ impl ReadTask {
         mount_sender: UnboundedSender<MountCommand>,
         nlm_sender: UnboundedSender<NlmCommand>,
         result_sender: UnboundedSender<ProcReply>,
-        allocator: Arc<Impl>,
+        allocator: Arc<A>,
         pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
         Self {

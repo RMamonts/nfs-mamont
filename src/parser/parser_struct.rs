@@ -89,7 +89,6 @@ pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     current_frame_size: usize,
 }
 
-#[allow(dead_code)]
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
@@ -121,6 +120,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
+    #[allow(dead_code)]
     pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
         Self {
             allocator,
@@ -334,6 +334,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns parsed NFSv3 procedure arguments,
     /// or an error if parsing fails at any stage.
+    #[allow(dead_code)]
     pub async fn parse_nfs_message(&mut self) -> Result<NfsArgWrapper> {
         let xid = self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {
@@ -386,6 +387,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 
     /// Parses a complete MOUNT RPC message from the stream.
+    #[allow(dead_code)]
     pub async fn parse_mount_message(&mut self) -> Result<MountArgWrapper> {
         let xid = self.read_message_header().await?;
         let rpc_header = match self.parse_rpc_header().await {

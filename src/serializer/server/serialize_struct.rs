@@ -72,6 +72,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
+    #[allow(dead_code)]
     fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
