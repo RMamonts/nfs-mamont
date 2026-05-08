@@ -56,10 +56,8 @@ impl Nlm4Lock {
         lock_length: u64,
     ) -> Result<Self, Error> {
         if caller_name.is_empty() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "caller_name must not be empty",
-            ));
+            return Result::Err(Error::new(std::io::ErrorKind::InvalidInput,
+                                          "caller_name must not be empty", ));
         }
 
         if caller_name.len() > nlm::LM_MAXSTRLEN {
