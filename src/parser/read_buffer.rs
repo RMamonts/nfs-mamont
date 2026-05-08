@@ -117,39 +117,41 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
         let retry_total = self.total_bytes;
         // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
         // definitely be enough to read what we are planning
-        match caller(self) {
-            Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
-                self.retry_mode = true;
-                // called whenever we need to read more data
-                match self.fill_internal().await {
-                    Ok(0) => {
-                        // it is impossible scenario?
-                        Err(Error::IO(err))
+        loop {
+            match caller(self) {
+                Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
+                    self.retry_mode = true;
+                    // called whenever we need to read more data
+                    match self.fill_internal().await {
+                        Ok(0) => {
+                            // it is impossible scenario?
+                            return Err(Error::IO(err));
+                        }
+                        Ok(_) => {
+                            self.bufs[self.read].reset_read(retry_start_read);
+                            self.bufs[self.write].reset_read(retry_start_write);
+                            self.total_bytes = retry_total;
+                            continue;
+                        }
+                        Err(e) => return Err(Error::IO(e)),
                     }
-                    Ok(_) => {
-                        self.bufs[self.read].reset_read(retry_start_read);
-                        self.bufs[self.write].reset_read(retry_start_write);
-                        self.total_bytes = retry_total;
-                        Box::pin(self.parse_with_retry(caller)).await
+                }
+                Ok(val) => {
+                    if self.retry_mode {
+                        self.bufs[self.read].clean();
+                        self.write = (self.write + 1) % 2;
+                        self.read = (self.read + 1) % 2;
                     }
-                    Err(e) => Err(Error::IO(e)),
+                    if self.read == self.write {
+                        return Err(Error::IO(io::Error::other(
+                            "Cannot read and write to one buffer simultaneously",
+                        )));
+                    }
+                    self.retry_mode = false;
+                    return Ok(val);
                 }
+                Err(err) => return Err(err),
             }
-            Ok(val) => {
-                if self.retry_mode {
-                    self.bufs[self.read].clean();
-                    self.write = (self.write + 1) % 2;
-                    self.read = (self.read + 1) % 2;
-                }
-                if self.read == self.write {
-                    return Err(Error::IO(io::Error::other(
-                        "Cannot read and write to one buffer simultaneously",
-                    )));
-                }
-                self.retry_mode = false;
-                Ok(val)
-            }
-            Err(err) => Err(err),
         }
     }
 
