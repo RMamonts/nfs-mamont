@@ -18,7 +18,7 @@ pub struct Nlm4Lock {
     /// Host or process that is making the request.
     pub opaque_handle: OpaqueHandle,
     /// PID of the process making the request.
-    pub system_identifier: u32,
+    pub system_identifier: i32,
     /// Offset for the lock region.
     pub lock_offset: u64,
     /// Length of the blocking region. An l_len of 0 means "to end of file".
@@ -51,13 +51,15 @@ impl Nlm4Lock {
         caller_name: String,
         file_handle: vfs::file::Handle,
         opaque_handle: OpaqueHandle,
-        system_identifier: u32, // Or i32 ?
+        system_identifier: i32,
         lock_offset: u64,
         lock_length: u64,
     ) -> Result<Self, Error> {
         if caller_name.is_empty() {
-            return Result::Err(Error::new(std::io::ErrorKind::InvalidInput,
-                                          "caller_name must not be empty", ));
+            return Result::Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "caller_name must not be empty",
+            ));
         }
 
         if caller_name.len() > nlm::LM_MAXSTRLEN {
