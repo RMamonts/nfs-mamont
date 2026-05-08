@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, warn};
 
-use crate::allocator::{Allocator, Impl, Slice};
+use crate::allocator::{Allocator, Slice};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
@@ -35,10 +35,10 @@ impl VfsPool {
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new(
+    pub fn new<A: Allocator + Send + Sync + 'static>(
         num: NonZeroUsize,
         backend: Arc<dyn Vfs + Send + Sync + 'static>,
-        allocator: Arc<Impl>,
+        allocator: Arc<A>,
     ) -> Self {
         let (tx, rx) = async_channel::unbounded::<VfsCommand>();
 
@@ -64,16 +64,16 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask {
+pub struct VfsTask<A: Allocator + Send + Sync + 'static> {
     /// Shared filesystem implementation.
     backend: Arc<dyn Vfs + Send + Sync + 'static>,
     /// Allocator used for read buffers.
-    allocator: Arc<Impl>,
+    allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
-impl VfsTask {
+impl<A: Allocator + Send + Sync + 'static> VfsTask<A> {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
@@ -87,7 +87,7 @@ impl VfsTask {
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
     pub fn new(
         backend: Arc<dyn Vfs + Send + Sync + 'static>,
-        allocator: Arc<Impl>,
+        allocator: Arc<A>,
         command_receiver: VfsCommandReceiver,
     ) -> Self {
         Self { backend, allocator, command_receiver }
