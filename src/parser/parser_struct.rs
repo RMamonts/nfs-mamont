@@ -31,7 +31,9 @@ use crate::consts::nfsv3::{
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
 };
-use crate::consts::nlm::{NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_UNLOCK, NLM_PROGRAM, NLM_VERSION};
+use crate::consts::nlm::{
+    NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM, NLM_VERSION,
+};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -314,6 +316,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             NLMPROC4_NULL => NlmArguments::Null,
             NLMPROC4_LOCK => NlmArguments::Lock(self.buffer.parse_with_retry(lock).await?),
             NLMPROC4_UNLOCK => NlmArguments::Unlock(self.buffer.parse_with_retry(unlock).await?),
+            NLMPROC4_TEST => NlmArguments::Test(self.buffer.parse_with_retry(test).await?),
             _ => return Err(Error::ProcedureMismatch),
         };
         Ok(args)
