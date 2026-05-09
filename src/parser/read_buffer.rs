@@ -96,7 +96,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// If the parsing function encounters an `UnexpectedEof` error, this method will:
     /// 1. Read more data from the socket into the write buffer
     /// 2. Reset read positions to allow retrying from the same point
-    /// 3. Recursively retry the parsing operation
+    /// 3. Retries the parsing operation in loop until it succeeds or encounters a non-EOF error
     ///
     /// After successful parsing, if retry mode was used, the buffers are swapped
     /// to prepare for the next parsing operation.
@@ -123,10 +123,6 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
                     self.retry_mode = true;
                     // called whenever we need to read more data
                     match self.fill_internal().await {
-                        Ok(0) => {
-                            // it is impossible scenario?
-                            return Err(Error::IO(err));
-                        }
                         Ok(_) => {
                             self.bufs[self.read].reset_read(retry_start_read);
                             self.bufs[self.write].reset_read(retry_start_write);
