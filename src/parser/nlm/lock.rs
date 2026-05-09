@@ -22,7 +22,7 @@ pub fn lock(src: &mut impl Read) -> Result<Nlm4LockArgs> {
         u64(src)?,
     ) {
         Ok(l) => l,
-        Err(_) => return Result::Err(Error::BadFileHandle),
+        Err(_) => return Err(Error::BadFileHandle),
     };
 
     Ok(Nlm4LockArgs {

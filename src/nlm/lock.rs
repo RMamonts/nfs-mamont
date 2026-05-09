@@ -46,7 +46,7 @@ impl Nlm4Lock {
     /// Returns `Err` with a text message if:
     ///
     /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](crate::consts::nlm::LM_MAXSTRLEN).
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
     pub fn new(
         caller_name: String,
         file_handle: vfs::file::Handle,
@@ -56,7 +56,7 @@ impl Nlm4Lock {
         lock_length: u64,
     ) -> Result<Self, Error> {
         if caller_name.is_empty() {
-            return Result::Err(Error::new(
+            return Err(Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "caller_name must not be empty",
             ));

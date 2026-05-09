@@ -30,8 +30,7 @@ impl NlmTask {
     }
 
     /// Spawns a [`NlmTask`]  that processes nlm commands received from
-    /// `ReadTask` and returns results to
-    /// `WriteTask`.
+    /// `ReadTask` and returns results to `WriteTask`.
     ///
     /// # Panics
     ///
