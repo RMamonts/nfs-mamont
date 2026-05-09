@@ -2,6 +2,7 @@
 
 pub mod mount;
 pub mod nfsv3;
+pub mod nlm;
 pub mod parser_struct;
 pub mod primitive;
 pub mod read_buffer;
@@ -13,6 +14,9 @@ mod tests;
 use std::future::Future;
 
 use crate::mount::{mnt, umnt};
+use crate::nlm::procedures::{
+    cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
+};
 use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
@@ -56,6 +60,12 @@ pub struct MountArgWrapper {
     pub proc: Box<MountArguments>,
 }
 
+/// Wrapper for NLM protocol procedure arguments along with the RPC header.
+pub struct NlmArgWrapper {
+    pub header: RpcHeader,
+    pub proc: Box<NlmArguments>,
+}
+
 /// Generic wrapper for RPC arguments used when the protocol type
 /// (NFS, MOUNT, or others) is already resolved at a higher layer.
 pub struct ArgWrapper {
@@ -78,6 +88,7 @@ pub struct ErrorWrapper {
 pub enum ProcArguments {
     Nfs3(Box<NfsArguments>),
     Mount(Box<MountArguments>),
+    Nlm4(Box<NlmArguments>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
@@ -142,4 +153,22 @@ pub enum MountArguments {
     Dump,
     /// Arguments for the UnmountAll operation.
     UnmountAll,
+}
+
+/// Enumerates supported NLMv4 protocol procedure arguments.
+pub enum NlmArguments {
+    /// Null operation arguments.
+    Null,
+    /// Arguments for the Lock operation.
+    #[allow(dead_code)]
+    Lock(Nlm4LockArgs),
+    /// Arguments for the Unlock operation.
+    #[allow(dead_code)]
+    Unlock(Nlm4UnlockArgs),
+    /// Arguments for the Test operation.
+    #[allow(dead_code)]
+    Test(Nlm4TestArgs),
+    /// Arguments for the Cancel operation.
+    #[allow(dead_code)]
+    Cancel(Nlm4CancelArgs),
 }
