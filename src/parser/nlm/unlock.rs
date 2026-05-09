@@ -2,10 +2,11 @@
 
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
+use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
 use crate::nlm::OpaqueHandle;
 use crate::parser::nfsv3::file;
-use crate::parser::primitive::{bool, i32, string_max_size, u32, u64, vector};
+use crate::parser::primitive::{i32, string_max_size, u64, vector};
 use crate::parser::{Error, Result};
 use std::io::Read;
 
@@ -25,15 +26,6 @@ pub fn unlock(src: &mut impl Read) -> Result<Nlm4UnlockArgs> {
     };
 
     let cookie = Cookie::new(u64(src)?);
-
-    let lock_args = Nlm4LockArgs {
-        cookie,
-        block: bool(src)?,
-        exclusive: bool(src)?,
-        lock,
-        reclaim: bool(src)?,
-        state: u32(src)?,
-    };
 
     Ok(Nlm4UnlockArgs { cookie, lock })
 }

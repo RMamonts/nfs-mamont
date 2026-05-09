@@ -6,7 +6,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::cancel::Nlm4CancelArgs;
 use crate::nlm::OpaqueHandle;
 use crate::parser::nfsv3::file;
-use crate::parser::primitive::{bool, i32, string_max_size, u32, u64, vector};
+use crate::parser::primitive::{bool, i32, string_max_size, u64, vector};
 use crate::parser::{Error, Result};
 use std::io::Read;
 
