@@ -10,13 +10,15 @@ use async_channel::Sender;
 
 use crate::allocator::Allocator;
 use crate::mount::MountRes;
+use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
     ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
-    ProcArguments,
+    NlmArgWrapper, NlmArguments, ProcArguments,
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
+use crate::task::global::nlm::NlmCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -27,6 +29,8 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static> {
     client_addr: SocketAddr,
     // to send messages into mount task
     mount_sender: UnboundedSender<MountCommand>,
+    // to send messages into nlm task
+    nlm_sender: UnboundedSender<NlmCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
@@ -43,11 +47,20 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
         mount_sender: UnboundedSender<MountCommand>,
+        nlm_sender: UnboundedSender<NlmCommand>,
         result_sender: UnboundedSender<ProcReply>,
         allocator: Arc<A>,
         pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
     ) -> Self {
-        Self { readhalf, client_addr, mount_sender, result_sender, allocator, pool_sender }
+        Self {
+            readhalf,
+            client_addr,
+            mount_sender,
+            nlm_sender,
+            result_sender,
+            allocator,
+            pool_sender,
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -71,6 +84,20 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
+                    };
+
+                    if let Err(err) = self.result_sender.send(result) {
+                        return send_broken_pipe(&self.result_sender, header.xid, err);
+                    }
+                }
+
+                Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
+                    if matches!(*proc, NlmArguments::Null) =>
+                {
+                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
+                    let result = ProcReply {
+                        xid: header.xid,
+                        proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Null))),
                     };
 
                     if let Err(err) = self.result_sender.send(result) {
@@ -115,6 +142,19 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
                         client_addr: self.client_addr,
                     };
                     if let Err(err) = self.mount_sender.send(command) {
+                        return send_broken_pipe(&self.result_sender, xid, err);
+                    }
+                }
+
+                Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
+                    let xid = header.xid;
+                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    let command = NlmCommand {
+                        result_tx: self.result_sender.clone(),
+                        args: NlmArgWrapper { header, proc },
+                    };
+
+                    if let Err(err) = self.nlm_sender.send(command) {
                         return send_broken_pipe(&self.result_sender, xid, err);
                     }
                 }

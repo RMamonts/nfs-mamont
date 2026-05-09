@@ -8,6 +8,9 @@ pub mod lock;
 pub mod procedures;
 pub mod share;
 
+use crate::nlm::procedures::{
+    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
+};
 use num_derive::{FromPrimitive, ToPrimitive};
 
 /// `Nlm4Stats` indicates the success or failure of a call.
@@ -41,6 +44,15 @@ pub enum Nlm4Stats {
     /// The call failed for some reason not already listed.
     /// The client should take this status as a strong hint not to retry the request.
     Failed = 9,
+}
+
+/// Wrapper for all supported NLMv4 procedure result types.
+pub enum NlmRes {
+    Null,
+    Lock(Nlm4LockRes),
+    Unlock(Nlm4UnlockRes),
+    Test(Nlm4TestRes),
+    Cancel(Nlm4CancelRes),
 }
 
 /// Opaque lock owner identifier (`oh`).
