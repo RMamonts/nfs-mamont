@@ -1,4 +1,4 @@
-//! RPC message parser for NFS and MOUNT protocols.
+//! RPC message parser for NFS, MOUNT and NLM protocols.
 //!
 //! This module provides the [`RpcParser`] struct, which parses XDR-encoded RPC messages
 //! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
@@ -7,6 +7,7 @@
 //! - Authentication (currently only AUTH_NONE)
 //! - NFSv3 procedure parsing (all 22 procedures)
 //! - MOUNT protocol procedure parsing
+//! - NLM procedure parsing
 //! - Error handling and message discarding on protocol errors
 //!
 //! The parser uses a [`CountBuffer`] to efficiently read from async streams while
@@ -30,18 +31,23 @@ use crate::consts::nfsv3::{
     NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
     SETATTR, SYMLINK, WRITE,
 };
+use crate::consts::nlm::{
+    NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
+    NLM_VERSION,
+};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
+use crate::parser::nlm::{cancel::cancel, lock::lock, test::test, unlock::unlock};
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
-    NfsArgWrapper, NfsArguments, ProcArguments, Result, RpcHeader,
+    NfsArgWrapper, NfsArguments, NlmArguments, ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -305,6 +311,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(args)
     }
 
+    /// Parses NLM procedure arguments from the current frame.
+    async fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmArguments> {
+        let args = match procedure {
+            NLMPROC4_NULL => NlmArguments::Null,
+            NLMPROC4_LOCK => NlmArguments::Lock(self.buffer.parse_with_retry(lock).await?),
+            NLMPROC4_UNLOCK => NlmArguments::Unlock(self.buffer.parse_with_retry(unlock).await?),
+            NLMPROC4_TEST => NlmArguments::Test(self.buffer.parse_with_retry(test).await?),
+            NLMPROC4_CANCEL => NlmArguments::Cancel(self.buffer.parse_with_retry(cancel).await?),
+            _ => return Err(Error::ProcedureMismatch),
+        };
+        Ok(args)
+    }
+
     /// Parses a complete NFSv3 RPC message from the stream.
     ///
     /// This is the main entry point for parsing. It performs the following steps:
@@ -404,6 +423,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 let args = self.parse_mount_message_with_header(head).await?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
+            NLM_PROGRAM => {
+                let args = self.parse_nlm_message_with_header(head).await?;
+                Ok(ProcArguments::Nlm4(Box::new(args)))
+            }
             _ => {
                 warn!(program = head.program, "rpc parse reject: unknown program");
                 Err(Error::ProgramMismatch)
@@ -458,6 +481,29 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             }));
         }
         self.parse_mount_proc(head.procedure).await
+    }
+
+    async fn parse_nlm_message_with_header(&mut self, head: &RpcMessage) -> Result<NlmArguments> {
+        if head.program != NLM_PROGRAM {
+            error!(
+                got = head.program,
+                expected = NLM_PROGRAM,
+                "rpc parse reject: NLM parser got unexpected program",
+            );
+            return Err(Error::ProgramMismatch);
+        }
+        if head.version != NLM_VERSION {
+            error!(
+                got = head.version,
+                expected = NLM_VERSION,
+                "rpc parse reject: NLM version mismatch",
+            );
+            return Err(Error::ProgramVersionMismatch(VersionMismatch {
+                low: NLM_VERSION,
+                high: NLM_VERSION,
+            }));
+        }
+        self.parse_nlm_proc(head.procedure).await
     }
 
     /// Finalizes parsing by validating that all frame data was consumed.
