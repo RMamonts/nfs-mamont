@@ -8,4 +8,5 @@
 //! - AUTH (TODO: TBD)
 
 pub mod mount;
+pub mod nlm;
 pub mod vfs;

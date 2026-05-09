@@ -1,12 +1,11 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
-#[allow(dead_code)]
-pub mod nlm;
-
 mod allocator;
 pub mod consts;
 mod context;
 mod mount;
+#[allow(dead_code)]
+mod nlm;
 mod parser;
 mod rpc;
 mod serializer;
@@ -20,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
+use crate::task::global::nlm::NlmTask;
 
 pub use allocator::{Allocator, Impl, Slice};
 pub use context::ServerContext;
@@ -87,9 +87,12 @@ pub async fn handle_forever_with_exports<A: Allocator + Send + Sync + 'static>(
     let (mount_task, mount_sender) = MountTask::new(exports);
     mount_task.spawn();
 
+    let (nlm_task, nlm_sender) = NlmTask::new();
+    nlm_task.spawn();
+
     loop {
         let (socket, _) = listener.accept().await?;
 
-        connection::new(socket, mount_sender.clone(), &context).await;
+        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
     }
 }

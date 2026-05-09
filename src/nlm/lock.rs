@@ -21,7 +21,7 @@ pub struct Nlm4Lock {
     pub system_identifier: i32,
     /// Offset for the lock region.
     pub lock_offset: u64,
-    /// Length of the blocking region. A l_len of 0 means "to end of file".
+    /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
 }
 
@@ -46,7 +46,7 @@ impl Nlm4Lock {
     /// Returns `Err` with a text message if:
     ///
     /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](crate::consts::nlm::LM_MAXSTRLEN).
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
     pub fn new(
         caller_name: String,
         file_handle: vfs::file::Handle,

@@ -33,6 +33,11 @@ pub fn u64(src: &mut impl Read) -> Result<u64> {
     src.read_u64::<BigEndian>().map_err(Error::IO)
 }
 
+/// Parses a `i32` (32-bit integer) from the `Read` source, in Big-Endian format.
+pub fn i32(src: &mut impl Read) -> Result<i32> {
+    src.read_i32::<BigEndian>().map_err(Error::IO)
+}
+
 /// Parses an XDR boolean (encoded as a `u32`) from the `Read` source.
 pub fn bool(src: &mut impl Read) -> Result<bool> {
     match u32(src)? {
