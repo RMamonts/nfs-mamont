@@ -15,6 +15,7 @@ use tracing::error;
 use crate::allocator::Allocator;
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
+use crate::task::global::nlm::NlmCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
@@ -25,6 +26,7 @@ mod write;
 pub async fn new<A, V>(
     socket: TcpStream,
     mount_sender: mpsc::UnboundedSender<MountCommand>,
+    nlm_sender: mpsc::UnboundedSender<NlmCommand>,
     context: &ServerContext<A, V>,
 ) where
     A: Allocator + Send + Sync + 'static,
@@ -46,6 +48,7 @@ pub async fn new<A, V>(
         readhalf,
         peer_addr,
         mount_sender,
+        nlm_sender,
         result_sender.clone(),
         context.get_write_allocator(),
         context.get_vfs_pool().sender(),
