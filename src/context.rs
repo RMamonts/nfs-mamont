@@ -23,12 +23,10 @@ impl<A: Allocator + Send + Sync + 'static> ServerContext<A> {
     /// Creates a context with the given backend and buffer pool sizes.
     pub fn new(
         backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
-        read_allocator: A,
-        write_allocator: A,
+        read_allocator: Arc<A>,
+        write_allocator: Arc<A>,
         vfs_pool_size: NonZeroUsize,
     ) -> Self {
-        let read_allocator = Arc::new(read_allocator);
-        let write_allocator = Arc::new(write_allocator);
         let vfs_pool =
             VfsPool::new(vfs_pool_size, Arc::clone(&backend), Arc::clone(&read_allocator));
 
