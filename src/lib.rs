@@ -3,48 +3,25 @@
 mod allocator;
 pub mod consts;
 mod context;
-mod mount;
+pub mod mount;
 #[allow(dead_code)]
 mod nlm;
 mod parser;
 mod rpc;
 mod serializer;
-mod service;
+pub mod service;
 mod task;
 pub mod vfs;
 
 use tokio::net::TcpListener;
-use tracing::debug;
 use tracing_subscriber::EnvFilter;
 
-use crate::task::connection;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::NlmTask;
+use crate::{mount::Mount, task::connection};
 
 pub use allocator::{Allocator, Impl, Slice};
 pub use context::ServerContext;
-
-/// Public export description used to configure MOUNT roots for the server.
-pub struct MountExport {
-    export: mount::ExportEntry,
-    root_handle: vfs::file::Handle,
-}
-
-impl MountExport {
-    /// Creates an export from already validated NFS path.
-    pub fn new(directory: vfs::file::Path, root_handle: vfs::file::Handle) -> Self {
-        Self { export: mount::ExportEntry { directory, names: Vec::new() }, root_handle }
-    }
-
-    /// Creates an export from a filesystem path string.
-    pub fn from_directory_path(
-        directory: impl Into<String>,
-        root_handle: vfs::file::Handle,
-    ) -> std::io::Result<Self> {
-        let directory = vfs::file::Path::new(directory.into())?;
-        Ok(Self::new(directory, root_handle))
-    }
-}
 
 /// Initializes tracing logs.
 ///
@@ -56,35 +33,17 @@ pub fn init_tracing() {
     let _ = tracing_subscriber::fmt().with_env_filter(env_filter).try_init();
 }
 
-/// Starts the NFS server and processes client connections.
-pub async fn handle_forever<A: Allocator + Send + Sync + 'static>(
-    listener: TcpListener,
-    context: ServerContext<A>,
-) -> std::io::Result<()> {
-    handle_forever_with_exports(listener, context, Vec::new()).await
-}
-
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever_with_exports<A: Allocator + Send + Sync + 'static>(
+pub async fn handle_forever<A, M>(
     listener: TcpListener,
     context: ServerContext<A>,
-    exports: Vec<MountExport>,
-) -> std::io::Result<()> {
-    let export_paths = exports
-        .iter()
-        .map(|entry| entry.export.directory.as_path().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    debug!(configured_mount_exports = ?export_paths, "server start: configured MOUNT exports");
-
-    let exports = exports
-        .into_iter()
-        .map(|entry| crate::service::mount::ExportEntryWrapper {
-            export: entry.export,
-            root_handle: entry.root_handle,
-        })
-        .collect();
-
-    let (mount_task, mount_sender) = MountTask::new(exports);
+    mount_service: M,
+) -> std::io::Result<()>
+where
+    A: Allocator + Send + Sync + 'static,
+    M: Mount + Send + 'static,
+{
+    let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();
 
     let (nlm_task, nlm_sender) = NlmTask::new();
