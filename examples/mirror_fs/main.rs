@@ -62,6 +62,6 @@ async fn main() -> std::io::Result<()> {
         });
     }
 
-    let mount_service = service::mount::MountService::with_exports(exports);
+    let mount_service = Arc::new(service::mount::MountService::with_exports(exports));
     handle_forever(listener, context, mount_service).await
 }

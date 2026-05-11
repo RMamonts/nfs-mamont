@@ -26,5 +26,5 @@ pub trait Umnt {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umnt(&mut self, args: Args, client_addr: SocketAddr);
+    async fn umnt(&self, args: Args, client_addr: SocketAddr);
 }

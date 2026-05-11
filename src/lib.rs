@@ -13,6 +13,8 @@ pub mod service;
 mod task;
 pub mod vfs;
 
+use std::sync::Arc;
+
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -37,11 +39,11 @@ pub fn init_tracing() {
 pub async fn handle_forever<A, M>(
     listener: TcpListener,
     context: ServerContext<A>,
-    mount_service: M,
+    mount_service: Arc<M>,
 ) -> std::io::Result<()>
 where
     A: Allocator + Send + Sync + 'static,
-    M: Mount + Send + 'static,
+    M: Mount + Send + Sync + 'static,
 {
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();
