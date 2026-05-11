@@ -32,8 +32,8 @@ async fn main() -> std::io::Result<()> {
 
     let context = ServerContext::new(
         fs.clone(),
-        Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count),
-        Impl::new(config.allocator.write_buffer_size, config.allocator.write_buffer_count),
+        Arc::new(Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count)),
+        Arc::new(Impl::new(config.allocator.write_buffer_size, config.allocator.write_buffer_count)),
         config.vfs_pool_size,
     );
 
