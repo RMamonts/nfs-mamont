@@ -9,14 +9,27 @@ impl fs_info::FsInfo for MirrorFS {
             Ok(path) => path,
             Err(error) => return Err(fs_info::Fail { error, root_attr: None }),
         };
+
+        let stat = match nix::sys::statvfs::statvfs(&path) {
+            Ok(stat) => stat,
+            Err(e) => {
+                return Err(fs_info::Fail {
+                    error: Self::io_error_to_vfs(&std::io::Error::from_raw_os_error(e as i32)),
+                    root_attr: None,
+                });
+            }
+        };
+
+        let frsize = stat.fragment_size() as u32;
+
         Ok(fs_info::Success {
             root_attr: Self::file_attr(&path),
-            read_max: READ_WRITE_MAX,
-            read_pref: READ_WRITE_MAX,
-            read_mult: 1,
-            write_max: READ_WRITE_MAX,
-            write_pref: READ_WRITE_MAX,
-            write_mult: 1,
+            read_max: std::cmp::max(READ_WRITE_MAX, frsize),
+            read_pref: std::cmp::max(READ_WRITE_MAX, frsize),
+            read_mult: frsize,
+            write_max: std::cmp::max(READ_WRITE_MAX, frsize),
+            write_pref: std::cmp::max(READ_WRITE_MAX, frsize),
+            write_mult: frsize,
             read_dir_pref: READ_DIR_PREF,
             max_file_size: u64::MAX,
             time_delta: file::Time { seconds: 0, nanos: 1 },
