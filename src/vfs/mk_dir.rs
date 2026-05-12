@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`MkDir`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -32,7 +30,7 @@ pub struct Args {
     pub attr: super::set_attr::NewAttr,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait MkDir {
     /// Creates a new subdirectory.
     ///

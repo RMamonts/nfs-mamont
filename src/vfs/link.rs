@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Link`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -32,7 +30,7 @@ pub struct Args {
     pub link: vfs::DirOpArgs,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Link {
     /// Creates a hard link from [`Args::file`] to [`Args::link`], in the directory.
     ///

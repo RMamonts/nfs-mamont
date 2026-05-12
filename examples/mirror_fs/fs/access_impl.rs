@@ -1,11 +1,8 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::access;
 use nfs_mamont::vfs::file;
 
 use super::MirrorFS;
 
-#[async_trait]
 impl access::Access for MirrorFS {
     async fn access(&self, args: access::Args) -> Result<access::Success, access::Fail> {
         let path = match self.path_for_handle(&args.file).await {

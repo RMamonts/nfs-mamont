@@ -34,14 +34,15 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever<A, M>(
+pub async fn handle_forever<A, M, V>(
     listener: TcpListener,
-    context: ServerContext<A>,
+    context: ServerContext<A, V>,
     mount_service: M,
 ) -> std::io::Result<()>
 where
     A: Allocator + Send + Sync + 'static,
     M: Mount + Send + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
 {
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();

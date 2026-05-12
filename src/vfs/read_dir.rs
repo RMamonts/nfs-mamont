@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`ReadDir`] interface.
 
-use async_trait::async_trait;
-
 use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::vfs;
 
@@ -124,7 +122,7 @@ pub struct Args {
     pub count: u32,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait ReadDir {
     /// Retrieves a variable number of entries, in sequence, from a directory.
     ///

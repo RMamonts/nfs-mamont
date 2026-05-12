@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Rename`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 /// Success result.
@@ -32,7 +30,7 @@ pub struct Args {
     pub to: vfs::DirOpArgs,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Rename {
     /// Renames the file in the directory.
     ///
