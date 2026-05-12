@@ -13,11 +13,14 @@ pub mod service;
 mod task;
 pub mod vfs;
 
+use std::sync::Arc;
+
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::NlmTask;
+use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
 pub use allocator::{Allocator, Impl, Slice};
@@ -37,12 +40,12 @@ pub fn init_tracing() {
 pub async fn handle_forever<A, M, V>(
     listener: TcpListener,
     context: ServerContext<A, V>,
-    mount_service: M,
+    mount_service: Arc<M>,
 ) -> std::io::Result<()>
 where
     A: Allocator + Send + Sync + 'static,
-    M: Mount + Send + 'static,
-    V: vfs::Vfs + Send + Sync + 'static,
+    M: Mount + Send + Sync + 'static,
+    V: Vfs + Send + Sync + 'static,
 {
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();

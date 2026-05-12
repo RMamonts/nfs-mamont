@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
@@ -19,19 +20,19 @@ pub struct MountCommand {
 
 pub struct MountTask<M>
 where
-    M: Mount + Send + 'static,
+    M: Mount + Send + Sync + 'static,
 {
-    mount_service: M,
+    mount_service: Arc<M>,
     // channel for commands from client connection tasks
     receiver: UnboundedReceiver<MountCommand>,
 }
 
 impl<M> MountTask<M>
 where
-    M: Mount + Send + 'static,
+    M: Mount + Send + Sync + 'static,
 {
     /// Creates new instance of [`MountTask`]
-    pub fn new(mount_service: M) -> (Self, UnboundedSender<MountCommand>) {
+    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
         let task = Self { mount_service, receiver };
@@ -51,7 +52,7 @@ where
     }
 
     async fn run(self) {
-        let mut mount_service = self.mount_service;
+        let mount_service = self.mount_service;
         let mut receiver = self.receiver;
 
         while let Some(command) = receiver.recv().await {
