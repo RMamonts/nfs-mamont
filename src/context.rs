@@ -8,7 +8,11 @@ use crate::vfs;
 /// Shared server resources: VFS worker pool, buffer allocators, and backend.
 ///
 /// Construct once at startup and share across connection handlers.
-pub struct ServerContext<A: Allocator + Send + Sync + 'static> {
+pub struct ServerContext<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Pool of async workers that execute NFS procedures against [`crate::vfs::Vfs`].
     vfs_pool: VfsPool,
     /// Allocator for read buffers (sliced from a pre-sized pool).
@@ -16,13 +20,17 @@ pub struct ServerContext<A: Allocator + Send + Sync + 'static> {
     /// Allocator for write-side buffers when needed by the stack.
     write_allocator: Arc<A>,
     /// Filesystem implementation backing all NFS operations.
-    backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+    backend: Arc<V>,
 }
 
-impl<A: Allocator + Send + Sync + 'static> ServerContext<A> {
+impl<A, V> ServerContext<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Creates a context with the given backend and buffer pool sizes.
     pub fn new(
-        backend: Arc<dyn vfs::Vfs + Send + Sync + 'static>,
+        backend: Arc<V>,
         read_allocator: Arc<A>,
         write_allocator: Arc<A>,
         vfs_pool_size: NonZeroUsize,
@@ -39,7 +47,7 @@ impl<A: Allocator + Send + Sync + 'static> ServerContext<A> {
     }
 
     /// Returns a clone of the [`vfs::Vfs`] backend.
-    pub fn get_backend(&self) -> Arc<dyn vfs::Vfs + Send + Sync + 'static> {
+    pub fn get_backend(&self) -> Arc<V> {
         Arc::clone(&self.backend)
     }
 

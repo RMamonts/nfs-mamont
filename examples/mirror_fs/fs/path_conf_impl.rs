@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, path_conf};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl path_conf::PathConf for MirrorFS {
     async fn path_conf(
         &self,

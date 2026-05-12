@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -51,7 +49,7 @@ pub struct Args {
     pub what: What,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait MkNode {
     /// Creates a new special file of the type `what`.
     ///

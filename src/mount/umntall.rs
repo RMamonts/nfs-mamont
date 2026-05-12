@@ -5,9 +5,7 @@
 
 use std::net::SocketAddr;
 
-use async_trait::async_trait;
-
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Umntall {
     /// Removes all of the mount entries for this client previously
     /// recorded by calls to MNT.

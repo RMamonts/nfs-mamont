@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use async_trait::async_trait;
-
 use crate::allocator::Slice;
 use crate::vfs;
 
@@ -49,7 +47,7 @@ pub struct Args {
     pub count: u32,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Read {
     /// Reads data from a file into a server-provided buffer.
     ///

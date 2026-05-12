@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs::OpenOptions;
 
 use nfs_mamont::vfs::commit;
 
 use super::*;
 
-#[async_trait]
 impl commit::Commit for MirrorFS {
     async fn commit(&self, args: commit::Args) -> Result<commit::Success, commit::Fail> {
         let path = match self.path_for_handle(&args.file).await {

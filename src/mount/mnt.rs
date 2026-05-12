@@ -5,8 +5,6 @@
 
 use std::net::SocketAddr;
 
-use async_trait::async_trait;
-
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
@@ -52,8 +50,7 @@ pub struct Args {
     /// a server pathname of a directory
     pub dirpath: file::Path,
 }
-
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Mnt {
     /// Maps a pathname on the server to a NFS version 3 protocol file handle.
     ///

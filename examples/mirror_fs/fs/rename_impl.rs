@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs;
 
 use nfs_mamont::vfs::{self, rename};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl rename::Rename for MirrorFS {
     async fn rename(&self, args: rename::Args) -> Result<rename::Success, rename::Fail> {
         if matches!(args.from.name.as_str(), "." | "..")

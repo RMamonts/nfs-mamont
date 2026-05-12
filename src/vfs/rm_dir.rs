@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`RmDir`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 /// Success result.
@@ -25,7 +23,7 @@ pub struct Args {
     pub object: vfs::DirOpArgs,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait RmDir {
     /// Removes (deletes) a subdirectory from a directory.
     ///

@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Access`] interface.
 
-use async_trait::async_trait;
-
 use super::{file, Error};
 
 /// Success result.
@@ -53,7 +51,7 @@ pub struct Args {
     pub mask: Mask,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Access {
     /// Determines the access rights that a user, as identified by the credentials
     /// in the request, has with respect to a file system object.

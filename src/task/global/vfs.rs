@@ -35,11 +35,11 @@ impl VfsPool {
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new<A: Allocator + Send + Sync + 'static>(
-        num: NonZeroUsize,
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
-        allocator: Arc<A>,
-    ) -> Self {
+    pub fn new<A, V>(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self
+    where
+        A: Allocator + Send + Sync + 'static,
+        V: Vfs + Send + Sync + 'static,
+    {
         let (tx, rx) = async_channel::unbounded::<VfsCommand>();
 
         (0..num.get()).for_each(|_| {
@@ -64,16 +64,24 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask<A: Allocator + Send + Sync + 'static> {
+pub struct VfsTask<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Shared filesystem implementation.
-    backend: Arc<dyn Vfs + Send + Sync + 'static>,
+    backend: Arc<V>,
     /// Allocator used for read buffers.
     allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
-impl<A: Allocator + Send + Sync + 'static> VfsTask<A> {
+impl<A, V> VfsTask<A, V>
+where
+    A: Allocator + Send + Sync + 'static,
+    V: vfs::Vfs + Send + Sync + 'static,
+{
     /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
@@ -85,11 +93,7 @@ impl<A: Allocator + Send + Sync + 'static> VfsTask<A> {
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(
-        backend: Arc<dyn Vfs + Send + Sync + 'static>,
-        allocator: Arc<A>,
-        command_receiver: VfsCommandReceiver,
-    ) -> Self {
+    pub fn new(backend: Arc<V>, allocator: Arc<A>, command_receiver: VfsCommandReceiver) -> Self {
         Self { backend, allocator, command_receiver }
     }
 
