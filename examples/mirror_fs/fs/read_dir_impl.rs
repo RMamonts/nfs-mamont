@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, read_dir};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl read_dir::ReadDir for MirrorFS {
     async fn read_dir(&self, args: read_dir::Args) -> Result<read_dir::Success, read_dir::Fail> {
         let dir_path = match self.path_for_handle(&args.dir).await {

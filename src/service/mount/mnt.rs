@@ -1,6 +1,5 @@
 //! Service implementation for the MOUNT v3 `MNT` procedure.
 
-use async_trait::async_trait;
 use std::net::SocketAddr;
 
 use tracing::warn;
@@ -12,7 +11,6 @@ use crate::rpc::OpaqueAuth;
 use super::MountService;
 use super::AUTH;
 
-#[async_trait]
 impl Mnt for MountService {
     async fn mnt(
         &self,

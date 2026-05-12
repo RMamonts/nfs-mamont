@@ -1,11 +1,9 @@
-use async_trait::async_trait;
 use tokio::fs::OpenOptions;
 
 use nfs_mamont::vfs::{self, create};
 
 use super::{MirrorFS, DEFAULT_SET_ATTR};
 
-#[async_trait]
 impl create::Create for MirrorFS {
     async fn create(&self, args: create::Args) -> Result<create::Success, create::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {

@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, symlink};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl symlink::Symlink for MirrorFS {
     async fn symlink(&self, args: symlink::Args) -> Result<symlink::Success, symlink::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
