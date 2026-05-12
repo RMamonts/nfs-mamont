@@ -6,6 +6,7 @@ mod slice;
 #[cfg(test)]
 mod tests;
 
+use std::alloc::{self, Layout};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -55,8 +56,27 @@ impl Impl {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());
 
-        for _ in 0..count.get() {
-            pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
+        let buffer_size = size.get();
+        let buffer_count = count.get();
+
+        // Allocate one large contiguous block of memory
+        let total_size = buffer_size.checked_mul(buffer_count).expect("size overflow");
+        let layout = Layout::from_size_align(total_size, 1).expect("invalid layout");
+
+        let base_ptr = unsafe { alloc::alloc(layout) };
+        if base_ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+
+        // Split the large block into count chunks and create Box<[u8]> for each
+        let mut current_ptr = base_ptr;
+        for _ in 0..buffer_count {
+            let slice_ptr = std::ptr::slice_from_raw_parts_mut(current_ptr as *mut u8, buffer_size);
+            let boxed = unsafe { Box::from_raw(slice_ptr) };
+            pool.push(boxed).expect("can't initialize allocator");
+
+            // Move to the next chunk
+            current_ptr = unsafe { current_ptr.add(buffer_size) };
         }
 
         Self {
