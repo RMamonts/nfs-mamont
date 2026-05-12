@@ -96,7 +96,7 @@ impl MountService {
         }
     }
 
-    async fn export_entry(&self, path: &file::Path) -> Option<ExportEntryWrapper> {
-        self.exports.by_path(path).cloned()
+    async fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
+        self.exports.by_path(path)
     }
 }
