@@ -21,6 +21,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
@@ -82,7 +83,7 @@ struct MountRegistry {
 /// In-memory state backing the MOUNT v3 service implementation
 pub struct MountService {
     /// Exported directories that are available for mounting
-    exports: RwLock<ExportRegistry>,
+    exports: Arc<ExportRegistry>,
     /// Active mounts keyed by client.
     mounts: RwLock<MountRegistry>,
 }
@@ -90,13 +91,12 @@ pub struct MountService {
 impl MountService {
     pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self {
-            exports: RwLock::new(ExportRegistry::from_entries(entries)),
+            exports: Arc::new(ExportRegistry::from_entries(entries)),
             mounts: RwLock::new(MountRegistry::default()),
         }
     }
 
     async fn export_entry(&self, path: &file::Path) -> Option<ExportEntryWrapper> {
-        let guard = self.exports.read().await;
-        guard.by_path(path).cloned()
+        self.exports.by_path(path).cloned()
     }
 }
