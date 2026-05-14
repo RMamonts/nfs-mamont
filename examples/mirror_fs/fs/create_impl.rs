@@ -110,7 +110,7 @@ impl create::Create for MirrorFS {
                 return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
             }
         };
-        let handle = match self.ensure_handle_for_path(&child_path).await {
+        let handle = match self.handle_for_path(&child_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(create::Fail { error, wcc_data: Self::wcc_data(&dir_path, before) });
