@@ -71,11 +71,6 @@ impl MirrorFS {
         self.fsmap.read().await.root_handle()
     }
 
-    /// Returns a handle for a path under the mirror root.
-    pub async fn handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        self.ensure_handle_for_path(path).await
-    }
-
     fn write_verifier(&self) -> write::Verifier {
         write::Verifier(self.generation.to_be_bytes())
     }
@@ -91,8 +86,8 @@ impl MirrorFS {
         let fsmap = self.fsmap.read().await;
         fsmap.path_for_handle(handle)
     }
-
-    async fn ensure_handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
+    /// Returns a handle for a path under the mirror root.
+    pub async fn handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
         self.fsmap.write().await.ensure_handle_for_path(path)
     }
 
