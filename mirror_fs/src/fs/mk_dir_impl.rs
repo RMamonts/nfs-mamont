@@ -41,7 +41,7 @@ impl mk_dir::MkDir for MirrorFS {
                 return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
-        let handle = match self.ensure_handle_for_path(&child_path).await {
+        let handle = match self.handle_for_path(&child_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })

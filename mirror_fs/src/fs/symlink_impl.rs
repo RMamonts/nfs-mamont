@@ -42,7 +42,7 @@ impl symlink::Symlink for MirrorFS {
                 return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
-        let handle = match self.ensure_handle_for_path(&link_path).await {
+        let handle = match self.handle_for_path(&link_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
