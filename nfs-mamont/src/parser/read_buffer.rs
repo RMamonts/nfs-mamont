@@ -28,18 +28,6 @@ use crate::parser::{Error, Result};
 ///
 /// The buffer implements [`Read`] to work with synchronous parsing functions,
 /// while internally managing asynchronous I/O operations.
-///
-/// # Example
-///
-/// ```no_run
-/// use tokio::io::AsyncRead;
-/// use crate::parser::read_buffer::CountBuffer;
-///
-/// # async fn example<S: AsyncRead + Unpin>(socket: S) {
-/// let mut buffer = CountBuffer::new(4096, socket);
-/// // Use parse_with_retry to parse XDR-encoded data
-/// # }
-/// ```
 pub struct CountBuffer<S: AsyncRead + Unpin> {
     // actually, there are definitely two
     bufs: Vec<ReadBuffer>,
