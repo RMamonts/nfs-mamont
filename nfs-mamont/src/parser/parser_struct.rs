@@ -72,19 +72,6 @@ pub const DEFAULT_SIZE: usize = 2500;
 ///
 /// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
 /// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
-///
-/// # Example
-///
-/// ```no_run
-/// use tokio::io::AsyncRead;
-/// use crate::parser::parser_struct::RpcParser;
-/// use crate::allocator::Allocator;
-///
-/// # async fn example<A: Allocator, S: AsyncRead + Unpin>(socket: S, alloc: A) {
-/// let mut parser = RpcParser::new(socket, alloc);
-/// let args = parser.next_message().await?;
-/// # }
-/// ```
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: Arc<A>,
     buffer: CountBuffer<S>,
