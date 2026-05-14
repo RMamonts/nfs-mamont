@@ -11,6 +11,8 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 1
+  MIN_RUST_VERSION: "1.75.0"
+  MAX_RUST_VERSION: "1.95.0"
 
 jobs:
   lint:
@@ -22,7 +24,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.94.0"
+          toolchain: $env.MAX_RUST_VERSION
           components: rustfmt, clippy
 
       - name: Setup Rust cache
@@ -45,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.75.0", "1.94.0"]
+        rust: [$env.MIN_RUST_VERSION, $env.MAX_RUST_VERSION]
 
     steps:
       - uses: actions/checkout@v5
@@ -103,7 +105,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.94.0"
+          toolchain: $env.MAX_RUST_VERSION
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
