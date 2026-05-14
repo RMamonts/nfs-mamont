@@ -21,6 +21,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
 
 use crate::mount::{ExportEntry, MountEntry};
 use crate::rpc::AuthFlavor;
@@ -80,17 +83,20 @@ struct MountRegistry {
 /// In-memory state backing the MOUNT v3 service implementation
 pub struct MountService {
     /// Exported directories that are available for mounting
-    exports: ExportRegistry,
+    exports: Arc<ExportRegistry>,
     /// Active mounts keyed by client.
-    mounts: MountRegistry,
+    mounts: RwLock<MountRegistry>,
 }
 
 impl MountService {
     pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
-        Self { exports: ExportRegistry::from_entries(entries), mounts: MountRegistry::default() }
+        Self {
+            exports: Arc::new(ExportRegistry::from_entries(entries)),
+            mounts: RwLock::new(MountRegistry::default()),
+        }
     }
 
-    fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
+    async fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
         self.exports.by_path(path)
     }
 }

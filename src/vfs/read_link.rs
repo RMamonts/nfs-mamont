@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`ReadLink`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -28,7 +26,7 @@ pub struct Args {
     pub file: file::Handle,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait ReadLink {
     /// Reads the data associated with a symbolic link.
     ///

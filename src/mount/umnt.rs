@@ -5,8 +5,6 @@
 
 use std::net::SocketAddr;
 
-use async_trait::async_trait;
-
 use crate::vfs::file;
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
@@ -16,7 +14,7 @@ pub struct Args {
     pub dirpath: file::Path,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Umnt {
     /// Removes the mount list entry for the directory that was
     /// previously the subject of a MNT call from this client.
@@ -26,5 +24,5 @@ pub trait Umnt {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umnt(&mut self, args: Args, client_addr: SocketAddr);
+    async fn umnt(&self, args: Args, client_addr: SocketAddr);
 }

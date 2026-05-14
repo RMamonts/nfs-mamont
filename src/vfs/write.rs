@@ -1,6 +1,5 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use async_trait::async_trait;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Slice;
@@ -88,7 +87,7 @@ pub struct ArgsPartial {
     pub stable: StableHow,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Write {
     /// Writes data to a file.
     ///

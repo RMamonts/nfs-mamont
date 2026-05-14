@@ -1,16 +1,11 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
-use crate::mount::dump::Dump;
-use crate::mount::export::Export;
-use crate::mount::mnt::Mnt;
-use crate::mount::umnt::Umnt;
-use crate::mount::umntall::Umntall;
-use crate::mount::MountRes;
+use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
-use crate::service::mount::{ExportEntryWrapper, MountService};
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
@@ -23,18 +18,24 @@ pub struct MountCommand {
     pub args: MountArgWrapper,
 }
 
-pub struct MountTask {
-    mount_service: MountService,
+pub struct MountTask<M>
+where
+    M: Mount + Send + Sync + 'static,
+{
+    mount_service: Arc<M>,
     // channel for commands from client connection tasks
     receiver: UnboundedReceiver<MountCommand>,
 }
 
-impl MountTask {
+impl<M> MountTask<M>
+where
+    M: Mount + Send + Sync + 'static,
+{
     /// Creates new instance of [`MountTask`]
-    pub fn new(exports: Vec<ExportEntryWrapper>) -> (Self, UnboundedSender<MountCommand>) {
+    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
 
-        let task = Self { mount_service: MountService::with_exports(exports), receiver };
+        let task = Self { mount_service, receiver };
 
         (task, sender)
     }
@@ -51,7 +52,7 @@ impl MountTask {
     }
 
     async fn run(self) {
-        let mut mount_service = self.mount_service;
+        let mount_service = self.mount_service;
         let mut receiver = self.receiver;
 
         while let Some(command) = receiver.recv().await {
