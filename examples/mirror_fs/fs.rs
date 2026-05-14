@@ -87,6 +87,7 @@ impl MirrorFS {
         fsmap.path_for_handle(handle)
     }
 
+    /// Returns a handle for a path under the mirror root.
     pub async fn handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
         self.fsmap.write().await.ensure_handle_for_path(path)
     }
