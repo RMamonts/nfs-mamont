@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Remove`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 /// Success result.
@@ -24,7 +22,7 @@ pub struct Args {
     pub object: vfs::DirOpArgs,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
     async fn remove(&self, args: Args) -> Result<Success, Fail>;

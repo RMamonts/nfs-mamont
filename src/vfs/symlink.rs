@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`Symlink`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -34,7 +32,7 @@ pub struct Args {
     pub path: file::Path,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait Symlink {
     /// Creates a new symbolic link.
     ///

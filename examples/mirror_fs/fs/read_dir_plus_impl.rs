@@ -1,11 +1,8 @@
-use async_trait::async_trait;
-
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
         &self,

@@ -1,6 +1,5 @@
 //! Service implementation for the MOUNT v3 `MNT` procedure.
 
-use async_trait::async_trait;
 use std::net::SocketAddr;
 
 use tracing::warn;
@@ -12,15 +11,14 @@ use crate::rpc::OpaqueAuth;
 use super::MountService;
 use super::AUTH;
 
-#[async_trait]
 impl Mnt for MountService {
     async fn mnt(
-        &mut self,
+        &self,
         args: Args,
         client_addr: SocketAddr,
         _cred: OpaqueAuth,
     ) -> Result<Success, Fail> {
-        let Some(export) = self.export_entry(&args.dirpath) else {
+        let Some(export) = self.export_entry(&args.dirpath).await else {
             let configured = self
                 .exports
                 .export_list()
@@ -41,7 +39,7 @@ impl Mnt for MountService {
         let mount_entry =
             MountEntry { hostname: client_addr.ip().to_string(), directory: args.dirpath.clone() };
 
-        self.mounts.by_client.entry(client_addr).or_default().insert(mount_entry);
+        self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
 
         Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
     }

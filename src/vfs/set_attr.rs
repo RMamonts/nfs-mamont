@@ -1,7 +1,5 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
-use async_trait::async_trait;
-
 use crate::vfs;
 
 use super::file;
@@ -52,7 +50,7 @@ pub struct Fail {
     pub wcc_data: vfs::WccData,
 }
 
-#[async_trait]
+#[trait_variant::make(Send)]
 pub trait SetAttr {
     /// Changes one or more of the attributes of a file system object on the server.
     ///

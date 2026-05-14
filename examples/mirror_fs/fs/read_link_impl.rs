@@ -1,10 +1,7 @@
-use async_trait::async_trait;
-
 use nfs_mamont::vfs::{self, file, read_link};
 
 use super::MirrorFS;
 
-#[async_trait]
 impl read_link::ReadLink for MirrorFS {
     async fn read_link(
         &self,
