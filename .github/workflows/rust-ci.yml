@@ -24,7 +24,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: $env.MAX_RUST_VERSION
+          toolchain: ${{ env.MAX_RUST_VERSION }}
           components: rustfmt, clippy
 
       - name: Setup Rust cache
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [$env.MIN_RUST_VERSION, $env.MAX_RUST_VERSION]
+        rust: ["${{ env.MIN_RUST_VERSION }}", "${{ env.MAX_RUST_VERSION }}"]
 
     steps:
       - uses: actions/checkout@v5
@@ -105,7 +105,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: $env.MAX_RUST_VERSION
+          toolchain: ${{ env.MAX_RUST_VERSION }}
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
