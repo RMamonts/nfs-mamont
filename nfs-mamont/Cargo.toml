@@ -12,6 +12,7 @@ doctest = true
 
 [dependencies]
 # External dependencies
+monoio.workspace = true
 tokio.workspace = true
 byteorder.workspace = true
 num-derive.workspace = true

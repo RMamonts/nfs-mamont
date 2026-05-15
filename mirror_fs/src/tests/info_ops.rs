@@ -20,7 +20,7 @@ use super::helpers::{
     TestContext,
 };
 
-#[tokio::test]
+#[monoio::test]
 async fn access_returns_requested_mask() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -43,7 +43,7 @@ async fn access_returns_requested_mask() {
     assert!(matches!(result.object_attr.unwrap().file_type, file::Type::Regular));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn access_respects_file_permissions() {
     let ctx = TestContext::new();
     let path = write_file(ctx.root_path(), "readonly.txt", b"data");
@@ -70,7 +70,7 @@ async fn access_respects_file_permissions() {
     assert!(!result.access.contains(access::Mask::EXECUTE));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn commit_flushes_regular_file_and_rejects_directory() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -96,7 +96,7 @@ async fn commit_flushes_regular_file_and_rejects_directory() {
     super::helpers::assert_wcc_present(&fail.file_wcc);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn fs_info_returns_server_limits() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -116,7 +116,7 @@ async fn fs_info_returns_server_limits() {
     assert!(properties & fs_info::Properties::CANSETTIME != 0);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn fs_stat_returns_zero_counters() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -133,7 +133,7 @@ async fn fs_stat_returns_zero_counters() {
     assert_eq!(result.invarsec, 0);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn get_attr_returns_metadata() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -149,7 +149,7 @@ async fn get_attr_returns_metadata() {
     assert_eq!(result.object.size, 5);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn path_conf_reports_limits() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -170,7 +170,7 @@ async fn path_conf_reports_limits() {
     assert!(result.case_preserving);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn read_reads_requested_window_and_rejects_directories() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"abcdef");
@@ -220,7 +220,7 @@ async fn read_reads_requested_window_and_rejects_directories() {
     assert_eq!(fail.error, vfs::Error::InvalidArgument);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn read_dir_returns_sorted_entries_and_rejects_bad_cookie() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "b.txt", b"b");
@@ -261,7 +261,7 @@ async fn read_dir_returns_sorted_entries_and_rejects_bad_cookie() {
     assert_eq!(fail.error, vfs::Error::BadCookie);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn read_dir_plus_returns_handles_and_supports_pagination() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "a.txt", b"a");
@@ -309,7 +309,7 @@ async fn read_dir_plus_returns_handles_and_supports_pagination() {
     assert_eq!(second.entries[0].file_name.as_str(), "c.txt");
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn read_link_returns_target_and_rejects_regular_files() {
     let ctx = TestContext::new();
     create_symlink(ctx.root_path(), "target.txt", "link.txt");

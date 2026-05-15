@@ -48,7 +48,7 @@ where
     ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        monoio::spawn(async move { self.run().await });
     }
 
     async fn run(self) {

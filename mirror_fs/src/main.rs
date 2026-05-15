@@ -20,7 +20,7 @@ pub mod fs_map;
 #[cfg(test)]
 mod tests;
 
-#[tokio::main]
+#[monoio::main]
 async fn main() -> std::io::Result<()> {
     #[cfg(debug_assertions)]
     init_tracing();
