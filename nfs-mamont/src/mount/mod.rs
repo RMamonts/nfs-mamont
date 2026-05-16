@@ -6,10 +6,26 @@ pub mod mnt;
 pub mod umnt;
 pub mod umntall;
 
+use std::io;
+
+use crate::consts::mount::MOUNT_HOST_NAME_LEN;
 use crate::vfs::file;
 
 /// Client host name.
-pub type HostName = String;
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+pub struct HostName(String);
+
+impl HostName {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MOUNT_HOST_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "host name too long"));
+        }
+        Ok(HostName(name))
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
