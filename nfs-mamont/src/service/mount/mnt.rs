@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use tracing::warn;
 
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
-use crate::mount::MountEntry;
+use crate::mount::{HostName, MountEntry};
 use crate::rpc::OpaqueAuth;
 
 use super::MountService;
@@ -36,8 +36,9 @@ impl Mnt for MountService {
 
         let file_handle = export.root_handle.clone();
 
-        let mount_entry =
-            MountEntry { hostname: client_addr.ip().to_string(), directory: args.dirpath.clone() };
+        let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
+
+        let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 
         self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
 
