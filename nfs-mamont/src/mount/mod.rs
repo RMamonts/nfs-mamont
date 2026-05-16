@@ -22,7 +22,7 @@ impl HostName {
         }
         Ok(HostName(name))
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
