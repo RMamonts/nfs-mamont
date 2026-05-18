@@ -1,6 +1,6 @@
-use tokio::fs::OpenOptions;
-
 use nfs_mamont::vfs::commit;
+
+use crate::async_fs::{self, File};
 
 use super::*;
 
@@ -15,7 +15,8 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
-        let before_meta = std::fs::symlink_metadata(&path).ok();
+
+        let before_meta = async_fs::symlink_metadata(&path).await.ok();
         let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
             if let Err(error) = Self::validate_regular(&attr) {
@@ -23,7 +24,7 @@ impl commit::Commit for MirrorFS {
             }
         }
 
-        let file = match OpenOptions::new().write(true).open(&path).await {
+        let mut file = match File::open_write(&path).await {
             Ok(file) => file,
             Err(error) => {
                 return Err(commit::Fail {
@@ -32,6 +33,7 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
+
         if let Err(error) = file.sync_all().await {
             return Err(commit::Fail {
                 error: Self::io_error_to_vfs(&error),

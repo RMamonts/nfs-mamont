@@ -1,9 +1,9 @@
 use std::io::SeekFrom;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use nfs_mamont::vfs::read;
 use nfs_mamont::Slice;
+
+use crate::async_fs::{self, File};
 
 use super::MirrorFS;
 
@@ -15,12 +15,14 @@ impl read::Read for MirrorFS {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let meta = match Self::metadata(&path) {
+
+        let meta = match async_fs::symlink_metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => {
-                return Err(read::Fail { error, file_attr: None });
+                return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: None });
             }
         };
+
         let attr = Self::attr_from_metadata(&meta);
         if let Err(error) = Self::validate_regular(&attr) {
             return Err(read::Fail { error, file_attr: Some(attr) });
@@ -42,6 +44,7 @@ impl read::Read for MirrorFS {
         let requested = end.saturating_sub(start) as usize;
         let mut remaining = requested;
         let mut read_count = 0usize;
+
         if let Err(error) = file.seek(SeekFrom::Start(start)).await {
             return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
         }

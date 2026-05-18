@@ -2,7 +2,6 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 
 use clap::Parser;
-use tokio::net::TcpListener;
 use tracing::info;
 
 use nfs_mamont::mount::ExportEntry;
@@ -14,13 +13,14 @@ use nfs_mamont::init_tracing;
 
 pub mod args;
 pub mod config;
+pub mod async_fs;
 pub mod fs;
 pub mod fs_map;
 
 #[cfg(test)]
 mod tests;
 
-#[monoio::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     #[cfg(debug_assertions)]
     init_tracing();
@@ -42,7 +42,7 @@ async fn main() -> std::io::Result<()> {
 
     info!(export_root = %config.export_root.display(), bind = %args.addr, "mirrorfs startup");
 
-    let listener = TcpListener::bind(&args.addr).await?;
+    let listener = tokio::net::TcpListener::bind(&args.addr).await?;
 
     let mut exports = Vec::with_capacity(config.exports.len());
     for export in &config.exports {

@@ -1,5 +1,7 @@
 use nfs_mamont::vfs::get_attr;
 
+use crate::async_fs;
+
 use super::MirrorFS;
 
 impl get_attr::GetAttr for MirrorFS {
@@ -10,9 +12,9 @@ impl get_attr::GetAttr for MirrorFS {
                 return Err(get_attr::Fail { error });
             }
         };
-        match Self::metadata(&path) {
+        match async_fs::metadata(&path).await {
             Ok(meta) => Ok(get_attr::Success { object: Self::attr_from_metadata(&meta) }),
-            Err(error) => Err(get_attr::Fail { error }),
+            Err(error) => Err(get_attr::Fail { error: Self::io_error_to_vfs(&error) }),
         }
     }
 }

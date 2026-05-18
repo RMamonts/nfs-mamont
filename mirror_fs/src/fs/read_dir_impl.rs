@@ -1,5 +1,7 @@
 use nfs_mamont::vfs::{self, read_dir};
 
+use crate::async_fs;
+
 use super::MirrorFS;
 
 impl read_dir::ReadDir for MirrorFS {
@@ -8,10 +10,12 @@ impl read_dir::ReadDir for MirrorFS {
             Ok(path) => path,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
         };
-        let dir_meta = match Self::metadata(&dir_path) {
+
+        let dir_meta = match async_fs::metadata(&dir_path).await {
             Ok(meta) => meta,
-            Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
+            Err(error) => return Err(read_dir::Fail { error: Self::io_error_to_vfs(&error), dir_attr: None }),
         };
+
         let dir_attr = Self::attr_from_metadata(&dir_meta);
         if let Err(error) = Self::validate_directory(&dir_attr) {
             return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) });

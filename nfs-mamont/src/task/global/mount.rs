@@ -46,7 +46,7 @@ where
     ///
     /// # Panics
     ///
-    /// If called outside of tokio runtime context.
+    /// If called outside of monoio runtime context.
     pub fn spawn(self) {
         monoio::spawn(async move { self.run().await });
     }

@@ -1,6 +1,6 @@
-use std::fs;
-
 use nfs_mamont::vfs::{self, rename};
+
+use crate::async_fs;
 
 use super::MirrorFS;
 
@@ -26,6 +26,7 @@ impl rename::Rename for MirrorFS {
                 });
             }
         };
+
         let to_dir_path = match self.path_for_handle(&args.to.dir).await {
             Ok(path) => path,
             Err(error) => {
@@ -36,8 +37,9 @@ impl rename::Rename for MirrorFS {
                 });
             }
         };
-        let from_before_meta = std::fs::symlink_metadata(&from_dir_path).ok();
-        let to_before_meta = std::fs::symlink_metadata(&to_dir_path).ok();
+
+        let from_before_meta = async_fs::symlink_metadata(&from_dir_path).await.ok();
+        let to_before_meta = async_fs::symlink_metadata(&to_dir_path).await.ok();
         let from_before = from_before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         let to_before = to_before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         let from_before_after = from_before_meta.as_ref().map(Self::attr_from_metadata);
@@ -55,18 +57,18 @@ impl rename::Rename for MirrorFS {
             });
         }
 
-        let from_meta = match Self::metadata(&from_path) {
+        let from_meta = match async_fs::symlink_metadata(&from_path).await {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(rename::Fail {
-                    error,
+                    error: Self::io_error_to_vfs(&error),
                     from_dir_wcc: vfs::WccData { before: from_before, after: from_before_after },
                     to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
                 });
             }
         };
 
-        if let Ok(target_meta) = Self::metadata(&to_path) {
+        if let Ok(target_meta) = async_fs::symlink_metadata(&to_path).await {
             let compatible = from_meta.is_dir() == target_meta.is_dir();
             if !compatible {
                 return Err(rename::Fail {
@@ -76,23 +78,26 @@ impl rename::Rename for MirrorFS {
                 });
             }
             if target_meta.is_dir() {
-                if let Ok(mut iter) = std::fs::read_dir(&to_path) {
-                    if iter.next().is_some() {
-                        return Err(rename::Fail {
-                            error: vfs::Error::Exist,
-                            from_dir_wcc: vfs::WccData {
-                                before: from_before,
-                                after: from_before_after,
-                            },
-                            to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
-                        });
+                match async_fs::read_dir(&to_path).await {
+                    Ok(mut iter) => {
+                        if iter.next_entry().await.is_ok() {
+                            return Err(rename::Fail {
+                                error: vfs::Error::Exist,
+                                from_dir_wcc: vfs::WccData {
+                                    before: from_before,
+                                    after: from_before_after,
+                                },
+                                to_dir_wcc: vfs::WccData { before: to_before, after: to_before_after },
+                            });
+                        }
                     }
+                    Err(_) => {}
                 }
             }
             self.remove_cached_path(&to_path).await;
         }
 
-        if let Err(error) = fs::rename(&from_path, &to_path) {
+        if let Err(error) = async_fs::rename(&from_path, &to_path).await {
             return Err(rename::Fail {
                 error: Self::io_error_to_vfs(&error),
                 from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),

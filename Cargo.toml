@@ -10,8 +10,8 @@ rust-version = "1.75.0"
 
 [workspace.dependencies]
 # External dependencies
-monoio = { version = "0.2", features = ["utils"] }
-tokio = { version = "1.52", features = ["sync", "io-util", "net", "fs"] }
+monoio = { version = "0.2", features = ["utils", "iouring", "mkdirat", "unlinkat", "renameat"] }
+tokio = { version = "1.52", features = ["sync", "io-util", "net", "fs", "macros", "rt-multi-thread"] }
 byteorder = "1.5.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"

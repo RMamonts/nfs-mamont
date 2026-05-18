@@ -1,8 +1,9 @@
 use std::io::SeekFrom;
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use nfs_mamont::vfs::{self, write};
+
+
+use crate::async_fs::{self, File};
 
 use super::MirrorFS;
 
@@ -18,7 +19,7 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let before_meta = std::fs::symlink_metadata(&path).ok();
+        let before_meta = async_fs::symlink_metadata(&path).await.ok();
         let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
         if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
             if let Err(error) = Self::validate_regular(&attr) {
@@ -26,7 +27,7 @@ impl write::Write for MirrorFS {
             }
         }
 
-        let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
+        let mut file = match File::open_write(&path).await {
             Ok(file) => file,
             Err(error) => {
                 return Err(write::Fail {

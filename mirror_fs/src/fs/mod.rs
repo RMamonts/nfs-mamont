@@ -1,3 +1,4 @@
+
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
@@ -6,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
 
+use crate::async_fs;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -288,6 +290,51 @@ impl MirrorFS {
             };
             let times = std::fs::FileTimes::new().set_accessed(atime).set_modified(mtime);
             file.set_times(times).map_err(|error| Self::io_error_to_vfs(&error))?;
+        }
+
+        Ok(())
+    }
+
+    async fn apply_set_attr_async(path: &Path, new_attr: &set_attr::NewAttr) -> Result<(), vfs::Error> {
+        if new_attr.uid.is_some() || new_attr.gid.is_some() {
+            return Err(vfs::Error::InvalidArgument);
+        }
+
+        if let Some(mode) = new_attr.mode {
+            async_fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+                .await
+                .map_err(|error| Self::io_error_to_vfs(&error))?;
+        }
+
+        if let Some(size) = new_attr.size {
+            use std::fs::OpenOptions;
+            let file = OpenOptions::new().write(true).open(path)
+                .map_err(|error| Self::io_error_to_vfs(&error))?;
+            file.set_len(size).map_err(|error| Self::io_error_to_vfs(&error))?;
+        }
+
+        let needs_atime = !matches!(new_attr.atime, set_attr::SetTime::DontChange);
+        let needs_mtime = !matches!(new_attr.mtime, set_attr::SetTime::DontChange);
+        if needs_atime || needs_mtime {
+            let meta = async_fs::metadata(path).await
+                .map_err(|error| Self::io_error_to_vfs(&error))?;
+            let current_attr = Self::attr_from_metadata(&meta);
+            let atime = match new_attr.atime {
+                set_attr::SetTime::DontChange => {
+                    Self::system_time_from_file_time(current_attr.atime)
+                }
+                set_attr::SetTime::ToServer => SystemTime::now(),
+                set_attr::SetTime::ToClient(time) => Self::system_time_from_file_time(time),
+            };
+            let mtime = match new_attr.mtime {
+                set_attr::SetTime::DontChange => {
+                    Self::system_time_from_file_time(current_attr.mtime)
+                }
+                set_attr::SetTime::ToServer => SystemTime::now(),
+                set_attr::SetTime::ToClient(time) => Self::system_time_from_file_time(time),
+            };
+            async_fs::set_times(path, Some(atime), Some(mtime)).await
+                .map_err(|error| Self::io_error_to_vfs(&error))?;
         }
 
         Ok(())

@@ -1,6 +1,6 @@
-use std::fs;
-
 use nfs_mamont::vfs::{self, mk_dir};
+
+use crate::async_fs;
 
 use super::MirrorFS;
 
@@ -12,6 +12,7 @@ impl mk_dir::MkDir for MirrorFS {
                 dir_wcc: vfs::WccData { before: None, after: None },
             });
         }
+
         let dir_path = match self.path_for_handle(&args.object.dir).await {
             Ok(path) => path,
             Err(error) => {
@@ -21,26 +22,32 @@ impl mk_dir::MkDir for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path)
+
+        let before = async_fs::symlink_metadata(&dir_path).await
             .ok()
             .map(|meta| Self::wcc_attr_from_metadata(&meta));
+
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
-        if let Err(error) = fs::create_dir(&child_path) {
+
+        if let Err(error) = async_fs::create_dir(&child_path).await {
             return Err(mk_dir::Fail {
                 error: Self::io_error_to_vfs(&error),
                 dir_wcc: Self::wcc_data(&dir_path, before),
             });
         }
-        if let Err(error) = Self::apply_set_attr(&child_path, &args.attr) {
+
+        if let Err(error) = Self::apply_set_attr_async(&child_path, &args.attr).await {
             return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) });
         }
-        let attr = match Self::metadata(&child_path) {
+
+        let attr = match async_fs::symlink_metadata(&child_path).await {
             Ok(meta) => Self::attr_from_metadata(&meta),
             Err(error) => {
-                return Err(mk_dir::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+                return Err(mk_dir::Fail { error: Self::io_error_to_vfs(&error), dir_wcc: Self::wcc_data(&dir_path, before) })
             }
         };
+
         let handle = match self.handle_for_path(&child_path).await {
             Ok(handle) => handle,
             Err(error) => {
