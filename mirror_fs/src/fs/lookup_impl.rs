@@ -52,7 +52,7 @@ impl lookup::Lookup for MirrorFS {
             }
         };
 
-        let child_handle = match self.ensure_handle_for_path(&child_path).await {
+        let child_handle = match self.handle_for_path(&child_path).await {
             Ok(handle) => handle,
             Err(error) => {
                 return Err(lookup::Fail { error, dir_attr: Some(parent_attr) });
