@@ -43,7 +43,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);
-            let handle = match self.ensure_handle_for_path(&path).await {
+            let handle = match self.handle_for_path(&path).await {
                 Ok(handle) => handle,
                 Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
             };
