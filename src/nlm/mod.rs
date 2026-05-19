@@ -8,11 +8,11 @@ pub mod lock;
 pub mod procedures;
 pub mod share;
 
+use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use num_derive::{FromPrimitive, ToPrimitive};
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]

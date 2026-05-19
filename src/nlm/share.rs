@@ -104,8 +104,8 @@ mod tests {
     use super::*;
 
     use crate::consts::nfsv3::NFS3_FHSIZE;
-    use crate::vfs::file::Handle;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+    use crate::vfs::file::Handle;
 
     #[test]
     fn new_share_succeeds() {

@@ -3,8 +3,6 @@
 //! Contains [`Nlm4Holder`] which represents the current holder of a lock.
 
 use super::OpaqueHandle;
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
-
 
 /// This structure indicates the holder of a lock.
 pub struct Nlm4Holder {
@@ -48,6 +46,7 @@ impl Nlm4Holder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 
     #[test]
     fn new_holder_succeeds() {
