@@ -2,6 +2,8 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::OpaqueAuth;
+use std::net::SocketAddr;
 
 /// NLM TEST arguments.
 ///
@@ -33,4 +35,14 @@ pub struct Nlm4TestReply {
     pub stat: Nlm4Stats,
     /// Present only when stat is Denied — info about current lock holder.
     pub holder: Option<Nlm4Holder>,
+}
+
+#[trait_variant::make(Send)]
+pub trait Test {
+    async fn test(
+        &self,
+        args: Nlm4TestArgs,
+        client_addr: SocketAddr,
+        cred: OpaqueAuth,
+    ) -> Nlm4TestRes;
 }

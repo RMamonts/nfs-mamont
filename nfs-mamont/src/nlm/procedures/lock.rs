@@ -1,6 +1,8 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::OpaqueAuth;
+use std::net::SocketAddr;
 
 /// Defines the information needed to request a lock on a server.
 pub struct Nlm4LockArgs {
@@ -27,4 +29,14 @@ pub struct Nlm4LockRes {
     pub cookie: Cookie,
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,
+}
+
+#[trait_variant::make(Send)]
+pub trait Lock {
+    async fn lock(
+        &self,
+        args: Nlm4LockArgs,
+        client_addr: SocketAddr,
+        cred: OpaqueAuth,
+    ) -> Nlm4LockRes;
 }
