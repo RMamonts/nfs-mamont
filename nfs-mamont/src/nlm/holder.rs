@@ -57,7 +57,7 @@ mod tests {
 
         let lock = Nlm4Holder::new(true, system_id, opaque_handle, offset, length);
 
-        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &[1; OPAQUE_HANDLE_SIZE]);
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);
