@@ -9,6 +9,7 @@ use crate::vfs;
 
 use super::OpaqueHandle;
 
+
 /// This structure describes a lock request.
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
@@ -85,13 +86,14 @@ mod tests {
     use super::*;
 
     use crate::consts::nfsv3::NFS3_FHSIZE;
+    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::vfs::file::Handle;
 
     #[test]
     fn new_lock_succeeds() {
         let caller_name = "host".to_string();
         let file_handle = Handle([0; NFS3_FHSIZE]);
-        let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
+        let opaque_handle = OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]);
         let system_id = 12345;
         let offset = 0;
         let length = 0;
@@ -119,7 +121,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "".to_string(),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new(vec![]),
+            OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]),
             12345,
             0,
             0,
@@ -132,7 +134,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "a".repeat(nlm::LM_MAXSTRLEN + 1),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new(vec![]),
+            OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE]),
             12345,
             0,
             0,

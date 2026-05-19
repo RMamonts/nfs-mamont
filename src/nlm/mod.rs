@@ -12,6 +12,7 @@ use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use num_derive::{FromPrimitive, ToPrimitive};
+use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
@@ -55,21 +56,18 @@ pub enum NlmRes {
     Cancel(Nlm4CancelRes),
 }
 
-/// Opaque lock owner identifier (`oh`).
-pub struct OpaqueHandle {
-    /// The unique identifier of the lock owner.
-    opaque_handle: Vec<u8>,
-}
+/// The unique identifier of the lock owner.
+pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
 impl OpaqueHandle {
     /// Creates a new opaque lock owner identifier.
-    pub fn new(oh: Vec<u8>) -> Self {
-        OpaqueHandle { opaque_handle: oh }
+    pub fn new(oh: [u8; OPAQUE_HANDLE_SIZE]) -> Self {
+        OpaqueHandle(oh)
     }
 
     /// Returns the underlying bytes of the opaque handle.
     pub fn as_bytes(&self) -> &[u8] {
-        &self.opaque_handle
+        &self.0
     }
 }
 
@@ -79,8 +77,8 @@ mod tests {
 
     #[test]
     fn opaque_handle_bytes() {
-        let bytes = vec![0x01, 0x02];
-        let oh = OpaqueHandle::new(bytes.clone());
+        let bytes = [0x01; OPAQUE_HANDLE_SIZE];
+        let oh = OpaqueHandle::new(bytes);
         assert_eq!(oh.as_bytes(), bytes.as_slice());
     }
 }

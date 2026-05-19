@@ -105,12 +105,14 @@ mod tests {
 
     use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::vfs::file::Handle;
+    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 
     #[test]
     fn new_share_succeeds() {
         let caller_name = "host".to_string();
         let file_handle = Handle([0; NFS3_FHSIZE]);
-        let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
+
+        let opaque_handle = OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]);
         let fsh4_mode = FileSharingMode::Read;
         let fsh4_access = FileSharingAccess::ReadWrite;
 

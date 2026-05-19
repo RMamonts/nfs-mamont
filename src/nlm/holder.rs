@@ -3,6 +3,8 @@
 //! Contains [`Nlm4Holder`] which represents the current holder of a lock.
 
 use super::OpaqueHandle;
+use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+
 
 /// This structure indicates the holder of a lock.
 pub struct Nlm4Holder {
@@ -14,7 +16,7 @@ pub struct Nlm4Holder {
     pub opaque_handle: OpaqueHandle,
     /// Offset for the lock region.
     pub lock_offset: u64,
-    /// Length of the blocking region. A l_len of 0 means "to end of file".
+    /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
 }
 
@@ -49,7 +51,7 @@ mod tests {
 
     #[test]
     fn new_holder_succeeds() {
-        let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
+        let opaque_handle = OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]);
         let system_id = 12345;
         let offset = 0;
         let length = 0;
