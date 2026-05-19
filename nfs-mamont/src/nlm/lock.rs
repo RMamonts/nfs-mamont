@@ -109,7 +109,7 @@ mod tests {
 
         assert_eq!(lock.caller_name, caller_name);
         assert_eq!(lock.file_handle.0, [0; NFS3_FHSIZE]);
-        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &[1; OPAQUE_HANDLE_SIZE]);
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);
