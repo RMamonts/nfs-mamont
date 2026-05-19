@@ -152,6 +152,7 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
                     let command = NlmCommand {
                         result_tx: self.result_sender.clone(),
                         args: NlmArgWrapper { header, proc },
+                        client_addr: self.client_addr,
                     };
 
                     if let Err(err) = self.nlm_sender.send(command) {

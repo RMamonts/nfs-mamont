@@ -71,6 +71,22 @@ impl OpaqueHandle {
     }
 }
 
+pub trait Nlm:
+    procedures::lock::Lock
+    + procedures::unlock::Unlock
+    + procedures::test::Test
+    + procedures::cancel::Cancel
+{
+}
+
+impl<T> Nlm for T where
+    T: procedures::lock::Lock
+        + procedures::unlock::Unlock
+        + procedures::test::Test
+        + procedures::cancel::Cancel
+{
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
