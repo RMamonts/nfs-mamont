@@ -1,7 +1,5 @@
-use std::io::SeekFrom;
+use nfs_mamont::vfs;
 use std::os::unix::io::{AsRawFd, FromRawFd};
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use libc;
 use nfs_mamont::vfs::read;
@@ -32,8 +30,7 @@ impl read::Read for MirrorFS {
         let start = args.offset.min(file_len);
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
-        let mut remaining = requested;
-        let mut read_count = 0usize;
+        let read_count;
 
         if self.uring_executor().is_some() {
             let fd = match self.open_fd_uring(&path, libc::O_RDONLY | libc::O_CLOEXEC, 0).await {
@@ -70,57 +67,7 @@ impl read::Read for MirrorFS {
                 offset += to_copy;
             }
         } else {
-            let mut file = match File::open(&path).await {
-                Ok(file) => file,
-                Err(error) => {
-                    return Err(read::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        file_attr: Some(attr),
-                    });
-                }
-            };
-            if let Err(error) = file.seek(SeekFrom::Start(start)).await {
-                return Err(read::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_attr: Some(attr),
-                });
-            }
-
-            if remaining > 0 {
-                for chunk in data.iter_mut() {
-                    if remaining == 0 {
-                        break;
-                    }
-
-                    let to_read = chunk.len().min(remaining);
-                    let mut chunk_offset = 0usize;
-
-                    while chunk_offset < to_read {
-                        match file.read(&mut chunk[chunk_offset..to_read]).await {
-                            Ok(0) => {
-                                remaining = 0;
-                                break;
-                            }
-                            Ok(bytes) => {
-                                chunk_offset += bytes;
-                                read_count += bytes;
-                            }
-                            Err(error) => {
-                                return Err(read::Fail {
-                                    error: Self::io_error_to_vfs(&error),
-                                    file_attr: Some(attr),
-                                });
-                            }
-                        }
-                    }
-
-                    if chunk_offset < to_read {
-                        break;
-                    }
-
-                    remaining -= to_read;
-                }
-            }
+            return Err(read::Fail { error: vfs::Error::IO, file_attr: Some(attr) });
         }
 
         Ok(read::Success {
