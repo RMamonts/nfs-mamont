@@ -57,7 +57,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
     generation: u64,
-    uring: Option<Arc<uring::UringExecutor>>,
+    uring: Option<Arc<uring::UringPool>>,
 }
 
 impl MirrorFS {
@@ -67,7 +67,8 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        let uring = uring::UringExecutor::new(2048);
+        let ring_count = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let uring = uring::UringPool::new(ring_count, 2048);
         Self { fsmap: RwLock::new(FsMap::new(root)), generation, uring }
     }
 
@@ -217,7 +218,7 @@ impl MirrorFS {
     }
 
     async fn metadata(&self, path: &Path) -> Result<uring::StatxData, vfs::Error> {
-        if let Some(uring) = &self.uring {
+        if let Some(uring) = self.uring_executor() {
             return uring.statx(path, false).await.map_err(|error| Self::io_error_to_vfs(&error));
         }
 
@@ -252,7 +253,7 @@ impl MirrorFS {
         file: &tokio::fs::File,
         datasync: bool,
     ) -> Result<(), std::io::Error> {
-        if let Some(uring) = &self.uring {
+        if let Some(uring) = self.uring_executor() {
             return uring.fsync(file.as_raw_fd(), datasync).await;
         }
 
@@ -269,12 +270,12 @@ impl MirrorFS {
         mut offset: u64,
         data: &[u8],
     ) -> Result<(), std::io::Error> {
-        let Some(uring) = &self.uring else {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
+        let Some(uring) = self.uring_executor() else {
+            return Err(std::io::Error::other("io_uring not available"));
         };
 
         let mut written = 0usize;
-        let max_len = uring.max_io_len();
+        let max_len = self.uring_max_io_len();
         while written < data.len() {
             let end = (written + max_len).min(data.len());
             let chunk = data[written..end].to_vec();
@@ -298,15 +299,15 @@ impl MirrorFS {
         offset: u64,
         len: usize,
     ) -> Result<Vec<u8>, std::io::Error> {
-        let Some(uring) = &self.uring else {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
+        let Some(uring) = self.uring_executor() else {
+            return Err(std::io::Error::other("io_uring not available"));
         };
 
         if len == 0 {
             return Ok(Vec::new());
         }
 
-        let max_len = uring.max_io_len();
+        let max_len = self.uring_max_io_len();
         if len <= max_len {
             return uring.read_at(fd, offset, len).await;
         }
@@ -451,11 +452,19 @@ impl MirrorFS {
         flags: i32,
         mode: u32,
     ) -> Result<RawFd, std::io::Error> {
-        let Some(uring) = &self.uring else {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
+        let Some(uring) = self.uring_executor() else {
+            return Err(std::io::Error::other("io_uring not available"));
         };
 
         uring.open_at(path, flags, mode).await
+    }
+
+    fn uring_executor(&self) -> Option<Arc<uring::UringExecutor>> {
+        self.uring.as_ref().map(|pool| pool.pick())
+    }
+
+    fn uring_max_io_len(&self) -> usize {
+        self.uring.as_ref().map(|pool| pool.max_io_len()).unwrap_or(usize::MAX)
     }
 
     async fn child_path(

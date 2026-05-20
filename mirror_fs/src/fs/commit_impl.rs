@@ -25,7 +25,7 @@ impl commit::Commit for MirrorFS {
             }
         }
 
-        if self.uring.is_some() {
+        if let Some(uring) = self.uring_executor() {
             let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
                 Ok(fd) => fd,
                 Err(error) => {
@@ -36,7 +36,7 @@ impl commit::Commit for MirrorFS {
                 }
             };
             let file = unsafe { std::fs::File::from_raw_fd(fd) };
-            if let Err(error) = self.uring.as_ref().unwrap().fsync(fd, false).await {
+            if let Err(error) = uring.fsync(fd, false).await {
                 drop(file);
                 return Err(commit::Fail {
                     error: Self::io_error_to_vfs(&error),

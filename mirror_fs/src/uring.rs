@@ -4,6 +4,7 @@ use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::RawFd;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -16,6 +17,12 @@ use tokio::sync::{mpsc, oneshot};
 pub struct UringExecutor {
     sender: mpsc::UnboundedSender<UringRequest>,
     max_fixed_len: usize,
+}
+
+#[derive(Debug)]
+pub struct UringPool {
+    rings: Vec<Arc<UringExecutor>>,
+    next: AtomicUsize,
 }
 
 #[derive(Clone, Debug)]
@@ -153,6 +160,30 @@ impl UringExecutor {
     }
 }
 
+impl UringPool {
+    pub fn new(count: usize, entries: u32) -> Option<Arc<Self>> {
+        if count == 0 {
+            return None;
+        }
+
+        let mut rings = Vec::with_capacity(count);
+        for _ in 0..count {
+            rings.push(UringExecutor::new(entries)?);
+        }
+
+        Some(Arc::new(Self { rings, next: AtomicUsize::new(0) }))
+    }
+
+    pub fn pick(&self) -> Arc<UringExecutor> {
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.rings.len();
+        self.rings[index].clone()
+    }
+
+    pub fn max_io_len(&self) -> usize {
+        self.rings.first().map(|ring| ring.max_io_len()).unwrap_or(usize::MAX)
+    }
+}
+
 enum UringRequest {
     Fsync { fd: RawFd, flags: types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
     Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: oneshot::Sender<io::Result<usize>> },
@@ -251,10 +282,8 @@ fn run_uring(
                             .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
-                            let _ = reply.send(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -280,8 +309,7 @@ fn run_uring(
 
                                     if unsafe { submission.push(&entry) }.is_err() {
                                         pool.release(index);
-                                        let _ = reply.send(Err(io::Error::new(
-                                            io::ErrorKind::Other,
+                                        let _ = reply.send(Err(io::Error::other(
                                             "io_uring submission queue full",
                                         )));
                                         continue;
@@ -306,10 +334,8 @@ fn run_uring(
                                 .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
-                            let _ = reply.send(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -334,8 +360,7 @@ fn run_uring(
 
                                     if unsafe { submission.push(&entry) }.is_err() {
                                         pool.release(index);
-                                        let _ = reply.send(Err(io::Error::new(
-                                            io::ErrorKind::Other,
+                                        let _ = reply.send(Err(io::Error::other(
                                             "io_uring submission queue full",
                                         )));
                                         continue;
@@ -364,10 +389,8 @@ fn run_uring(
                         .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
-                            let _ = reply.send(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -384,10 +407,8 @@ fn run_uring(
                             .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
-                            let _ = reply.send(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -410,10 +431,8 @@ fn run_uring(
                         .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
-                            let _ = reply.send(Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 

@@ -35,7 +35,7 @@ impl read::Read for MirrorFS {
         let mut remaining = requested;
         let mut read_count = 0usize;
 
-        if self.uring.is_some() {
+        if self.uring_executor().is_some() {
             let fd = match self.open_fd_uring(&path, libc::O_RDONLY | libc::O_CLOEXEC, 0).await {
                 Ok(fd) => fd,
                 Err(error) => {

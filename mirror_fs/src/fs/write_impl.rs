@@ -29,7 +29,7 @@ impl write::Write for MirrorFS {
         }
 
         // let data = Self::collect_slice_bytes(&args.data, args.size);
-        if self.uring.is_some() {
+        if let Some(uring) = self.uring_executor() {
             let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
                 Ok(fd) => fd,
                 Err(error) => {
@@ -41,7 +41,7 @@ impl write::Write for MirrorFS {
             };
             let file = unsafe { std::fs::File::from_raw_fd(fd) };
             for data in &args.data {
-                if let Err(error) = self.write_all_uring(file.as_raw_fd(), args.offset, &data).await
+                if let Err(error) = self.write_all_uring(file.as_raw_fd(), args.offset, data).await
                 {
                     drop(file);
                     return Err(write::Fail {
@@ -52,8 +52,8 @@ impl write::Write for MirrorFS {
             }
             let sync_result = match args.stable {
                 write::StableHow::Unstable => Ok(()),
-                write::StableHow::DataSync => self.uring.as_ref().unwrap().fsync(fd, true).await,
-                write::StableHow::FileSync => self.uring.as_ref().unwrap().fsync(fd, false).await,
+                write::StableHow::DataSync => uring.fsync(fd, true).await,
+                write::StableHow::FileSync => uring.fsync(fd, false).await,
             };
             drop(file);
             if let Err(error) = sync_result {
@@ -79,7 +79,7 @@ impl write::Write for MirrorFS {
                 });
             }
             for data in &args.data {
-                if let Err(error) = file.write_all(&data).await {
+                if let Err(error) = file.write_all(data).await {
                     return Err(write::Fail {
                         error: Self::io_error_to_vfs(&error),
                         wcc_data: self.wcc_data(&path, before).await,
@@ -101,7 +101,7 @@ impl write::Write for MirrorFS {
 
         Ok(write::Success {
             file_wcc: self.wcc_data(&path, before).await,
-            count: args.size as u32,
+            count: args.size,
             commited: args.stable,
             verifier: self.write_verifier(),
         })
