@@ -15,7 +15,6 @@ use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
-use nfs_mamont::Slice;
 
 use crate::fs_map::FsMap;
 use crate::uring;
@@ -68,7 +67,7 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        let uring = uring::UringExecutor::new(256);
+        let uring = uring::UringExecutor::new(2048);
         Self { fsmap: RwLock::new(FsMap::new(root)), generation, uring }
     }
 
@@ -246,18 +245,6 @@ impl MirrorFS {
         } else {
             Err(vfs::Error::InvalidArgument)
         }
-    }
-
-    fn collect_slice_bytes(slice: &Slice, size: u32) -> Vec<u8> {
-        let mut data = Vec::with_capacity(size as usize);
-        for part in slice {
-            data.extend_from_slice(part);
-            if data.len() >= size as usize {
-                data.truncate(size as usize);
-                break;
-            }
-        }
-        data
     }
 
     async fn fsync_file(

@@ -28,7 +28,7 @@ impl write::Write for MirrorFS {
             }
         }
 
-        let data = Self::collect_slice_bytes(&args.data, args.size);
+        // let data = Self::collect_slice_bytes(&args.data, args.size);
         if self.uring.is_some() {
             let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
                 Ok(fd) => fd,
@@ -40,12 +40,15 @@ impl write::Write for MirrorFS {
                 }
             };
             let file = unsafe { std::fs::File::from_raw_fd(fd) };
-            if let Err(error) = self.write_all_uring(file.as_raw_fd(), args.offset, &data).await {
-                drop(file);
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: self.wcc_data(&path, before).await,
-                });
+            for data in &args.data {
+                if let Err(error) = self.write_all_uring(file.as_raw_fd(), args.offset, &data).await
+                {
+                    drop(file);
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: self.wcc_data(&path, before).await,
+                    });
+                }
             }
             let sync_result = match args.stable {
                 write::StableHow::Unstable => Ok(()),
@@ -75,11 +78,13 @@ impl write::Write for MirrorFS {
                     wcc_data: self.wcc_data(&path, before).await,
                 });
             }
-            if let Err(error) = file.write_all(&data).await {
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: self.wcc_data(&path, before).await,
-                });
+            for data in &args.data {
+                if let Err(error) = file.write_all(&data).await {
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: self.wcc_data(&path, before).await,
+                    });
+                }
             }
             let sync_result = match args.stable {
                 write::StableHow::Unstable => Ok(()),
@@ -96,7 +101,7 @@ impl write::Write for MirrorFS {
 
         Ok(write::Success {
             file_wcc: self.wcc_data(&path, before).await,
-            count: data.len() as u32,
+            count: args.size as u32,
             commited: args.stable,
             verifier: self.write_verifier(),
         })
