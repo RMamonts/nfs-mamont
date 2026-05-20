@@ -12,7 +12,7 @@ impl path_conf::PathConf for MirrorFS {
             Err(error) => return Err(path_conf::Fail { error, file_attr: None }),
         };
         Ok(path_conf::Success {
-            file_attr: Self::file_attr(&path),
+            file_attr: self.file_attr(&path).await,
             link_max: u32::MAX,
             name_max: vfs::MAX_NAME_LEN as u32,
             no_trunc: true,

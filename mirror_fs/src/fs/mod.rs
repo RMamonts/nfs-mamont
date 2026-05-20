@@ -1,13 +1,14 @@
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
 
+use libc;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -178,23 +179,57 @@ impl MirrorFS {
         }
     }
 
-    fn wcc_attr_from_metadata(meta: &Metadata) -> file::WccAttr {
+    fn attr_from_statx(meta: &uring::StatxData) -> file::Attr {
+        let file_type = match meta.mode & libc::S_IFMT {
+            libc::S_IFDIR => file::Type::Directory,
+            libc::S_IFLNK => file::Type::Symlink,
+            libc::S_IFREG => file::Type::Regular,
+            libc::S_IFBLK => file::Type::BlockDevice,
+            libc::S_IFCHR => file::Type::CharacterDevice,
+            libc::S_IFIFO => file::Type::Fifo,
+            libc::S_IFSOCK => file::Type::Socket,
+            _ => file::Type::Regular,
+        };
+        let fs_id = ((meta.dev_major as u64) << 32) | meta.dev_minor as u64;
+
+        file::Attr {
+            file_type,
+            mode: meta.mode,
+            nlink: meta.nlink,
+            uid: meta.uid,
+            gid: meta.gid,
+            size: meta.size,
+            used: meta.blocks.saturating_mul(512),
+            device: file::Device { major: 0, minor: 0 },
+            fs_id,
+            file_id: meta.ino,
+            atime: Self::time_from_unix(meta.atime_sec, meta.atime_nsec),
+            mtime: Self::time_from_unix(meta.mtime_sec, meta.mtime_nsec),
+            ctime: Self::time_from_unix(meta.ctime_sec, meta.ctime_nsec),
+        }
+    }
+
+    fn wcc_attr_from_statx(meta: &uring::StatxData) -> file::WccAttr {
         file::WccAttr {
-            size: meta.size(),
-            mtime: Self::time_from_unix(meta.mtime(), meta.mtime_nsec()),
-            ctime: Self::time_from_unix(meta.ctime(), meta.ctime_nsec()),
+            size: meta.size,
+            mtime: Self::time_from_unix(meta.mtime_sec, meta.mtime_nsec),
+            ctime: Self::time_from_unix(meta.ctime_sec, meta.ctime_nsec),
         }
     }
 
-    fn metadata(path: &Path) -> Result<Metadata, vfs::Error> {
-        std::fs::symlink_metadata(path).map_err(|error| Self::io_error_to_vfs(&error))
+    async fn metadata(&self, path: &Path) -> Result<uring::StatxData, vfs::Error> {
+        if let Some(uring) = &self.uring {
+            return uring.statx(path, false).await.map_err(|error| Self::io_error_to_vfs(&error));
+        }
+
+        let meta =
+            std::fs::symlink_metadata(path).map_err(|error| Self::io_error_to_vfs(&error))?;
+        Ok(Self::statx_from_metadata(&meta))
     }
 
-    fn wcc_data(path: &Path, before: Option<file::WccAttr>) -> vfs::WccData {
-        vfs::WccData {
-            before,
-            after: std::fs::symlink_metadata(path).ok().map(|meta| Self::attr_from_metadata(&meta)),
-        }
+    async fn wcc_data(&self, path: &Path, before: Option<file::WccAttr>) -> vfs::WccData {
+        let after = self.metadata(path).await.ok().map(|meta| Self::attr_from_statx(&meta));
+        vfs::WccData { before, after }
     }
 
     fn validate_directory(attr: &file::Attr) -> Result<(), vfs::Error> {
@@ -243,21 +278,18 @@ impl MirrorFS {
 
     async fn write_all_uring(
         &self,
-        file: &tokio::fs::File,
+        fd: RawFd,
         mut offset: u64,
         data: &[u8],
     ) -> Result<(), std::io::Error> {
         let Some(uring) = &self.uring else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "io_uring not available",
-            ));
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
         };
 
         let mut written = 0usize;
         while written < data.len() {
             let chunk = data[written..].to_vec();
-            let bytes = uring.write_at(file.as_raw_fd(), offset, chunk).await?;
+            let bytes = uring.write_at(fd, offset, chunk).await?;
             if bytes == 0 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::WriteZero,
@@ -273,26 +305,23 @@ impl MirrorFS {
 
     async fn read_at_uring(
         &self,
-        file: &tokio::fs::File,
+        fd: RawFd,
         offset: u64,
         len: usize,
     ) -> Result<Vec<u8>, std::io::Error> {
         let Some(uring) = &self.uring else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "io_uring not available",
-            ));
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
         };
 
         if len == 0 {
             return Ok(Vec::new());
         }
 
-        uring.read_at(file.as_raw_fd(), offset, len).await
+        uring.read_at(fd, offset, len).await
     }
 
-    fn file_attr(path: &Path) -> Option<file::Attr> {
-        std::fs::symlink_metadata(path).ok().map(|meta| Self::attr_from_metadata(&meta))
+    async fn file_attr(&self, path: &Path) -> Option<file::Attr> {
+        self.metadata(path).await.ok().map(|meta| Self::attr_from_statx(&meta))
     }
 
     /// Stores an exclusive create verifier in the file's mtime (per RFC 1813 §3.3.8).
@@ -364,10 +393,10 @@ impl MirrorFS {
         Ok(())
     }
 
-    fn list_directory_entries(
+    async fn list_directory_entries(
         &self,
         dir_path: &Path,
-    ) -> Result<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error> {
+    ) -> Result<Vec<(file::Name, PathBuf, uring::StatxData)>, vfs::Error> {
         let mut entries = Vec::new();
         let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
@@ -377,12 +406,45 @@ impl MirrorFS {
             let name = file::Name::new(file_name.to_string_lossy().into_owned())
                 .map_err(|_| vfs::Error::InvalidArgument)?;
             let path = item.path();
-            let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
+            let metadata = self.metadata(&path).await?;
             entries.push((name, path, metadata));
         }
 
         entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
         Ok(entries)
+    }
+
+    fn statx_from_metadata(meta: &Metadata) -> uring::StatxData {
+        uring::StatxData {
+            mode: meta.mode(),
+            nlink: meta.nlink() as u32,
+            uid: meta.uid(),
+            gid: meta.gid(),
+            size: meta.size(),
+            blocks: meta.blocks(),
+            dev_major: 0,
+            dev_minor: 0,
+            ino: meta.ino(),
+            atime_sec: meta.atime(),
+            atime_nsec: meta.atime_nsec(),
+            mtime_sec: meta.mtime(),
+            mtime_nsec: meta.mtime_nsec(),
+            ctime_sec: meta.ctime(),
+            ctime_nsec: meta.ctime_nsec(),
+        }
+    }
+
+    async fn open_fd_uring(
+        &self,
+        path: &Path,
+        flags: i32,
+        mode: u32,
+    ) -> Result<RawFd, std::io::Error> {
+        let Some(uring) = &self.uring else {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "io_uring not available"));
+        };
+
+        uring.open_at(path, flags, mode).await
     }
 
     async fn child_path(

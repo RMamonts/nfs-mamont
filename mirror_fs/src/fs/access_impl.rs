@@ -9,11 +9,11 @@ impl access::Access for MirrorFS {
             Ok(path) => path,
             Err(error) => return Err(access::Fail { error, object_attr: None }),
         };
-        let meta = match Self::metadata(&path) {
+        let meta = match self.metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => return Err(access::Fail { error, object_attr: None }),
         };
-        let attr = Self::attr_from_metadata(&meta);
+        let attr = Self::attr_from_statx(&meta);
         let granted = Self::compute_access_mask(&attr, args.mask);
         Ok(access::Success { object_attr: Some(attr), access: granted })
     }

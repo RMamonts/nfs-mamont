@@ -1,7 +1,9 @@
 use std::io::SeekFrom;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
+use libc;
 use nfs_mamont::vfs::read;
 use nfs_mamont::Slice;
 
@@ -15,36 +17,27 @@ impl read::Read for MirrorFS {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let meta = match Self::metadata(&path) {
+        let meta = match self.metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(read::Fail { error, file_attr: None });
             }
         };
-        let attr = Self::attr_from_metadata(&meta);
+        let attr = Self::attr_from_statx(&meta);
         if let Err(error) = Self::validate_regular(&attr) {
             return Err(read::Fail { error, file_attr: Some(attr) });
         }
 
-        let mut file = match File::open(&path).await {
-            Ok(file) => file,
-            Err(error) => {
-                return Err(read::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_attr: Some(attr),
-                });
-            }
-        };
-
-        let file_len = meta.len();
+        let file_len = meta.size;
         let start = args.offset.min(file_len);
         let end = args.offset.saturating_add(args.count as u64).min(file_len);
         let requested = end.saturating_sub(start) as usize;
         let mut remaining = requested;
         let mut read_count = 0usize;
+
         if self.uring.is_some() {
-            let buffer = match self.read_at_uring(&file, start, requested).await {
-                Ok(buffer) => buffer,
+            let fd = match self.open_fd_uring(&path, libc::O_RDONLY | libc::O_CLOEXEC, 0).await {
+                Ok(fd) => fd,
                 Err(error) => {
                     return Err(read::Fail {
                         error: Self::io_error_to_vfs(&error),
@@ -52,6 +45,18 @@ impl read::Read for MirrorFS {
                     });
                 }
             };
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            let buffer = match self.read_at_uring(file.as_raw_fd(), start, requested).await {
+                Ok(buffer) => buffer,
+                Err(error) => {
+                    drop(file);
+                    return Err(read::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_attr: Some(attr),
+                    });
+                }
+            };
+            drop(file);
 
             read_count = buffer.len();
             let mut offset = 0usize;
@@ -65,6 +70,15 @@ impl read::Read for MirrorFS {
                 offset += to_copy;
             }
         } else {
+            let mut file = match File::open(&path).await {
+                Ok(file) => file,
+                Err(error) => {
+                    return Err(read::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_attr: Some(attr),
+                    });
+                }
+            };
             if let Err(error) = file.seek(SeekFrom::Start(start)).await {
                 return Err(read::Fail {
                     error: Self::io_error_to_vfs(&error),

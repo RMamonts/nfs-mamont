@@ -20,9 +20,8 @@ impl symlink::Symlink for MirrorFS {
                 });
             }
         };
-        let before = std::fs::symlink_metadata(&dir_path)
-            .ok()
-            .map(|meta| Self::wcc_attr_from_metadata(&meta));
+        let before =
+            self.metadata(&dir_path).await.ok().map(|meta| Self::wcc_attr_from_statx(&meta));
         let mut link_path = dir_path.clone();
         link_path.push(args.object.name.as_str());
 
@@ -31,28 +30,34 @@ impl symlink::Symlink for MirrorFS {
             Err(error) => {
                 return Err(symlink::Fail {
                     error: Self::io_error_to_vfs(&error),
-                    dir_wcc: Self::wcc_data(&dir_path, before),
+                    dir_wcc: self.wcc_data(&dir_path, before).await,
                 });
             }
         }
 
-        let attr = match Self::metadata(&link_path) {
-            Ok(meta) => Self::attr_from_metadata(&meta),
+        let attr = match self.metadata(&link_path).await {
+            Ok(meta) => Self::attr_from_statx(&meta),
             Err(error) => {
-                return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+                return Err(symlink::Fail {
+                    error,
+                    dir_wcc: self.wcc_data(&dir_path, before).await,
+                })
             }
         };
         let handle = match self.handle_for_path(&link_path).await {
             Ok(handle) => handle,
             Err(error) => {
-                return Err(symlink::Fail { error, dir_wcc: Self::wcc_data(&dir_path, before) })
+                return Err(symlink::Fail {
+                    error,
+                    dir_wcc: self.wcc_data(&dir_path, before).await,
+                })
             }
         };
 
         Ok(symlink::Success {
             file: Some(handle),
             attr: Some(attr),
-            wcc_data: Self::wcc_data(&dir_path, before),
+            wcc_data: self.wcc_data(&dir_path, before).await,
         })
     }
 }

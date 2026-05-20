@@ -1,5 +1,7 @@
+use std::os::unix::io::FromRawFd;
 use tokio::fs::OpenOptions;
 
+use libc;
 use nfs_mamont::vfs::commit;
 
 use super::*;
@@ -15,32 +17,53 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
-        let before_meta = std::fs::symlink_metadata(&path).ok();
-        let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
-        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
+        let before_meta = self.metadata(&path).await.ok();
+        let before = before_meta.as_ref().map(Self::wcc_attr_from_statx);
+        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_statx) {
             if let Err(error) = Self::validate_regular(&attr) {
-                return Err(commit::Fail { error, file_wcc: Self::wcc_data(&path, before) });
+                return Err(commit::Fail { error, file_wcc: self.wcc_data(&path, before).await });
             }
         }
 
-        let file = match OpenOptions::new().write(true).open(&path).await {
-            Ok(file) => file,
-            Err(error) => {
+        if self.uring.is_some() {
+            let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
+                Ok(fd) => fd,
+                Err(error) => {
+                    return Err(commit::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_wcc: self.wcc_data(&path, before).await,
+                    });
+                }
+            };
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            if let Err(error) = self.uring.as_ref().unwrap().fsync(fd, false).await {
+                drop(file);
                 return Err(commit::Fail {
                     error: Self::io_error_to_vfs(&error),
-                    file_wcc: Self::wcc_data(&path, before),
+                    file_wcc: self.wcc_data(&path, before).await,
                 });
             }
-        };
-        if let Err(error) = self.fsync_file(&file, false).await {
-            return Err(commit::Fail {
-                error: Self::io_error_to_vfs(&error),
-                file_wcc: Self::wcc_data(&path, before),
-            });
+            drop(file);
+        } else {
+            let file = match OpenOptions::new().write(true).open(&path).await {
+                Ok(file) => file,
+                Err(error) => {
+                    return Err(commit::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_wcc: self.wcc_data(&path, before).await,
+                    });
+                }
+            };
+            if let Err(error) = self.fsync_file(&file, false).await {
+                return Err(commit::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    file_wcc: self.wcc_data(&path, before).await,
+                });
+            }
         }
 
         Ok(commit::Success {
-            file_wcc: Self::wcc_data(&path, before),
+            file_wcc: self.wcc_data(&path, before).await,
             verifier: self.write_verifier(),
         })
     }
