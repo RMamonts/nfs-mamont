@@ -1,7 +1,4 @@
-use std::io::SeekFrom;
 use std::os::unix::io::{AsRawFd, FromRawFd};
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use libc;
 use nfs_mamont::vfs::{self, write};
@@ -63,40 +60,10 @@ impl write::Write for MirrorFS {
                 });
             }
         } else {
-            let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
-                Ok(file) => file,
-                Err(error) => {
-                    return Err(write::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        wcc_data: self.wcc_data(&path, before).await,
-                    });
-                }
-            };
-            if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: self.wcc_data(&path, before).await,
-                });
-            }
-            for data in &args.data {
-                if let Err(error) = file.write_all(data).await {
-                    return Err(write::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        wcc_data: self.wcc_data(&path, before).await,
-                    });
-                }
-            }
-            let sync_result = match args.stable {
-                write::StableHow::Unstable => Ok(()),
-                write::StableHow::DataSync => self.fsync_file(&file, true).await,
-                write::StableHow::FileSync => self.fsync_file(&file, false).await,
-            };
-            if let Err(error) = sync_result {
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: self.wcc_data(&path, before).await,
-                });
-            }
+            return Err(write::Fail {
+                error: vfs::Error::IO,
+                wcc_data: self.wcc_data(&path, before).await,
+            });
         }
 
         Ok(write::Success {
