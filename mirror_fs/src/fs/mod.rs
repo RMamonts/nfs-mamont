@@ -274,8 +274,10 @@ impl MirrorFS {
         };
 
         let mut written = 0usize;
+        let max_len = uring.max_io_len();
         while written < data.len() {
-            let chunk = data[written..].to_vec();
+            let end = (written + max_len).min(data.len());
+            let chunk = data[written..end].to_vec();
             let bytes = uring.write_at(fd, offset, chunk).await?;
             if bytes == 0 {
                 return Err(std::io::Error::new(
@@ -304,7 +306,29 @@ impl MirrorFS {
             return Ok(Vec::new());
         }
 
-        uring.read_at(fd, offset, len).await
+        let max_len = uring.max_io_len();
+        if len <= max_len {
+            return uring.read_at(fd, offset, len).await;
+        }
+
+        let mut buffer = Vec::with_capacity(len);
+        let mut remaining = len;
+        let mut current_offset = offset;
+        while remaining > 0 {
+            let chunk_len = remaining.min(max_len);
+            let chunk = uring.read_at(fd, current_offset, chunk_len).await?;
+            if chunk.is_empty() {
+                break;
+            }
+            current_offset += chunk.len() as u64;
+            remaining = remaining.saturating_sub(chunk.len());
+            buffer.extend_from_slice(&chunk);
+            if chunk.len() < chunk_len {
+                break;
+            }
+        }
+
+        Ok(buffer)
     }
 
     async fn file_attr(&self, path: &Path) -> Option<file::Attr> {

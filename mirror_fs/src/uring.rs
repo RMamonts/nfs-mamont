@@ -6,14 +6,16 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
-use io_uring::{opcode, types, IoUring};
+use io_uring::{opcode, types, IoUring, Probe};
 use libc;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub struct UringExecutor {
     sender: mpsc::UnboundedSender<UringRequest>,
+    max_fixed_len: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -37,15 +39,42 @@ pub struct StatxData {
 
 impl UringExecutor {
     pub fn new(entries: u32) -> Option<Arc<Self>> {
-        let ring = IoUring::new(entries).ok()?;
+        let mut ring = IoUring::new(entries).ok()?;
+        let mut probe = Probe::new();
+        ring.submitter().register_probe(&mut probe).ok()?;
+        if !probe.is_supported(opcode::Read::CODE)
+            || !probe.is_supported(opcode::Write::CODE)
+            || !probe.is_supported(opcode::OpenAt::CODE)
+            || !probe.is_supported(opcode::Statx::CODE)
+            || !probe.is_supported(opcode::Fsync::CODE)
+        {
+            return None;
+        }
+        let max_fixed_len = DEFAULT_FIXED_BUFFER_LEN;
+        let pool = if probe.is_supported(opcode::ReadFixed::CODE)
+            && probe.is_supported(opcode::WriteFixed::CODE)
+        {
+            FixedBufferPool::new(&mut ring, DEFAULT_FIXED_BUFFER_COUNT, max_fixed_len).ok()
+        } else {
+            None
+        };
         let (sender, receiver) = mpsc::unbounded_channel();
-        let executor = Arc::new(Self { sender });
+        let executor =
+            Arc::new(Self { sender, max_fixed_len: pool.as_ref().map_or(0, |_| max_fixed_len) });
 
         let _ = thread::Builder::new()
             .name("mirrorfs-uring".to_string())
-            .spawn(move || run_uring(ring, receiver));
+            .spawn(move || run_uring(ring, receiver, pool));
 
         Some(executor)
+    }
+
+    pub fn max_io_len(&self) -> usize {
+        if self.max_fixed_len == 0 {
+            usize::MAX
+        } else {
+            self.max_fixed_len
+        }
     }
 
     pub async fn fsync(&self, fd: RawFd, datasync: bool) -> io::Result<()> {
@@ -135,12 +164,61 @@ enum UringRequest {
 enum InFlight {
     Fsync(oneshot::Sender<io::Result<()>>),
     Write { reply: oneshot::Sender<io::Result<usize>>, buffer: Vec<u8> },
+    WriteFixed { reply: oneshot::Sender<io::Result<usize>>, index: usize, len: usize },
     Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
+    ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
     Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
     Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
 }
 
-fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringRequest>) {
+const MAX_BATCH: usize = 64;
+const BATCH_WAIT: Duration = Duration::from_micros(50);
+const DEFAULT_FIXED_BUFFER_COUNT: usize = 128;
+const DEFAULT_FIXED_BUFFER_LEN: usize = 64 * 1024;
+
+struct FixedBufferPool {
+    buffers: Vec<Vec<u8>>,
+    free: Vec<usize>,
+    len: usize,
+}
+
+impl FixedBufferPool {
+    fn new(ring: &mut IoUring, count: usize, len: usize) -> io::Result<Self> {
+        if count == 0 || len == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid fixed buffer pool"));
+        }
+
+        let mut buffers = Vec::with_capacity(count);
+        let mut iovecs = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut buffer = vec![0u8; len];
+            let iovec = libc::iovec { iov_base: buffer.as_mut_ptr().cast(), iov_len: buffer.len() };
+            buffers.push(buffer);
+            iovecs.push(iovec);
+        }
+
+        unsafe {
+            ring.submitter().register_buffers(&iovecs)?;
+        }
+
+        let free = (0..count).rev().collect();
+        Ok(Self { buffers, free, len })
+    }
+
+    fn take(&mut self) -> Option<usize> {
+        self.free.pop()
+    }
+
+    fn release(&mut self, index: usize) {
+        self.free.push(index);
+    }
+}
+
+fn run_uring(
+    mut ring: IoUring,
+    mut receiver: mpsc::UnboundedReceiver<UringRequest>,
+    mut pool: Option<FixedBufferPool>,
+) {
     let mut next_id: u64 = 1;
 
     loop {
@@ -149,8 +227,12 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
         };
 
         let mut batch = vec![request];
-        while let Ok(request) = receiver.try_recv() {
-            batch.push(request);
+        let start = Instant::now();
+        while batch.len() < MAX_BATCH && start.elapsed() < BATCH_WAIT {
+            match receiver.try_recv() {
+                Ok(request) => batch.push(request),
+                Err(_) => thread::yield_now(),
+            }
         }
 
         let mut inflight: HashMap<u64, InFlight> = HashMap::new();
@@ -180,6 +262,41 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
                         submitted += 1;
                     }
                     UringRequest::Write { fd, offset, buffer, reply } => {
+                        if let Some(pool) = pool.as_mut() {
+                            if buffer.len() <= pool.len {
+                                if let Some(index) = pool.take() {
+                                    pool.buffers[index][..buffer.len()].copy_from_slice(&buffer);
+                                    let user_data = next_id;
+                                    next_id = next_id.wrapping_add(1);
+                                    let entry = opcode::WriteFixed::new(
+                                        types::Fd(fd),
+                                        pool.buffers[index].as_ptr(),
+                                        buffer.len() as u32,
+                                        index as u16,
+                                    )
+                                    .offset(offset)
+                                    .build()
+                                    .user_data(user_data);
+
+                                    if unsafe { submission.push(&entry) }.is_err() {
+                                        pool.release(index);
+                                        let _ = reply.send(Err(io::Error::new(
+                                            io::ErrorKind::Other,
+                                            "io_uring submission queue full",
+                                        )));
+                                        continue;
+                                    }
+
+                                    inflight.insert(
+                                        user_data,
+                                        InFlight::WriteFixed { reply, index, len: buffer.len() },
+                                    );
+                                    submitted += 1;
+                                    continue;
+                                }
+                            }
+                        }
+
                         let user_data = next_id;
                         next_id = next_id.wrapping_add(1);
                         let entry =
@@ -200,6 +317,40 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
                         submitted += 1;
                     }
                     UringRequest::Read { fd, offset, len, reply } => {
+                        if let Some(pool) = pool.as_mut() {
+                            if len <= pool.len {
+                                if let Some(index) = pool.take() {
+                                    let user_data = next_id;
+                                    next_id = next_id.wrapping_add(1);
+                                    let entry = opcode::ReadFixed::new(
+                                        types::Fd(fd),
+                                        pool.buffers[index].as_mut_ptr(),
+                                        len as u32,
+                                        index as u16,
+                                    )
+                                    .offset(offset)
+                                    .build()
+                                    .user_data(user_data);
+
+                                    if unsafe { submission.push(&entry) }.is_err() {
+                                        pool.release(index);
+                                        let _ = reply.send(Err(io::Error::new(
+                                            io::ErrorKind::Other,
+                                            "io_uring submission queue full",
+                                        )));
+                                        continue;
+                                    }
+
+                                    inflight.insert(
+                                        user_data,
+                                        InFlight::ReadFixed { reply, index, len },
+                                    );
+                                    submitted += 1;
+                                    continue;
+                                }
+                            }
+                        }
+
                         let user_data = next_id;
                         next_id = next_id.wrapping_add(1);
                         let mut buffer = vec![0u8; len];
@@ -278,14 +429,14 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
         }
 
         if let Err(error) = ring.submit_and_wait(1) {
-            fail_inflight(inflight, error);
+            fail_inflight(inflight, error, &mut pool);
             continue;
         }
 
         while !inflight.is_empty() {
             {
-                let mut completions = ring.completion();
-                while let Some(cqe) = completions.next() {
+                let completions = ring.completion();
+                for cqe in completions {
                     let Some(request) = inflight.remove(&cqe.user_data()) else {
                         continue;
                     };
@@ -314,6 +465,22 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
                             });
                             let _ = reply.send(result);
                         }
+                        InFlight::WriteFixed { reply, index, len } => {
+                            let result = result.and_then(|bytes| {
+                                if bytes > len {
+                                    Err(io::Error::new(
+                                        io::ErrorKind::InvalidData,
+                                        "write overflow",
+                                    ))
+                                } else {
+                                    Ok(bytes)
+                                }
+                            });
+                            if let Some(pool) = pool.as_mut() {
+                                pool.release(index);
+                            }
+                            let _ = reply.send(result);
+                        }
                         InFlight::Read { reply, mut buffer } => {
                             let max = buffer.len();
                             let result = result.and_then(|bytes| {
@@ -326,8 +493,32 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
                             });
                             let _ = reply.send(result);
                         }
+                        InFlight::ReadFixed { reply, index, len } => {
+                            let result = result.and_then(|bytes| {
+                                if bytes > len {
+                                    Err(io::Error::new(io::ErrorKind::InvalidData, "read overflow"))
+                                } else {
+                                    Ok(bytes)
+                                }
+                            });
+                            let output = match (pool.as_mut(), result) {
+                                (Some(pool), Ok(bytes)) => {
+                                    let mut data = vec![0u8; bytes];
+                                    data.copy_from_slice(&pool.buffers[index][..bytes]);
+                                    pool.release(index);
+                                    Ok(data)
+                                }
+                                (Some(pool), Err(error)) => {
+                                    pool.release(index);
+                                    Err(error)
+                                }
+                                (None, Ok(bytes)) => Ok(vec![0u8; bytes]),
+                                (None, Err(error)) => Err(error),
+                            };
+                            let _ = reply.send(output);
+                        }
                         InFlight::Open { reply, .. } => {
-                            let result = result.and_then(|value| Ok(value as RawFd));
+                            let result = result.map(|value| value as RawFd);
                             let _ = reply.send(result);
                         }
                         InFlight::Statx { reply, path, statx } => {
@@ -343,14 +534,18 @@ fn run_uring(mut ring: IoUring, mut receiver: mpsc::UnboundedReceiver<UringReque
             }
 
             if let Err(error) = ring.submit_and_wait(1) {
-                fail_inflight(inflight, error);
+                fail_inflight(inflight, error, &mut pool);
                 break;
             }
         }
     }
 }
 
-fn fail_inflight(inflight: HashMap<u64, InFlight>, error: io::Error) {
+fn fail_inflight(
+    inflight: HashMap<u64, InFlight>,
+    error: io::Error,
+    pool: &mut Option<FixedBufferPool>,
+) {
     let error = Arc::new(error);
     for (_, request) in inflight {
         match request {
@@ -360,7 +555,19 @@ fn fail_inflight(inflight: HashMap<u64, InFlight>, error: io::Error) {
             InFlight::Write { reply, .. } => {
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
+            InFlight::WriteFixed { reply, index, .. } => {
+                if let Some(pool) = pool.as_mut() {
+                    pool.release(index);
+                }
+                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+            }
             InFlight::Read { reply, .. } => {
+                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+            }
+            InFlight::ReadFixed { reply, index, .. } => {
+                if let Some(pool) = pool.as_mut() {
+                    pool.release(index);
+                }
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::Open { reply, .. } => {
