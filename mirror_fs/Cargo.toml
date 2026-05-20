@@ -1,0 +1,31 @@
+[package]
+name = "mirrorfs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "A Rust NFS Server implementation"
+publish = false
+rust-version.workspace = true
+
+[dependencies]
+# External dependencies
+tokio.workspace = true
+byteorder.workspace = true
+num-derive.workspace = true
+num-traits.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+async-channel.workspace = true
+crossbeam-queue.workspace = true
+trait-variant.workspace = true
+
+clap = { version = "4.5.61", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9.6"
+nix = { version = "0.31.2", features = ["fs"] }
+
+# Internal dependencies
+nfs-mamont.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
