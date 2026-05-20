@@ -32,7 +32,7 @@ impl commit::Commit for MirrorFS {
                 });
             }
         };
-        if let Err(error) = file.sync_all().await {
+        if let Err(error) = self.fsync_file(&file, false).await {
             return Err(commit::Fail {
                 error: Self::io_error_to_vfs(&error),
                 file_wcc: Self::wcc_data(&path, before),

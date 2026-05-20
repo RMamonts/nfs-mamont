@@ -37,22 +37,31 @@ impl write::Write for MirrorFS {
         };
 
         let data = Self::collect_slice_bytes(&args.data, args.size);
-        if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
-        }
-        if let Err(error) = file.write_all(&data).await {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
+        if self.uring.is_some() {
+            if let Err(error) = self.write_all_uring(&file, args.offset, &data).await {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: Self::wcc_data(&path, before),
+                });
+            }
+        } else {
+            if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: Self::wcc_data(&path, before),
+                });
+            }
+            if let Err(error) = file.write_all(&data).await {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: Self::wcc_data(&path, before),
+                });
+            }
         }
         let sync_result = match args.stable {
             write::StableHow::Unstable => Ok(()),
-            write::StableHow::DataSync => file.sync_data().await,
-            write::StableHow::FileSync => file.sync_all().await,
+            write::StableHow::DataSync => self.fsync_file(&file, true).await,
+            write::StableHow::FileSync => self.fsync_file(&file, false).await,
         };
         if let Err(error) = sync_result {
             return Err(write::Fail {

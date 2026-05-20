@@ -42,43 +42,70 @@ impl read::Read for MirrorFS {
         let requested = end.saturating_sub(start) as usize;
         let mut remaining = requested;
         let mut read_count = 0usize;
-        if let Err(error) = file.seek(SeekFrom::Start(start)).await {
-            return Err(read::Fail { error: Self::io_error_to_vfs(&error), file_attr: Some(attr) });
-        }
+        if self.uring.is_some() {
+            let buffer = match self.read_at_uring(&file, start, requested).await {
+                Ok(buffer) => buffer,
+                Err(error) => {
+                    return Err(read::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        file_attr: Some(attr),
+                    });
+                }
+            };
 
-        if remaining > 0 {
+            read_count = buffer.len();
+            let mut offset = 0usize;
             for chunk in data.iter_mut() {
-                if remaining == 0 {
+                if offset >= buffer.len() {
                     break;
                 }
 
-                let to_read = chunk.len().min(remaining);
-                let mut chunk_offset = 0usize;
+                let to_copy = (buffer.len() - offset).min(chunk.len());
+                chunk[..to_copy].copy_from_slice(&buffer[offset..offset + to_copy]);
+                offset += to_copy;
+            }
+        } else {
+            if let Err(error) = file.seek(SeekFrom::Start(start)).await {
+                return Err(read::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    file_attr: Some(attr),
+                });
+            }
 
-                while chunk_offset < to_read {
-                    match file.read(&mut chunk[chunk_offset..to_read]).await {
-                        Ok(0) => {
-                            remaining = 0;
-                            break;
-                        }
-                        Ok(bytes) => {
-                            chunk_offset += bytes;
-                            read_count += bytes;
-                        }
-                        Err(error) => {
-                            return Err(read::Fail {
-                                error: Self::io_error_to_vfs(&error),
-                                file_attr: Some(attr),
-                            });
+            if remaining > 0 {
+                for chunk in data.iter_mut() {
+                    if remaining == 0 {
+                        break;
+                    }
+
+                    let to_read = chunk.len().min(remaining);
+                    let mut chunk_offset = 0usize;
+
+                    while chunk_offset < to_read {
+                        match file.read(&mut chunk[chunk_offset..to_read]).await {
+                            Ok(0) => {
+                                remaining = 0;
+                                break;
+                            }
+                            Ok(bytes) => {
+                                chunk_offset += bytes;
+                                read_count += bytes;
+                            }
+                            Err(error) => {
+                                return Err(read::Fail {
+                                    error: Self::io_error_to_vfs(&error),
+                                    file_attr: Some(attr),
+                                });
+                            }
                         }
                     }
-                }
 
-                if chunk_offset < to_read {
-                    break;
-                }
+                    if chunk_offset < to_read {
+                        break;
+                    }
 
-                remaining -= to_read;
+                    remaining -= to_read;
+                }
             }
         }
 

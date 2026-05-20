@@ -16,6 +16,7 @@ pub mod args;
 pub mod config;
 pub mod fs;
 pub mod fs_map;
+pub mod uring;
 
 #[cfg(test)]
 mod tests;

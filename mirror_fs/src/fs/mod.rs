@@ -1,7 +1,9 @@
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
@@ -15,6 +17,7 @@ use nfs_mamont::vfs::write;
 use nfs_mamont::Slice;
 
 use crate::fs_map::FsMap;
+use crate::uring;
 
 mod access_impl;
 mod commit_impl;
@@ -54,6 +57,7 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
     generation: u64,
+    uring: Option<Arc<uring::UringExecutor>>,
 }
 
 impl MirrorFS {
@@ -63,7 +67,8 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap::new(root)), generation }
+        let uring = uring::UringExecutor::new(256);
+        Self { fsmap: RwLock::new(FsMap::new(root)), generation, uring }
     }
 
     /// Returns the root handle.
@@ -218,6 +223,72 @@ impl MirrorFS {
             }
         }
         data
+    }
+
+    async fn fsync_file(
+        &self,
+        file: &tokio::fs::File,
+        datasync: bool,
+    ) -> Result<(), std::io::Error> {
+        if let Some(uring) = &self.uring {
+            return uring.fsync(file.as_raw_fd(), datasync).await;
+        }
+
+        if datasync {
+            file.sync_data().await
+        } else {
+            file.sync_all().await
+        }
+    }
+
+    async fn write_all_uring(
+        &self,
+        file: &tokio::fs::File,
+        mut offset: u64,
+        data: &[u8],
+    ) -> Result<(), std::io::Error> {
+        let Some(uring) = &self.uring else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "io_uring not available",
+            ));
+        };
+
+        let mut written = 0usize;
+        while written < data.len() {
+            let chunk = data[written..].to_vec();
+            let bytes = uring.write_at(file.as_raw_fd(), offset, chunk).await?;
+            if bytes == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "io_uring write returned 0 bytes",
+                ));
+            }
+            written += bytes;
+            offset += bytes as u64;
+        }
+
+        Ok(())
+    }
+
+    async fn read_at_uring(
+        &self,
+        file: &tokio::fs::File,
+        offset: u64,
+        len: usize,
+    ) -> Result<Vec<u8>, std::io::Error> {
+        let Some(uring) = &self.uring else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "io_uring not available",
+            ));
+        };
+
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+
+        uring.read_at(file.as_raw_fd(), offset, len).await
     }
 
     fn file_attr(path: &Path) -> Option<file::Attr> {
