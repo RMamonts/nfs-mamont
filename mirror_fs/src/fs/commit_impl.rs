@@ -1,5 +1,4 @@
 use std::os::unix::io::FromRawFd;
-use tokio::fs::OpenOptions;
 
 use libc;
 use nfs_mamont::vfs::commit;
@@ -45,21 +44,10 @@ impl commit::Commit for MirrorFS {
             }
             drop(file);
         } else {
-            let file = match OpenOptions::new().write(true).open(&path).await {
-                Ok(file) => file,
-                Err(error) => {
-                    return Err(commit::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        file_wcc: self.wcc_data(&path, before).await,
-                    });
-                }
-            };
-            if let Err(error) = self.fsync_file(&file, false).await {
-                return Err(commit::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    file_wcc: self.wcc_data(&path, before).await,
-                });
-            }
+            return Err(commit::Fail {
+                error: vfs::Error::IO,
+                file_wcc: self.wcc_data(&path, before).await,
+            });
         }
 
         Ok(commit::Success {

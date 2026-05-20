@@ -1,7 +1,7 @@
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -245,22 +245,6 @@ impl MirrorFS {
             Ok(())
         } else {
             Err(vfs::Error::InvalidArgument)
-        }
-    }
-
-    async fn fsync_file(
-        &self,
-        file: &tokio::fs::File,
-        datasync: bool,
-    ) -> Result<(), std::io::Error> {
-        if let Some(uring) = self.uring_executor() {
-            return uring.fsync(file.as_raw_fd(), datasync).await;
-        }
-
-        if datasync {
-            file.sync_data().await
-        } else {
-            file.sync_all().await
         }
     }
 
