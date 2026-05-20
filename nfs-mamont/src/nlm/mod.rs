@@ -63,11 +63,13 @@ pub struct OpaqueHandle {
 
 impl OpaqueHandle {
     /// Creates a new opaque lock owner identifier.
+    #[inline]
     pub fn new(oh: Vec<u8>) -> Self {
         OpaqueHandle { opaque_handle: oh }
     }
 
     /// Returns the underlying bytes of the opaque handle.
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.opaque_handle
     }
