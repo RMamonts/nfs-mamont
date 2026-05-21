@@ -69,9 +69,10 @@ impl UringExecutor {
         let executor =
             Arc::new(Self { sender, max_fixed_len: pool.as_ref().map_or(0, |_| max_fixed_len) });
 
-        let _ = thread::Builder::new()
+        thread::Builder::new()
             .name("mirrorfs-uring".to_string())
-            .spawn(move || run_uring(ring, receiver, pool));
+            .spawn(move || run_uring(ring, receiver, pool))
+            .ok()?;
 
         Some(executor)
     }
