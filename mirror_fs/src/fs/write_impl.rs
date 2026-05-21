@@ -1,3 +1,5 @@
+use std::os::unix::io::{AsRawFd, FromRawFd};
+
 use libc;
 use nfs_mamont::vfs::{self, write};
 
@@ -23,6 +25,7 @@ impl write::Write for MirrorFS {
             }
         }
 
+        // let data = Self::collect_slice_bytes(&args.data, args.size);
         if let Some(uring) = self.uring_executor() {
             let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
                 Ok(fd) => fd,
@@ -33,9 +36,11 @@ impl write::Write for MirrorFS {
                     });
                 }
             };
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
             for data in &args.data {
-                if let Err(error) = self.write_all_uring(fd, args.offset, data).await
+                if let Err(error) = self.write_all_uring(file.as_raw_fd(), args.offset, data).await
                 {
+                    drop(file);
                     return Err(write::Fail {
                         error: Self::io_error_to_vfs(&error),
                         wcc_data: self.wcc_data(&path, before).await,
@@ -47,6 +52,7 @@ impl write::Write for MirrorFS {
                 write::StableHow::DataSync => uring.fsync(fd, true).await,
                 write::StableHow::FileSync => uring.fsync(fd, false).await,
             };
+            drop(file);
             if let Err(error) = sync_result {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),

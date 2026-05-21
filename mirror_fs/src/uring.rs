@@ -1,19 +1,253 @@
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::io;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::RawFd;
+use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use io_uring::{opcode, types};
+use io_uring::{opcode, types, IoUring, Probe};
+use libc;
+use tokio::sync::{mpsc, oneshot};
 
-use crate::uring::buffer::{FixedBufferPool, MAX_BATCH, BATCH_WAIT};
-use crate::uring::helpers::statx_to_data;
-use crate::uring::types::{InFlight, UringRequest};
+#[derive(Debug)]
+pub struct UringExecutor {
+    sender: mpsc::UnboundedSender<UringRequest>,
+    max_fixed_len: usize,
+}
 
-pub fn run_uring(
-    mut ring: io_uring::IoUring,
-    mut receiver: tokio::sync::mpsc::UnboundedReceiver<UringRequest>,
+#[derive(Debug)]
+pub struct UringPool {
+    rings: Vec<Arc<UringExecutor>>,
+    next: AtomicUsize,
+}
+
+#[derive(Clone, Debug)]
+pub struct StatxData {
+    pub mode: u32,
+    pub nlink: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub size: u64,
+    pub blocks: u64,
+    pub dev_major: u32,
+    pub dev_minor: u32,
+    pub ino: u64,
+    pub atime_sec: i64,
+    pub atime_nsec: i64,
+    pub mtime_sec: i64,
+    pub mtime_nsec: i64,
+    pub ctime_sec: i64,
+    pub ctime_nsec: i64,
+}
+
+impl UringExecutor {
+    pub fn new(entries: u32) -> Option<Arc<Self>> {
+        let mut ring = IoUring::new(entries).ok()?;
+        let mut probe = Probe::new();
+        ring.submitter().register_probe(&mut probe).ok()?;
+        if !probe.is_supported(opcode::Read::CODE)
+            || !probe.is_supported(opcode::Write::CODE)
+            || !probe.is_supported(opcode::OpenAt::CODE)
+            || !probe.is_supported(opcode::Statx::CODE)
+            || !probe.is_supported(opcode::Fsync::CODE)
+        {
+            return None;
+        }
+        let max_fixed_len = DEFAULT_FIXED_BUFFER_LEN;
+        let pool = if probe.is_supported(opcode::ReadFixed::CODE)
+            && probe.is_supported(opcode::WriteFixed::CODE)
+        {
+            FixedBufferPool::new(&mut ring, DEFAULT_FIXED_BUFFER_COUNT, max_fixed_len).ok()
+        } else {
+            None
+        };
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let executor =
+            Arc::new(Self { sender, max_fixed_len: pool.as_ref().map_or(0, |_| max_fixed_len) });
+
+        let _ = thread::Builder::new()
+            .name("mirrorfs-uring".to_string())
+            .spawn(move || run_uring(ring, receiver, pool));
+
+        Some(executor)
+    }
+
+    pub fn max_io_len(&self) -> usize {
+        if self.max_fixed_len == 0 {
+            usize::MAX
+        } else {
+            self.max_fixed_len
+        }
+    }
+
+    pub async fn fsync(&self, fd: RawFd, datasync: bool) -> io::Result<()> {
+        let (reply, wait) = oneshot::channel();
+        let flags = if datasync { types::FsyncFlags::DATASYNC } else { types::FsyncFlags::empty() };
+        let request = UringRequest::Fsync { fd, flags, reply };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+
+    pub async fn write_at(&self, fd: RawFd, offset: u64, buffer: Vec<u8>) -> io::Result<usize> {
+        let (reply, wait) = oneshot::channel();
+        let request = UringRequest::Write { fd, offset, buffer, reply };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+
+    pub async fn read_at(&self, fd: RawFd, offset: u64, len: usize) -> io::Result<Vec<u8>> {
+        let (reply, wait) = oneshot::channel();
+        let request = UringRequest::Read { fd, offset, len, reply };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+
+    pub async fn open_at(&self, path: &Path, flags: i32, mode: u32) -> io::Result<RawFd> {
+        let (reply, wait) = oneshot::channel();
+        let c_path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))?;
+        let request = UringRequest::Open { path: c_path, flags, mode, reply };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+
+    pub async fn statx(&self, path: &Path, follow: bool) -> io::Result<StatxData> {
+        let (reply, wait) = oneshot::channel();
+        let c_path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))?;
+        let request = UringRequest::Statx { path: c_path, follow, reply };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+}
+
+impl UringPool {
+    pub fn new(count: usize, entries: u32) -> Option<Arc<Self>> {
+        if count == 0 {
+            return None;
+        }
+
+        let mut rings = Vec::with_capacity(count);
+        for _ in 0..count {
+            rings.push(UringExecutor::new(entries)?);
+        }
+
+        Some(Arc::new(Self { rings, next: AtomicUsize::new(0) }))
+    }
+
+    pub fn pick(&self) -> Arc<UringExecutor> {
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.rings.len();
+        self.rings[index].clone()
+    }
+
+    pub fn max_io_len(&self) -> usize {
+        self.rings.first().map(|ring| ring.max_io_len()).unwrap_or(usize::MAX)
+    }
+}
+
+enum UringRequest {
+    Fsync { fd: RawFd, flags: types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
+    Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: oneshot::Sender<io::Result<usize>> },
+    Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
+    Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
+    Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
+}
+
+enum InFlight {
+    Fsync(oneshot::Sender<io::Result<()>>),
+    Write { reply: oneshot::Sender<io::Result<usize>>, buffer: Vec<u8> },
+    WriteFixed { reply: oneshot::Sender<io::Result<usize>>, index: usize, len: usize },
+    Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
+    ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
+    Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
+    Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
+}
+
+const MAX_BATCH: usize = 64;
+const BATCH_WAIT: Duration = Duration::from_micros(50);
+const DEFAULT_FIXED_BUFFER_COUNT: usize = 128;
+const DEFAULT_FIXED_BUFFER_LEN: usize = 64 * 1024;
+
+struct FixedBufferPool {
+    buffers: Vec<Vec<u8>>,
+    free: Vec<usize>,
+    len: usize,
+}
+
+impl FixedBufferPool {
+    fn new(ring: &mut IoUring, count: usize, len: usize) -> io::Result<Self> {
+        if count == 0 || len == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid fixed buffer pool"));
+        }
+
+        let mut buffers = Vec::with_capacity(count);
+        let mut iovecs = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut buffer = vec![0u8; len];
+            let iovec = libc::iovec { iov_base: buffer.as_mut_ptr().cast(), iov_len: buffer.len() };
+            buffers.push(buffer);
+            iovecs.push(iovec);
+        }
+
+        unsafe {
+            ring.submitter().register_buffers(&iovecs)?;
+        }
+
+        let free = (0..count).rev().collect();
+        Ok(Self { buffers, free, len })
+    }
+
+    fn take(&mut self) -> Option<usize> {
+        self.free.pop()
+    }
+
+    fn release(&mut self, index: usize) {
+        self.free.push(index);
+    }
+}
+
+fn run_uring(
+    mut ring: IoUring,
+    mut receiver: mpsc::UnboundedReceiver<UringRequest>,
     mut pool: Option<FixedBufferPool>,
 ) {
     let mut next_id: u64 = 1;
@@ -58,14 +292,14 @@ pub fn run_uring(
                     }
                     UringRequest::Write { fd, offset, buffer, reply } => {
                         if let Some(pool) = pool.as_mut() {
-                            if buffer.len() <= pool.len() {
+                            if buffer.len() <= pool.len {
                                 if let Some(index) = pool.take() {
-                                    pool.buffer_mut(index)[..buffer.len()].copy_from_slice(&buffer);
+                                    pool.buffers[index][..buffer.len()].copy_from_slice(&buffer);
                                     let user_data = next_id;
                                     next_id = next_id.wrapping_add(1);
                                     let entry = opcode::WriteFixed::new(
                                         types::Fd(fd),
-                                        pool.buffer(index).as_ptr(),
+                                        pool.buffers[index].as_ptr(),
                                         buffer.len() as u32,
                                         index as u16,
                                     )
@@ -110,13 +344,13 @@ pub fn run_uring(
                     }
                     UringRequest::Read { fd, offset, len, reply } => {
                         if let Some(pool) = pool.as_mut() {
-                            if len <= pool.len() {
+                            if len <= pool.len {
                                 if let Some(index) = pool.take() {
                                     let user_data = next_id;
                                     next_id = next_id.wrapping_add(1);
                                     let entry = opcode::ReadFixed::new(
                                         types::Fd(fd),
-                                        pool.buffer_mut_ref(index),
+                                        pool.buffers[index].as_mut_ptr(),
                                         len as u32,
                                         index as u16,
                                     )
@@ -289,7 +523,7 @@ pub fn run_uring(
                             let output = match (pool.as_mut(), result) {
                                 (Some(pool), Ok(bytes)) => {
                                     let mut data = vec![0u8; bytes];
-                                    data.copy_from_slice(&pool.buffer(index)[..bytes]);
+                                    data.copy_from_slice(&pool.buffers[index][..bytes]);
                                     pool.release(index);
                                     Ok(data)
                                 }
@@ -326,7 +560,7 @@ pub fn run_uring(
     }
 }
 
-pub fn fail_inflight(
+fn fail_inflight(
     inflight: HashMap<u64, InFlight>,
     error: io::Error,
     pool: &mut Option<FixedBufferPool>,
@@ -365,3 +599,22 @@ pub fn fail_inflight(
     }
 }
 
+fn statx_to_data(_path: &CString, statx: &libc::statx) -> io::Result<StatxData> {
+    Ok(StatxData {
+        mode: statx.stx_mode as u32,
+        nlink: statx.stx_nlink,
+        uid: statx.stx_uid,
+        gid: statx.stx_gid,
+        size: statx.stx_size,
+        blocks: statx.stx_blocks,
+        dev_major: statx.stx_dev_major,
+        dev_minor: statx.stx_dev_minor,
+        ino: statx.stx_ino,
+        atime_sec: statx.stx_atime.tv_sec,
+        atime_nsec: statx.stx_atime.tv_nsec as i64,
+        mtime_sec: statx.stx_mtime.tv_sec,
+        mtime_nsec: statx.stx_mtime.tv_nsec as i64,
+        ctime_sec: statx.stx_ctime.tv_sec,
+        ctime_nsec: statx.stx_ctime.tv_nsec as i64,
+    })
+}
