@@ -1,5 +1,4 @@
 use nfs_mamont::vfs;
-use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use libc;
 use nfs_mamont::vfs::read;
@@ -42,18 +41,16 @@ impl read::Read for MirrorFS {
                     });
                 }
             };
-            let file = unsafe { std::fs::File::from_raw_fd(fd) };
-            let buffer = match self.read_at_uring(file.as_raw_fd(), start, requested).await {
+
+            let buffer = match self.read_at_uring(fd, start, requested).await {
                 Ok(buffer) => buffer,
                 Err(error) => {
-                    drop(file);
                     return Err(read::Fail {
                         error: Self::io_error_to_vfs(&error),
                         file_attr: Some(attr),
                     });
                 }
             };
-            drop(file);
 
             read_count = buffer.len();
             let mut offset = 0usize;
