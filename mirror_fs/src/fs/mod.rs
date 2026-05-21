@@ -62,13 +62,12 @@ pub struct MirrorFS {
 
 impl MirrorFS {
     /// Creates a new mirror file system with the given root path.
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, ring_count: usize, ring_size: u32) -> Self {
         let root = std::fs::canonicalize(&root).unwrap_or(root);
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        let ring_count = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-        let uring = uring::UringPool::new(ring_count, 2048);
+        let uring = uring::UringPool::new(ring_count, ring_size);
         Self { fsmap: RwLock::new(FsMap::new(root)), generation, uring }
     }
 

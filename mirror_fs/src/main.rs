@@ -29,7 +29,11 @@ async fn main() -> std::io::Result<()> {
     let args = args::Args::parse();
 
     let config = config::load_config(&args.config_path)?;
-    let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
+    let fs = Arc::new(fs::MirrorFS::new(
+        config.export_root.clone(),
+        config.uring.ring_count.get(),
+        config.uring.ring_size.get() as u32,
+    ));
 
     let context = ServerContext::new(
         fs.clone(),
