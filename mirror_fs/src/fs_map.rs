@@ -6,7 +6,6 @@ use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 
 /// Maps mirror paths to opaque VFS handles.
-#[derive(Debug)]
 pub struct FsMap {
     root: PathBuf,
     next_id: u64,

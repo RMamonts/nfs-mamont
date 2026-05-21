@@ -6,6 +6,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::RwLock;
 
+use crate::cache::readdir::ReadDirCache;
+use crate::fs_map::FsMap;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
@@ -13,8 +15,6 @@ use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
 use nfs_mamont::Slice;
-
-use crate::fs_map::FsMap;
 
 mod access_impl;
 mod commit_impl;
@@ -50,10 +50,20 @@ const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
 };
 
 /// A file system implementation that mirrors a local directory.
-#[derive(Debug)]
 pub struct MirrorFS {
     fsmap: RwLock<FsMap>,
     generation: u64,
+    cache: Cache,
+}
+
+struct Cache {
+    read_dir_cache: ReadDirCache,
+}
+
+impl Cache {
+    pub fn new() -> Self {
+        Self { read_dir_cache: ReadDirCache::new() }
+    }
 }
 
 impl MirrorFS {
@@ -63,7 +73,7 @@ impl MirrorFS {
         let generation =
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
-        Self { fsmap: RwLock::new(FsMap::new(root)), generation }
+        Self { fsmap: RwLock::new(FsMap::new(root)), generation, cache: Cache::new() }
     }
 
     /// Returns the root handle.
@@ -296,7 +306,7 @@ impl MirrorFS {
     fn list_directory_entries(
         &self,
         dir_path: &Path,
-    ) -> Result<Vec<(file::Name, PathBuf, Metadata)>, vfs::Error> {
+    ) -> Result<Vec<(file::Name, Metadata)>, vfs::Error> {
         let mut entries = Vec::new();
         let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
@@ -305,12 +315,9 @@ impl MirrorFS {
             let file_name = item.file_name();
             let name = file::Name::new(file_name.to_string_lossy().into_owned())
                 .map_err(|_| vfs::Error::InvalidArgument)?;
-            let path = item.path();
             let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
-            entries.push((name, path, metadata));
+            entries.push((name, metadata));
         }
-
-        entries.sort_by(|left, right| left.0.as_str().cmp(right.0.as_str()));
         Ok(entries)
     }
 
