@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::uring::buffer::{DEFAULT_FIXED_BUFFER_COUNT, DEFAULT_FIXED_BUFFER_LEN};
 use crate::uring::types::StatxData;
 use crate::uring::worker::run_uring;
-use crate::uring::{UringRequest, FixedBufferPool};
+use crate::uring::{FixedBufferPool, UringRequest};
 
 #[derive(Debug)]
 pub struct UringExecutor {

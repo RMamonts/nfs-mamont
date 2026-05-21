@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use io_uring::{opcode, types};
 
-use crate::uring::buffer::{FixedBufferPool, MAX_BATCH, BATCH_WAIT};
+use crate::uring::buffer::{FixedBufferPool, BATCH_WAIT, MAX_BATCH};
 use crate::uring::helpers::statx_to_data;
 use crate::uring::types::{InFlight, UringRequest};
 
@@ -364,4 +364,3 @@ pub fn fail_inflight(
         }
     }
 }
-

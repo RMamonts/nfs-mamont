@@ -25,64 +25,20 @@ pub struct StatxData {
 
 #[derive(Debug)]
 pub enum UringRequest {
-    Fsync {
-        fd: RawFd,
-        flags: io_uring::types::FsyncFlags,
-        reply: oneshot::Sender<io::Result<()>>,
-    },
-    Write {
-        fd: RawFd,
-        offset: u64,
-        buffer: Vec<u8>,
-        reply: oneshot::Sender<io::Result<usize>>,
-    },
-    Read {
-        fd: RawFd,
-        offset: u64,
-        len: usize,
-        reply: oneshot::Sender<io::Result<Vec<u8>>>,
-    },
-    Open {
-        path: CString,
-        flags: i32,
-        mode: u32,
-        reply: oneshot::Sender<io::Result<RawFd>>,
-    },
-    Statx {
-        path: CString,
-        follow: bool,
-        reply: oneshot::Sender<io::Result<StatxData>>,
-    },
+    Fsync { fd: RawFd, flags: io_uring::types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
+    Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: oneshot::Sender<io::Result<usize>> },
+    Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
+    Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
+    Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
 }
 
 #[derive(Debug)]
 pub enum InFlight {
     Fsync(oneshot::Sender<io::Result<()>>),
-    Write {
-        reply: oneshot::Sender<io::Result<usize>>,
-        buffer: Vec<u8>,
-    },
-    WriteFixed {
-        reply: oneshot::Sender<io::Result<usize>>,
-        index: usize,
-        len: usize,
-    },
-    Read {
-        reply: oneshot::Sender<io::Result<Vec<u8>>>,
-        buffer: Vec<u8>,
-    },
-    ReadFixed {
-        reply: oneshot::Sender<io::Result<Vec<u8>>>,
-        index: usize,
-        len: usize,
-    },
-    Open {
-        reply: oneshot::Sender<io::Result<RawFd>>,
-        _path: CString,
-    },
-    Statx {
-        reply: oneshot::Sender<io::Result<StatxData>>,
-        path: CString,
-        statx: Box<libc::statx>,
-    },
+    Write { reply: oneshot::Sender<io::Result<usize>>, buffer: Vec<u8> },
+    WriteFixed { reply: oneshot::Sender<io::Result<usize>>, index: usize, len: usize },
+    Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
+    ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
+    Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
+    Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
 }
