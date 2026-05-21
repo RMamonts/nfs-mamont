@@ -23,7 +23,8 @@ impl FixedBufferPool {
         let mut iovecs = Vec::with_capacity(count);
         for _ in 0..count {
             let mut buffer = vec![0u8; len];
-            let iovec = libc::iovec { iov_base: buffer.as_mut_ptr().cast(), iov_len: buffer.len() };
+            let iovec =
+                libc::iovec { iov_base: buffer.as_mut_ptr().cast(), iov_len: buffer.len() };
             buffers.push(buffer);
             iovecs.push(iovec);
         }
