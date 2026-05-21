@@ -19,6 +19,29 @@ use nfs_mamont::vfs::write;
 use crate::fs_map::FsMap;
 use crate::uring;
 
+/// RAII guard for raw file descriptors
+struct FdGuard(RawFd);
+
+impl FdGuard {
+    fn new(fd: RawFd) -> Self {
+        Self(fd)
+    }
+
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
+impl Drop for FdGuard {
+    fn drop(&mut self) {
+        if self.0 >= 0 {
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
+}
+
 mod access_impl;
 mod commit_impl;
 mod create_impl;
@@ -434,12 +457,13 @@ impl MirrorFS {
         path: &Path,
         flags: i32,
         mode: u32,
-    ) -> Result<RawFd, std::io::Error> {
+    ) -> Result<FdGuard, std::io::Error> {
         let Some(uring) = self.uring_executor() else {
             return Err(std::io::Error::other("io_uring not available"));
         };
 
-        uring.open_at(path, flags, mode).await
+        let fd = uring.open_at(path, flags, mode).await?;
+        Ok(FdGuard::new(fd))
     }
 
     fn uring_executor(&self) -> Option<Arc<uring::UringExecutor>> {

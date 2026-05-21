@@ -42,7 +42,7 @@ impl read::Read for MirrorFS {
                 }
             };
 
-            let buffer = match self.read_at_uring(fd, start, requested).await {
+            let buffer = match self.read_at_uring(fd.as_raw_fd(), start, requested).await {
                 Ok(buffer) => buffer,
                 Err(error) => {
                     return Err(read::Fail {

@@ -32,7 +32,7 @@ impl commit::Commit for MirrorFS {
                     });
                 }
             };
-            if let Err(error) = uring.fsync(fd, false).await {
+            if let Err(error) = uring.fsync(fd.as_raw_fd(), false).await {
                 return Err(commit::Fail {
                     error: Self::io_error_to_vfs(&error),
                     file_wcc: self.wcc_data(&path, before).await,
