@@ -35,7 +35,9 @@ impl write::Write for MirrorFS {
             };
             let mut increment = 0;
             for data in &args.data {
-                if let Err(error) = self.write_all_uring(fd.as_raw_fd(), args.offset + increment, data).await {
+                if let Err(error) =
+                    self.write_all_uring(fd.as_raw_fd(), args.offset + increment, data).await
+                {
                     return Err(write::Fail {
                         error: Self::io_error_to_vfs(&error),
                         wcc_data: self.wcc_data(&path, before).await,
