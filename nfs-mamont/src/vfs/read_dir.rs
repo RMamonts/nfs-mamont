@@ -82,6 +82,7 @@ impl CookieVerifier {
 }
 
 // not exactly as in RFC, but possible
+#[derive(Clone)]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero

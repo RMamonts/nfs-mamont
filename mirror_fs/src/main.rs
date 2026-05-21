@@ -17,6 +17,7 @@ pub mod config;
 pub mod fs;
 pub mod fs_map;
 
+mod cache;
 #[cfg(test)]
 mod tests;
 
