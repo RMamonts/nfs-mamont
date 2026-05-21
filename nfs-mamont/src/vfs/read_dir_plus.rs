@@ -6,6 +6,7 @@ use crate::vfs::read_dir::CookieVerifier;
 
 use super::file;
 
+#[derive(Clone)]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero

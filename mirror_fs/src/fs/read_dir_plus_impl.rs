@@ -1,7 +1,8 @@
+use super::MirrorFS;
+use crate::cache::readdir::{DirectoryEntrySnapshot, DirectoryListingSnapshot};
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
-
-use super::MirrorFS;
+use std::sync::Arc;
 
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
@@ -37,13 +38,14 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, (name, path, meta)) in entries.iter().cloned().enumerate().skip(start) {
+        for (index, (name, meta)) in entries.iter().cloned().enumerate().skip(start) {
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
             let attr = Self::attr_from_metadata(&meta);
-            let handle = match self.handle_for_path(&path).await {
+            let new_path = dir_path.join(name.as_str());
+            let handle = match self.handle_for_path(&new_path).await {
                 Ok(handle) => handle,
                 Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
             };
@@ -56,6 +58,22 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             });
             used = used.saturating_add(estimated);
         }
+
+        let snapshot = Arc::new(DirectoryListingSnapshot {
+            verifier,
+            entries: Arc::new(
+                result
+                    .iter()
+                    .map(|entry| DirectoryEntrySnapshot {
+                        name: entry.file_name.clone(),
+                        file_id: entry.file_id,
+                    })
+                    .collect(),
+            ),
+        });
+
+        // set cache for future use
+        self.cache.read_dir_cache.add_entry(&args.dir, snapshot.clone()).await;
 
         Ok(read_dir_plus::Success {
             dir_attr: Some(dir_attr),
