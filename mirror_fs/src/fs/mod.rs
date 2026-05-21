@@ -1,6 +1,6 @@
 use std::fs::Metadata;
 use std::io::ErrorKind;
-use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{DirEntryExt, FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -303,10 +303,7 @@ impl MirrorFS {
         Ok(())
     }
 
-    fn list_directory_entries(
-        &self,
-        dir_path: &Path,
-    ) -> Result<Vec<(file::Name, Metadata)>, vfs::Error> {
+    fn list_directory_entries(&self, dir_path: &Path) -> Result<Vec<file::Name>, vfs::Error> {
         let mut entries = Vec::new();
         let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
@@ -315,8 +312,7 @@ impl MirrorFS {
             let file_name = item.file_name();
             let name = file::Name::new(file_name.to_string_lossy().into_owned())
                 .map_err(|_| vfs::Error::InvalidArgument)?;
-            let metadata = item.metadata().map_err(|error| Self::io_error_to_vfs(&error))?;
-            entries.push((name, metadata));
+            entries.push(name);
         }
         Ok(entries)
     }
