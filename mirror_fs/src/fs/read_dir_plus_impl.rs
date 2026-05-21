@@ -1,7 +1,7 @@
 use super::MirrorFS;
-use crate::cache::readdir::{DirectoryEntrySnapshot, DirectoryListingSnapshot};
+use crate::cache::readdir::DirectoryListingSnapshot;
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
-use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
+use nfs_mamont::vfs::{self, file, read_dir, read_dir_plus};
 use std::sync::Arc;
 
 impl read_dir_plus::ReadDirPlus for MirrorFS {
@@ -30,22 +30,36 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             });
         }
 
-        let entries = match self.list_directory_entries(&dir_path) {
-            Ok(entries) => entries,
-            Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
+        let entries = if let Some(cached) =
+            self.cache.read_dir_cache.look_for_cache(&args.dir).await
+        {
+            cached.entries.iter().cloned().collect::<Vec<file::Name>>()
+        } else {
+            match self.list_directory_entries(&dir_path) {
+                Ok(entries) => entries,
+                Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
+            }
         };
 
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, (name, meta)) in entries.iter().cloned().enumerate().skip(start) {
+        for (index, name) in entries.iter().cloned().enumerate().skip(start) {
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
-            let attr = Self::attr_from_metadata(&meta);
-            let new_path = dir_path.join(name.as_str());
-            let handle = match self.handle_for_path(&new_path).await {
+            let path = dir_path.join(name.as_str());
+            let attr = match Self::file_attr(&path) {
+                Some(attr) => attr,
+                None => {
+                    return Err(read_dir_plus::Fail {
+                        error: vfs::Error::ServerFault,
+                        dir_attr: Some(dir_attr),
+                    })
+                }
+            };
+            let handle = match self.handle_for_path(&path).await {
                 Ok(handle) => handle,
                 Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
             };
@@ -59,18 +73,9 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             used = used.saturating_add(estimated);
         }
 
-        let snapshot = Arc::new(DirectoryListingSnapshot {
-            verifier,
-            entries: Arc::new(
-                result
-                    .iter()
-                    .map(|entry| DirectoryEntrySnapshot {
-                        name: entry.file_name.clone(),
-                        file_id: entry.file_id,
-                    })
-                    .collect(),
-            ),
-        });
+        let eof = start >= entries.len() || start.saturating_add(result.len()) >= entries.len();
+
+        let snapshot = Arc::new(DirectoryListingSnapshot { verifier, entries: Arc::new(entries) });
 
         // set cache for future use
         self.cache.read_dir_cache.add_entry(&args.dir, snapshot.clone()).await;
@@ -78,7 +83,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         Ok(read_dir_plus::Success {
             dir_attr: Some(dir_attr),
             cookie_verifier: verifier,
-            eof: start >= entries.len() || start.saturating_add(result.len()) >= entries.len(),
+            eof,
             entries: result,
         })
     }
