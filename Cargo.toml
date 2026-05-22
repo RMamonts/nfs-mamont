@@ -19,6 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
+async-lock = "3.4.0"
 
 # Internal dependencies
 nfs-mamont.path = "nfs-mamont"

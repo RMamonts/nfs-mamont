@@ -21,3 +21,4 @@ tracing-subscriber.workspace = true
 async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
+async-lock.workspace = true

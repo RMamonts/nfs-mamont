@@ -83,7 +83,7 @@ async fn allocate_capacity() {
     check_allocate(BUFFER_SIZE, BUFFER_CONT, capacity).await
 }
 
-#[monoio::test]
+#[monoio::test(timer_enabled = true)]
 async fn reclaiming() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();

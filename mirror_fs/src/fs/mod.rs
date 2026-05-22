@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use std::sync::RwLock;
+use async_lock::RwLock;
 
 use libc;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
@@ -96,7 +96,7 @@ impl MirrorFS {
 
     /// Returns the root handle.
     pub async fn root_handle(&self) -> file::Handle {
-        self.fsmap.read().unwrap().root_handle()
+        self.fsmap.read().await.root_handle()
     }
 
     fn write_verifier(&self) -> write::Verifier {
@@ -111,20 +111,20 @@ impl MirrorFS {
     }
 
     async fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let fsmap = self.fsmap.read().unwrap();
+        let fsmap = self.fsmap.read().await;
         fsmap.path_for_handle(handle)
     }
     /// Returns a handle for a path under the mirror root.
     pub async fn handle_for_path(&self, path: &Path) -> Result<file::Handle, vfs::Error> {
-        self.fsmap.write().unwrap().ensure_handle_for_path(path)
+        self.fsmap.write().await.ensure_handle_for_path(path)
     }
 
     async fn remove_cached_path(&self, path: &Path) {
-        self.fsmap.write().unwrap().remove_path(path);
+        self.fsmap.write().await.remove_path(path);
     }
 
     async fn rename_cached_path(&self, from: &Path, to: &Path) -> Result<(), vfs::Error> {
-        self.fsmap.write().unwrap().rename_path(from, to)
+        self.fsmap.write().await.rename_path(from, to)
     }
 
     fn ensure_name_allowed(name: &file::Name) -> Result<(), vfs::Error> {
