@@ -51,6 +51,8 @@ impl rm_dir::RmDir for MirrorFS {
         match std::fs::remove_dir(&child_path) {
             Ok(()) => {
                 self.remove_cached_path(&child_path).await;
+                // invalidate parent cache
+                self.cache.read_dir_cache.invalidate_entry(dir_path.clone());
                 Ok(rm_dir::Success { wcc_data: Self::wcc_data(&dir_path, before) })
             }
             Err(error) => Err(rm_dir::Fail {

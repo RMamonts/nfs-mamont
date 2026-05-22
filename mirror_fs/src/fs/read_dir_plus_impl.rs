@@ -1,8 +1,11 @@
-use super::MirrorFS;
-use crate::cache::readdir::DirectoryListingSnapshot;
+use std::sync::Arc;
+
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
-use std::sync::Arc;
+
+use crate::cache::readdir::DirectoryListingSnapshot;
+
+use super::MirrorFS;
 
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
@@ -49,7 +52,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
             if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
-            let attr = match Self::file_attr(&path) {
+            let attr = match Self::file_attr(path) {
                 Some(attr) => attr,
                 None => {
                     return Err(read_dir_plus::Fail {
@@ -58,7 +61,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
                     })
                 }
             };
-            let handle = match self.handle_for_path(&path).await {
+            let handle = match self.handle_for_path(path).await {
                 Ok(handle) => handle,
                 Err(error) => return Err(read_dir_plus::Fail { error, dir_attr: Some(dir_attr) }),
             };
@@ -74,7 +77,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
 
         let eof = start >= entries.len() || start.saturating_add(result.len()) >= entries.len();
 
-        let snapshot = Arc::new(DirectoryListingSnapshot { verifier, entries: Arc::new(entries) });
+        let snapshot = Arc::new(DirectoryListingSnapshot { entries: Arc::new(entries) });
 
         // set cache for future use
         self.cache.read_dir_cache.add_entry(&args.dir, snapshot).await;

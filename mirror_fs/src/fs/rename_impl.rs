@@ -108,6 +108,11 @@ impl rename::Rename for MirrorFS {
             });
         }
 
+        // invalidate parent cache
+        self.cache.read_dir_cache.invalidate_entry(from_dir_path.clone());
+        // invalidate parent cache
+        self.cache.read_dir_cache.invalidate_entry(to_dir_path.clone());
+
         Ok(rename::Success {
             from_dir_wcc: Self::wcc_data(&from_dir_path, from_before),
             to_dir_wcc: Self::wcc_data(&to_dir_path, to_before),

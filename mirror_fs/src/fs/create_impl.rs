@@ -117,6 +117,8 @@ impl create::Create for MirrorFS {
             }
         };
 
+        // invalidate parent cache
+        self.cache.read_dir_cache.invalidate_entry(dir_path.clone());
         Ok(create::Success {
             file: Some(handle),
             attr: Some(attr),
