@@ -235,7 +235,7 @@ async fn parse_mount_call() {
     let alloc = Arc::new(MockAllocator::new(0));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
-    let result: ArgWrapper<_> = parser.next_message().await.unwrap();
+    let result = parser.next_message().await.unwrap();
 
     let ProcArguments::Mount(mount_args) = result.proc else {
         panic!("Expected mount protocol arguments");
