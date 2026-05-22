@@ -1,4 +1,4 @@
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use async_channel;
 use tracing::debug;
 
 use crate::task::{ProcReply, ProcResult};
@@ -8,41 +8,31 @@ use crate::{
 };
 
 pub struct NlmCommand {
-    /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
-    /// Placeholder for NLM procedure args.
+    pub result_tx: async_channel::Sender<ProcReply>,
     pub args: NlmArgWrapper,
 }
 
 pub struct NlmTask {
-    // Channel for commands from client connection tasks
-    receiver: UnboundedReceiver<NlmCommand>,
+    receiver: async_channel::Receiver<NlmCommand>,
 }
 
 impl NlmTask {
-    /// Creates new instance of [`NlmTask`]
-    pub fn new() -> (Self, UnboundedSender<NlmCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand>();
+    pub fn new() -> (Self, async_channel::Sender<NlmCommand>) {
+        let (sender, receiver) = async_channel::unbounded::<NlmCommand>();
 
         let task = Self { receiver };
 
         (task, sender)
     }
 
-    /// Spawns a [`NlmTask`]  that processes nlm commands received from
-    /// `ReadTask` and returns results to `WriteTask`.
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        monoio::spawn(async move { self.run().await });
     }
 
     async fn run(self) {
-        let mut receiver = self.receiver;
+        let receiver = self.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Ok(command) = receiver.recv().await {
             let NlmCommand { result_tx, args } = command;
             let NlmArgWrapper { header, proc } = args;
             debug!(xid = header.xid, "nlm task: command received");
@@ -52,14 +42,10 @@ impl NlmTask {
                 _ => todo!(),
             };
 
-            // TODO:
-            // - some logs when occurred error
-            // - or retry with fail
-            // * but don't stop task
             let _ = result_tx.send(ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
-            });
+            }).await;
             debug!(xid = header.xid, "nlm task: reply queued");
         }
     }

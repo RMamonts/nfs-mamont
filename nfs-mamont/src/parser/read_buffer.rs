@@ -13,7 +13,7 @@ use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use monoio::io::{AsyncReadRent, AsyncReadRentExt};
 
 use crate::parser::{Error, Result};
 
@@ -28,7 +28,7 @@ use crate::parser::{Error, Result};
 ///
 /// The buffer implements [`Read`] to work with synchronous parsing functions,
 /// while internally managing asynchronous I/O operations.
-pub struct CountBuffer<S: AsyncRead + Unpin> {
+pub struct CountBuffer<S: AsyncReadRent + Unpin> {
     // actually, there are definitely two
     bufs: Vec<ReadBuffer>,
     read: usize,
@@ -38,7 +38,7 @@ pub struct CountBuffer<S: AsyncRead + Unpin> {
     total_bytes: usize,
 }
 
-impl<S: AsyncRead + Unpin> CountBuffer<S> {
+impl<S: AsyncReadRent + Unpin> CountBuffer<S> {
     /// Creates a new `CountBuffer` with the specified capacity for each internal buffer.
     ///
     /// # Arguments
@@ -68,11 +68,15 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(0);
         }
 
-        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
+        let avail = self.bufs[self.write].available_write();
+        let mut read_buf = vec![0u8; avail];
+        let (result, read_buf) = self.socket.read(read_buf).await;
+        let bytes_read = result?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
 
+        self.bufs[self.write].copy_from(&read_buf[..bytes_read]);
         self.bufs[self.write].extend(bytes_read);
 
         Ok(bytes_read)
@@ -153,7 +157,19 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     /// Returns the number of bytes read (equal to `dest.len()`), or an error
     /// if the connection is closed before the buffer can be filled.
     pub async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
+        let mut offset = 0;
+        while offset < dest.len() {
+            let buf = &mut dest[offset..];
+            let avail = buf.len();
+            let mut read_buf = vec![0u8; avail];
+            let (result, read_buf) = self.socket.read(read_buf).await;
+            let n = result?;
+            if n == 0 {
+                return Err(io::Error::new(ErrorKind::UnexpectedEof, "connection closed"));
+            }
+            buf[..n].copy_from_slice(&read_buf[..n]);
+            offset += n;
+        }
         self.total_bytes += dest.len();
         Ok(dest.len())
     }
@@ -225,12 +241,12 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
             return Ok(());
         }
 
-        let mut src = (&mut self.socket).take(from_socket as u64);
-
         let mut actual = 0;
-
-        loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
+        while actual < from_socket {
+            let avail = from_socket - actual;
+            let mut read_buf = vec![0u8; avail];
+            let (result, read_buf) = self.socket.read(read_buf).await;
+            let n = result?;
             if n == 0 {
                 break;
             }
@@ -251,7 +267,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     }
 }
 
-impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
+impl<S: AsyncReadRent + Unpin> Read for CountBuffer<S> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n1 = self.bufs[self.read].read(buf)?;
         let n2 = self.bufs[self.write].read(&mut buf[n1..])?;
@@ -308,6 +324,13 @@ impl ReadBuffer {
     #[inline]
     fn write_slice(&mut self) -> &mut [u8] {
         &mut self.data[self.write_pos..]
+    }
+
+    /// Copies data from the given slice into the buffer starting at the write position.
+    #[inline]
+    fn copy_from(&mut self, src: &[u8]) {
+        let end = self.write_pos + src.len();
+        self.data[self.write_pos..end].copy_from_slice(src);
     }
 
     /// Advances the read position by `n` bytes, consuming that many bytes.

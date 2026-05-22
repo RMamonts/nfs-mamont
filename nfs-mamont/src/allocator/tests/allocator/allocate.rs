@@ -44,7 +44,7 @@ async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_si
     assert_eq!(slice.iter().count(), count.get());
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn allocate_less_than_size() {
     const BUFFER_SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const BUFFER_CONT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
@@ -55,7 +55,7 @@ async fn allocate_less_than_size() {
     }
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn allocate_size() {
     const BUFFER_SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const BUFFER_CONT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
@@ -63,7 +63,7 @@ async fn allocate_size() {
     check_allocate(BUFFER_SIZE, BUFFER_CONT, BUFFER_SIZE).await
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn allocate_more_than_size() {
     const BUFFER_SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const BUFFER_CONT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
@@ -74,7 +74,7 @@ async fn allocate_more_than_size() {
     }
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn allocate_capacity() {
     const BUFFER_SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const BUFFER_CONT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
@@ -83,7 +83,7 @@ async fn allocate_capacity() {
     check_allocate(BUFFER_SIZE, BUFFER_CONT, capacity).await
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn reclaiming() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
@@ -95,7 +95,7 @@ async fn reclaiming() {
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
         assert_eq!(slice.iter().count(), COUNT.get());
 
-        tokio::time::timeout(Duration::from_millis(120), async {
+        monoio::time::timeout(Duration::from_millis(120), async {
             allocator.allocate(NonZeroUsize::new(1).unwrap()).await.unwrap();
             unreachable!("allocator should hang")
         })
@@ -109,7 +109,7 @@ async fn reclaiming() {
     }
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn allocate_more_than_capacity_returns_none() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();

@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, file, link};
 
 use super::MirrorFS;
@@ -47,7 +45,7 @@ impl link::Link for MirrorFS {
             self.metadata(&dir_path).await.ok().map(|meta| Self::wcc_attr_from_statx(&meta));
         let mut target_path = dir_path.clone();
         target_path.push(args.link.name.as_str());
-        if let Err(error) = fs::hard_link(&file_path, &target_path).await {
+        if let Err(error) = std::fs::hard_link(&file_path, &target_path) {
             return Err(link::Fail {
                 error: Self::io_error_to_vfs(&error),
                 file_attr,

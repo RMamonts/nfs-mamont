@@ -18,7 +18,7 @@ use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::io::AsyncRead;
+use monoio::io::AsyncReadRent;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Slice};
@@ -72,14 +72,14 @@ pub const DEFAULT_SIZE: usize = 2500;
 ///
 /// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
 /// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub struct RpcParser<A: Allocator, S: AsyncReadRent + Unpin> {
     allocator: Arc<A>,
     buffer: CountBuffer<S>,
     last: bool,
     current_frame_size: usize,
 }
 
-impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+impl<A: Allocator, S: AsyncReadRent + Unpin> RpcParser<A, S> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
     /// # Arguments
@@ -599,7 +599,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Parsing fails
 /// - Memory allocation fails
 /// - Reading the data fails
-async fn adapter_for_write<S: AsyncRead + Unpin>(
+async fn adapter_for_write<S: AsyncReadRent + Unpin>(
     alloc: &Arc<impl Allocator>,
     buffer: &mut CountBuffer<S>,
 ) -> Result<vfs::write::Args> {
@@ -651,7 +651,7 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub async fn read_in_slice_async<S: AsyncReadRent + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     to_skip: usize,
@@ -697,7 +697,7 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub fn read_in_slice_sync<S: AsyncReadRent + Unpin>(
     src: &mut CountBuffer<S>,
     slice: &mut Slice,
     left_size: usize,

@@ -14,7 +14,7 @@ use super::helpers::{
     TestContext,
 };
 
-#[tokio::test]
+#[monoio::test]
 async fn lookup_resolves_child_and_rejects_non_directory_parent() {
     let ctx = TestContext::new();
     create_dir(ctx.root_path(), "dir");
@@ -44,7 +44,7 @@ async fn lookup_resolves_child_and_rejects_non_directory_parent() {
     assert_eq!(fail.error, vfs::Error::NotDir);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn lookup_resolves_dot_and_dotdot() {
     let ctx = TestContext::new();
     create_dir(ctx.root_path(), "dir/nested");
@@ -93,7 +93,7 @@ async fn lookup_resolves_dot_and_dotdot() {
     assert_eq!(root_parent_attr.object.file_id, root_attr.object.file_id);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn remove_rejects_dot_and_dotdot() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -111,7 +111,7 @@ async fn remove_rejects_dot_and_dotdot() {
     assert_eq!(dotdot_fail.error, vfs::Error::Exist);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn remove_deletes_file_and_invalidates_cached_handle() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -132,7 +132,7 @@ async fn remove_deletes_file_and_invalidates_cached_handle() {
     assert_eq!(fail.error, vfs::Error::StaleFile);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rename_moves_subtree_and_updates_cached_descendants() {
     let ctx = TestContext::new();
     create_dir(ctx.root_path(), "dir/nested");
@@ -178,7 +178,7 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
     assert_eq!(missing.error, vfs::Error::NoEntry);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn removing_one_hard_link_keeps_shared_handle_valid() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "original.txt", b"hello");
@@ -203,7 +203,7 @@ async fn removing_one_hard_link_keeps_shared_handle_valid() {
     assert!(matches!(attr.object.file_type, file::Type::Regular));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rename_replaces_existing_file_atomically() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "src.txt", b"new content");
@@ -226,7 +226,7 @@ async fn rename_replaces_existing_file_atomically() {
     assert_eq!(std::fs::read(ctx.root_path().join("dst.txt")).unwrap(), b"new content");
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rename_replaces_empty_directory() {
     let ctx = TestContext::new();
     create_dir(ctx.root_path(), "src_dir");
@@ -249,7 +249,7 @@ async fn rename_replaces_empty_directory() {
     assert!(ctx.root_path().join("dst_dir/file.txt").exists());
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rename_rejects_type_mismatch() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"data");
@@ -280,7 +280,7 @@ async fn rename_rejects_type_mismatch() {
     assert_eq!(dir_to_file.error, vfs::Error::Exist);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rename_self_is_noop() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"data");
@@ -298,7 +298,7 @@ async fn rename_self_is_noop() {
     assert_eq!(std::fs::read(ctx.root_path().join("file.txt")).unwrap(), b"data");
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn rm_dir_removes_empty_directory_and_rejects_non_empty_one() {
     let ctx = TestContext::new();
     create_dir(ctx.root_path(), "empty");
@@ -321,7 +321,7 @@ async fn rm_dir_removes_empty_directory_and_rejects_non_empty_one() {
     assert_eq!(fail.error, vfs::Error::NotEmpty);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;

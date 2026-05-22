@@ -1,6 +1,3 @@
-//! Defines [`Allocator`] interface used to bound allocation of buffers
-//! for user data transmission inside NFS-Mamont implementation.
-
 mod slice;
 
 #[cfg(test)]
@@ -10,31 +7,73 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use async_channel;
 use crossbeam_queue::ArrayQueue;
-use tokio::sync::Semaphore;
 
 pub use slice::Slice;
 
 type Buffer = Box<[u8]>;
 
-/// Shared state of the allocator to allow return of buffers and permit restoration.
+struct Semaphore {
+    sender: async_channel::Sender<()>,
+    receiver: async_channel::Receiver<()>,
+}
+
+impl std::fmt::Debug for Semaphore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Semaphore").finish()
+    }
+}
+
+impl Semaphore {
+    fn new(permits: usize) -> Self {
+        let (sender, receiver) = async_channel::bounded(permits);
+        for _ in 0..permits {
+            sender.try_send(()).ok();
+        }
+        Self { sender, receiver }
+    }
+
+    async fn acquire_many(&self, n: u32) -> Result<Permit, ()> {
+        for _ in 0..n {
+            self.receiver.recv().await.map_err(|_| ())?;
+        }
+        Ok(Permit { n, sender: self.sender.clone() })
+    }
+
+    fn add_permits(&self, n: usize) {
+        for _ in 0..n {
+            let _ = self.sender.try_send(());
+        }
+    }
+}
+
+struct Permit {
+    n: u32,
+    sender: async_channel::Sender<()>,
+}
+
+impl Permit {
+    fn forget(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        for _ in 0..self.n {
+            let _ = self.sender.try_send(());
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AllocatorState {
     pub pool: ArrayQueue<Buffer>,
     pub semaphore: Semaphore,
 }
 
-/// Allocates [`Slice`]'s.
 pub trait Allocator {
-    /// Returns [`Slice`] of specified size.
-    ///
-    /// # Parameters
-    ///
-    /// - `size` --- size of returned slice.
-    ///
-    /// # Panic
-    ///
-    /// This method returns [`None`] if size is greater then allocator capacity.
     fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<slice::Slice>> + Send;
 }
 
@@ -45,12 +84,6 @@ pub struct Impl {
 }
 
 impl Impl {
-    /// Returns new [`Allocator`] IMPlementation.
-    ///
-    /// # Parameters
-    ///
-    /// - `size` --- size of each buffer to allocate
-    /// - `count` --- number of buffers to allocate
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());

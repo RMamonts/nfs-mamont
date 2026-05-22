@@ -2,7 +2,7 @@ use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::UnboundedSender;
+use async_channel;
 use tracing::{error, warn};
 
 use crate::allocator::{Allocator, Slice};
@@ -10,31 +10,15 @@ use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
-/// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand = (NfsArgWrapper, UnboundedSender<ProcReply>);
-/// Sender to enqueue work in the pool.
+pub type VfsCommand = (NfsArgWrapper, async_channel::Sender<ProcReply>);
 pub type VfsCommandSender = Sender<VfsCommand>;
-/// Receiver from the pool, each worker competes for the same command stream.
 type VfsCommandReceiver = Receiver<VfsCommand>;
 
-/// Fixed-size pool of [`VfsTask`] workers fed from a single unbounded command channel.
 pub struct VfsPool {
-    /// Sender to enqueue work in the pool for execution.
     sender: VfsCommandSender,
 }
 
 impl VfsPool {
-    /// Creates a new [`VfsPool`] with the given number of workers.
-    ///
-    /// # Parameters
-    ///
-    /// - `num` --- number of workers to create
-    /// - `backend` --- shared filesystem implementation
-    /// - `allocator` --- allocator used for read buffers
-    ///
-    /// # Returns
-    ///
-    /// A new [`VfsPool`] with the given number of workers.
     pub fn new<A, V>(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self
     where
         A: Allocator + Send + Sync + 'static,
@@ -50,30 +34,24 @@ impl VfsPool {
         Self { sender: tx }
     }
 
-    /// Returns a clone of the command sender for enqueueing work in the pool.
     pub fn sender(&self) -> VfsCommandSender {
         self.sender.clone()
     }
 }
 
 impl Drop for VfsPool {
-    /// Closes the pool's sender so workers stop after channel is empty.
     fn drop(&mut self) {
         self.sender.close();
     }
 }
 
-/// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
 pub struct VfsTask<A, V>
 where
     A: Allocator + Send + Sync + 'static,
     V: vfs::Vfs + Send + Sync + 'static,
 {
-    /// Shared filesystem implementation.
     backend: Arc<V>,
-    /// Allocator used for read buffers.
     allocator: Arc<A>,
-    /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver,
 }
 
@@ -82,31 +60,14 @@ where
     A: Allocator + Send + Sync + 'static,
     V: vfs::Vfs + Send + Sync + 'static,
 {
-    /// Builds a worker that reads commands from the pool and executes them.
-    ///
-    /// # Parameters
-    ///
-    /// - `backend` --- shared filesystem implementation
-    /// - `allocator` --- allocator used for read buffers
-    /// - `command_receiver` --- receiver from the pool
-    ///
-    /// # Returns
-    ///
-    /// A new [`VfsTask`] that reads commands from the pool and executes them.
     pub fn new(backend: Arc<V>, allocator: Arc<A>, command_receiver: VfsCommandReceiver) -> Self {
         Self { backend, allocator, command_receiver }
     }
 
-    /// Spawns a [`VfsTask`].
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        monoio::spawn(async move { self.run().await });
     }
 
-    /// Consumes commands until the channel closes, dispatching each NFS op and sending replies.
     async fn run(self) {
         let command_receiver = self.command_receiver;
 
@@ -170,14 +131,12 @@ where
                 proc_result: Ok(ProcResult::Nfs3(Box::new(response))),
             };
 
-            // Write task may already be closed; then this connection pipeline is done.
-            if tx.send(reply).is_err() {
+            if tx.send(reply).await.is_err() {
                 warn!("writer task closed, connection pipeline is done");
             }
         }
     }
 
-    /// Static label for logging/tracing for the given procedure variant.
     fn proc_name(proc: &NfsArguments) -> &'static str {
         match proc {
             NfsArguments::Null => "NULL",
@@ -205,7 +164,6 @@ where
         }
     }
 
-    /// Returns the domain error when the NFS result variant is `Err`, if present.
     fn error_from_response(response: &NfsRes) -> Option<vfs::Error> {
         match response {
             NfsRes::Null => None,

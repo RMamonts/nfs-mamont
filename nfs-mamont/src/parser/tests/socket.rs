@@ -1,8 +1,8 @@
 use std::cmp::min;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
-use tokio::io::{AsyncRead, ReadBuf};
+use monoio::buf::IoBufMut;
+use monoio::io::AsyncReadRent;
+use monoio::BufResult;
 
 const SEPARATE: usize = 15;
 
@@ -17,28 +17,31 @@ impl MockSocket {
     }
 }
 
-impl AsyncRead for MockSocket {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        let inner = self.get_mut();
-        if inner.position >= inner.data.len() {
-            return Poll::Ready(Ok(()));
-        }
-        let remaining_data = inner.data.len() - inner.position;
+impl AsyncReadRent for MockSocket {
+    fn read<T: IoBufMut>(&mut self, mut buf: T) -> impl std::future::Future<Output = BufResult<usize, T>> {
+        let to_read = if self.position >= self.data.len() {
+            0
+        } else {
+            let remaining_data = self.data.len() - self.position;
+            let to_read = min(SEPARATE, min(buf.bytes_total(), remaining_data));
+            if to_read > 0 {
+                unsafe {
+                    let dst = buf.write_ptr();
+                    std::ptr::copy_nonoverlapping(
+                        self.data[self.position..].as_ptr(),
+                        dst,
+                        to_read,
+                    );
+                    buf.set_init(to_read);
+                }
+                self.position += to_read;
+            }
+            to_read
+        };
+        async move { (Ok(to_read), buf) }
+    }
 
-        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
-
-        if to_read > 0 {
-            let start = inner.position;
-            let end = inner.position + to_read;
-            buf.put_slice(&inner.data[start..end]);
-
-            inner.position += to_read;
-        }
-
-        Poll::Ready(Ok(()))
+    fn readv<T: monoio::buf::IoVecBufMut>(&mut self, buf: T) -> impl std::future::Future<Output = BufResult<usize, T>> {
+        async move { (Ok(0), buf) }
     }
 }

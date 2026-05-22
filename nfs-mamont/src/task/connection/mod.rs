@@ -1,15 +1,6 @@
-//! Connection-specific tasks.
-//!
-//! This module provides the tasks for handling individual NFS client connections.
-//! It implements a three-stage pipeline for processing RPC commands:
-//!
-//! - [`read::ReadTask`] - Reads RPC commands from the network connection
-//! - [`write::WriteTask`] - Writes operation results back to the network connection
-//!
-//! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
-
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use monoio::io::Splitable;
+use monoio::net::TcpStream;
+use async_channel;
 use tracing::error;
 
 use crate::allocator::Allocator;
@@ -22,11 +13,10 @@ use crate::vfs::Vfs;
 mod read;
 mod write;
 
-// Creates all connection tasks with their inner connections
 pub async fn new<A, V>(
     socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand>,
-    nlm_sender: mpsc::UnboundedSender<NlmCommand>,
+    mount_sender: async_channel::Sender<MountCommand>,
+    nlm_sender: async_channel::Sender<NlmCommand>,
     context: &ServerContext<A, V>,
 ) where
     A: Allocator + Send + Sync + 'static,
@@ -39,13 +29,13 @@ pub async fn new<A, V>(
             return;
         }
     };
-    let (readhalf, writehalf) = socket.into_split();
-    // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
-    // channel for request
+
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply>();
+
+    let (read_socket, write_socket) = socket.into_split();
 
     read::ReadTask::new(
-        readhalf,
+        read_socket,
         peer_addr,
         mount_sender,
         nlm_sender,
@@ -55,5 +45,5 @@ pub async fn new<A, V>(
     )
     .spawn();
 
-    write::WriteTask::new(writehalf, result_receiver).spawn();
+    write::WriteTask::new(write_socket, result_receiver).spawn();
 }

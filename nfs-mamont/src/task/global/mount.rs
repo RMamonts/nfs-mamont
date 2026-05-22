@@ -1,20 +1,16 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use async_channel;
 use tracing::debug;
 
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::{ProcReply, ProcResult};
 
-/// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand {
-    /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
-    /// Client socket address from connection task.
+    pub result_tx: async_channel::Sender<ProcReply>,
     pub client_addr: SocketAddr,
-    /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
 
@@ -23,39 +19,30 @@ where
     M: Mount + Send + Sync + 'static,
 {
     mount_service: Arc<M>,
-    // channel for commands from client connection tasks
-    receiver: UnboundedReceiver<MountCommand>,
+    receiver: async_channel::Receiver<MountCommand>,
 }
 
 impl<M> MountTask<M>
 where
     M: Mount + Send + Sync + 'static,
 {
-    /// Creates new instance of [`MountTask`]
-    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
+    pub fn new(mount_service: Arc<M>) -> (Self, async_channel::Sender<MountCommand>) {
+        let (sender, receiver) = async_channel::unbounded::<MountCommand>();
 
         let task = Self { mount_service, receiver };
 
         (task, sender)
     }
 
-    /// Spawns a [`MountTask`]  that processes mount commands received from
-    /// `ReadTask` and returns results to
-    /// `WriteTask`.
-    ///
-    /// # Panics
-    ///
-    /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        monoio::spawn(async move { self.run().await });
     }
 
     async fn run(self) {
         let mount_service = self.mount_service;
-        let mut receiver = self.receiver;
+        let receiver = self.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Ok(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
             debug!(client=%client_addr, xid=header.xid, "mount task: command received");
@@ -107,14 +94,10 @@ where
                 }
             };
 
-            // TODO:
-            // - some logs when occurred error
-            // - or retry with fail
-            // * but don't stop task
             let _ = result_tx.send(ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
-            });
+            }).await;
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }

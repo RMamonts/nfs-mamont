@@ -22,7 +22,7 @@ use super::helpers::{
     file_path, sized_attr, slice_from_bytes, slice_to_vec, write_file, TestContext,
 };
 
-#[tokio::test]
+#[monoio::test]
 async fn create_supports_unchecked_guarded_and_exclusive() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -118,7 +118,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     assert_eq!(different.error, vfs::Error::Exist);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn link_creates_hard_link_and_rejects_directory() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "original.txt", b"hello");
@@ -150,7 +150,7 @@ async fn link_creates_hard_link_and_rejects_directory() {
     assert_eq!(fail.error, vfs::Error::InvalidArgument);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn mk_dir_creates_directory_and_applies_mode() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -174,7 +174,7 @@ async fn mk_dir_creates_directory_and_applies_mode() {
     assert_eq!(meta.permissions().mode() & 0o777, 0o750);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn mk_node_handles_supported_and_unsupported_types() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -234,7 +234,7 @@ async fn mk_node_handles_supported_and_unsupported_types() {
     assert_eq!(not_supported.error, vfs::Error::NotSupported);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn set_attr_updates_size_and_honors_guard() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"hello");
@@ -282,7 +282,7 @@ async fn set_attr_updates_size_and_honors_guard() {
     assert_eq!(stdfs::metadata(ctx.root_path().join("file.txt")).unwrap().len(), 2);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn symlink_creates_symbolic_link() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
@@ -308,7 +308,7 @@ async fn symlink_creates_symbolic_link() {
     );
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn write_writes_data_with_offset_and_commit_matches_verifier() {
     let ctx = TestContext::new();
     write_file(ctx.root_path(), "file.txt", b"");
@@ -344,7 +344,7 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
     assert_eq!(commit_result.verifier.0, write_result.verifier.0);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn file_lifecycle_create_edit_read_and_remove() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;

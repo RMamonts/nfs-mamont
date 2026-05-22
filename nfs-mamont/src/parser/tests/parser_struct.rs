@@ -216,7 +216,7 @@ fn assert_arg_wrapper<F, T: Fn(&ProcArguments, F)>(
 }
 
 /// Test: Parses a valid MOUNT call and returns mount-specific arguments.
-#[tokio::test]
+#[monoio::test]
 async fn parse_mount_call() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -237,7 +237,7 @@ async fn parse_mount_call() {
 }
 
 /// Test: After a MOUNT procedure mismatch, parser can parse the next valid MOUNT call.
-#[tokio::test]
+#[monoio::test]
 async fn parse_mount_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -269,7 +269,7 @@ async fn parse_mount_after_error() {
 }
 
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
-#[tokio::test]
+#[monoio::test]
 async fn parse_two_correct() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -305,7 +305,7 @@ async fn parse_two_correct() {
 }
 
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
-#[tokio::test]
+#[monoio::test]
 async fn parse_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -336,7 +336,7 @@ async fn parse_after_error() {
 }
 
 /// Test: Parses two correct NFS WRITE frames with data.
-#[tokio::test]
+#[monoio::test]
 async fn parse_write() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -381,7 +381,7 @@ async fn parse_write() {
 }
 
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.
-#[tokio::test]
+#[monoio::test]
 async fn parse_write_after_error() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -427,7 +427,7 @@ async fn parse_write_after_error() {
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn parse_error_when_consumed_exceeds_frame_size() {
     #[rustfmt::skip]
     let buf = vec![
@@ -445,7 +445,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
     assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn parse_error_with_too_small_frame_size_returns_error() {
     #[rustfmt::skip]
     let buf = vec![
@@ -463,7 +463,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     assert!(matches!(result, Err(ErrorWrapper { error: Error::IO(_), xid: None })));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn parse_rejects_any_non_call_message_type() {
     #[rustfmt::skip]
     let buf = vec![
@@ -493,7 +493,7 @@ async fn parse_rejects_any_non_call_message_type() {
 }
 
 /// Ensures parser rejects fragments with size below XID width.
-#[tokio::test]
+#[monoio::test]
 async fn parse_rejects_frame_smaller_than_xid() {
     #[rustfmt::skip]
     let buf = vec![
@@ -509,7 +509,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 }
 
 /// Verifies parser handles WRITE with zero opaque payload.
-#[tokio::test]
+#[monoio::test]
 async fn parse_write_with_empty_payload() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
@@ -536,7 +536,7 @@ async fn parse_write_with_empty_payload() {
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn parse_rejects_non_none_cred_auth() {
     let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let cred = OpaqueAuth { flavor: AuthFlavor::Short, body: vec![] };
@@ -555,7 +555,7 @@ async fn parse_rejects_non_none_cred_auth() {
     ));
 }
 
-#[tokio::test]
+#[monoio::test]
 async fn parse_rejects_non_none_verf_auth() {
     let cred = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![0, 1, 3] };

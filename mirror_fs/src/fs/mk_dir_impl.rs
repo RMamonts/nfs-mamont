@@ -1,5 +1,3 @@
-use tokio::fs;
-
 use nfs_mamont::vfs::{self, mk_dir};
 
 use super::MirrorFS;
@@ -25,7 +23,7 @@ impl mk_dir::MkDir for MirrorFS {
             self.metadata(&dir_path).await.ok().map(|meta| Self::wcc_attr_from_statx(&meta));
         let mut child_path = dir_path.clone();
         child_path.push(args.object.name.as_str());
-        if let Err(error) = fs::create_dir(&child_path).await {
+        if let Err(error) = std::fs::create_dir(&child_path) {
             return Err(mk_dir::Fail {
                 error: Self::io_error_to_vfs(&error),
                 dir_wcc: self.wcc_data(&dir_path, before).await,

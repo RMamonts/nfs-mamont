@@ -9,7 +9,7 @@ impl Dump for MountService {
         let mount_list = self
             .mounts
             .read()
-            .await
+            .unwrap()
             .by_client
             .values()
             .flat_map(|entries| entries.iter().cloned())

@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use async_channel;
 use io_uring::{opcode, types, IoUring, Probe};
 use libc;
-use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub struct UringExecutor {
-    sender: mpsc::UnboundedSender<UringRequest>,
+    sender: async_channel::Sender<UringRequest>,
     max_fixed_len: usize,
 }
 
@@ -65,7 +65,7 @@ impl UringExecutor {
         } else {
             None
         };
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = async_channel::unbounded();
         let executor =
             Arc::new(Self { sender, max_fixed_len: pool.as_ref().map_or(0, |_| max_fixed_len) });
 
@@ -86,75 +86,75 @@ impl UringExecutor {
     }
 
     pub async fn fsync(&self, fd: RawFd, datasync: bool) -> io::Result<()> {
-        let (reply, wait) = oneshot::channel();
+        let (reply, wait) = async_channel::bounded(1);
         let flags = if datasync { types::FsyncFlags::DATASYNC } else { types::FsyncFlags::empty() };
         let request = UringRequest::Fsync { fd, flags, reply };
 
-        if self.sender.send(request).is_err() {
+        if self.sender.send(request).await.is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
         }
 
-        match wait.await {
+        match wait.recv().await {
             Ok(result) => result,
             Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
         }
     }
 
     pub async fn write_at(&self, fd: RawFd, offset: u64, buffer: Vec<u8>) -> io::Result<usize> {
-        let (reply, wait) = oneshot::channel();
+        let (reply, wait) = async_channel::bounded(1);
         let request = UringRequest::Write { fd, offset, buffer, reply };
 
-        if self.sender.send(request).is_err() {
+        if self.sender.send(request).await.is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
         }
 
-        match wait.await {
+        match wait.recv().await {
             Ok(result) => result,
             Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
         }
     }
 
     pub async fn read_at(&self, fd: RawFd, offset: u64, len: usize) -> io::Result<Vec<u8>> {
-        let (reply, wait) = oneshot::channel();
+        let (reply, wait) = async_channel::bounded(1);
         let request = UringRequest::Read { fd, offset, len, reply };
 
-        if self.sender.send(request).is_err() {
+        if self.sender.send(request).await.is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
         }
 
-        match wait.await {
+        match wait.recv().await {
             Ok(result) => result,
             Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
         }
     }
 
     pub async fn open_at(&self, path: &Path, flags: i32, mode: u32) -> io::Result<RawFd> {
-        let (reply, wait) = oneshot::channel();
+        let (reply, wait) = async_channel::bounded(1);
         let c_path = CString::new(path.as_os_str().as_bytes())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))?;
         let request = UringRequest::Open { path: c_path, flags, mode, reply };
 
-        if self.sender.send(request).is_err() {
+        if self.sender.send(request).await.is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
         }
 
-        match wait.await {
+        match wait.recv().await {
             Ok(result) => result,
             Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
         }
     }
 
     pub async fn statx(&self, path: &Path, follow: bool) -> io::Result<StatxData> {
-        let (reply, wait) = oneshot::channel();
+        let (reply, wait) = async_channel::bounded(1);
         let c_path = CString::new(path.as_os_str().as_bytes())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))?;
         let request = UringRequest::Statx { path: c_path, follow, reply };
 
-        if self.sender.send(request).is_err() {
+        if self.sender.send(request).await.is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
         }
 
-        match wait.await {
+        match wait.recv().await {
             Ok(result) => result,
             Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
         }
@@ -186,21 +186,21 @@ impl UringPool {
 }
 
 enum UringRequest {
-    Fsync { fd: RawFd, flags: types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
-    Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: oneshot::Sender<io::Result<usize>> },
-    Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
-    Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
-    Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
+    Fsync { fd: RawFd, flags: types::FsyncFlags, reply: async_channel::Sender<io::Result<()>> },
+    Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: async_channel::Sender<io::Result<usize>> },
+    Read { fd: RawFd, offset: u64, len: usize, reply: async_channel::Sender<io::Result<Vec<u8>>> },
+    Open { path: CString, flags: i32, mode: u32, reply: async_channel::Sender<io::Result<RawFd>> },
+    Statx { path: CString, follow: bool, reply: async_channel::Sender<io::Result<StatxData>> },
 }
 
 enum InFlight {
-    Fsync(oneshot::Sender<io::Result<()>>),
-    Write { reply: oneshot::Sender<io::Result<usize>>, buffer: Vec<u8> },
-    WriteFixed { reply: oneshot::Sender<io::Result<usize>>, index: usize, len: usize },
-    Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
-    ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
-    Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
-    Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
+    Fsync(async_channel::Sender<io::Result<()>>),
+    Write { reply: async_channel::Sender<io::Result<usize>>, buffer: Vec<u8> },
+    WriteFixed { reply: async_channel::Sender<io::Result<usize>>, index: usize, len: usize },
+    Read { reply: async_channel::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
+    ReadFixed { reply: async_channel::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
+    Open { reply: async_channel::Sender<io::Result<RawFd>>, _path: CString },
+    Statx { reply: async_channel::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
 }
 
 const MAX_BATCH: usize = 64;
@@ -248,13 +248,13 @@ impl FixedBufferPool {
 
 fn run_uring(
     mut ring: IoUring,
-    mut receiver: mpsc::UnboundedReceiver<UringRequest>,
+    receiver: async_channel::Receiver<UringRequest>,
     mut pool: Option<FixedBufferPool>,
 ) {
     let mut next_id: u64 = 1;
 
     loop {
-        let Some(request) = receiver.blocking_recv() else {
+        let Ok(request) = receiver.recv_blocking() else {
             break;
         };
 
@@ -284,7 +284,7 @@ fn run_uring(
 
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
+                                reply.try_send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -310,7 +310,7 @@ fn run_uring(
 
                                     if unsafe { submission.push(&entry) }.is_err() {
                                         pool.release(index);
-                                        let _ = reply.send(Err(io::Error::other(
+                                        let _ = reply.try_send(Err(io::Error::other(
                                             "io_uring submission queue full",
                                         )));
                                         continue;
@@ -336,7 +336,7 @@ fn run_uring(
 
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
+                                reply.try_send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -361,7 +361,7 @@ fn run_uring(
 
                                     if unsafe { submission.push(&entry) }.is_err() {
                                         pool.release(index);
-                                        let _ = reply.send(Err(io::Error::other(
+                                        let _ = reply.try_send(Err(io::Error::other(
                                             "io_uring submission queue full",
                                         )));
                                         continue;
@@ -391,7 +391,7 @@ fn run_uring(
 
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
+                                reply.try_send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -409,7 +409,7 @@ fn run_uring(
 
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
+                                reply.try_send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -433,7 +433,7 @@ fn run_uring(
 
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
+                                reply.try_send(Err(io::Error::other("io_uring submission queue full")));
                             continue;
                         }
 
@@ -469,7 +469,7 @@ fn run_uring(
 
                     match request {
                         InFlight::Fsync(reply) => {
-                            let _ = reply.send(result.map(|_| ()));
+                            let _ = reply.try_send(result.map(|_| ()));
                         }
                         InFlight::Write { reply, buffer } => {
                             let max = buffer.len();
@@ -483,7 +483,7 @@ fn run_uring(
                                     Ok(bytes)
                                 }
                             });
-                            let _ = reply.send(result);
+                            let _ = reply.try_send(result);
                         }
                         InFlight::WriteFixed { reply, index, len } => {
                             let result = result.and_then(|bytes| {
@@ -499,7 +499,7 @@ fn run_uring(
                             if let Some(pool) = pool.as_mut() {
                                 pool.release(index);
                             }
-                            let _ = reply.send(result);
+                            let _ = reply.try_send(result);
                         }
                         InFlight::Read { reply, mut buffer } => {
                             let max = buffer.len();
@@ -511,7 +511,7 @@ fn run_uring(
                                     Ok(buffer)
                                 }
                             });
-                            let _ = reply.send(result);
+                            let _ = reply.try_send(result);
                         }
                         InFlight::ReadFixed { reply, index, len } => {
                             let result = result.and_then(|bytes| {
@@ -535,15 +535,15 @@ fn run_uring(
                                 (None, Ok(bytes)) => Ok(vec![0u8; bytes]),
                                 (None, Err(error)) => Err(error),
                             };
-                            let _ = reply.send(output);
+                            let _ = reply.try_send(output);
                         }
                         InFlight::Open { reply, .. } => {
                             let result = result.map(|value| value as RawFd);
-                            let _ = reply.send(result);
+                            let _ = reply.try_send(result);
                         }
                         InFlight::Statx { reply, path, statx } => {
                             let result = result.and_then(|_| statx_to_data(&path, &statx));
-                            let _ = reply.send(result);
+                            let _ = reply.try_send(result);
                         }
                     }
                 }
@@ -570,31 +570,31 @@ fn fail_inflight(
     for (_, request) in inflight {
         match request {
             InFlight::Fsync(reply) => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::Write { reply, .. } => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::WriteFixed { reply, index, .. } => {
                 if let Some(pool) = pool.as_mut() {
                     pool.release(index);
                 }
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::Read { reply, .. } => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::ReadFixed { reply, index, .. } => {
                 if let Some(pool) = pool.as_mut() {
                     pool.release(index);
                 }
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::Open { reply, .. } => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::Statx { reply, .. } => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
+                let _ = reply.try_send(Err(io::Error::new(error.kind(), error.to_string())));
             }
         }
     }
