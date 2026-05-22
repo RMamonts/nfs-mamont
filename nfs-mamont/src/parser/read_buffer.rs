@@ -69,7 +69,7 @@ impl<S: AsyncReadRent + Unpin> CountBuffer<S> {
         }
 
         let avail = self.bufs[self.write].available_write();
-        let mut read_buf = vec![0u8; avail];
+        let read_buf = vec![0u8; avail];
         let (result, read_buf) = self.socket.read(read_buf).await;
         let bytes_read = result?;
         if bytes_read == 0 {
@@ -161,7 +161,7 @@ impl<S: AsyncReadRent + Unpin> CountBuffer<S> {
         while offset < dest.len() {
             let buf = &mut dest[offset..];
             let avail = buf.len();
-            let mut read_buf = vec![0u8; avail];
+            let read_buf = vec![0u8; avail];
             let (result, read_buf) = self.socket.read(read_buf).await;
             let n = result?;
             if n == 0 {
@@ -244,7 +244,7 @@ impl<S: AsyncReadRent + Unpin> CountBuffer<S> {
         let mut actual = 0;
         while actual < from_socket {
             let avail = from_socket - actual;
-            let mut read_buf = vec![0u8; avail];
+            let read_buf = vec![0u8; avail];
             let (result, read_buf) = self.socket.read(read_buf).await;
             let n = result?;
             if n == 0 {
