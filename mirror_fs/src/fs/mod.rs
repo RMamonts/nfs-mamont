@@ -1,6 +1,6 @@
 use std::fs::Metadata;
 use std::io::ErrorKind;
-use std::os::unix::fs::{DirEntryExt, FileTypeExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -11,6 +11,7 @@ use crate::fs_map::FsMap;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
+use nfs_mamont::vfs::file::Name;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
@@ -303,7 +304,7 @@ impl MirrorFS {
         Ok(())
     }
 
-    fn list_directory_entries(&self, dir_path: &Path) -> Result<Vec<file::Name>, vfs::Error> {
+    fn list_directory_entries(&self, dir_path: &Path) -> Result<Vec<(Name, PathBuf)>, vfs::Error> {
         let mut entries = Vec::new();
         let listing = std::fs::read_dir(dir_path).map_err(|error| Self::io_error_to_vfs(&error))?;
 
@@ -312,7 +313,8 @@ impl MirrorFS {
             let file_name = item.file_name();
             let name = file::Name::new(file_name.to_string_lossy().into_owned())
                 .map_err(|_| vfs::Error::InvalidArgument)?;
-            entries.push(name);
+            let path = item.path().join(name.as_str());
+            entries.push((name, path));
         }
         Ok(entries)
     }

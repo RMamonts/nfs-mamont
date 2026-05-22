@@ -1,13 +1,15 @@
 use moka::future::Cache;
 use moka::policy::EvictionPolicy;
+use nfs_mamont::vfs::file::Name;
 use nfs_mamont::vfs::{file, read_dir};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 const MAX_CACHE_CAPACITY: u64 = 64;
 
 pub struct DirectoryListingSnapshot {
     pub verifier: read_dir::CookieVerifier,
-    pub entries: Arc<Vec<file::Name>>,
+    pub entries: Arc<Vec<(Name, PathBuf)>>,
 }
 
 pub struct ReadDirCache {

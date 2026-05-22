@@ -1,7 +1,7 @@
 use super::MirrorFS;
 use crate::cache::readdir::DirectoryListingSnapshot;
 use nfs_mamont::consts::nfsv3::NFS3_WRITEVERFSIZE;
-use nfs_mamont::vfs::{self, file, read_dir, read_dir_plus};
+use nfs_mamont::vfs::{self, read_dir, read_dir_plus};
 use std::sync::Arc;
 
 impl read_dir_plus::ReadDirPlus for MirrorFS {
@@ -33,7 +33,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let entries = if let Some(cached) =
             self.cache.read_dir_cache.look_for_cache(&args.dir).await
         {
-            cached.entries.iter().cloned().collect::<Vec<file::Name>>()
+            cached.entries.iter().cloned().collect()
         } else {
             match self.list_directory_entries(&dir_path) {
                 Ok(entries) => entries,
@@ -44,12 +44,11 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, name) in entries.iter().enumerate().skip(start) {
+        for (index, (name, path)) in entries.iter().enumerate().skip(start) {
             let estimated = (48 + name.as_str().len() + NFS3_WRITEVERFSIZE) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.max_count {
                 break;
             }
-            let path = dir_path.join(name.as_str());
             let attr = match Self::file_attr(&path) {
                 Some(attr) => attr,
                 None => {
@@ -78,7 +77,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         let snapshot = Arc::new(DirectoryListingSnapshot { verifier, entries: Arc::new(entries) });
 
         // set cache for future use
-        self.cache.read_dir_cache.add_entry(&args.dir, snapshot.clone()).await;
+        self.cache.read_dir_cache.add_entry(&args.dir, snapshot).await;
 
         Ok(read_dir_plus::Success {
             dir_attr: Some(dir_attr),

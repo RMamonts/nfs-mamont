@@ -1,6 +1,6 @@
 use super::MirrorFS;
 use crate::cache::readdir::DirectoryListingSnapshot;
-use nfs_mamont::vfs::{self, file, read_dir};
+use nfs_mamont::vfs::{self, read_dir};
 use std::sync::Arc;
 
 impl read_dir::ReadDir for MirrorFS {
@@ -25,24 +25,21 @@ impl read_dir::ReadDir for MirrorFS {
 
         let entries =
             if let Some(cached) = self.cache.read_dir_cache.look_for_cache(&args.dir).await {
-                cached.entries.iter().cloned().collect::<Vec<file::Name>>()
+                cached.entries.iter().cloned().collect()
             } else {
                 match self.list_directory_entries(&dir_path) {
                     Ok(entries) => entries,
                     Err(error) => return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) }),
                 }
             };
-
-        let total_entries = entries.len();
         let start = args.cookie.raw() as usize;
         let mut used = 0u32;
         let mut result = Vec::new();
-        for (index, name) in entries.iter().enumerate().skip(start) {
+        for (index, (name, path)) in entries.iter().enumerate().skip(start) {
             let estimated = (24 + name.as_str().len()) as u32;
             if !result.is_empty() && used.saturating_add(estimated) > args.count {
                 break;
             }
-            let path = dir_path.join(name.as_str());
             let attr = match Self::file_attr(&path) {
                 Some(attr) => attr,
                 None => {
@@ -65,7 +62,7 @@ impl read_dir::ReadDir for MirrorFS {
         let snapshot = Arc::new(DirectoryListingSnapshot { verifier, entries: Arc::new(entries) });
 
         // set cache for future use
-        self.cache.read_dir_cache.add_entry(&args.dir, snapshot.clone()).await;
+        self.cache.read_dir_cache.add_entry(&args.dir, snapshot).await;
 
         Ok(read_dir::Success {
             dir_attr: Some(dir_attr),
