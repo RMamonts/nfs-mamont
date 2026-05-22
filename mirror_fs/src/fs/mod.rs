@@ -317,6 +317,7 @@ impl MirrorFS {
             let path = item.path();
             entries.push((name, path));
         }
+        entries.sort_by(|(a, _), (b, _)| a.as_str().cmp(b.as_str()));
         Ok(entries)
     }
 
