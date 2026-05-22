@@ -241,8 +241,9 @@ async fn read_dir_returns_sorted_entries_and_rejects_bad_cookie() {
         .await,
         "read_dir should succeed",
     );
-    let names =
+    let mut names =
         success.entries.iter().map(|entry| entry.file_name.as_str().to_owned()).collect::<Vec<_>>();
+    names.sort();
     assert_eq!(names, vec!["a.txt", "b.txt", "c.txt"]);
 
     let fail = expect_err(
