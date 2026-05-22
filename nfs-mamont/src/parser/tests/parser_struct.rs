@@ -1,7 +1,7 @@
 use num_traits::ToPrimitive;
 use std::sync::Arc;
 
-use crate::allocator::Slice;
+use crate::allocator::Buffer;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
@@ -173,14 +173,14 @@ fn write_args(arg: &WriteWrapper) -> Vec<u8> {
 }
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
-fn assert_fsstat_result(result: &NfsArguments<Slice>, expected_root: &[u8]) {
+fn assert_fsstat_result(result: &NfsArguments<impl Buffer>, expected_root: &[u8]) {
     let NfsArguments::FsStat(args) = result else {
         panic!("Wrong NFS argument type");
     };
     assert_eq!(args.root.0, expected_root);
 }
 
-fn assert_fsstat_proc_result(result: &ProcArguments<Slice>, expected_root: &[u8]) {
+fn assert_fsstat_proc_result(result: &ProcArguments<impl Buffer>, expected_root: &[u8]) {
     let ProcArguments::Nfs3(args) = result else {
         panic!("Wrong program argument type");
     };
@@ -188,7 +188,10 @@ fn assert_fsstat_proc_result(result: &ProcArguments<Slice>, expected_root: &[u8]
 }
 
 /// Helper to assert parsed WRITE arguments are as expected.
-fn assert_write_result(result: &NfsArguments<Slice>, expected_write: &WriteWrapper) {
+fn assert_write_result<B: Buffer + PartialEq<[u8]> + std::fmt::Debug>(
+    result: &NfsArguments<B>,
+    expected_write: &WriteWrapper,
+) {
     let NfsArguments::Write(args) = result else {
         panic!("Wrong NFS argument type");
     };
@@ -196,18 +199,21 @@ fn assert_write_result(result: &NfsArguments<Slice>, expected_write: &WriteWrapp
     assert_eq!(expected_write.part.file, args.file);
     assert_eq!(expected_write.part.stable, args.stable);
     assert_eq!(expected_write.part.offset, args.offset);
-    assert_eq!(*expected_write.data, args.data);
+    assert_eq!(args.data, *expected_write.data);
 }
 
-fn assert_write_proc_result(result: &ProcArguments<Slice>, expected_write: &WriteWrapper) {
+fn assert_write_proc_result<B: Buffer + PartialEq<[u8]> + std::fmt::Debug>(
+    result: &ProcArguments<B>,
+    expected_write: &WriteWrapper,
+) {
     let ProcArguments::Nfs3(args) = result else {
         panic!("Wrong program argument type");
     };
     assert_write_result(args.as_ref(), expected_write);
 }
 
-fn assert_arg_wrapper<F, T: Fn(&ProcArguments<Slice>, F)>(
-    arg_wrapper: ArgWrapper<Slice>,
+fn assert_arg_wrapper<B: Buffer, F, T: Fn(&ProcArguments<B>, F)>(
+    arg_wrapper: ArgWrapper<B>,
     expected_header: &RpcHeader,
     assert_func: T,
     opaque: F,
@@ -229,7 +235,7 @@ async fn parse_mount_call() {
     let alloc = Arc::new(MockAllocator::new(0));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
-    let result: ArgWrapper<Slice> = parser.next_message().await.unwrap();
+    let result: ArgWrapper<_> = parser.next_message().await.unwrap();
 
     let ProcArguments::Mount(mount_args) = result.proc else {
         panic!("Expected mount protocol arguments");
