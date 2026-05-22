@@ -314,7 +314,7 @@ impl MirrorFS {
             let file_name = item.file_name();
             let name = file::Name::new(file_name.to_string_lossy().into_owned())
                 .map_err(|_| vfs::Error::InvalidArgument)?;
-            let path = item.path().join(name.as_str());
+            let path = item.path();
             entries.push((name, path));
         }
         Ok(entries)
