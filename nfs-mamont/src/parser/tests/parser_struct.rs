@@ -15,7 +15,7 @@ use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
 
-/// Wrapper around [`write::ArgsPartial`] for tests to avoid using of `Slice`
+/// Wrapper around [`write::ArgsPartial`] for tests with raw byte data
 struct WriteWrapper<'a> {
     part: write::ArgsPartial,
     data: &'a [u8],

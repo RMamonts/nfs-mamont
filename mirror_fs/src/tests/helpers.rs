@@ -107,7 +107,7 @@ pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {
     slice
 }
 
-pub fn slice_to_vec(slice: &Slice) -> Vec<u8> {
+pub fn slice_to_vec(slice: &impl Buffer) -> Vec<u8> {
     let mut data = Vec::new();
     for chunk in slice.chunks() {
         data.extend_from_slice(chunk);

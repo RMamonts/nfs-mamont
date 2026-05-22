@@ -74,7 +74,7 @@ pub struct ArgsPartial {
     pub file: file::Handle,
     /// The position within file at which the write is to begin.
     pub offset: u64,
-    /// Size of data in `Slice`
+    /// Size of data in `Buffer`
     pub size: u32,
     /// If `stable` is [`StableHow::FileSync`], the server must commit the data
     /// written plus all file system metadata to stable storage before returning results.

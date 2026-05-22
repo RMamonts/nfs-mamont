@@ -56,7 +56,7 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`vfs::write::Args`])
 pub const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
@@ -705,7 +705,7 @@ where
 /// # Arguments
 ///
 /// * `src` - The `CountBuffer` to read data from.
-/// * `slice` - The [`Slice`] to write the read data into.
+/// * `slice` - The [`Buffer`] to write the read data into.
 /// * `left_size` - The number of bytes expected to be read into the slice.
 ///
 /// # Returns
