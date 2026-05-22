@@ -1,7 +1,7 @@
 use std::io;
 use std::io::{Result, Write};
 
-use crate::allocator::Slice;
+use crate::allocator::{Buffer, Slice};
 use crate::serializer::files::file_handle;
 use crate::serializer::{padding, u32, u64, usize_as_u32, variant};
 use crate::vfs::write::Args;
@@ -11,9 +11,9 @@ use crate::vfs::write::Args;
 /// ## Warning:
 /// should be used only in tests
 pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
-    let size: usize = arg.iter().map(|buf| buf.len()).sum();
+    let size: usize = arg.chunks().map(|buf| buf.len()).sum();
     usize_as_u32(dest, size)?;
-    for buf in arg.iter() {
+    for buf in arg.chunks() {
         dest.write_all(buf)?;
     }
     padding(dest, size)?;
@@ -21,8 +21,8 @@ pub fn slice(dest: &mut impl Write, arg: Slice) -> Result<()> {
 }
 
 /// Serializes the arguments [`Args`] for an NFSv3 `WRITE` operation to the provided `Write` destination.
-pub fn write_args(dest: &mut impl Write, arg: Args) -> Result<()> {
-    let size = arg.data.iter().map(|buf| buf.len()).sum::<usize>();
+pub fn write_args(dest: &mut impl Write, arg: Args<Slice>) -> Result<()> {
+    let size = arg.data.chunks().map(|buf| buf.len()).sum::<usize>();
     if size != arg.size as usize {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,

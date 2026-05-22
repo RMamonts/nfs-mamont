@@ -15,27 +15,52 @@ use tokio::sync::Semaphore;
 
 pub use slice::Slice;
 
-type Buffer = Box<[u8]>;
+type PoolBuffer = Box<[u8]>;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
 pub struct AllocatorState {
-    pub pool: ArrayQueue<Buffer>,
+    pub pool: ArrayQueue<PoolBuffer>,
     pub semaphore: Semaphore,
 }
 
-/// Allocates [`Slice`]'s.
+/// Abstract buffer type returned by [`Allocator`].
+///
+/// Implementations provide chunked read/write access to the allocated memory.
+pub trait Buffer: Send + Sync {
+    /// Returns an iterator over read-only byte chunks of this buffer.
+    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_;
+
+    /// Returns an iterator over mutable byte chunks of this buffer.
+    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_;
+
+    /// Returns the total number of bytes in the buffer.
+    fn len(&self) -> usize;
+
+    /// Returns `true` if the buffer is empty.
+    fn is_empty(&self) -> bool;
+
+    /// Creates an empty, zero-length buffer with no backing memory.
+    fn empty() -> Self
+    where
+        Self: Sized;
+}
+
+/// Allocates buffers for user data transmission inside NFS-Mamont implementation.
 pub trait Allocator {
-    /// Returns [`Slice`] of specified size.
+    /// Type of buffer returned by this allocator.
+    type Buffer: Buffer;
+
+    /// Returns a buffer of at least `size` bytes.
     ///
     /// # Parameters
     ///
-    /// - `size` --- size of returned slice.
+    /// - `size` --- minimum size of the returned buffer in bytes.
     ///
     /// # Panic
     ///
     /// This method returns [`None`] if size is greater then allocator capacity.
-    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<slice::Slice>> + Send;
+    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;
 }
 
 pub struct Impl {
@@ -72,7 +97,9 @@ impl Impl {
 }
 
 impl Allocator for Impl {
-    async fn allocate(&self, size: NonZeroUsize) -> Option<slice::Slice> {
+    type Buffer = slice::Slice;
+
+    async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
         if size.get() > self.capacity() {
             return None;
         }

@@ -15,6 +15,8 @@ impl MockAllocator {
 }
 
 impl Allocator for MockAllocator {
+    type Buffer = Slice;
+
     async fn allocate(&self, size: NonZeroUsize) -> Option<Slice> {
         if size.get() <= self.max_size {
             let (_, _) = mpsc::unbounded_channel::<Box<[u8]>>();

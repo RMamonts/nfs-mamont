@@ -23,7 +23,7 @@ use crate::task::global::nlm::NlmTask;
 use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
-pub use allocator::{Allocator, Impl, Slice};
+pub use allocator::{Allocator, Buffer, Impl, Slice};
 pub use context::ServerContext;
 
 /// Initializes tracing logs.
@@ -37,15 +37,16 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
-pub async fn handle_forever<A, M, V>(
+pub async fn handle_forever<A, B, M, V>(
     listener: TcpListener,
-    context: ServerContext<A, V>,
+    context: ServerContext<A, V, B>,
     mount_service: Arc<M>,
 ) -> std::io::Result<()>
 where
-    A: Allocator + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
     M: Mount + Send + Sync + 'static,
-    V: Vfs + Send + Sync + 'static,
+    V: Vfs<B> + Send + Sync + 'static,
 {
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();

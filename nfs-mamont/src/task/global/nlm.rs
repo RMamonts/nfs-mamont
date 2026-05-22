@@ -1,28 +1,35 @@
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
+use crate::allocator::Buffer;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
 
-pub struct NlmCommand {
+pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
+    pub result_tx: UnboundedSender<ProcReply<B>>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 }
 
-pub struct NlmTask {
+pub struct NlmTask<B>
+where
+    B: Buffer,
+{
     // Channel for commands from client connection tasks
-    receiver: UnboundedReceiver<NlmCommand>,
+    receiver: UnboundedReceiver<NlmCommand<B>>,
 }
 
-impl NlmTask {
+impl<B> NlmTask<B>
+where
+    B: Buffer + 'static,
+{
     /// Creates new instance of [`NlmTask`]
-    pub fn new() -> (Self, UnboundedSender<NlmCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand>();
+    pub fn new() -> (Self, UnboundedSender<NlmCommand<B>>) {
+        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand<B>>();
 
         let task = Self { receiver };
 

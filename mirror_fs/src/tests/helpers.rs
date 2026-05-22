@@ -7,6 +7,7 @@ use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::lookup;
 use nfs_mamont::vfs::set_attr;
+use nfs_mamont::Buffer;
 use nfs_mamont::Slice;
 
 use crate::fs::MirrorFS;
@@ -93,7 +94,7 @@ pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {
     let mut slice = alloc_slice(bytes.len()).await;
     let mut remaining = bytes;
 
-    for chunk in slice.iter_mut() {
+    for chunk in slice.chunks_mut() {
         if remaining.is_empty() {
             break;
         }
@@ -108,7 +109,7 @@ pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {
 
 pub fn slice_to_vec(slice: &Slice) -> Vec<u8> {
     let mut data = Vec::new();
-    for chunk in slice {
+    for chunk in slice.chunks() {
         data.extend_from_slice(chunk);
     }
     data
