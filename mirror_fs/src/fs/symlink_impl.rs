@@ -49,6 +49,9 @@ impl symlink::Symlink for MirrorFS {
             }
         };
 
+        // invalidate parent cache
+        self.cache.read_dir_cache.invalidate_entry(dir_path.clone());
+
         Ok(symlink::Success {
             file: Some(handle),
             attr: Some(attr),

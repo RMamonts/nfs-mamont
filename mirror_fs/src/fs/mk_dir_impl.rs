@@ -48,6 +48,8 @@ impl mk_dir::MkDir for MirrorFS {
             }
         };
 
+        // invalidate parent cache
+        self.cache.read_dir_cache.invalidate_entry(dir_path.clone());
         Ok(mk_dir::Success {
             file: Some(handle),
             attr: Some(attr),
