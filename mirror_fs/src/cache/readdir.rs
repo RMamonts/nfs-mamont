@@ -22,6 +22,7 @@ impl ReadDirCache {
             cache: Cache::builder()
                 .max_capacity(MAX_CACHE_CAPACITY)
                 .eviction_policy(EvictionPolicy::lru())
+                .support_invalidation_closures()
                 .build(),
         }
     }
@@ -30,8 +31,10 @@ impl ReadDirCache {
         self.cache.insert(parent.clone(), vec).await
     }
 
-    pub async fn invalidate_entry(&self, parent: &file::Handle) {
-        self.cache.invalidate(parent).await
+    pub fn invalidate_entry(&self, dir: PathBuf) {
+        self.cache.invalidate_entries_if(move |_, entry| {
+            entry.entries.iter().any(|(_, path)| path.starts_with(dir.as_path()))
+        });
     }
 
     pub async fn look_for_cache(
