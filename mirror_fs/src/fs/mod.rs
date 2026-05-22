@@ -13,7 +13,6 @@ use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
 use nfs_mamont::Buffer;
-use nfs_mamont::Slice;
 
 use crate::fs_map::FsMap;
 
@@ -209,7 +208,7 @@ impl MirrorFS {
         }
     }
 
-    fn collect_slice_bytes(slice: &Slice, size: u32) -> Vec<u8> {
+    fn collect_buffer_bytes(slice: &impl Buffer, size: u32) -> Vec<u8> {
         let mut data = Vec::with_capacity(size as usize);
         for part in slice.chunks() {
             data.extend_from_slice(part);

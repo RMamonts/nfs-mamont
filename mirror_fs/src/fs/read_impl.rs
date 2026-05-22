@@ -4,16 +4,11 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use nfs_mamont::vfs::read;
 use nfs_mamont::Buffer;
-use nfs_mamont::Slice;
 
 use super::MirrorFS;
 
-impl read::Read<Slice> for MirrorFS {
-    async fn read(
-        &self,
-        args: read::Args,
-        mut data: Slice,
-    ) -> Result<read::Success<Slice>, read::Fail> {
+impl<B: Buffer> read::Read<B> for MirrorFS {
+    async fn read(&self, args: read::Args, mut data: B) -> Result<read::Success<B>, read::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
