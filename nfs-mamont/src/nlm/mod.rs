@@ -50,7 +50,7 @@ pub enum Nlm4Stats {
 /// Wrapper for all supported NLMv4 procedure result types.
 pub enum NlmRes {
     Null,
-    Lock(Box<Nlm4LockRes>),
+    Lock(Nlm4LockRes),
     Unlock(Nlm4UnlockRes),
     Test(Box<Nlm4TestRes>),
     Cancel(Nlm4CancelRes),
