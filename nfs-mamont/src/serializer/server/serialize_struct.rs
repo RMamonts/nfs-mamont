@@ -25,6 +25,7 @@ use super::nfs::{
     path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
     write,
 };
+use super::nlm;
 use super::rpc::auth;
 
 /// Minimum buffer size, that could hold complete RPC message
@@ -167,10 +168,26 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         }
     }
 
+    /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body and writes it to the underlying writer.
     async fn process_nlm(&mut self, data: Box<NlmRes>) -> io::Result<()> {
         match *data {
             NlmRes::Null => self.buffer.send_inner_buffer().await,
-            _ => todo!(),
+            NlmRes::Lock(res) => {
+                nlm::lock_res(&mut self.buffer, *res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Unlock(res) => {
+                nlm::unlock_res(&mut self.buffer, res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Test(res) => {
+                nlm::test_res(&mut self.buffer, *res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Cancel(res) => {
+                nlm::cancel_res(&mut self.buffer, res)?;
+                self.buffer.send_inner_buffer().await
+            }
         }
     }
 

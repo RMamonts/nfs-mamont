@@ -1,8 +1,11 @@
+//! NLMv4 UNLOCK procedure types.
+//!
+//! Defines argument and result structures for the `NLMPROC4_UNLOCK`
+//! operation as specified in RFC 1813.
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
-use crate::rpc::OpaqueAuth;
-use std::net::SocketAddr;
 
 /// Defines the information needed to remove a previously established lock.
 pub struct Nlm4UnlockArgs {
@@ -22,12 +25,11 @@ pub struct Nlm4UnlockRes {
     pub stat: Nlm4Stats,
 }
 
+/// Trait for handling NLMv4 `UNLOCK` procedure calls.
+///
+/// Implementations should remove a previously granted lock matching
+/// the request parameters and return the result status.
 #[trait_variant::make(Send)]
 pub trait Unlock {
-    async fn unlock(
-        &self,
-        args: Nlm4UnlockArgs,
-        client_addr: SocketAddr,
-        cred: OpaqueAuth,
-    ) -> Nlm4UnlockRes;
+    async fn unlock(&self, args: Nlm4UnlockArgs) -> Nlm4UnlockRes;
 }
