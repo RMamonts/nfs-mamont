@@ -61,11 +61,13 @@ pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
 impl OpaqueHandle {
     /// Creates a new opaque lock owner identifier.
+    #[inline]
     pub fn new(oh: [u8; OPAQUE_HANDLE_SIZE]) -> Self {
         OpaqueHandle(oh)
     }
 
     /// Returns the underlying bytes of the opaque handle.
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
