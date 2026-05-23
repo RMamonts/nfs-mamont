@@ -6,7 +6,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::OpaqueHandle;
 use crate::parser::nfsv3::file;
-use crate::parser::primitive::{array, bool, i32, string_max_size, u64};
+use crate::parser::primitive::{bool, i32, string_max_size, u64, vector};
 use crate::parser::{Error, Result};
 use std::io::Read;
 
@@ -16,7 +16,15 @@ pub fn test(src: &mut impl Read) -> Result<Nlm4TestArgs> {
     let lock = match Nlm4Lock::new(
         caller_name,
         file::handle(src)?,
-        OpaqueHandle::new(array(src)?),
+        OpaqueHandle::new({
+            let bytes = vector(src)?;
+            if bytes.len() > nlm::OPAQUE_HANDLE_SIZE {
+                return Err(Error::BadFileHandle);
+            }
+            let mut buf = [0u8; nlm::OPAQUE_HANDLE_SIZE];
+            buf[..bytes.len()].copy_from_slice(&bytes);
+            buf
+        }),
         i32(src)?,
         u64(src)?,
         u64(src)?,
