@@ -56,7 +56,7 @@ async fn main() -> std::io::Result<()> {
             )
         })?;
 
-        exports.push(crate::service::mount::ExportEntryWrapper {
+        exports.push(service::mount::ExportEntryWrapper {
             export: ExportEntry {
                 directory: VfsPath::new(export.mount_path.clone())?,
                 names: Vec::new(),
@@ -65,6 +65,7 @@ async fn main() -> std::io::Result<()> {
         });
     }
 
-    let mount_service = Arc::new(service::mount::MountService::with_exports(exports));
-    handle_forever(listener, context, mount_service).await
+    let mount_service = Arc::new(service::mount::MountService::with_exports(exports.clone()));
+    let nlm_service = Arc::new(service::nlm::NlmService::new());
+    handle_forever(listener, context, mount_service, nlm_service).await
 }
