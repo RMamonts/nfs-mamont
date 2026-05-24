@@ -1,37 +1,46 @@
 //! Implements parsing for [`Nlm4TestArgs`] structure.
 
-use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
-use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::test::Nlm4TestArgs;
-use crate::nlm::OpaqueHandle;
-use crate::parser::nfsv3::file;
-use crate::parser::primitive::{bool, i32, string_max_size, u64, vector};
-use crate::parser::{Error, Result};
+use crate::parser::nlm::parse_lock;
+use crate::parser::primitive::{bool, u64};
+use crate::parser::Result;
 use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `TEST` operation from the provided `Read` source.
 pub fn test(src: &mut impl Read) -> Result<Nlm4TestArgs> {
-    let caller_name = string_max_size(src, nlm::LM_MAXSTRLEN)?;
-    let lock = match Nlm4Lock::new(
-        caller_name,
-        file::handle(src)?,
-        OpaqueHandle::new({
-            let bytes = vector(src)?;
-            if bytes.len() > nlm::OPAQUE_HANDLE_SIZE {
-                return Err(Error::BadFileHandle);
-            }
-            let mut buf = [0u8; nlm::OPAQUE_HANDLE_SIZE];
-            buf[..bytes.len()].copy_from_slice(&bytes);
-            buf
-        }),
-        i32(src)?,
-        u64(src)?,
-        u64(src)?,
-    ) {
-        Ok(l) => l,
-        Err(_) => return Result::Err(Error::BadFileHandle),
-    };
+    let lock = parse_lock(src)?;
 
     Ok(Nlm4TestArgs { cookie: Cookie::new(u64(src)?), exclusive: bool(src)?, lock })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::parser::nlm::xdr;
+
+    #[test]
+    fn test_test() {
+        let mut data = Vec::new();
+        data.extend(xdr::string("host"));
+        data.extend(xdr::handle(&[0x01; 8]));
+        data.extend(xdr::opaque(&[0xCD; 4]));
+        data.extend(xdr::i32_val(42));
+        data.extend(xdr::u64_val(100));
+        data.extend(xdr::u64_val(200));
+        data.extend(xdr::u64_val(1));
+        data.extend(xdr::bool_val(true));
+
+        let result = super::test(&mut Cursor::new(data)).unwrap();
+
+        assert_eq!(result.cookie.raw(), 1);
+        assert!(result.exclusive);
+        assert_eq!(result.lock.caller_name, "host");
+    }
+
+    #[test]
+    fn test_test_insufficient_data() {
+        assert!(super::test(&mut Cursor::new(xdr::string("h"))).is_err());
+    }
 }
