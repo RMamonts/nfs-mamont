@@ -14,7 +14,7 @@ pub struct Nlm4Holder {
     pub opaque_handle: OpaqueHandle,
     /// Offset for the lock region.
     pub lock_offset: u64,
-    /// Length of the blocking region. A l_len of 0 means "to end of file".
+    /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
 }
 
@@ -46,17 +46,19 @@ impl Nlm4Holder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 
     #[test]
     fn new_holder_succeeds() {
-        let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
+        let oh = [1; OPAQUE_HANDLE_SIZE];
+        let opaque_handle = OpaqueHandle::new(oh);
         let system_id = 12345;
         let offset = 0;
         let length = 0;
 
         let lock = Nlm4Holder::new(true, system_id, opaque_handle, offset, length);
 
-        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &oh);
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);

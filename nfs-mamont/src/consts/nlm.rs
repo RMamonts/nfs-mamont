@@ -23,3 +23,4 @@ pub const NLMPROC4_NM_LOCK: u32 = 22;
 pub const NLMPROC4_FREE_ALL: u32 = 23;
 
 pub const LM_MAXSTRLEN: usize = 1024;
+pub const OPAQUE_HANDLE_SIZE: usize = 1024;

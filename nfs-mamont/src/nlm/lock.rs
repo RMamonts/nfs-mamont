@@ -85,13 +85,16 @@ mod tests {
     use super::*;
 
     use crate::consts::nfsv3::NFS3_FHSIZE;
+    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::vfs::file::Handle;
 
     #[test]
     fn new_lock_succeeds() {
         let caller_name = "host".to_string();
-        let file_handle = Handle([0; NFS3_FHSIZE]);
-        let opaque_handle = OpaqueHandle::new(vec![1, 2, 3]);
+        let fh = [0; NFS3_FHSIZE];
+        let file_handle = Handle(fh);
+        let oh = [1; OPAQUE_HANDLE_SIZE];
+        let opaque_handle = OpaqueHandle::new(oh);
         let system_id = 12345;
         let offset = 0;
         let length = 0;
@@ -107,8 +110,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(lock.caller_name, caller_name);
-        assert_eq!(lock.file_handle.0, [0; NFS3_FHSIZE]);
-        assert_eq!(lock.opaque_handle.as_bytes(), &[1, 2, 3]);
+        assert_eq!(lock.file_handle.0, fh);
+        assert_eq!(lock.opaque_handle.as_bytes(), &oh);
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);
@@ -119,7 +122,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "".to_string(),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new(vec![]),
+            OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]),
             12345,
             0,
             0,
@@ -132,7 +135,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "a".repeat(nlm::LM_MAXSTRLEN + 1),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new(vec![]),
+            OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE]),
             12345,
             0,
             0,
