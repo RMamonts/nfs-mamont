@@ -356,8 +356,14 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
+        let mut remaining = count;
         for buf in slice.iter() {
-            self.socket.write_all(buf).await?;
+            if remaining == 0 {
+                break;
+            }
+            let n = buf.len().min(remaining);
+            self.socket.write_all(&buf[..n]).await?;
+            remaining -= n;
         }
 
         // write padding directly to socket
