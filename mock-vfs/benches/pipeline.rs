@@ -159,24 +159,31 @@ fn bench_nfs_pipeline(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
 
-    let config = MockVfsConfig::default();
-    let backend = Arc::new(MockVfs::new(config));
-    let buf_size = NonZeroUsize::new(1048576).unwrap();
-    let buf_count = NonZeroUsize::new(64).unwrap();
-    let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
-    let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
-    let pool_size = NonZeroUsize::new(4).unwrap();
-    let context = ServerContext::new(backend, read_alloc, write_alloc, pool_size);
-    let mount_service = Arc::new(MockMount);
+    let addr = if let Ok(target) = std::env::var("MOCK_TARGET") {
+        eprintln!("Remote mode: connecting to {target}");
+        target.parse::<std::net::SocketAddr>().expect("MOCK_TARGET must be a valid SocketAddr (e.g. 192.168.1.100:2049)")
+    } else {
+        eprintln!("Local mode: starting embedded server");
+        let config = MockVfsConfig::default();
+        let backend = Arc::new(MockVfs::new(config));
+        let buf_size = NonZeroUsize::new(1048576).unwrap();
+        let buf_count = NonZeroUsize::new(64).unwrap();
+        let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
+        let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
+        let pool_size = NonZeroUsize::new(4).unwrap();
+        let context = ServerContext::new(backend, read_alloc, write_alloc, pool_size);
+        let mount_service = Arc::new(MockMount);
 
-    let listener = rt.block_on(TcpListener::bind("127.0.0.1:0")).unwrap();
-    let addr = rt.block_on(async { listener.local_addr() }).unwrap();
+        let listener = rt.block_on(TcpListener::bind("127.0.0.1:0")).unwrap();
+        let addr = rt.block_on(async { listener.local_addr() }).unwrap();
 
-    rt.spawn(async move {
-        handle_forever(listener, context, mount_service).await.unwrap();
-    });
+        rt.spawn(async move {
+            handle_forever(listener, context, mount_service).await.unwrap();
+        });
 
-    std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        addr
+    };
 
     bench_procedure(c, "getattr", &rt, &addr, getattr_req());
     bench_procedure(c, "read_4k", &rt, &addr, read_req(4096));
