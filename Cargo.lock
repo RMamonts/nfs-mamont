@@ -606,6 +606,7 @@ name = "mock-vfs"
 version = "0.0.0"
 dependencies = [
  "criterion",
+ "fastrand",
  "nfs-mamont",
  "tokio",
 ]
