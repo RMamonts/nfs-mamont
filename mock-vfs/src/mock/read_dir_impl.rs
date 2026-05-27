@@ -4,10 +4,7 @@ use nfs_mamont::vfs::read_dir;
 use super::MockVfs;
 
 impl read_dir::ReadDir for MockVfs {
-    async fn read_dir(
-        &self,
-        _args: read_dir::Args,
-    ) -> Result<read_dir::Success, read_dir::Fail> {
+    async fn read_dir(&self, _args: read_dir::Args) -> Result<read_dir::Success, read_dir::Fail> {
         let count = self.config.dir_entry_count;
         let mut entries = Vec::with_capacity(count);
         for i in 0..count {

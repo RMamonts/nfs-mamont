@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use nfs_mamont::consts::nfsv3::NFS3_FHSIZE;
 use nfs_mamont::mount::{dump, export, mnt, umnt, umntall};
-use nfs_mamont::OpaqueAuth;
 use nfs_mamont::vfs::file::Handle;
 use nfs_mamont::vfs::WccData;
+use nfs_mamont::OpaqueAuth;
 
 use crate::config::MockVfsConfig;
 

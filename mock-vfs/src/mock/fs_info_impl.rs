@@ -4,10 +4,7 @@ use nfs_mamont::vfs::fs_info;
 use super::MockVfs;
 
 impl fs_info::FsInfo for MockVfs {
-    async fn fs_info(
-        &self,
-        _args: fs_info::Args,
-    ) -> Result<fs_info::Success, fs_info::Fail> {
+    async fn fs_info(&self, _args: fs_info::Args) -> Result<fs_info::Success, fs_info::Fail> {
         Ok(fs_info::Success {
             root_attr: Some(self.config.dir_attr.clone()),
             read_max: 1048576,
