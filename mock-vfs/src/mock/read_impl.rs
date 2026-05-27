@@ -1,16 +1,12 @@
-use nfs_mamont::Slice;
 use nfs_mamont::vfs::read;
+use nfs_mamont::Slice;
 
 use super::MockVfs;
 
 impl read::Read for MockVfs {
-    async fn read(
-        &self,
-        args: read::Args,
-        mut data: Slice,
-    ) -> Result<read::Success, read::Fail> {
-        let count = (args.count as u64).min(self.config.file_size.saturating_sub(args.offset))
-            as u32;
+    async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
+        let count =
+            (args.count as u64).min(self.config.file_size.saturating_sub(args.offset)) as u32;
 
         let mut offset = 0u64;
         for chunk in data.iter_mut() {

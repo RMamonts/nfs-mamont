@@ -121,9 +121,7 @@ fn parse_size(s: &str) -> usize {
     } else {
         (s, 1)
     };
-    num.parse::<usize>()
-        .unwrap_or_else(|_| panic!("Invalid block size: {s}"))
-        * mult
+    num.parse::<usize>().unwrap_or_else(|_| panic!("Invalid block size: {s}")) * mult
 }
 
 // ── XDR helpers ─────────────────────────────────────────────────────────
@@ -259,18 +257,14 @@ async fn worker(
             stream.write_all(&req).await.unwrap();
             read_response(&mut stream).await;
             stats.read_ops.fetch_add(1, Ordering::Relaxed);
-            stats
-                .read_bytes
-                .fetch_add(cfg.block_size as u64, Ordering::Relaxed);
+            stats.read_bytes.fetch_add(cfg.block_size as u64, Ordering::Relaxed);
         } else {
             let data = write_buf.as_deref().unwrap();
             let req = build_write_req(&fh, offset, data, xid);
             stream.write_all(&req).await.unwrap();
             read_response(&mut stream).await;
             stats.write_ops.fetch_add(1, Ordering::Relaxed);
-            stats
-                .write_bytes
-                .fetch_add(cfg.block_size as u64, Ordering::Relaxed);
+            stats.write_bytes.fetch_add(cfg.block_size as u64, Ordering::Relaxed);
         }
     }
 }
@@ -292,9 +286,7 @@ async fn start_local_server() -> std::net::SocketAddr {
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
-        handle_forever(listener, context, mount_service)
-            .await
-            .unwrap();
+        handle_forever(listener, context, mount_service).await.unwrap();
     });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -308,9 +300,9 @@ async fn main() {
     let cfg = parse_args();
 
     let addr = if let Some(target) = &cfg.target {
-        target.parse::<std::net::SocketAddr>().expect(
-            "Invalid --target, expected ip:port (e.g. 192.168.1.100:2049)",
-        )
+        target
+            .parse::<std::net::SocketAddr>()
+            .expect("Invalid --target, expected ip:port (e.g. 192.168.1.100:2049)")
     } else {
         eprintln!("Local mode: starting embedded server");
         start_local_server().await

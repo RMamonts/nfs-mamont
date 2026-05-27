@@ -23,7 +23,7 @@ fn push_u64(buf: &mut Vec<u8>, v: u64) {
 
 fn pad(buf: &mut Vec<u8>, n: usize) {
     let p = (4 - (n & 3)) & 3;
-    buf.extend(std::iter::repeat(0u8).take(p));
+    buf.extend(std::iter::repeat_n(0u8, p));
 }
 
 fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
@@ -161,7 +161,9 @@ fn bench_nfs_pipeline(c: &mut Criterion) {
 
     let addr = if let Ok(target) = std::env::var("MOCK_TARGET") {
         eprintln!("Remote mode: connecting to {target}");
-        target.parse::<std::net::SocketAddr>().expect("MOCK_TARGET must be a valid SocketAddr (e.g. 192.168.1.100:2049)")
+        target
+            .parse::<std::net::SocketAddr>()
+            .expect("MOCK_TARGET must be a valid SocketAddr (e.g. 192.168.1.100:2049)")
     } else {
         eprintln!("Local mode: starting embedded server");
         let config = MockVfsConfig::default();

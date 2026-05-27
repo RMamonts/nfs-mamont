@@ -1,5 +1,7 @@
 [workspace]
 members = ["nfs-mamont", "mirror_fs", "mock-vfs"]
+default-members = ["nfs-mamont", "mirror_fs"]
+
 resolver = "2"
 
 [workspace.package]
