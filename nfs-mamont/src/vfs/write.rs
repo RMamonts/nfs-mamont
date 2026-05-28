@@ -17,7 +17,7 @@ use super::file;
 /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
 /// `data` and the metadata to stable storage, including all or none, before returning a reply
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-/// commited to stable storage.
+/// committed to stable storage.
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
@@ -35,7 +35,7 @@ pub struct Success {
     /// The number of bytes of data written to the file.
     pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
-    pub commited: StableHow,
+    pub committed: StableHow,
     /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].
     pub verifier: Verifier,
 }
@@ -83,7 +83,7 @@ pub struct ArgsPartial {
     /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the
     /// `data` and the metadata to stable storage, including all or none, before returning a reply
     /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
-    /// commited to stable storage.
+    /// committed to stable storage.
     pub stable: StableHow,
 }
 
