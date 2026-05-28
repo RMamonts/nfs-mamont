@@ -13,7 +13,7 @@ impl set_attr::SetAttr for MirrorFS {
                 });
             }
         };
-        let meta = match Self::metadata(&path) {
+        let meta = match self.metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(set_attr::Fail {
@@ -22,8 +22,8 @@ impl set_attr::SetAttr for MirrorFS {
                 });
             }
         };
-        let before = Some(Self::wcc_attr_from_metadata(&meta));
-        let current_attr = Self::attr_from_metadata(&meta);
+        let before = Some(Self::wcc_attr_from_statx(&meta));
+        let current_attr = Self::attr_from_statx(&meta);
 
         if let Some(guard) = args.guard {
             if !Self::same_time(current_attr.ctime, guard.ctime) {
@@ -35,9 +35,9 @@ impl set_attr::SetAttr for MirrorFS {
         }
 
         if let Err(error) = Self::apply_set_attr(&path, &args.new_attr) {
-            return Err(set_attr::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+            return Err(set_attr::Fail { error, wcc_data: self.wcc_data(&path, before).await });
         }
 
-        Ok(set_attr::Success { wcc_data: Self::wcc_data(&path, before) })
+        Ok(set_attr::Success { wcc_data: self.wcc_data(&path, before).await })
     }
 }

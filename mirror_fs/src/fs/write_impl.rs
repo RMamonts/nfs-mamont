@@ -1,7 +1,4 @@
-use std::io::SeekFrom;
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-
+use libc;
 use nfs_mamont::vfs::{self, write};
 
 use super::MirrorFS;
@@ -18,52 +15,60 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let before_meta = std::fs::symlink_metadata(&path).ok();
-        let before = before_meta.as_ref().map(Self::wcc_attr_from_metadata);
-        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_metadata) {
+        let before_meta = self.metadata(&path).await.ok();
+        let before = before_meta.as_ref().map(Self::wcc_attr_from_statx);
+        if let Some(attr) = before_meta.as_ref().map(Self::attr_from_statx) {
             if let Err(error) = Self::validate_regular(&attr) {
-                return Err(write::Fail { error, wcc_data: Self::wcc_data(&path, before) });
+                return Err(write::Fail { error, wcc_data: self.wcc_data(&path, before).await });
             }
         }
 
-        let mut file = match OpenOptions::new().write(true).truncate(false).open(&path).await {
-            Ok(file) => file,
-            Err(error) => {
+        if let Some(uring) = self.uring_executor() {
+            let fd = match self.open_fd_uring(&path, libc::O_WRONLY | libc::O_CLOEXEC, 0).await {
+                Ok(fd) => fd,
+                Err(error) => {
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: self.wcc_data(&path, before).await,
+                    });
+                }
+            };
+            let mut increment = 0;
+            for data in &args.data {
+                if let Err(error) =
+                    self.write_all_uring(fd.as_raw_fd(), args.offset + increment, data).await
+                {
+                    return Err(write::Fail {
+                        error: Self::io_error_to_vfs(&error),
+                        wcc_data: self.wcc_data(&path, before).await,
+                    });
+                }
+
+                increment += data.len() as u64;
+            }
+
+            let sync_result = match args.stable {
+                write::StableHow::Unstable => Ok(()),
+                write::StableHow::DataSync => uring.fsync(fd.as_raw_fd(), true).await,
+                write::StableHow::FileSync => uring.fsync(fd.as_raw_fd(), false).await,
+            };
+
+            if let Err(error) = sync_result {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
-                    wcc_data: Self::wcc_data(&path, before),
+                    wcc_data: self.wcc_data(&path, before).await,
                 });
             }
-        };
-
-        let data = Self::collect_slice_bytes(&args.data, args.size);
-        if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
+        } else {
             return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
-        }
-        if let Err(error) = file.write_all(&data).await {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
-        }
-        let sync_result = match args.stable {
-            write::StableHow::Unstable => Ok(()),
-            write::StableHow::DataSync => file.sync_data().await,
-            write::StableHow::FileSync => file.sync_all().await,
-        };
-        if let Err(error) = sync_result {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
+                error: vfs::Error::IO,
+                wcc_data: self.wcc_data(&path, before).await,
             });
         }
 
         Ok(write::Success {
-            file_wcc: Self::wcc_data(&path, before),
-            count: data.len() as u32,
+            file_wcc: self.wcc_data(&path, before).await,
+            count: args.size,
             committed: args.stable,
             verifier: self.write_verifier(),
         })

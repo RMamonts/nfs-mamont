@@ -1,8 +1,12 @@
 [allocator]
-read_buffer_size = 1048576
-read_buffer_count = 2048
-write_buffer_size = 1048576
-write_buffer_count = 2048
+read_buffer_size = 65536
+read_buffer_count = 99768
+write_buffer_size = 65536
+write_buffer_count = 99768
+
+[uring]
+# num_workers = 5 # all threads by default
+# ring_size = 2048
 
 [exports]
 root = "/tmp/nfs"

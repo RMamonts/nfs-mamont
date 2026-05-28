@@ -7,6 +7,7 @@ mod slice;
 mod tests;
 
 use std::future::Future;
+use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -56,7 +57,14 @@ impl Impl {
         let semaphore = Semaphore::new(count.get());
 
         for _ in 0..count.get() {
-            pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
+            let mut buf = vec![2u8; size.get()];
+            let ptr = buf.as_mut_ptr() as *mut libc::c_void;
+            let len = buf.len();
+            if unsafe { libc::mlock(ptr, len) } != 0 {
+                let err = io::Error::last_os_error();
+                panic!("mlock failed (size={}): {err}", size.get());
+            }
+            pool.push(buf.into_boxed_slice()).expect("can't initialize allocator");
         }
 
         Self {

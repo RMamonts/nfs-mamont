@@ -8,11 +8,11 @@ impl read_dir::ReadDir for MirrorFS {
             Ok(path) => path,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
         };
-        let dir_meta = match Self::metadata(&dir_path) {
+        let dir_meta = match self.metadata(&dir_path).await {
             Ok(meta) => meta,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),
         };
-        let dir_attr = Self::attr_from_metadata(&dir_meta);
+        let dir_attr = Self::attr_from_statx(&dir_meta);
         if let Err(error) = Self::validate_directory(&dir_attr) {
             return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) });
         }
@@ -22,7 +22,7 @@ impl read_dir::ReadDir for MirrorFS {
             return Err(read_dir::Fail { error: vfs::Error::BadCookie, dir_attr: Some(dir_attr) });
         }
 
-        let entries = match self.list_directory_entries(&dir_path) {
+        let entries = match self.list_directory_entries(&dir_path).await {
             Ok(entries) => entries,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: Some(dir_attr) }),
         };
@@ -36,7 +36,7 @@ impl read_dir::ReadDir for MirrorFS {
             if !result.is_empty() && used.saturating_add(estimated) > args.count {
                 break;
             }
-            let attr = Self::attr_from_metadata(&meta);
+            let attr = Self::attr_from_statx(&meta);
             let _ = self.handle_for_path(&path).await;
             result.push(read_dir::Entry {
                 file_id: attr.file_id,

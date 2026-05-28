@@ -10,7 +10,7 @@ impl fs_info::FsInfo for MirrorFS {
             Err(error) => return Err(fs_info::Fail { error, root_attr: None }),
         };
         Ok(fs_info::Success {
-            root_attr: Self::file_attr(&path),
+            root_attr: self.file_attr(&path).await,
             read_max: READ_WRITE_MAX,
             read_pref: READ_WRITE_MAX,
             read_mult: 1,

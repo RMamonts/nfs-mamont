@@ -13,13 +13,13 @@ impl read_link::ReadLink for MirrorFS {
                 return Err(read_link::Fail { error, symlink_attr: None });
             }
         };
-        let meta = match Self::metadata(&path) {
+        let meta = match self.metadata(&path).await {
             Ok(meta) => meta,
             Err(error) => {
                 return Err(read_link::Fail { error, symlink_attr: None });
             }
         };
-        let attr = Self::attr_from_metadata(&meta);
+        let attr = Self::attr_from_statx(&meta);
         if !matches!(attr.file_type, file::Type::Symlink) {
             return Err(read_link::Fail {
                 error: vfs::Error::InvalidArgument,

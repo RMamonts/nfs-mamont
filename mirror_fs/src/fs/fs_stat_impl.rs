@@ -9,7 +9,7 @@ impl fs_stat::FsStat for MirrorFS {
             Err(error) => return Err(fs_stat::Fail { error, root_attr: None }),
         };
         Ok(fs_stat::Success {
-            root_attr: Self::file_attr(&path),
+            root_attr: self.file_attr(&path).await,
             total_bytes: 0,
             free_bytes: 0,
             available_bytes: 0,

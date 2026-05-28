@@ -10,12 +10,15 @@ const DEFAULT_READ_BUFFER_COUNT: usize = 2048;
 const DEFAULT_WRITE_BUFFER_SIZE: usize = 64 * 1024;
 const DEFAULT_WRITE_BUFFER_COUNT: usize = 2048;
 
+const DEFAULT_URING_RING_SIZE: usize = 2048;
+
 #[derive(Debug)]
 pub struct Config {
     pub allocator: AllocatorConfig,
     pub vfs_pool_size: NonZeroUsize,
     pub export_root: PathBuf,
     pub exports: Vec<ExportConfig>,
+    pub uring: UringConfig,
 }
 
 #[derive(Debug)]
@@ -24,6 +27,23 @@ pub struct AllocatorConfig {
     pub read_buffer_count: NonZeroUsize,
     pub write_buffer_size: NonZeroUsize,
     pub write_buffer_count: NonZeroUsize,
+}
+
+#[derive(Debug)]
+pub struct UringConfig {
+    pub ring_count: NonZeroUsize,
+    pub ring_size: NonZeroUsize,
+}
+
+impl Default for UringConfig {
+    fn default() -> Self {
+        let ring_count = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+
+        Self {
+            ring_count: NonZeroUsize::new(ring_count).unwrap(),
+            ring_size: NonZeroUsize::new(DEFAULT_URING_RING_SIZE).unwrap(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -39,6 +59,7 @@ impl Default for Config {
             vfs_pool_size: NonZeroUsize::new(DEFAULT_VFS_POOL_SIZE).unwrap(),
             export_root: PathBuf::new(),
             exports: Vec::with_capacity(MAX_EXPORTS_COUNT),
+            uring: UringConfig::default(),
         }
     }
 }
@@ -85,6 +106,19 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
         None => AllocatorConfig::default(),
     };
 
+    let ring_count = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+
+    let uring = match raw_config.uring {
+        Some(raw_uring) => UringConfig {
+            ring_count: non_zero(raw_uring.ring_count.unwrap_or(ring_count), "ring_count")?,
+            ring_size: non_zero(
+                raw_uring.ring_size.unwrap_or(DEFAULT_URING_RING_SIZE),
+                "ring_size",
+            )?,
+        },
+        None => UringConfig::default(),
+    };
+
     let vfs_pool_size =
         non_zero(raw_config.vfs_pool_size.unwrap_or(DEFAULT_VFS_POOL_SIZE), "vfs_pool_size")?;
 
@@ -113,7 +147,7 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
 
     validate_exports(&exports)?;
 
-    Ok(Config { allocator, vfs_pool_size, export_root: root, exports })
+    Ok(Config { allocator, vfs_pool_size, export_root: root, exports, uring })
 }
 
 #[derive(Deserialize)]
@@ -121,6 +155,7 @@ struct RawConfig {
     allocator: Option<RawAllocatorConfig>,
     vfs_pool_size: Option<usize>,
     exports: Option<RawExportsConfig>,
+    uring: Option<RawUringConfig>,
 }
 
 #[derive(Deserialize)]
@@ -129,6 +164,12 @@ struct RawAllocatorConfig {
     read_buffer_count: Option<usize>,
     write_buffer_size: Option<usize>,
     write_buffer_count: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct RawUringConfig {
+    ring_count: Option<usize>,
+    ring_size: Option<usize>,
 }
 
 #[derive(Deserialize)]
