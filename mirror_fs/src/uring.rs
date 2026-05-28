@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use io_uring::{opcode, types, IoUring, Probe};
+use io_uring::{opcode, squeue, types, IoUring, Probe};
 use libc;
 use tokio::sync::{mpsc, oneshot};
 
@@ -280,6 +280,7 @@ fn run_uring(
                         let entry = opcode::Fsync::new(types::Fd(fd))
                             .flags(flags)
                             .build()
+                            .flags(squeue::Flags::ASYNC)
                             .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
@@ -306,6 +307,7 @@ fn run_uring(
                                     )
                                     .offset(offset)
                                     .build()
+                                    .flags(squeue::Flags::ASYNC)
                                     .user_data(user_data);
 
                                     if unsafe { submission.push(&entry) }.is_err() {
@@ -332,6 +334,7 @@ fn run_uring(
                             opcode::Write::new(types::Fd(fd), buffer.as_ptr(), buffer.len() as u32)
                                 .offset(offset)
                                 .build()
+                                .flags(squeue::Flags::ASYNC)
                                 .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
@@ -357,6 +360,7 @@ fn run_uring(
                                     )
                                     .offset(offset)
                                     .build()
+                                    .flags(squeue::Flags::ASYNC)
                                     .user_data(user_data);
 
                                     if unsafe { submission.push(&entry) }.is_err() {
@@ -387,6 +391,7 @@ fn run_uring(
                         )
                         .offset(offset)
                         .build()
+                        .flags(squeue::Flags::ASYNC)
                         .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
@@ -405,6 +410,7 @@ fn run_uring(
                             .flags(flags)
                             .mode(mode)
                             .build()
+                            .flags(squeue::Flags::ASYNC)
                             .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
@@ -429,6 +435,7 @@ fn run_uring(
                         .flags(flags)
                         .mask(libc::STATX_BASIC_STATS)
                         .build()
+                        .flags(squeue::Flags::ASYNC)
                         .user_data(user_data);
 
                         if unsafe { submission.push(&entry) }.is_err() {
