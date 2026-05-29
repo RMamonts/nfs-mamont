@@ -19,11 +19,14 @@ impl Lock for NlmService {
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Denied };
         }
 
-        registry
-            .by_file
-            .entry(fh_bytes)
-            .or_default()
-            .push(ActiveLock { caller_name, system_identifier, exclusive, offset, length, opaque_handle });
+        registry.by_file.entry(fh_bytes).or_default().push(ActiveLock {
+            caller_name,
+            system_identifier,
+            exclusive,
+            offset,
+            length,
+            opaque_handle,
+        });
 
         Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
     }
@@ -47,7 +50,13 @@ mod tests {
         OpaqueHandle::new([val; OPAQUE_HANDLE_SIZE])
     }
 
-    fn lock_args(fh_byte: u8, exclusive: bool, offset: u64, length: u64, cookie_val: u64) -> Nlm4LockArgs {
+    fn lock_args(
+        fh_byte: u8,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        cookie_val: u64,
+    ) -> Nlm4LockArgs {
         Nlm4LockArgs {
             cookie: Cookie::new(cookie_val),
             block: false,
@@ -67,14 +76,14 @@ mod tests {
 
     #[tokio::test]
     async fn lock_grants_exclusive_lock() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.lock(lock_args(1, true, 0, 100, 0)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
     }
 
     #[tokio::test]
     async fn lock_denies_conflicting_exclusive() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
         let res = svc.lock(lock_args(1, true, 0, 100, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -82,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_allows_shared_overlapping() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, false, 0, 100, 0)).await;
         let res = svc.lock(lock_args(1, false, 10, 20, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -90,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_denies_shared_against_exclusive() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
         let res = svc.lock(lock_args(1, false, 10, 20, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -98,7 +107,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_denies_exclusive_against_shared() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, false, 0, 100, 0)).await;
         let res = svc.lock(lock_args(1, true, 10, 20, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -106,7 +115,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_allows_different_files() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
         let res = svc.lock(lock_args(2, true, 0, 100, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -114,7 +123,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_allows_non_overlapping_ranges() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 50, 0)).await;
         let res = svc.lock(lock_args(1, true, 50, 50, 1)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -122,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_preserves_cookie() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.lock(lock_args(1, true, 0, 100, 42)).await;
         assert_eq!(res.cookie.raw(), 42);
     }

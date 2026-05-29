@@ -126,7 +126,7 @@ mod tests {
     use crate::nlm::cookie::Cookie;
     use crate::nlm::lock::Nlm4Lock;
     use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs};
-    use crate::nlm::procedures::unlock::{Unlock, Nlm4UnlockArgs};
+    use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Unlock};
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
@@ -338,10 +338,7 @@ mod tests {
     #[test]
     fn with_exports_creates_empty_service() {
         let svc = NlmService::with_exports(vec![]);
-        assert!(
-            svc.locks.try_read().is_ok(),
-            "service should not block on empty read"
-        );
+        assert!(svc.locks.try_read().is_ok(), "service should not block on empty read");
     }
 
     // --- Integration tests spanning multiple procedures ---
