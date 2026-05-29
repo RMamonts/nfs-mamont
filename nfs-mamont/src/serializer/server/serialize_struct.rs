@@ -173,7 +173,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         match *data {
             NlmRes::Null => self.buffer.send_inner_buffer().await,
             NlmRes::Lock(res) => {
-                nlm::lock_res(&mut self.buffer, *res)?;
+                nlm::lock_res(&mut self.buffer, res)?;
                 self.buffer.send_inner_buffer().await
             }
             NlmRes::Unlock(res) => {

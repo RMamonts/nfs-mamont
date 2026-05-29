@@ -1,4 +1,4 @@
-use crate::nlm::procedures::test::{Test, Nlm4TestArgs, Nlm4TestRes, Nlm4TestReply};
+use crate::nlm::procedures::test::{Nlm4TestArgs, Nlm4TestReply, Nlm4TestRes, Test};
 use crate::nlm::Nlm4Stats;
 
 use super::NlmService;
@@ -33,9 +33,9 @@ mod tests {
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::lock::Nlm4Lock;
-    use crate::nlm::OpaqueHandle;
     use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs};
     use crate::nlm::Nlm4Stats;
+    use crate::nlm::OpaqueHandle;
     use crate::vfs::file::Handle;
 
     fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
@@ -46,7 +46,14 @@ mod tests {
         OpaqueHandle::new([val; OPAQUE_HANDLE_SIZE])
     }
 
-    fn lock_args(fh_byte: u8, exclusive: bool, offset: u64, length: u64, caller: &str, pid: i32) -> Nlm4LockArgs {
+    fn lock_args(
+        fh_byte: u8,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        caller: &str,
+        pid: i32,
+    ) -> Nlm4LockArgs {
         Nlm4LockArgs {
             cookie: Cookie::new(0),
             block: false,
@@ -64,7 +71,13 @@ mod tests {
         }
     }
 
-    fn test_args(fh_byte: u8, exclusive: bool, offset: u64, length: u64, cookie_val: u64) -> Nlm4TestArgs {
+    fn test_args(
+        fh_byte: u8,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        cookie_val: u64,
+    ) -> Nlm4TestArgs {
         Nlm4TestArgs {
             cookie: Cookie::new(cookie_val),
             exclusive,
@@ -81,14 +94,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_reports_granted_when_free() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.test(test_args(1, true, 0, 100, 0)).await;
         assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
     }
 
     #[tokio::test]
     async fn test_reports_denied_when_conflict() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let svc_ref = &svc;
         svc_ref.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
         let res = svc_ref.test(test_args(1, true, 0, 100, 0)).await;
@@ -97,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_denied_holder_matches_conflicting_lock() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let svc_ref = &svc;
         svc_ref.lock(lock_args(1, true, 0, 100, "alice", 42)).await;
         let res = svc_ref.test(test_args(1, true, 0, 100, 0)).await;
@@ -108,7 +121,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_holder_when_granted() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.test(test_args(1, true, 0, 100, 0)).await;
         assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
         assert!(res.test_stat.holder.is_none());
@@ -116,14 +129,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_preserves_cookie() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.test(test_args(1, true, 0, 100, 77)).await;
         assert_eq!(res.cookie.raw(), 77);
     }
 
     #[tokio::test]
     async fn test_reports_shared_compatible_as_granted() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let svc_ref = &svc;
         svc_ref.lock(lock_args(1, false, 0, 100, "alice", 100)).await;
         let res = svc_ref.test(test_args(1, false, 10, 20, 0)).await;

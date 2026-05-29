@@ -82,7 +82,7 @@ where
                 NlmArguments::Lock(nlm4_lock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM");
                     let res = nlm_service.lock(nlm4_lock_args).await;
-                    NlmRes::Lock(Box::new(res))
+                    NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM");

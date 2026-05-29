@@ -8,10 +8,7 @@ use std::io::Write;
 
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
-    cancel::Nlm4CancelRes,
-    lock::Nlm4LockRes,
-    test::Nlm4TestRes,
-    unlock::Nlm4UnlockRes,
+    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use crate::nlm::Nlm4Stats;
 use crate::serializer::{padding, u32, u64, variant};
@@ -67,6 +64,7 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
 mod tests {
     use std::io::Cursor;
 
+    use super::*;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::holder::Nlm4Holder;
@@ -77,23 +75,23 @@ mod tests {
         unlock::Nlm4UnlockRes,
     };
     use crate::nlm::{Nlm4Stats, OpaqueHandle};
-    use super::*;
 
     fn cookie(val: u64) -> Cookie {
         Cookie::new(val)
     }
-
-    // --- lock_res ---
 
     #[test]
     fn lock_res_serializes_cookie_and_granted() {
         let mut buf = Cursor::new(vec![0u8; 12]);
         let res = Nlm4LockRes { cookie: cookie(0x0102030405060708), stat: Nlm4Stats::Granted };
         lock_res(&mut buf, res).unwrap();
-        assert_eq!(buf.into_inner(), [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // cookie
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
-        ]);
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // cookie
+                0x00, 0x00, 0x00, 0x00, // Granted = 0
+            ]
+        );
     }
 
     #[test]
@@ -101,39 +99,42 @@ mod tests {
         let mut buf = Cursor::new(vec![0u8; 12]);
         let res = Nlm4LockRes { cookie: cookie(0), stat: Nlm4Stats::Denied };
         lock_res(&mut buf, res).unwrap();
-        assert_eq!(buf.into_inner(), [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // cookie = 0
-            0x00, 0x00, 0x00, 0x01, // Denied = 1
-        ]);
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // cookie = 0
+                0x00, 0x00, 0x00, 0x01, // Denied = 1
+            ]
+        );
     }
-
-    // --- unlock_res ---
 
     #[test]
     fn unlock_res_serializes_cookie_and_stat() {
         let mut buf = Cursor::new(vec![0u8; 12]);
         let res = Nlm4UnlockRes { cookie: cookie(7), stat: Nlm4Stats::Granted };
         unlock_res(&mut buf, res).unwrap();
-        assert_eq!(buf.into_inner(), [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, // cookie = 7
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
-        ]);
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, // cookie = 7
+                0x00, 0x00, 0x00, 0x00, // Granted = 0
+            ]
+        );
     }
-
-    // --- cancel_res ---
 
     #[test]
     fn cancel_res_serializes_cookie_and_stat() {
         let mut buf = Cursor::new(vec![0u8; 12]);
         let res = Nlm4CancelRes { cookie: cookie(u64::MAX), stat: Nlm4Stats::Denied };
         cancel_res(&mut buf, res).unwrap();
-        assert_eq!(buf.into_inner(), [
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // cookie = u64::MAX
-            0x00, 0x00, 0x00, 0x01, // Denied = 1
-        ]);
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // cookie = u64::MAX
+                0x00, 0x00, 0x00, 0x01, // Denied = 1
+            ]
+        );
     }
-
-    // --- test_res (Granted) ---
 
     #[test]
     fn test_res_granted_serializes_cookie_and_granted_no_holder() {
@@ -143,22 +144,23 @@ mod tests {
             test_stat: Nlm4TestReply { stat: Nlm4Stats::Granted, holder: None },
         };
         test_res(&mut buf, res).unwrap();
-        assert_eq!(buf.into_inner(), [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
-        ]);
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
+                0x00, 0x00, 0x00, 0x00, // Granted = 0
+            ]
+        );
     }
-
-    // --- test_res (Denied with holder) ---
 
     #[test]
     fn test_res_denied_serializes_full_holder() {
         let holder = Nlm4Holder::new(
-            true,       // exclusive
-            12345,      // system_identifier
+            true,                                          // exclusive
+            12345,                                         // system_identifier
             OpaqueHandle::new([0xAB; OPAQUE_HANDLE_SIZE]), // opaque_handle
-            99,         // lock_offset
-            200,        // lock_length
+            99,                                            // lock_offset
+            200,                                           // lock_length
         );
         let res = Nlm4TestRes {
             cookie: cookie(0xDEADBEEF),
@@ -174,22 +176,21 @@ mod tests {
         assert_eq!(&bytes[12..16], [0x00, 0x00, 0x00, 0x01]); // exclusive = true
         assert_eq!(&bytes[16..20], [0x00, 0x00, 0x30, 0x39]); // system_identifier = 12345
         assert_eq!(&bytes[20..20 + OPAQUE_HANDLE_SIZE], [0xAB; OPAQUE_HANDLE_SIZE]); // opaque_handle
-        // padding after opaque_handle: OPAQUE_HANDLE_SIZE % 4 == 0, so no padding
+                                                                                     // padding after opaque_handle: OPAQUE_HANDLE_SIZE % 4 == 0, so no padding
         let offset_off = 20 + OPAQUE_HANDLE_SIZE;
-        assert_eq!(&bytes[offset_off..offset_off + 8], [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x63]); // lock_offset = 99
+        assert_eq!(
+            &bytes[offset_off..offset_off + 8],
+            [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x63]
+        ); // lock_offset = 99
         let len_off = offset_off + 8;
-        assert_eq!(&bytes[len_off..len_off + 8], [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC8]); // lock_length = 200
+        assert_eq!(&bytes[len_off..len_off + 8], [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC8]);
+        // lock_length = 200
     }
 
     #[test]
     fn test_res_denied_holder_has_correct_offset_in_buffer() {
-        let holder = Nlm4Holder::new(
-            false,
-            999,
-            OpaqueHandle::new([0x01; OPAQUE_HANDLE_SIZE]),
-            0,
-            0,
-        );
+        let holder =
+            Nlm4Holder::new(false, 999, OpaqueHandle::new([0x01; OPAQUE_HANDLE_SIZE]), 0, 0);
         let res = Nlm4TestRes {
             cookie: cookie(0),
             test_stat: Nlm4TestReply { stat: Nlm4Stats::Denied, holder: Some(holder) },
