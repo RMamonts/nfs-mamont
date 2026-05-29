@@ -4,7 +4,7 @@
 //! grouped by file handle. The registry supports shared/exclusive semantics
 //! and range-based conflict detection.
 //!
-//! The service implements [`Lock`], [`Unlock`], [`Test`], and [`Cancel`]
+//! The service implements `Lock`, `Unlock`, `Test` and `Cancel`
 //! procedure traits from `crate::nlm::procedures`.
 
 use std::collections::HashMap;
