@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 use libc;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
+use nfs_mamont::Slice;
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
@@ -270,30 +271,34 @@ impl MirrorFS {
         }
     }
 
-    async fn write_all_uring(
+    async fn write_slice_uring(
         &self,
         fd: RawFd,
         mut offset: u64,
-        data: &[u8],
+        data: &mut Slice,
     ) -> Result<(), std::io::Error> {
         let Some(uring) = self.uring_executor() else {
             return Err(std::io::Error::other("io_uring not available"));
         };
 
-        let mut written = 0usize;
-        let max_len = self.uring_max_io_len();
-        while written < data.len() {
-            let end = (written + max_len).min(data.len());
-            let chunk = data[written..end].to_vec();
-            let bytes = uring.write_at(fd, offset, chunk).await?;
-            if bytes == 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::WriteZero,
-                    "io_uring write returned 0 bytes",
-                ));
+        let (mut buffers, alloc_state) = data.take_buffers();
+
+        while !buffers.is_empty() {
+            let buf = buffers.remove(0);
+            let state = alloc_state.clone();
+            let vec = buf.into_vec();
+            match uring.write_at(fd, offset, vec, state).await {
+                Ok(bytes) => offset += bytes as u64,
+                Err(error) => {
+                    for r in buffers.drain(..) {
+                        if let Some(ref s) = alloc_state {
+                            let _ = s.pool.push(r);
+                            s.semaphore.add_permits(1);
+                        }
+                    }
+                    return Err(error);
+                }
             }
-            written += bytes;
-            offset += bytes as u64;
         }
 
         Ok(())

@@ -43,6 +43,12 @@ impl Slice {
         Self { buffers, range, state }
     }
 
+    /// Takes ownership of inner buffers and prevents Drop from returning them to the pool.
+    /// Returns (buffers, allocator_state) for manual lifecycle management.
+    pub fn take_buffers(&mut self) -> (Vec<Box<[u8]>>, Option<Arc<super::AllocatorState>>) {
+        (std::mem::take(&mut self.buffers), self.state.take())
+    }
+
     // /// Returns an empty slice that owns no buffers.
     pub fn empty() -> Self {
         Self { buffers: Vec::new(), range: 0..0, state: None }

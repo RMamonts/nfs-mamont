@@ -4,7 +4,7 @@ use nfs_mamont::vfs::{self, write};
 use super::MirrorFS;
 
 impl write::Write for MirrorFS {
-    async fn write(&self, args: write::Args) -> Result<write::Success, write::Fail> {
+    async fn write(&self, mut args: write::Args) -> Result<write::Success, write::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
@@ -33,18 +33,13 @@ impl write::Write for MirrorFS {
                     });
                 }
             };
-            let mut increment = 0;
-            for data in &args.data {
-                if let Err(error) =
-                    self.write_all_uring(fd.as_raw_fd(), args.offset + increment, data).await
-                {
-                    return Err(write::Fail {
-                        error: Self::io_error_to_vfs(&error),
-                        wcc_data: self.wcc_data(&path, before).await,
-                    });
-                }
-
-                increment += data.len() as u64;
+            if let Err(error) =
+                self.write_slice_uring(fd.as_raw_fd(), args.offset, &mut args.data).await
+            {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: self.wcc_data(&path, before).await,
+                });
             }
 
             let sync_result = match args.stable {

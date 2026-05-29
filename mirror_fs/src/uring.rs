@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use io_uring::{opcode, squeue, types, IoUring, Probe};
 use libc;
+use nfs_mamont::AllocatorState;
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
@@ -100,9 +101,15 @@ impl UringExecutor {
         }
     }
 
-    pub async fn write_at(&self, fd: RawFd, offset: u64, buffer: Vec<u8>) -> io::Result<usize> {
+    pub async fn write_at(
+        &self,
+        fd: RawFd,
+        offset: u64,
+        buffer: Vec<u8>,
+        alloc_state: Option<Arc<AllocatorState>>,
+    ) -> io::Result<usize> {
         let (reply, wait) = oneshot::channel();
-        let request = UringRequest::Write { fd, offset, buffer, reply };
+        let request = UringRequest::Write { fd, offset, buffer, reply, alloc_state };
 
         if self.sender.send(request).is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
@@ -187,7 +194,13 @@ impl UringPool {
 
 enum UringRequest {
     Fsync { fd: RawFd, flags: types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
-    Write { fd: RawFd, offset: u64, buffer: Vec<u8>, reply: oneshot::Sender<io::Result<usize>> },
+    Write {
+        fd: RawFd,
+        offset: u64,
+        buffer: Vec<u8>,
+        reply: oneshot::Sender<io::Result<usize>>,
+        alloc_state: Option<Arc<AllocatorState>>,
+    },
     Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
     Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
     Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
@@ -195,8 +208,11 @@ enum UringRequest {
 
 enum InFlight {
     Fsync(oneshot::Sender<io::Result<()>>),
-    Write { reply: oneshot::Sender<io::Result<usize>>, buffer: Vec<u8> },
-    WriteFixed { reply: oneshot::Sender<io::Result<usize>>, index: usize, len: usize },
+    Write {
+        reply: oneshot::Sender<io::Result<usize>>,
+        buffer: Vec<u8>,
+        alloc_state: Option<Arc<AllocatorState>>,
+    },
     Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
     ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
     Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
@@ -292,42 +308,7 @@ fn run_uring(
                         inflight.insert(user_data, InFlight::Fsync(reply));
                         submitted += 1;
                     }
-                    UringRequest::Write { fd, offset, buffer, reply } => {
-                        if let Some(pool) = pool.as_mut() {
-                            if buffer.len() <= pool.len {
-                                if let Some(index) = pool.take() {
-                                    pool.buffers[index][..buffer.len()].copy_from_slice(&buffer);
-                                    let user_data = next_id;
-                                    next_id = next_id.wrapping_add(1);
-                                    let entry = opcode::WriteFixed::new(
-                                        types::Fd(fd),
-                                        pool.buffers[index].as_ptr(),
-                                        buffer.len() as u32,
-                                        index as u16,
-                                    )
-                                    .offset(offset)
-                                    .build()
-                                    .flags(squeue::Flags::ASYNC)
-                                    .user_data(user_data);
-
-                                    if unsafe { submission.push(&entry) }.is_err() {
-                                        pool.release(index);
-                                        let _ = reply.send(Err(io::Error::other(
-                                            "io_uring submission queue full",
-                                        )));
-                                        continue;
-                                    }
-
-                                    inflight.insert(
-                                        user_data,
-                                        InFlight::WriteFixed { reply, index, len: buffer.len() },
-                                    );
-                                    submitted += 1;
-                                    continue;
-                                }
-                            }
-                        }
-
+                    UringRequest::Write { fd, offset, buffer, reply, alloc_state } => {
                         let user_data = next_id;
                         next_id = next_id.wrapping_add(1);
                         let entry =
@@ -340,10 +321,14 @@ fn run_uring(
                         if unsafe { submission.push(&entry) }.is_err() {
                             let _ =
                                 reply.send(Err(io::Error::other("io_uring submission queue full")));
+                            if let Some(state) = alloc_state {
+                                let _ = state.pool.push(buffer.into_boxed_slice());
+                                state.semaphore.add_permits(1);
+                            }
                             continue;
                         }
 
-                        inflight.insert(user_data, InFlight::Write { reply, buffer });
+                        inflight.insert(user_data, InFlight::Write { reply, buffer, alloc_state });
                         submitted += 1;
                     }
                     UringRequest::Read { fd, offset, len, reply } => {
@@ -478,7 +463,7 @@ fn run_uring(
                         InFlight::Fsync(reply) => {
                             let _ = reply.send(result.map(|_| ()));
                         }
-                        InFlight::Write { reply, buffer } => {
+                        InFlight::Write { reply, buffer, alloc_state } => {
                             let max = buffer.len();
                             let result = result.and_then(|bytes| {
                                 if bytes > max {
@@ -490,24 +475,14 @@ fn run_uring(
                                     Ok(bytes)
                                 }
                             });
-                            let _ = reply.send(result);
-                        }
-                        InFlight::WriteFixed { reply, index, len } => {
-                            let result = result.and_then(|bytes| {
-                                if bytes > len {
-                                    Err(io::Error::new(
-                                        io::ErrorKind::InvalidData,
-                                        "write overflow",
-                                    ))
-                                } else {
-                                    Ok(bytes)
+                            if let Some(state) = alloc_state {
+                                if state.pool.push(buffer.into_boxed_slice()).is_ok() {
+                                    state.semaphore.add_permits(1);
                                 }
-                            });
-                            if let Some(pool) = pool.as_mut() {
-                                pool.release(index);
                             }
                             let _ = reply.send(result);
                         }
+
                         InFlight::Read { reply, mut buffer } => {
                             let max = buffer.len();
                             let result = result.and_then(|bytes| {
@@ -579,12 +554,11 @@ fn fail_inflight(
             InFlight::Fsync(reply) => {
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
-            InFlight::Write { reply, .. } => {
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
-            }
-            InFlight::WriteFixed { reply, index, .. } => {
-                if let Some(pool) = pool.as_mut() {
-                    pool.release(index);
+            InFlight::Write { reply, buffer, alloc_state } => {
+                if let Some(state) = alloc_state {
+                    if state.pool.push(buffer.into_boxed_slice()).is_ok() {
+                        state.semaphore.add_permits(1);
+                    }
                 }
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
