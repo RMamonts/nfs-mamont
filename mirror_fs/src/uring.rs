@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CString;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use io_uring::{opcode, squeue, types, IoUring, Probe};
 use libc;
@@ -213,15 +213,13 @@ enum InFlight {
         buffer: Vec<u8>,
         alloc_state: Option<Arc<AllocatorState>>,
     },
-    Read { reply: oneshot::Sender<io::Result<Vec<u8>>>, buffer: Vec<u8> },
     ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
     Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
     Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
 }
 
 const MAX_BATCH: usize = 64;
-const BATCH_WAIT: Duration = Duration::from_micros(50);
-const DEFAULT_FIXED_BUFFER_COUNT: usize = 128;
+const DEFAULT_FIXED_BUFFER_COUNT: usize = 2048;
 const DEFAULT_FIXED_BUFFER_LEN: usize = 64 * 1024;
 
 struct FixedBufferPool {
@@ -268,18 +266,30 @@ fn run_uring(
     mut pool: Option<FixedBufferPool>,
 ) {
     let mut next_id: u64 = 1;
+    let mut pending: VecDeque<UringRequest> = VecDeque::new();
 
     loop {
-        let Some(request) = receiver.blocking_recv() else {
-            break;
-        };
+        let mut batch = Vec::with_capacity(MAX_BATCH);
 
-        let mut batch = vec![request];
-        let start = Instant::now();
-        while batch.len() < MAX_BATCH && start.elapsed() < BATCH_WAIT {
+        // Drain pending reads that couldn't get a buffer last iteration
+        while batch.len() < MAX_BATCH {
+            match pending.pop_front() {
+                Some(r) => batch.push(r),
+                None => break,
+            }
+        }
+
+        // Get new requests from channel
+        if batch.is_empty() {
+            match receiver.blocking_recv() {
+                Some(request) => batch.push(request),
+                None => break,
+            }
+        }
+        while batch.len() < MAX_BATCH {
             match receiver.try_recv() {
                 Ok(request) => batch.push(request),
-                Err(_) => thread::yield_now(),
+                Err(_) => break,
             }
         }
 
@@ -366,27 +376,8 @@ fn run_uring(
                             }
                         }
 
-                        let user_data = next_id;
-                        next_id = next_id.wrapping_add(1);
-                        let mut buffer = vec![0u8; len];
-                        let entry = opcode::Read::new(
-                            types::Fd(fd),
-                            buffer.as_mut_ptr(),
-                            buffer.len() as u32,
-                        )
-                        .offset(offset)
-                        .build()
-                        .flags(squeue::Flags::ASYNC)
-                        .user_data(user_data);
-
-                        if unsafe { submission.push(&entry) }.is_err() {
-                            let _ =
-                                reply.send(Err(io::Error::other("io_uring submission queue full")));
-                            continue;
-                        }
-
-                        inflight.insert(user_data, InFlight::Read { reply, buffer });
-                        submitted += 1;
+                        // No fixed buffer available → defer until next iteration
+                        pending.push_back(UringRequest::Read { fd, offset, len, reply });
                     }
                     UringRequest::Open { path, flags, mode, reply } => {
                         let user_data = next_id;
@@ -437,6 +428,9 @@ fn run_uring(
         }
 
         if submitted == 0 {
+            if !pending.is_empty() {
+                thread::sleep(Duration::from_micros(10));
+            }
             continue;
         }
 
@@ -483,18 +477,6 @@ fn run_uring(
                             let _ = reply.send(result);
                         }
 
-                        InFlight::Read { reply, mut buffer } => {
-                            let max = buffer.len();
-                            let result = result.and_then(|bytes| {
-                                if bytes > max {
-                                    Err(io::Error::new(io::ErrorKind::InvalidData, "read overflow"))
-                                } else {
-                                    buffer.truncate(bytes);
-                                    Ok(buffer)
-                                }
-                            });
-                            let _ = reply.send(result);
-                        }
                         InFlight::ReadFixed { reply, index, len } => {
                             let result = result.and_then(|bytes| {
                                 if bytes > len {
@@ -560,9 +542,6 @@ fn fail_inflight(
                         state.semaphore.add_permits(1);
                     }
                 }
-                let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
-            }
-            InFlight::Read { reply, .. } => {
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
             InFlight::ReadFixed { reply, index, .. } => {
