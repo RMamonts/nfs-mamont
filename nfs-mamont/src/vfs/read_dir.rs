@@ -18,6 +18,7 @@ impl Cookie {
     ///
     /// ### Returns
     /// * A `Cookie` wrapping the provided value.
+    #[inline]
     pub fn new(val: u64) -> Self {
         Self(val)
     }
@@ -26,6 +27,7 @@ impl Cookie {
     ///
     /// ### Returns
     /// * The internal `u64` value.
+    #[inline]
     pub fn raw(self) -> u64 {
         self.0
     }
@@ -35,6 +37,7 @@ impl Cookie {
     /// ### Returns
     /// * `true` if the value is 0. In the first `READDIR` request for a directory,
     ///   this should be set to 0 to start reading from the first entry.
+    #[inline]
     pub fn is_zero(self) -> bool {
         self.0 == 0
     }
@@ -53,6 +56,7 @@ impl CookieVerifier {
     ///
     /// ### Returns
     /// * A `CookieVerifier` wrapping the byte array.
+    #[inline]
     pub fn new(val: [u8; NFS3_COOKIEVERFSIZE]) -> Self {
         Self(val)
     }
@@ -61,6 +65,7 @@ impl CookieVerifier {
     ///
     /// ### Returns
     /// * The internal `[u8; 8]` array.
+    #[inline]
     pub fn raw(self) -> [u8; NFS3_COOKIEVERFSIZE] {
         self.0
     }
@@ -70,6 +75,7 @@ impl CookieVerifier {
     /// ### Returns
     /// * `true` if the array is all zeros. In the first `READDIR` request, the
     ///   verifier must be set to 0.
+    #[inline]
     pub fn is_zero(self) -> bool {
         self.0 == [0; NFS3_COOKIEVERFSIZE]
     }

@@ -42,21 +42,25 @@ where
     }
 
     /// Returns the shared VFS worker pool used to dispatch NFS procedure work.
+    #[inline]
     pub fn get_vfs_pool(&self) -> &VfsPool {
         &self.vfs_pool
     }
 
     /// Returns a clone of the [`vfs::Vfs`] backend.
+    #[inline]
     pub fn get_backend(&self) -> Arc<V> {
         Arc::clone(&self.backend)
     }
 
     /// Returns a clone of the read buffer allocator.
+    #[inline]
     pub fn get_read_allocator(&self) -> Arc<A> {
         Arc::clone(&self.read_allocator)
     }
 
     /// Returns a clone of the write buffer allocator.
+    #[inline]
     pub fn get_write_allocator(&self) -> Arc<A> {
         Arc::clone(&self.write_allocator)
     }

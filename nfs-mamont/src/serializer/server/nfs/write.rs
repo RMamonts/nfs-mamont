@@ -16,7 +16,7 @@ fn stable_how(dest: &mut impl Write, how: write::StableHow) -> io::Result<()> {
 pub fn result_ok(dest: &mut impl Write, arg: write::Success) -> io::Result<()> {
     wcc_data(dest, arg.file_wcc)?;
     u32(dest, arg.count)?;
-    stable_how(dest, arg.commited)?;
+    stable_how(dest, arg.committed)?;
     array(dest, arg.verifier.0)
 }
 

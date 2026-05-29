@@ -64,7 +64,7 @@ impl write::Write for MirrorFS {
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
             count: data.len() as u32,
-            commited: args.stable,
+            committed: args.stable,
             verifier: self.write_verifier(),
         })
     }
