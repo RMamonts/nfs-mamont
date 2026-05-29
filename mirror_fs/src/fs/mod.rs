@@ -65,7 +65,7 @@ mod set_attr_impl;
 mod symlink_impl;
 mod write_impl;
 
-const READ_WRITE_MAX: u32 = 64 * 1024;
+const READ_WRITE_MAX: u32 = 1024 * 1024;
 const READ_DIR_PREF: u32 = 8 * 1024;
 const DEFAULT_SET_ATTR: set_attr::NewAttr = set_attr::NewAttr {
     mode: None,

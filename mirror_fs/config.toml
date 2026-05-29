@@ -1,12 +1,14 @@
+vfs_pool_size = 8
+
 [allocator]
 read_buffer_size = 65536
-read_buffer_count = 99768
+read_buffer_count = 4096
 write_buffer_size = 65536
-write_buffer_count = 99768
+write_buffer_count = 4096
 
 [uring]
-# num_workers = 5 # all threads by default
-# ring_size = 2048
+ring_count = 4
+ring_size = 2048
 
 [exports]
 root = "/tmp/nfs"
