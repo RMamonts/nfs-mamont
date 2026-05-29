@@ -44,11 +44,13 @@ impl Name {
     }
 
     /// Consumes the wrapper and returns the inner [`String`].
+    #[inline]
     pub fn into_inner(self) -> String {
         self.0
     }
 
     /// Returns the inner name as a string slice.
+    #[inline]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -79,11 +81,13 @@ impl Path {
     }
 
     /// Consumes the wrapper and returns the inner [`PathBuf`].
+    #[inline]
     pub fn into_inner(self) -> PathBuf {
         self.0
     }
 
     /// Returns the inner path as a `&Path`.
+    #[inline]
     pub fn as_path(&self) -> &std::path::Path {
         self.0.as_path()
     }

@@ -162,6 +162,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// This is typically called after successfully parsing a complete message
     /// to prepare for parsing the next message.
+    #[inline]
     pub fn clean(&mut self) {
         self.total_bytes = 0;
     }
@@ -190,6 +191,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
     ///
     /// This count includes all bytes that have been read from the socket,
     /// whether they were consumed by parsing operations or discarded.
+    #[inline]
     pub fn total_bytes(&self) -> usize {
         self.total_bytes
     }
@@ -279,6 +281,7 @@ impl ReadBuffer {
     }
 
     /// Returns the current read position (number of bytes consumed).
+    #[inline]
     fn bytes_read(&self) -> usize {
         self.read_pos
     }
@@ -286,6 +289,7 @@ impl ReadBuffer {
     /// Returns the number of bytes available to read.
     ///
     /// This is the difference between the write position and read position.
+    #[inline]
     fn available_read(&self) -> usize {
         self.write_pos - self.read_pos
     }
@@ -293,6 +297,7 @@ impl ReadBuffer {
     /// Returns the number of bytes available for writing.
     ///
     /// This is the remaining space in the buffer from the write position to the end.
+    #[inline]
     fn available_write(&self) -> usize {
         self.data.len() - self.write_pos
     }
@@ -300,6 +305,7 @@ impl ReadBuffer {
     /// Returns a mutable slice of the buffer starting from the write position.
     ///
     /// This slice can be used to write data directly into the buffer.
+    #[inline]
     fn write_slice(&mut self) -> &mut [u8] {
         &mut self.data[self.write_pos..]
     }
@@ -309,6 +315,7 @@ impl ReadBuffer {
     /// # Arguments
     ///
     /// * `n` - The number of bytes to consume
+    #[inline]
     fn consume(&mut self, n: usize) {
         self.read_pos += n;
     }
@@ -318,6 +325,7 @@ impl ReadBuffer {
     /// # Arguments
     ///
     /// * `n` - The number of bytes that were written
+    #[inline]
     fn extend(&mut self, n: usize) {
         self.write_pos += n;
     }
@@ -329,6 +337,7 @@ impl ReadBuffer {
     /// # Arguments
     ///
     /// * `n` - The new read position
+    #[inline]
     fn reset_read(&mut self, n: usize) {
         self.read_pos = n;
     }
@@ -336,6 +345,7 @@ impl ReadBuffer {
     /// Resets both read and write positions to zero, clearing the buffer.
     ///
     /// This prepares the buffer for reuse after a complete message has been processed.
+    #[inline]
     fn clean(&mut self) {
         self.read_pos = 0;
         self.write_pos = 0;

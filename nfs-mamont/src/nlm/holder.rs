@@ -50,14 +50,15 @@ mod tests {
 
     #[test]
     fn new_holder_succeeds() {
-        let opaque_handle = OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]);
+        let oh = [1; OPAQUE_HANDLE_SIZE];
+        let opaque_handle = OpaqueHandle::new(oh);
         let system_id = 12345;
         let offset = 0;
         let length = 0;
 
         let lock = Nlm4Holder::new(true, system_id, opaque_handle, offset, length);
 
-        assert_eq!(lock.opaque_handle.as_bytes(), &[1; OPAQUE_HANDLE_SIZE]);
+        assert_eq!(lock.opaque_handle.as_bytes(), &oh);
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);
