@@ -5,7 +5,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -13,6 +13,14 @@ use io_uring::{opcode, squeue, types, IoUring, Probe};
 use libc;
 use nfs_mamont::AllocatorState;
 use tokio::sync::{mpsc, oneshot};
+
+struct ChainShared {
+    reply: Mutex<Option<oneshot::Sender<io::Result<()>>>>,
+    buffers: Mutex<Option<Vec<Box<[u8]>>>>,
+    alloc_state: Option<Arc<AllocatorState>>,
+    remaining: AtomicUsize,
+    error: Mutex<Option<io::Error>>,
+}
 
 #[derive(Debug)]
 pub struct UringExecutor {
@@ -55,6 +63,7 @@ impl UringExecutor {
             || !probe.is_supported(opcode::OpenAt::CODE)
             || !probe.is_supported(opcode::Statx::CODE)
             || !probe.is_supported(opcode::Fsync::CODE)
+            || !probe.is_supported(opcode::Close::CODE)
         {
             return None;
         }
@@ -110,6 +119,27 @@ impl UringExecutor {
     ) -> io::Result<usize> {
         let (reply, wait) = oneshot::channel();
         let request = UringRequest::Write { fd, offset, buffer, reply, alloc_state };
+
+        if self.sender.send(request).is_err() {
+            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
+        }
+
+        match wait.await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped")),
+        }
+    }
+
+    pub async fn write_chain(
+        &self,
+        fd: RawFd,
+        offset: u64,
+        buffers: Vec<Box<[u8]>>,
+        alloc_state: Option<Arc<AllocatorState>>,
+        do_fsync: Option<bool>,
+    ) -> io::Result<()> {
+        let (reply, wait) = oneshot::channel();
+        let request = UringRequest::WriteChain { fd, offset, buffers, alloc_state, do_fsync, reply };
 
         if self.sender.send(request).is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
@@ -204,6 +234,14 @@ enum UringRequest {
     Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
     Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
     Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
+    WriteChain {
+        fd: RawFd,
+        offset: u64,
+        buffers: Vec<Box<[u8]>>,
+        alloc_state: Option<Arc<AllocatorState>>,
+        do_fsync: Option<bool>,
+        reply: oneshot::Sender<io::Result<()>>,
+    },
 }
 
 enum InFlight {
@@ -216,6 +254,7 @@ enum InFlight {
     ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
     Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
     Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
+    WriteChainItem(Arc<ChainShared>),
 }
 
 const MAX_BATCH: usize = 64;
@@ -340,6 +379,87 @@ fn run_uring(
 
                         inflight.insert(user_data, InFlight::Write { reply, buffer, alloc_state });
                         submitted += 1;
+                    }
+                    UringRequest::WriteChain { fd, offset, buffers, alloc_state, do_fsync, reply } => {
+                        let n_bufs = buffers.len();
+                        let n_extra = if do_fsync.is_some() { 1 } else { 0 };
+                        let chain_size = n_bufs + n_extra;
+                        if chain_size == 0 {
+                            let _ = reply.send(Ok(()));
+                            continue;
+                        }
+
+                        let avail = submission.capacity() - submission.len();
+                        if avail < chain_size {
+                            let _ = reply.send(Err(io::Error::other(
+                                "io_uring submission queue full",
+                            )));
+                            if let Some(ref state) = alloc_state {
+                                for buf in buffers {
+                                    let _ = state.pool.push(buf);
+                                    state.semaphore.add_permits(1);
+                                }
+                            }
+                            continue;
+                        }
+
+                        let base_id = next_id;
+                        next_id = next_id.wrapping_add(chain_size as u64);
+
+                        let shared = Arc::new(ChainShared {
+                            reply: Mutex::new(Some(reply)),
+                            buffers: Mutex::new(Some(buffers)),
+                            alloc_state,
+                            remaining: AtomicUsize::new(chain_size),
+                            error: Mutex::new(None),
+                        });
+
+                        // Collect ptrs/lens for SQE construction before buffers move into shared
+                        let buf_meta: Vec<(usize, *const u8)> = {
+                            let guard = shared.buffers.lock().unwrap();
+                            guard.as_ref().unwrap().iter().map(|b| (b.len(), b.as_ptr())).collect()
+                        };
+
+                        let mut buf_off = 0u64;
+                        for (i, &(len, ptr)) in buf_meta.iter().enumerate() {
+                            let is_last = i == n_bufs - 1 && n_extra == 0;
+                            let mut flags = squeue::Flags::ASYNC | squeue::Flags::IO_HARDLINK;
+                            if !is_last {
+                                flags |= squeue::Flags::IO_LINK;
+                            }
+
+                            let entry = opcode::Write::new(types::Fd(fd), ptr, len as u32)
+                                .offset(offset + buf_off)
+                                .build()
+                                .flags(flags)
+                                .user_data(base_id + i as u64);
+
+                            let _ = unsafe { submission.push(&entry) };
+                            inflight
+                                .insert(base_id + i as u64, InFlight::WriteChainItem(shared.clone()));
+                            submitted += 1;
+                            buf_off += len as u64;
+                        }
+
+                        if n_extra > 0 {
+                            let fsync_flags = if do_fsync == Some(true) {
+                                types::FsyncFlags::DATASYNC
+                            } else {
+                                types::FsyncFlags::empty()
+                            };
+                            let entry = opcode::Fsync::new(types::Fd(fd))
+                                .flags(fsync_flags)
+                                .build()
+                                .flags(squeue::Flags::ASYNC)
+                                .user_data(base_id + n_bufs as u64);
+
+                            let _ = unsafe { submission.push(&entry) };
+                            inflight.insert(
+                                base_id + n_bufs as u64,
+                                InFlight::WriteChainItem(shared.clone()),
+                            );
+                            submitted += 1;
+                        }
                     }
                     UringRequest::Read { fd, offset, len, reply } => {
                         if let Some(pool) = pool.as_mut() {
@@ -509,6 +629,18 @@ fn run_uring(
                             let result = result.and_then(|_| statx_to_data(&path, &statx));
                             let _ = reply.send(result);
                         }
+                        InFlight::WriteChainItem(shared) => {
+                            if let Err(err) = result {
+                                let mut error = shared.error.lock().unwrap();
+                                if error.is_none() {
+                                    let _ = error.insert(err);
+                                }
+                            }
+                            let prev = shared.remaining.fetch_sub(1, Ordering::AcqRel);
+                            if prev == 1 {
+                                finalize_chain(shared);
+                            }
+                        }
                     }
                 }
             }
@@ -556,7 +688,46 @@ fn fail_inflight(
             InFlight::Statx { reply, .. } => {
                 let _ = reply.send(Err(io::Error::new(error.kind(), error.to_string())));
             }
+            InFlight::WriteChainItem(shared) => {
+                let prev = shared.remaining.fetch_sub(1, Ordering::AcqRel);
+                if prev == 1 {
+                    let reply = shared.reply.lock().unwrap().take();
+                    let buffers = shared.buffers.lock().unwrap().take();
+                    if let Some(buffers) = buffers {
+                        if let Some(ref state) = shared.alloc_state {
+                            for buf in buffers {
+                                let _ = state.pool.push(buf);
+                                state.semaphore.add_permits(1);
+                            }
+                        }
+                    }
+                    if let Some(reply) = reply {
+                        let chain_error = shared.error.lock().unwrap().take();
+                        let err = chain_error.unwrap_or_else(|| {
+                            io::Error::new(error.kind(), error.to_string())
+                        });
+                        let _ = reply.send(Err(err));
+                    }
+                }
+            }
         }
+    }
+}
+
+fn finalize_chain(shared: Arc<ChainShared>) {
+    let reply = shared.reply.lock().unwrap().take();
+    let buffers = shared.buffers.lock().unwrap().take();
+    if let Some(buffers) = buffers {
+        if let Some(ref state) = shared.alloc_state {
+            for buf in buffers {
+                let _ = state.pool.push(buf);
+                state.semaphore.add_permits(1);
+            }
+        }
+    }
+    if let Some(reply) = reply {
+        let chain_error = shared.error.lock().unwrap().take();
+        let _ = reply.send(chain_error.map_or(Ok(()), Err));
     }
 }
 

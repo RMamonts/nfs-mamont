@@ -10,7 +10,6 @@ use tokio::sync::RwLock;
 
 use libc;
 use nfs_mamont::consts::nfsv3::{NFS3_COOKIEVERFSIZE, NFS3_CREATEVERFSIZE};
-use nfs_mamont::Slice;
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
@@ -269,39 +268,6 @@ impl MirrorFS {
         } else {
             Err(vfs::Error::InvalidArgument)
         }
-    }
-
-    async fn write_slice_uring(
-        &self,
-        fd: RawFd,
-        mut offset: u64,
-        data: &mut Slice,
-    ) -> Result<(), std::io::Error> {
-        let Some(uring) = self.uring_executor() else {
-            return Err(std::io::Error::other("io_uring not available"));
-        };
-
-        let (mut buffers, alloc_state) = data.take_buffers();
-
-        while !buffers.is_empty() {
-            let buf = buffers.remove(0);
-            let state = alloc_state.clone();
-            let vec = buf.into_vec();
-            match uring.write_at(fd, offset, vec, state).await {
-                Ok(bytes) => offset += bytes as u64,
-                Err(error) => {
-                    for r in buffers.drain(..) {
-                        if let Some(ref s) = alloc_state {
-                            let _ = s.pool.push(r);
-                            s.semaphore.add_permits(1);
-                        }
-                    }
-                    return Err(error);
-                }
-            }
-        }
-
-        Ok(())
     }
 
     async fn read_at_uring(

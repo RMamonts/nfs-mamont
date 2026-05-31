@@ -33,22 +33,18 @@ impl write::Write for MirrorFS {
                     });
                 }
             };
-            if let Err(error) =
-                self.write_slice_uring(fd.as_raw_fd(), args.offset, &mut args.data).await
-            {
-                return Err(write::Fail {
-                    error: Self::io_error_to_vfs(&error),
-                    wcc_data: self.wcc_data(&path, before).await,
-                });
-            }
 
-            let sync_result = match args.stable {
-                write::StableHow::Unstable => Ok(()),
-                write::StableHow::DataSync => uring.fsync(fd.as_raw_fd(), true).await,
-                write::StableHow::FileSync => uring.fsync(fd.as_raw_fd(), false).await,
+            let (buffers, alloc_state) = args.data.take_buffers();
+            let do_fsync = match args.stable {
+                write::StableHow::Unstable => None,
+                write::StableHow::DataSync => Some(true),
+                write::StableHow::FileSync => Some(false),
             };
 
-            if let Err(error) = sync_result {
+            if let Err(error) = uring
+                .write_chain(fd.as_raw_fd(), args.offset, buffers, alloc_state, do_fsync)
+                .await
+            {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
                     wcc_data: self.wcc_data(&path, before).await,
