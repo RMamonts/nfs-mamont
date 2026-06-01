@@ -1,7 +1,7 @@
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
 
-use super::{ActiveLock, NlmService};
+use super::{ActiveLock, NlmService, PendingLock};
 
 impl Lock for NlmService {
     async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
@@ -16,6 +16,18 @@ impl Lock for NlmService {
         let mut registry = self.locks.write().await;
 
         if registry.find_conflict(&fh_bytes, exclusive, offset, length).is_some() {
+            if args.block {
+                registry.pending.entry(fh_bytes).or_default().push(PendingLock {
+                    caller_name,
+                    system_identifier,
+                    exclusive,
+                    offset,
+                    length,
+                    opaque_handle,
+                    cookie: args.cookie,
+                });
+                return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Blocked };
+            }
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Denied };
         }
 
@@ -41,16 +53,17 @@ mod tests {
 
     use super::super::{handle, opaque};
 
-    fn lock_args(
+    fn lock_args_block(
         fh_byte: u8,
         exclusive: bool,
         offset: u64,
         length: u64,
         cookie_val: u64,
+        block: bool,
     ) -> Nlm4LockArgs {
         Nlm4LockArgs {
             cookie: Cookie::new(cookie_val),
-            block: false,
+            block,
             exclusive,
             lock: Nlm4Lock {
                 caller_name: "test".into(),
@@ -63,6 +76,16 @@ mod tests {
             reclaim: false,
             state: 0,
         }
+    }
+
+    fn lock_args(
+        fh_byte: u8,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        cookie_val: u64,
+    ) -> Nlm4LockArgs {
+        lock_args_block(fh_byte, exclusive, offset, length, cookie_val, false)
     }
 
     #[tokio::test]
@@ -125,5 +148,28 @@ mod tests {
         let svc = NlmService::default();
         let res = svc.lock(lock_args(1, true, 0, 100, 42)).await;
         assert_eq!(res.cookie.raw(), 42);
+    }
+
+    #[tokio::test]
+    async fn lock_blocking_returns_blocked_on_conflict() {
+        let svc = NlmService::default();
+        svc.lock(lock_args(1, true, 0, 100, 0)).await;
+        let res = svc.lock(lock_args_block(1, true, 0, 100, 1, true)).await;
+        assert_eq!(res.stat, Nlm4Stats::Blocked);
+    }
+
+    #[tokio::test]
+    async fn lock_blocking_still_grants_when_free() {
+        let svc = NlmService::default();
+        let res = svc.lock(lock_args_block(1, true, 0, 100, 42, true)).await;
+        assert_eq!(res.stat, Nlm4Stats::Granted);
+    }
+
+    #[tokio::test]
+    async fn lock_non_blocking_still_denies_on_conflict() {
+        let svc = NlmService::default();
+        svc.lock(lock_args(1, true, 0, 100, 0)).await;
+        let res = svc.lock(lock_args(1, true, 0, 100, 1)).await;
+        assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 }

@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
 use crate::service::mount::ExportEntryWrapper;
@@ -35,11 +36,25 @@ struct ActiveLock {
     opaque_handle: OpaqueHandle,
 }
 
+/// A blocked (pending) lock request waiting to be granted.
+struct PendingLock {
+    caller_name: String,
+    system_identifier: i32,
+    exclusive: bool,
+    offset: u64,
+    length: u64,
+    opaque_handle: OpaqueHandle,
+    #[allow(dead_code)]
+    cookie: Cookie,
+}
+
 /// In-memory collection of all active locks grouped by file handle.
 #[derive(Default)]
 struct LockRegistry {
     /// Locks indexed by file handle for fast conflict checks.
     by_file: HashMap<[u8; NFS3_FHSIZE], Vec<ActiveLock>>,
+    /// Blocked lock requests awaiting grant.
+    pending: HashMap<[u8; NFS3_FHSIZE], Vec<PendingLock>>,
 }
 
 impl LockRegistry {
@@ -70,6 +85,33 @@ impl LockRegistry {
         None
     }
 
+    /// Removes a pending lock matching the given criteria.
+    /// Returns `true` if a request was removed.
+    fn remove_pending(
+        &mut self,
+        file_handle: &[u8; NFS3_FHSIZE],
+        caller_name: &str,
+        system_identifier: i32,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+    ) -> bool {
+        let Some(requests) = self.pending.get_mut(file_handle) else { return false };
+        let len_before = requests.len();
+        requests.retain(|r| {
+            r.caller_name != caller_name
+                || r.system_identifier != system_identifier
+                || r.exclusive != exclusive
+                || r.offset != offset
+                || r.length != length
+        });
+        let removed = requests.len() < len_before;
+        if requests.is_empty() {
+            self.pending.remove(file_handle);
+        }
+        removed
+    }
+
     /// Removes a lock matching `(file_handle, caller_name, system_identifier, offset, length)`.
     fn remove_by_owner(
         &mut self,
@@ -89,6 +131,36 @@ impl LockRegistry {
         if locks.is_empty() {
             self.by_file.remove(file_handle);
         }
+    }
+
+    /// Removes and grants any pending lock requests that no longer
+    /// conflict with the current set of active locks on the given file.
+    /// Returns the list of granted requests.
+    fn grant_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE]) -> Vec<PendingLock> {
+        let Some(pending) = self.pending.remove(file_handle) else {
+            return Vec::new();
+        };
+        let mut granted = Vec::new();
+        let mut still_pending = Vec::new();
+        for p in pending {
+            if self.find_conflict(file_handle, p.exclusive, p.offset, p.length).is_none() {
+                self.by_file.entry(*file_handle).or_default().push(ActiveLock {
+                    caller_name: p.caller_name.clone(),
+                    system_identifier: p.system_identifier,
+                    exclusive: p.exclusive,
+                    offset: p.offset,
+                    length: p.length,
+                    opaque_handle: p.opaque_handle.clone(),
+                });
+                granted.push(p);
+            } else {
+                still_pending.push(p);
+            }
+        }
+        if !still_pending.is_empty() {
+            self.pending.insert(*file_handle, still_pending);
+        }
+        granted
     }
 }
 
@@ -138,8 +210,6 @@ pub(crate) fn opaque(val: u8) -> OpaqueHandle {
 }
 
 #[cfg(test)]
-use crate::nlm::cookie::Cookie;
-#[cfg(test)]
 use crate::nlm::lock::Nlm4Lock;
 #[cfg(test)]
 use crate::nlm::procedures::lock::Nlm4LockArgs;
@@ -170,6 +240,32 @@ pub(crate) fn lock_args(
     Nlm4LockArgs {
         cookie: Cookie::new(0),
         block: false,
+        exclusive,
+        lock: Nlm4Lock {
+            caller_name: caller.into(),
+            file_handle: Handle(handle(fh_byte)),
+            opaque_handle: opaque(1),
+            system_identifier: pid,
+            lock_offset: offset,
+            lock_length: length,
+        },
+        reclaim: false,
+        state: 0,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn lock_args_block(
+    fh_byte: u8,
+    exclusive: bool,
+    offset: u64,
+    length: u64,
+    caller: &str,
+    pid: i32,
+) -> Nlm4LockArgs {
+    Nlm4LockArgs {
+        cookie: Cookie::new(0),
+        block: true,
         exclusive,
         lock: Nlm4Lock {
             caller_name: caller.into(),
