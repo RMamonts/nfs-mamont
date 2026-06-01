@@ -25,7 +25,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, opaque, lock_args};
+    use super::super::{handle, lock_args, opaque};
 
     fn cancel_args(fh_byte: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4CancelArgs {
         Nlm4CancelArgs {
