@@ -49,7 +49,8 @@ pub fn cancel_res(dest: &mut impl Write, res: Nlm4CancelRes) -> io::Result<()> {
 pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
     cookie(dest, res.cookie)?;
     stat(dest, res.test_stat.stat)?;
-    if let Some(holder) = res.test_stat.holder {
+    if res.test_stat.stat == Nlm4Stats::Denied {
+        let holder = res.test_stat.holder.expect("stat is Denied but holder is None");
         u32(dest, holder.exclusive as u32)?;
         u32(dest, holder.system_identifier as u32)?;
         dest.write_all(holder.opaque_handle.as_bytes())?;
@@ -142,6 +143,32 @@ mod tests {
         let res = Nlm4TestRes {
             cookie: cookie(100),
             test_stat: Nlm4TestReply { stat: Nlm4Stats::Granted, holder: None },
+        };
+        test_res(&mut buf, res).unwrap();
+        assert_eq!(
+            buf.into_inner(),
+            [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
+                0x00, 0x00, 0x00, 0x00, // Granted = 0
+            ]
+        );
+    }
+
+    #[test]
+    fn test_res_granted_ignores_holder() {
+        let mut buf = Cursor::new(vec![0u8; 12]);
+        let res = Nlm4TestRes {
+            cookie: cookie(100),
+            test_stat: Nlm4TestReply {
+                stat: Nlm4Stats::Granted,
+                holder: Some(Nlm4Holder::new(
+                    true,
+                    1,
+                    OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE]),
+                    0,
+                    0,
+                )),
+            },
         };
         test_res(&mut buf, res).unwrap();
         assert_eq!(
