@@ -65,7 +65,7 @@ async fn main() -> std::io::Result<()> {
         });
     }
 
-    let mount_service = Arc::new(service::mount::MountService::with_exports(exports.clone()));
+    let mount_service = Arc::new(service::mount::MountService::with_exports(exports));
     let nlm_service = Arc::new(service::nlm::NlmService::new());
     handle_forever(listener, context, mount_service, nlm_service).await
 }
