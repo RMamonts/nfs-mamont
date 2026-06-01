@@ -35,20 +35,11 @@ impl Lock for NlmService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consts::nfsv3::NFS3_FHSIZE;
-    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::lock::Nlm4Lock;
-    use crate::nlm::OpaqueHandle;
     use crate::vfs::file::Handle;
 
-    fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
-        [byte; NFS3_FHSIZE]
-    }
-
-    fn opaque(val: u8) -> OpaqueHandle {
-        OpaqueHandle::new([val; OPAQUE_HANDLE_SIZE])
-    }
+    use super::super::{handle, opaque};
 
     fn lock_args(
         fh_byte: u8,
