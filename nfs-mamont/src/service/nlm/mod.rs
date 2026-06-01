@@ -121,6 +121,63 @@ impl NlmService {
 }
 
 #[cfg(test)]
+pub(crate) fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
+    [byte; NFS3_FHSIZE]
+}
+
+#[cfg(test)]
+pub(crate) fn opaque(val: u8) -> OpaqueHandle {
+    OpaqueHandle::new([val; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
+}
+
+#[cfg(test)]
+use crate::nlm::cookie::Cookie;
+#[cfg(test)]
+use crate::nlm::lock::Nlm4Lock;
+#[cfg(test)]
+use crate::nlm::procedures::lock::Nlm4LockArgs;
+#[cfg(test)]
+use crate::vfs::file::Handle;
+
+#[cfg(test)]
+fn push_lock(reg: &mut LockRegistry, fh_byte: u8, exclusive: bool, offset: u64, length: u64) {
+    reg.by_file.entry(handle(fh_byte)).or_default().push(ActiveLock {
+        caller_name: "a".into(),
+        system_identifier: 1,
+        exclusive,
+        offset,
+        length,
+        opaque_handle: opaque(1),
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn lock_args(
+    fh_byte: u8,
+    exclusive: bool,
+    offset: u64,
+    length: u64,
+    caller: &str,
+    pid: i32,
+) -> Nlm4LockArgs {
+    Nlm4LockArgs {
+        cookie: Cookie::new(0),
+        block: false,
+        exclusive,
+        lock: Nlm4Lock {
+            caller_name: caller.into(),
+            file_handle: Handle(handle(fh_byte)),
+            opaque_handle: opaque(1),
+            system_identifier: pid,
+            lock_offset: offset,
+            lock_length: length,
+        },
+        reclaim: false,
+        state: 0,
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::nlm::cookie::Cookie;
@@ -129,14 +186,6 @@ mod tests {
     use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Unlock};
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
-
-    fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
-        [byte; NFS3_FHSIZE]
-    }
-
-    fn opaque(val: u8) -> OpaqueHandle {
-        OpaqueHandle::new([val; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
-    }
 
     // --- ranges_overlap ---
 
@@ -185,70 +234,35 @@ mod tests {
     #[test]
     fn exclusive_conflicts_with_existing_exclusive() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: true,
-            offset: 0,
-            length: 100,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(1), true, 10, 20).is_some());
     }
 
     #[test]
     fn shared_does_not_conflict_with_shared() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: false,
-            offset: 0,
-            length: 100,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, false, 0, 100);
         assert!(reg.find_conflict(&handle(1), false, 10, 20).is_none());
     }
 
     #[test]
     fn shared_conflicts_with_exclusive() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: true,
-            offset: 0,
-            length: 100,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(1), false, 10, 20).is_some());
     }
 
     #[test]
     fn no_conflict_on_different_file() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: true,
-            offset: 0,
-            length: 100,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(2), true, 0, 100).is_none());
     }
 
     #[test]
     fn no_conflict_when_ranges_dont_overlap() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: true,
-            offset: 0,
-            length: 10,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, true, 0, 10);
         assert!(reg.find_conflict(&handle(1), true, 10, 10).is_none());
     }
 
@@ -321,14 +335,7 @@ mod tests {
     #[test]
     fn remove_by_owner_cleans_up_empty_vec() {
         let mut reg = LockRegistry::default();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 1,
-            exclusive: true,
-            offset: 0,
-            length: 10,
-            opaque_handle: opaque(1),
-        });
+        push_lock(&mut reg, 1, true, 0, 10);
         reg.remove_by_owner(&handle(1), "a", 1);
         assert!(!reg.by_file.contains_key(&handle(1)));
     }

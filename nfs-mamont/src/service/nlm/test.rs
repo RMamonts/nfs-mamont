@@ -29,47 +29,13 @@ impl Test for NlmService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consts::nfsv3::NFS3_FHSIZE;
-    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::lock::Nlm4Lock;
-    use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs};
+    use crate::nlm::procedures::lock::Lock;
     use crate::nlm::Nlm4Stats;
-    use crate::nlm::OpaqueHandle;
     use crate::vfs::file::Handle;
 
-    fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
-        [byte; NFS3_FHSIZE]
-    }
-
-    fn opaque(val: u8) -> OpaqueHandle {
-        OpaqueHandle::new([val; OPAQUE_HANDLE_SIZE])
-    }
-
-    fn lock_args(
-        fh_byte: u8,
-        exclusive: bool,
-        offset: u64,
-        length: u64,
-        caller: &str,
-        pid: i32,
-    ) -> Nlm4LockArgs {
-        Nlm4LockArgs {
-            cookie: Cookie::new(0),
-            block: false,
-            exclusive,
-            lock: Nlm4Lock {
-                caller_name: caller.into(),
-                file_handle: Handle(handle(fh_byte)),
-                opaque_handle: opaque(1),
-                system_identifier: pid,
-                lock_offset: offset,
-                lock_length: length,
-            },
-            reclaim: false,
-            state: 0,
-        }
-    }
+    use super::super::{handle, opaque, lock_args};
 
     fn test_args(
         fh_byte: u8,
