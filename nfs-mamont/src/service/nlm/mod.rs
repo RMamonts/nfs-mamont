@@ -70,15 +70,22 @@ impl LockRegistry {
         None
     }
 
-    /// Removes all locks matching `(file_handle, caller_name, system_identifier)`.
+    /// Removes a lock matching `(file_handle, caller_name, system_identifier, offset, length)`.
     fn remove_by_owner(
         &mut self,
         file_handle: &[u8; NFS3_FHSIZE],
         caller_name: &str,
         system_identifier: i32,
+        offset: u64,
+        length: u64,
     ) {
         let Some(locks) = self.by_file.get_mut(file_handle) else { return };
-        locks.retain(|l| l.caller_name != caller_name || l.system_identifier != system_identifier);
+        locks.retain(|l| {
+            l.caller_name != caller_name
+                || l.system_identifier != system_identifier
+                || l.offset != offset
+                || l.length != length
+        });
         if locks.is_empty() {
             self.by_file.remove(file_handle);
         }
@@ -298,12 +305,12 @@ mod tests {
             length: 50,
             opaque_handle: opaque(1),
         });
-        reg.remove_by_owner(&handle(1), "alice", 100);
+        reg.remove_by_owner(&handle(1), "alice", 100, 0, 50);
         assert!(reg.by_file.is_empty());
     }
 
     #[test]
-    fn remove_by_owner_removes_only_correct_lock() {
+    fn remove_by_owner_removes_only_different_owner() {
         let mut reg = LockRegistry::default();
         let locks = reg.by_file.entry(handle(1)).or_default();
         locks.push(ActiveLock {
@@ -322,22 +329,56 @@ mod tests {
             length: 50,
             opaque_handle: opaque(2),
         });
-        reg.remove_by_owner(&handle(1), "alice", 100);
+        reg.remove_by_owner(&handle(1), "alice", 100, 0, 50);
         assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
         assert_eq!(reg.by_file.get(&handle(1)).unwrap()[0].caller_name, "bob");
     }
 
     #[test]
+    fn remove_by_owner_removes_only_matching_range() {
+        let mut reg = LockRegistry::default();
+        let locks = reg.by_file.entry(handle(1)).or_default();
+        locks.push(ActiveLock {
+            caller_name: "Alice".into(),
+            system_identifier: 100,
+            exclusive: true,
+            offset: 0,
+            length: 50,
+            opaque_handle: opaque(1),
+        });
+        locks.push(ActiveLock {
+            caller_name: "Alice".into(),
+            system_identifier: 100,
+            exclusive: true,
+            offset: 100,
+            length: 50,
+            opaque_handle: opaque(2),
+        });
+        reg.remove_by_owner(&handle(1), "Alice", 100, 0, 50);
+        assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
+        assert_eq!(reg.by_file.get(&handle(1)).unwrap()[0].offset, 100);
+    }
+
+    #[test]
     fn remove_by_owner_noop_on_nonexistent_file() {
-        LockRegistry::default().remove_by_owner(&handle(99), "nobody", 0);
+        LockRegistry::default().remove_by_owner(&handle(99), "nobody", 0, 0, 0);
     }
 
     #[test]
     fn remove_by_owner_cleans_up_empty_vec() {
         let mut reg = LockRegistry::default();
         push_lock(&mut reg, 1, true, 0, 10);
-        reg.remove_by_owner(&handle(1), "a", 1);
+        reg.remove_by_owner(&handle(1), "a", 1, 0, 10);
         assert!(!reg.by_file.contains_key(&handle(1)));
+    }
+
+    #[test]
+    fn remove_by_owner_noop_when_range_differs() {
+        let mut reg = LockRegistry::default();
+        push_lock(&mut reg, 1, true, 0, 50);
+        reg.remove_by_owner(&handle(1), "a", 1, 100, 50);
+        assert!(reg.by_file.contains_key(&handle(1)));
+        assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
     }
 
     // --- NlmService constructor ---

@@ -10,7 +10,13 @@ impl Cancel for NlmService {
         let system_identifier = args.lock.system_identifier;
 
         let mut registry = self.locks.write().await;
-        registry.remove_by_owner(&fh_bytes, &caller_name, system_identifier);
+        registry.remove_by_owner(
+            &fh_bytes,
+            &caller_name,
+            system_identifier,
+            args.lock.lock_offset,
+            args.lock.lock_length,
+        );
 
         Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
     }
