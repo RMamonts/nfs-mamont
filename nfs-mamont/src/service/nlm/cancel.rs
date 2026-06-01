@@ -6,19 +6,22 @@ use super::NlmService;
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes {
         let fh_bytes = args.lock.file_handle.0;
-        let caller_name = args.lock.caller_name;
-        let system_identifier = args.lock.system_identifier;
 
         let mut registry = self.locks.write().await;
-        registry.remove_by_owner(
+        let removed = registry.remove_pending(
             &fh_bytes,
-            &caller_name,
-            system_identifier,
+            &args.lock.caller_name,
+            args.lock.system_identifier,
+            args.exclusive,
             args.lock.lock_offset,
             args.lock.lock_length,
         );
 
-        Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
+        if removed {
+            Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
+        } else {
+            Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Denied }
+        }
     }
 }
 
@@ -31,7 +34,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, lock_args, opaque};
+    use super::super::{handle, lock_args, lock_args_block, opaque};
 
     fn cancel_args(fh_byte: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4CancelArgs {
         Nlm4CancelArgs {
@@ -50,26 +53,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_removes_lock_and_allows_new_lock() {
+    async fn cancel_removes_blocked_request() {
         let svc = NlmService::default();
         let svc_ref = &svc;
         svc_ref.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
-        svc_ref.cancel(cancel_args(1, "alice", 100, 0)).await;
-        let res = svc_ref.lock(lock_args(1, true, 0, 100, "bob", 200)).await;
+        let res = svc_ref.lock(lock_args_block(1, true, 0, 100, "bob", 200)).await;
+        assert_eq!(res.stat, Nlm4Stats::Blocked);
+        let res = svc_ref.cancel(cancel_args(1, "bob", 200, 0)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
+        let res = svc_ref.cancel(cancel_args(1, "bob", 200, 0)).await;
+        assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
     #[tokio::test]
-    async fn cancel_on_nonexistent_lock_returns_granted() {
+    async fn cancel_on_nonexistent_returns_denied() {
         let svc = NlmService::default();
         let res = svc.cancel(cancel_args(1, "nobody", 0, 0)).await;
-        assert_eq!(res.stat, Nlm4Stats::Granted);
+        assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
     #[tokio::test]
     async fn cancel_preserves_cookie() {
         let svc = NlmService::default();
-        let res = svc.cancel(cancel_args(1, "nobody", 0, 55)).await;
+        let svc_ref = &svc;
+        svc_ref.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
+        svc_ref.lock(lock_args_block(1, true, 0, 100, "bob", 200)).await;
+        let res = svc_ref.cancel(cancel_args(1, "bob", 200, 55)).await;
         assert_eq!(res.cookie.raw(), 55);
     }
 }

@@ -17,6 +17,7 @@ impl Unlock for NlmService {
             args.lock.lock_offset,
             args.lock.lock_length,
         );
+        registry.grant_pending(&fh_bytes);
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
     }
@@ -31,7 +32,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, lock_args, opaque};
+    use super::super::{handle, lock_args, lock_args_block, opaque};
 
     fn unlock_args(fh_byte: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4UnlockArgs {
         Nlm4UnlockArgs {
@@ -49,7 +50,7 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_removes_lock_and_allows_new_lock() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let svc_ref = &svc;
         svc_ref.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
         svc_ref.unlock(unlock_args(1, "alice", 100, 1)).await;
@@ -59,15 +60,31 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_on_nonexistent_lock_returns_granted() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.unlock(unlock_args(1, "nobody", 0, 0)).await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
     }
 
     #[tokio::test]
     async fn unlock_preserves_cookie() {
-        let svc = super::NlmService::default();
+        let svc = NlmService::default();
         let res = svc.unlock(unlock_args(1, "nobody", 0, 99)).await;
         assert_eq!(res.cookie.raw(), 99);
+    }
+
+    #[tokio::test]
+    async fn unlock_auto_grants_pending_exclusive() {
+        let svc = NlmService::default();
+        let svc_ref = &svc;
+        // Alice holds [0, 100]
+        svc_ref.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
+        // Bob blocks on the same range
+        let blocked = svc_ref.lock(lock_args_block(1, true, 0, 100, "bob", 200)).await;
+        assert_eq!(blocked.stat, Nlm4Stats::Blocked);
+        // Alice unlocks -> Bob should be auto-granted
+        svc_ref.unlock(unlock_args(1, "alice", 100, 1)).await;
+        // Charlie should be denied because Bob now holds the lock
+        let denied = svc_ref.lock(lock_args(1, true, 0, 100, "charlie", 300)).await;
+        assert_eq!(denied.stat, Nlm4Stats::Denied);
     }
 }
