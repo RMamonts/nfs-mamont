@@ -35,7 +35,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, opaque, lock_args};
+    use super::super::{handle, lock_args, opaque};
 
     fn test_args(
         fh_byte: u8,
