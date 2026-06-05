@@ -63,7 +63,7 @@ struct PendingLock {
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
     /// The cookie from the original blocking LOCK request.
-    /// TODO: Implement asynchronous callbacks
+    /// Needed for NLMPROC4_GRANTED callback (#267).
     #[allow(dead_code)]
     cookie: Cookie,
 }
