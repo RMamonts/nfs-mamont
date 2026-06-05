@@ -61,10 +61,7 @@ fn same_owner_lock_does_not_conflict() {
 #[test]
 fn find_conflict_returns_holder_with_correct_fields() {
     let mut reg = LockRegistry::new();
-    reg.by_file
-        .entry(fill_fh(1))
-        .or_default()
-        .push(active_lock("a", 42, true, 10, 20, 7));
+    reg.by_file.entry(fill_fh(1)).or_default().push(active_lock("a", 42, true, 10, 20, 7));
     let holder = reg.find_conflict(&fill_fh(1), &other_req()).unwrap();
     assert!(holder.exclusive);
     assert_eq!(holder.system_identifier, 42);
@@ -76,10 +73,7 @@ fn find_conflict_returns_holder_with_correct_fields() {
 #[test]
 fn remove_by_owner_removes_matching_lock() {
     let mut reg = LockRegistry::new();
-    reg.by_file
-        .entry(fill_fh(1))
-        .or_default()
-        .push(active_lock("alice", 100, true, 0, 50, 1));
+    reg.by_file.entry(fill_fh(1)).or_default().push(active_lock("alice", 100, true, 0, 50, 1));
     let target = active_lock("alice", 100, false, 0, 50, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert!(reg.by_file.is_empty());
