@@ -20,10 +20,9 @@ impl Cancel for NlmService {
         let mut registry = self.locks.write().await;
         let removed = registry.remove_pending(&fh_bytes, &target);
 
-        if removed {
-            Nlm4CancelRes { cookie, stat: Nlm4Stats::Granted }
-        } else {
-            Nlm4CancelRes { cookie, stat: Nlm4Stats::Denied }
+        match removed {
+            true => Nlm4CancelRes { cookie, stat: Nlm4Stats::Granted },
+            false => Nlm4CancelRes { cookie, stat: Nlm4Stats::Denied },
         }
     }
 }
