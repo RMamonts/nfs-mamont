@@ -202,7 +202,7 @@ mod tests {
         assert_eq!(&bytes[16..20], [0x00, 0x00, 0x30, 0x39]); // system_identifier = 12345
         assert_eq!(&bytes[20..24], [0x00, 0x00, 0x04, 0x00]); // opaque_handle length = 1024
         assert_eq!(&bytes[24..24 + OPAQUE_HANDLE_SIZE], [0xAB; OPAQUE_HANDLE_SIZE]); // opaque_handle bytes
-        // OPAQUE_HANDLE_SIZE % 4 == 0, so no trailing padding
+                                                                                     // OPAQUE_HANDLE_SIZE % 4 == 0, so no trailing padding
         let offset_off = 24 + OPAQUE_HANDLE_SIZE;
         assert_eq!(
             &bytes[offset_off..offset_off + 8],

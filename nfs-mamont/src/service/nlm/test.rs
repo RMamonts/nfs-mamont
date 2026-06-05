@@ -35,7 +35,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, lock_args, opaque};
+    use super::super::tests::{fill_fh, fill_opaque, lock_args};
 
     fn test_args(
         fh_byte: u8,
@@ -49,8 +49,8 @@ mod tests {
             exclusive,
             lock: Nlm4Lock {
                 caller_name: "tester".into(),
-                file_handle: Handle(handle(fh_byte)),
-                opaque_handle: opaque(2),
+                file_handle: Handle(fill_fh(fh_byte)),
+                opaque_handle: fill_opaque(2),
                 system_identifier: 99,
                 lock_offset: offset,
                 lock_length: length,

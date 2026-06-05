@@ -1,22 +1,22 @@
 use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Nlm4UnlockRes, Unlock};
 use crate::nlm::Nlm4Stats;
 
-use super::NlmService;
+use super::{ActiveLock, NlmService};
 
 impl Unlock for NlmService {
     async fn unlock(&self, args: Nlm4UnlockArgs) -> Nlm4UnlockRes {
         let fh_bytes = args.lock.file_handle.0;
-        let caller_name = args.lock.caller_name;
-        let system_identifier = args.lock.system_identifier;
+        let target = ActiveLock {
+            caller_name: args.lock.caller_name,
+            system_identifier: args.lock.system_identifier,
+            exclusive: true,
+            offset: args.lock.lock_offset,
+            length: args.lock.lock_length,
+            opaque_handle: args.lock.opaque_handle,
+        };
 
         let mut registry = self.locks.write().await;
-        registry.remove_by_owner(
-            &fh_bytes,
-            &caller_name,
-            system_identifier,
-            args.lock.lock_offset,
-            args.lock.lock_length,
-        );
+        registry.remove_by_owner(&fh_bytes, &target);
         registry.grant_pending(&fh_bytes);
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
@@ -32,15 +32,15 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, lock_args, lock_args_block, opaque};
+    use super::super::tests::{fill_fh, fill_opaque, lock_args, lock_args_block};
 
     fn unlock_args(fh_byte: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4UnlockArgs {
         Nlm4UnlockArgs {
             cookie: Cookie::new(cookie_val),
             lock: Nlm4Lock {
                 caller_name: caller.into(),
-                file_handle: Handle(handle(fh_byte)),
-                opaque_handle: opaque(2),
+                file_handle: Handle(fill_fh(fh_byte)),
+                opaque_handle: fill_opaque(2),
                 system_identifier: pid,
                 lock_offset: 0,
                 lock_length: 100,
