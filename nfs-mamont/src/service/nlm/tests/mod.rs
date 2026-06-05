@@ -20,6 +20,24 @@ pub(super) fn fill_opaque(value: u8) -> OpaqueHandle {
     OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
 }
 
+pub(super) fn active_lock(
+    caller: &str,
+    pid: i32,
+    exclusive: bool,
+    offset: u64,
+    length: u64,
+    opaque: u8,
+) -> ActiveLock {
+    ActiveLock {
+        caller_name: caller.into(),
+        system_identifier: pid,
+        exclusive,
+        offset,
+        length,
+        opaque_handle: fill_opaque(opaque),
+    }
+}
+
 pub(super) fn push_lock(
     reg: &mut LockRegistry,
     fh_value: u8,
@@ -27,14 +45,10 @@ pub(super) fn push_lock(
     offset: u64,
     length: u64,
 ) {
-    reg.by_file.entry(fill_fh(fh_value)).or_default().push(ActiveLock {
-        caller_name: "a".into(),
-        system_identifier: 1,
-        exclusive,
-        offset,
-        length,
-        opaque_handle: fill_opaque(1),
-    });
+    reg.by_file
+        .entry(fill_fh(fh_value))
+        .or_default()
+        .push(active_lock("a", 1, exclusive, offset, length, 1));
 }
 
 pub(super) fn lock_args(

@@ -68,6 +68,22 @@ struct PendingLock {
     cookie: Cookie,
 }
 
+/// Converts a [`PendingLock`] reference into an [`ActiveLock`] by copying all shared fields.
+/// The `cookie` field from the pending request is intentionally dropped,
+/// as it is only relevant for the GRANTED callback and has no meaning for an active lock.
+impl From<&PendingLock> for ActiveLock {
+    fn from(p: &PendingLock) -> Self {
+        ActiveLock {
+            caller_name: p.caller_name.clone(),
+            system_identifier: p.system_identifier,
+            exclusive: p.exclusive,
+            offset: p.offset,
+            length: p.length,
+            opaque_handle: p.opaque_handle.clone(),
+        }
+    }
+}
+
 /// Equality compares all identity fields needed to match a `CANCEL` request.
 /// `cookie` is excluded because it is a request-scoped transient identifier,
 /// not an attribute of the lock itself.
@@ -96,20 +112,27 @@ impl LockRegistry {
         LockRegistry { by_file: HashMap::new(), pending: HashMap::new() }
     }
 
-    /// Looks for an existing lock that would conflict with a new lock request.
+    /// Looks for an existing lock that would conflict with `request`.
+    /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
+    /// are skipped — a client re-requesting its own range is not a conflict.
     fn find_conflict(
         &self,
         file_handle: &[u8; NFS3_FHSIZE],
-        request_exclusive: bool,
-        request_offset: u64,
-        request_length: u64,
+        request: &ActiveLock,
     ) -> Option<Nlm4Holder> {
         let locks = self.by_file.get(file_handle)?;
         for lock in locks {
-            if !request_exclusive && !lock.exclusive {
+            let is_same_owner = lock.caller_name == request.caller_name
+                && lock.system_identifier == request.system_identifier
+                && lock.opaque_handle == request.opaque_handle;
+
+            if is_same_owner {
                 continue;
             }
-            if !ranges_overlap(lock.offset, lock.length, request_offset, request_length) {
+            if !request.exclusive && !lock.exclusive {
+                continue;
+            }
+            if !ranges_overlap(lock.offset, lock.length, request.offset, request.length) {
                 continue;
             }
             return Some(Nlm4Holder::new(
@@ -177,21 +200,17 @@ impl LockRegistry {
     fn grant_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE]) -> Vec<PendingLock> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
 
+        let is_grantable = |request: &PendingLock| -> bool {
+            let request_as_active: ActiveLock = request.into();
+            self.find_conflict(file_handle, &request_as_active).is_none()
+        };
+
         let (granted, still_pending): (Vec<PendingLock>, Vec<PendingLock>) =
-            pending_requests.into_iter().partition(|request| {
-                self.find_conflict(file_handle, request.exclusive, request.offset, request.length)
-                    .is_none()
-            });
+            pending_requests.into_iter().partition(|r| is_grantable(r));
 
         for request in &granted {
-            self.by_file.entry(*file_handle).or_default().push(ActiveLock {
-                caller_name: request.caller_name.clone(),
-                system_identifier: request.system_identifier,
-                exclusive: request.exclusive,
-                offset: request.offset,
-                length: request.length,
-                opaque_handle: request.opaque_handle.clone(),
-            });
+            let granted_lock: ActiveLock = request.into();
+            self.by_file.entry(*file_handle).or_default().push(granted_lock);
         }
 
         if !still_pending.is_empty() {
