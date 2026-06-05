@@ -6,12 +6,11 @@
 use std::io;
 use std::io::Write;
 
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use crate::nlm::Nlm4Stats;
-use crate::serializer::{padding, u32, u64, variant};
+use crate::serializer::{u32, u64, variant, vector};
 
 /// Writes an NLM cookie as an XDR `hyper`.
 fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
@@ -53,8 +52,7 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
         let holder = res.test_stat.holder.expect("stat is Denied but holder is None");
         u32(dest, holder.exclusive as u32)?;
         u32(dest, holder.system_identifier as u32)?;
-        dest.write_all(holder.opaque_handle.as_bytes())?;
-        padding(dest, OPAQUE_HANDLE_SIZE)?;
+        vector(dest, holder.opaque_handle.as_bytes())?;
         u64(dest, holder.lock_offset)?;
         u64(dest, holder.lock_length)?;
     }
@@ -194,7 +192,7 @@ mod tests {
             test_stat: Nlm4TestReply { stat: Nlm4Stats::Denied, holder: Some(holder) },
         };
 
-        let mut buf = Cursor::new(vec![0u8; 1060]);
+        let mut buf = Cursor::new(vec![0u8; 1064]);
         test_res(&mut buf, res).unwrap();
 
         let bytes = buf.into_inner();
@@ -202,9 +200,10 @@ mod tests {
         assert_eq!(&bytes[8..12], [0x00, 0x00, 0x00, 0x01]); // Denied = 1
         assert_eq!(&bytes[12..16], [0x00, 0x00, 0x00, 0x01]); // exclusive = true
         assert_eq!(&bytes[16..20], [0x00, 0x00, 0x30, 0x39]); // system_identifier = 12345
-        assert_eq!(&bytes[20..20 + OPAQUE_HANDLE_SIZE], [0xAB; OPAQUE_HANDLE_SIZE]); // opaque_handle
-                                                                                     // padding after opaque_handle: OPAQUE_HANDLE_SIZE % 4 == 0, so no padding
-        let offset_off = 20 + OPAQUE_HANDLE_SIZE;
+        assert_eq!(&bytes[20..24], [0x00, 0x00, 0x04, 0x00]); // opaque_handle length = 1024
+        assert_eq!(&bytes[24..24 + OPAQUE_HANDLE_SIZE], [0xAB; OPAQUE_HANDLE_SIZE]); // opaque_handle bytes
+        // OPAQUE_HANDLE_SIZE % 4 == 0, so no trailing padding
+        let offset_off = 24 + OPAQUE_HANDLE_SIZE;
         assert_eq!(
             &bytes[offset_off..offset_off + 8],
             [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x63]
@@ -223,7 +222,7 @@ mod tests {
             test_stat: Nlm4TestReply { stat: Nlm4Stats::Denied, holder: Some(holder) },
         };
 
-        let mut buf = Cursor::new(vec![0u8; 1060]);
+        let mut buf = Cursor::new(vec![0u8; 1064]);
         test_res(&mut buf, res).unwrap();
 
         let bytes = buf.into_inner();
