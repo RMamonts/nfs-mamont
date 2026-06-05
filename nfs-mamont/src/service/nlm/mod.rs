@@ -13,7 +13,6 @@ use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
-use crate::service::mount::ExportEntryWrapper;
 
 mod cancel;
 mod lock;
@@ -36,16 +35,51 @@ struct ActiveLock {
     opaque_handle: OpaqueHandle,
 }
 
+/// Equality compares only the unlock-identity fields
+/// (`caller_name`, `system_identifier`, `offset`, `length`).
+/// `exclusive` and `opaque_handle` are intentionally ignored —
+/// UNLOCK identifies a lock by owner + range, not by mode or handle.
+impl PartialEq for ActiveLock {
+    fn eq(&self, other: &Self) -> bool {
+        self.caller_name == other.caller_name
+            && self.system_identifier == other.system_identifier
+            && self.offset == other.offset
+            && self.length == other.length
+    }
+}
+
 /// A blocked (pending) lock request waiting to be granted.
 struct PendingLock {
+    /// Name of the client host that owns the lock.
     caller_name: String,
+    /// PID of the process on the client that owns the lock.
     system_identifier: i32,
+    /// `true` for exclusive lock, `false` for shared lock.
     exclusive: bool,
+    /// Starting byte offset of the requested lock region.
     offset: u64,
+    /// Length of the requested lock region. `0` means to end-of-file.
     length: u64,
+    /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
+    /// The cookie from the original blocking LOCK request.
+    /// TODO: Implement asynchronous callbacks
     #[allow(dead_code)]
     cookie: Cookie,
+}
+
+/// Equality compares all identity fields needed to match a `CANCEL` request.
+/// `cookie` is excluded because it is a request-scoped transient identifier,
+/// not an attribute of the lock itself.
+impl PartialEq for PendingLock {
+    fn eq(&self, other: &Self) -> bool {
+        self.caller_name == other.caller_name
+            && self.system_identifier == other.system_identifier
+            && self.exclusive == other.exclusive
+            && self.offset == other.offset
+            && self.length == other.length
+            && self.opaque_handle == other.opaque_handle
+    }
 }
 
 /// In-memory collection of all active locks grouped by file handle.
@@ -57,119 +91,135 @@ struct LockRegistry {
 }
 
 impl LockRegistry {
-    /// Looks for an existing lock that would conflict with a new lock
-    /// request described by the given parameters.
+    /// Creates an empty lock registry with no active or pending locks.
+    fn new() -> LockRegistry {
+        LockRegistry { by_file: HashMap::new(), pending: HashMap::new() }
+    }
+
+    /// Looks for an existing lock that would conflict with a new lock request.
     fn find_conflict(
         &self,
         file_handle: &[u8; NFS3_FHSIZE],
-        exclusive: bool,
-        offset: u64,
-        length: u64,
+        request_exclusive: bool,
+        request_offset: u64,
+        request_length: u64,
     ) -> Option<Nlm4Holder> {
         let locks = self.by_file.get(file_handle)?;
         for lock in locks {
-            if !exclusive && !lock.exclusive {
+            if !request_exclusive && !lock.exclusive {
                 continue;
             }
-            if ranges_overlap(lock.offset, lock.length, offset, length) {
-                return Some(Nlm4Holder::new(
-                    lock.exclusive,
-                    lock.system_identifier,
-                    lock.opaque_handle.clone(),
-                    lock.offset,
-                    lock.length,
-                ));
+            if !ranges_overlap(lock.offset, lock.length, request_offset, request_length) {
+                continue;
             }
+            return Some(Nlm4Holder::new(
+                lock.exclusive,
+                lock.system_identifier,
+                lock.opaque_handle.clone(),
+                lock.offset,
+                lock.length,
+            ));
         }
         None
     }
 
-    /// Removes a pending lock matching the given criteria.
-    /// Returns `true` if a request was removed.
-    fn remove_pending(
-        &mut self,
-        file_handle: &[u8; NFS3_FHSIZE],
-        caller_name: &str,
-        system_identifier: i32,
-        exclusive: bool,
-        offset: u64,
-        length: u64,
-    ) -> bool {
-        let Some(requests) = self.pending.get_mut(file_handle) else { return false };
-        let len_before = requests.len();
-        requests.retain(|r| {
-            r.caller_name != caller_name
-                || r.system_identifier != system_identifier
-                || r.exclusive != exclusive
-                || r.offset != offset
-                || r.length != length
-        });
-        let removed = requests.len() < len_before;
-        if requests.is_empty() {
+    /// Removes `target` from the pending queue for `file_handle`.
+    /// Matching uses `PartialEq` (caller_name, system_identifier, exclusive,
+    /// offset, length, opaque_handle — cookie is ignored).
+    /// Returns `true` if a matching request was found and removed.
+    fn remove_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE], target: &PendingLock) -> bool {
+        let pending_requests = match self.pending.get_mut(file_handle) {
+            Some(requests) => requests,
+            None => return false,
+        };
+
+        let number_of_ending_requests_before_retain = pending_requests.len();
+        pending_requests.retain(|request| *request != *target);
+        let has_request_been_deleted =
+            pending_requests.len() < number_of_ending_requests_before_retain;
+
+        if pending_requests.is_empty() {
             self.pending.remove(file_handle);
         }
-        removed
+        has_request_been_deleted
     }
 
-    /// Removes a lock matching `(file_handle, caller_name, system_identifier, offset, length)`.
-    fn remove_by_owner(
-        &mut self,
-        file_handle: &[u8; NFS3_FHSIZE],
-        caller_name: &str,
-        system_identifier: i32,
-        offset: u64,
-        length: u64,
-    ) {
-        let Some(locks) = self.by_file.get_mut(file_handle) else { return };
-        locks.retain(|l| {
-            l.caller_name != caller_name
-                || l.system_identifier != system_identifier
-                || l.offset != offset
-                || l.length != length
-        });
-        if locks.is_empty() {
+    /// Removes `target` from the active-lock list for `file_handle`.
+    /// Matching uses `PartialEq` (caller_name, system_identifier, offset, length).
+    fn remove_by_owner(&mut self, file_handle: &[u8; NFS3_FHSIZE], target: &ActiveLock) {
+        let active_locks = match self.by_file.get_mut(file_handle) {
+            Some(locks) => locks,
+            None => return,
+        };
+
+        active_locks.retain(|lock| *lock != *target);
+
+        if active_locks.is_empty() {
             self.by_file.remove(file_handle);
         }
     }
 
-    /// Removes and grants any pending lock requests that no longer
-    /// conflict with the current set of active locks on the given file.
-    /// Returns the list of granted requests.
+    /// Promotes pending lock requests that no longer conflict with active locks.
+    ///
+    /// Called after releasing an active lock ([`remove_by_owner`]) to check
+    /// whether any previously blocked request can now be granted.
+    ///
+    /// Each non-conflicting request is moved into [`by_file`] as an [`ActiveLock`]
+    /// and included in the returned vector. Requests that still conflict are
+    /// kept in the pending queue.
+    ///
+    /// ### Parameters
+    /// * `file_handle` — file whose pending queue should be rechecked.
+    ///
+    /// ### Returns
+    /// A vector of [`PendingLock`]s that have been granted —
+    /// the caller should send `NLMPROC4_GRANTED` for each one.
     fn grant_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE]) -> Vec<PendingLock> {
-        let Some(pending) = self.pending.remove(file_handle) else {
-            return Vec::new();
-        };
-        let mut granted = Vec::new();
-        let mut still_pending = Vec::new();
-        for p in pending {
-            if self.find_conflict(file_handle, p.exclusive, p.offset, p.length).is_none() {
-                self.by_file.entry(*file_handle).or_default().push(ActiveLock {
-                    caller_name: p.caller_name.clone(),
-                    system_identifier: p.system_identifier,
-                    exclusive: p.exclusive,
-                    offset: p.offset,
-                    length: p.length,
-                    opaque_handle: p.opaque_handle.clone(),
-                });
-                granted.push(p);
-            } else {
-                still_pending.push(p);
-            }
+        let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
+
+        let (granted, still_pending): (Vec<PendingLock>, Vec<PendingLock>) =
+            pending_requests.into_iter().partition(|request| {
+                self.find_conflict(file_handle, request.exclusive, request.offset, request.length)
+                    .is_none()
+            });
+
+        for request in &granted {
+            self.by_file.entry(*file_handle).or_default().push(ActiveLock {
+                caller_name: request.caller_name.clone(),
+                system_identifier: request.system_identifier,
+                exclusive: request.exclusive,
+                offset: request.offset,
+                length: request.length,
+                opaque_handle: request.opaque_handle.clone(),
+            });
         }
+
         if !still_pending.is_empty() {
             self.pending.insert(*file_handle, still_pending);
         }
+
         granted
     }
 }
 
-/// Returns `true` when the two byte-range intervals `[start, start+len)`
-/// overlap. A length of `0` is interpreted as "to end-of-file" (i.e.
-/// `u64::MAX`).
+/// Length value that means "lock until end-of-file".
+/// The lock covers all bytes from `offset` to EOF.
+const LEN_REMAINING: u64 = 0;
+
+/// Returns `true` when the two byte-range intervals `[start, start+len)` overlap.
+/// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
 fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
-    let end1 = if len1 == 0 { u64::MAX } else { start1.saturating_add(len1).saturating_sub(1) };
-    let end2 = if len2 == 0 { u64::MAX } else { start2.saturating_add(len2).saturating_sub(1) };
+    let end1 = calculate_end_of_interval(start1, len1);
+    let end2 = calculate_end_of_interval(start2, len2);
     start1 <= end2 && start2 <= end1
+}
+
+/// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
+fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
+    match len {
+        LEN_REMAINING => u64::MAX,
+        _ => start.saturating_add(len).saturating_sub(1),
+    }
 }
 
 /// In-memory state backing the NLM v4 service implementation.
@@ -183,13 +233,9 @@ pub struct NlmService {
 }
 
 impl Default for NlmService {
+    /// Creates an empty [`NlmService`] with no locks registered.
     fn default() -> Self {
-        NlmService {
-            locks: tokio::sync::RwLock::new(LockRegistry {
-                by_file: HashMap::new(),
-                pending: HashMap::new(),
-            }),
-        }
+        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
     }
 }
 
@@ -198,395 +244,7 @@ impl NlmService {
     pub fn new() -> Self {
         Self::default()
     }
-
-    /// Creates a new [`NlmService`] with the given export entries.
-    ///
-    /// The export list is accepted for API compatibility with the MOUNT
-    /// service but is not currently used for access control.
-    pub fn with_exports(_entries: Vec<ExportEntryWrapper>) -> Self {
-        Self::default()
-    }
 }
 
 #[cfg(test)]
-pub(crate) fn handle(byte: u8) -> [u8; NFS3_FHSIZE] {
-    [byte; NFS3_FHSIZE]
-}
-
-#[cfg(test)]
-pub(crate) fn opaque(val: u8) -> OpaqueHandle {
-    OpaqueHandle::new([val; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
-}
-
-#[cfg(test)]
-use crate::nlm::lock::Nlm4Lock;
-#[cfg(test)]
-use crate::nlm::procedures::lock::Nlm4LockArgs;
-#[cfg(test)]
-use crate::vfs::file::Handle;
-
-#[cfg(test)]
-fn registry() -> LockRegistry {
-    LockRegistry { by_file: HashMap::new(), pending: HashMap::new() }
-}
-
-#[cfg(test)]
-fn push_lock(reg: &mut LockRegistry, fh_byte: u8, exclusive: bool, offset: u64, length: u64) {
-    reg.by_file.entry(handle(fh_byte)).or_default().push(ActiveLock {
-        caller_name: "a".into(),
-        system_identifier: 1,
-        exclusive,
-        offset,
-        length,
-        opaque_handle: opaque(1),
-    });
-}
-
-#[cfg(test)]
-pub(crate) fn lock_args(
-    fh_byte: u8,
-    exclusive: bool,
-    offset: u64,
-    length: u64,
-    caller: &str,
-    pid: i32,
-) -> Nlm4LockArgs {
-    Nlm4LockArgs {
-        cookie: Cookie::new(0),
-        block: false,
-        exclusive,
-        lock: Nlm4Lock {
-            caller_name: caller.into(),
-            file_handle: Handle(handle(fh_byte)),
-            opaque_handle: opaque(1),
-            system_identifier: pid,
-            lock_offset: offset,
-            lock_length: length,
-        },
-        reclaim: false,
-        state: 0,
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn lock_args_block(
-    fh_byte: u8,
-    exclusive: bool,
-    offset: u64,
-    length: u64,
-    caller: &str,
-    pid: i32,
-) -> Nlm4LockArgs {
-    Nlm4LockArgs {
-        cookie: Cookie::new(0),
-        block: true,
-        exclusive,
-        lock: Nlm4Lock {
-            caller_name: caller.into(),
-            file_handle: Handle(handle(fh_byte)),
-            opaque_handle: opaque(1),
-            system_identifier: pid,
-            lock_offset: offset,
-            lock_length: length,
-        },
-        reclaim: false,
-        state: 0,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::nlm::cookie::Cookie;
-    use crate::nlm::lock::Nlm4Lock;
-    use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs};
-    use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Unlock};
-    use crate::nlm::Nlm4Stats;
-    use crate::vfs::file::Handle;
-
-    // --- ranges_overlap ---
-
-    #[test]
-    fn overlapping_ranges_detect_overlap() {
-        assert!(ranges_overlap(0, 10, 5, 10));
-    }
-
-    #[test]
-    fn non_overlapping_ranges_no_overlap() {
-        assert!(!ranges_overlap(0, 10, 10, 10));
-    }
-
-    #[test]
-    fn identical_ranges_overlap() {
-        assert!(ranges_overlap(42, 100, 42, 100));
-    }
-
-    #[test]
-    fn inner_range_contained_overlaps() {
-        assert!(ranges_overlap(0, 100, 25, 50));
-    }
-
-    #[test]
-    fn zero_length_ranges_overlap() {
-        assert!(ranges_overlap(0, 0, 0, 0));
-    }
-
-    #[test]
-    fn zero_length_means_to_eof() {
-        assert!(ranges_overlap(0, 0, 100, 50));
-    }
-
-    #[test]
-    fn zero_length_does_not_overlap_before() {
-        assert!(!ranges_overlap(100, 0, 0, 50));
-    }
-
-    // --- LockRegistry::find_conflict ---
-
-    #[test]
-    fn no_conflict_when_no_locks() {
-        assert!(registry().find_conflict(&handle(1), true, 0, 100).is_none());
-    }
-
-    #[test]
-    fn exclusive_conflicts_with_existing_exclusive() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 100);
-        assert!(reg.find_conflict(&handle(1), true, 10, 20).is_some());
-    }
-
-    #[test]
-    fn shared_does_not_conflict_with_shared() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, false, 0, 100);
-        assert!(reg.find_conflict(&handle(1), false, 10, 20).is_none());
-    }
-
-    #[test]
-    fn shared_conflicts_with_exclusive() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 100);
-        assert!(reg.find_conflict(&handle(1), false, 10, 20).is_some());
-    }
-
-    #[test]
-    fn no_conflict_on_different_file() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 100);
-        assert!(reg.find_conflict(&handle(2), true, 0, 100).is_none());
-    }
-
-    #[test]
-    fn no_conflict_when_ranges_dont_overlap() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 10);
-        assert!(reg.find_conflict(&handle(1), true, 10, 10).is_none());
-    }
-
-    #[test]
-    fn find_conflict_returns_holder_with_correct_fields() {
-        let mut reg = registry();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "a".into(),
-            system_identifier: 42,
-            exclusive: true,
-            offset: 10,
-            length: 20,
-            opaque_handle: opaque(7),
-        });
-        let holder = reg.find_conflict(&handle(1), true, 0, 100).unwrap();
-        assert!(holder.exclusive);
-        assert_eq!(holder.system_identifier, 42);
-        assert_eq!(holder.opaque_handle.as_bytes(), &[7; crate::consts::nlm::OPAQUE_HANDLE_SIZE]);
-        assert_eq!(holder.lock_offset, 10);
-        assert_eq!(holder.lock_length, 20);
-    }
-
-    // --- LockRegistry::remove_by_owner ---
-
-    #[test]
-    fn remove_by_owner_removes_matching_lock() {
-        let mut reg = registry();
-        reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
-            caller_name: "alice".into(),
-            system_identifier: 100,
-            exclusive: true,
-            offset: 0,
-            length: 50,
-            opaque_handle: opaque(1),
-        });
-        reg.remove_by_owner(&handle(1), "alice", 100, 0, 50);
-        assert!(reg.by_file.is_empty());
-    }
-
-    #[test]
-    fn remove_by_owner_removes_only_different_owner() {
-        let mut reg = registry();
-        let locks = reg.by_file.entry(handle(1)).or_default();
-        locks.push(ActiveLock {
-            caller_name: "alice".into(),
-            system_identifier: 100,
-            exclusive: true,
-            offset: 0,
-            length: 50,
-            opaque_handle: opaque(1),
-        });
-        locks.push(ActiveLock {
-            caller_name: "bob".into(),
-            system_identifier: 200,
-            exclusive: true,
-            offset: 60,
-            length: 50,
-            opaque_handle: opaque(2),
-        });
-        reg.remove_by_owner(&handle(1), "alice", 100, 0, 50);
-        assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
-        assert_eq!(reg.by_file.get(&handle(1)).unwrap()[0].caller_name, "bob");
-    }
-
-    #[test]
-    fn remove_by_owner_removes_only_matching_range() {
-        let mut reg = registry();
-        let locks = reg.by_file.entry(handle(1)).or_default();
-        locks.push(ActiveLock {
-            caller_name: "Alice".into(),
-            system_identifier: 100,
-            exclusive: true,
-            offset: 0,
-            length: 50,
-            opaque_handle: opaque(1),
-        });
-        locks.push(ActiveLock {
-            caller_name: "Alice".into(),
-            system_identifier: 100,
-            exclusive: true,
-            offset: 100,
-            length: 50,
-            opaque_handle: opaque(2),
-        });
-        reg.remove_by_owner(&handle(1), "Alice", 100, 0, 50);
-        assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
-        assert_eq!(reg.by_file.get(&handle(1)).unwrap()[0].offset, 100);
-    }
-
-    #[test]
-    fn remove_by_owner_noop_on_nonexistent_file() {
-        registry().remove_by_owner(&handle(99), "nobody", 0, 0, 0);
-    }
-
-    #[test]
-    fn remove_by_owner_cleans_up_empty_vec() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 10);
-        reg.remove_by_owner(&handle(1), "a", 1, 0, 10);
-        assert!(!reg.by_file.contains_key(&handle(1)));
-    }
-
-    #[test]
-    fn remove_by_owner_noop_when_range_differs() {
-        let mut reg = registry();
-        push_lock(&mut reg, 1, true, 0, 50);
-        reg.remove_by_owner(&handle(1), "a", 1, 100, 50);
-        assert!(reg.by_file.contains_key(&handle(1)));
-        assert_eq!(reg.by_file.get(&handle(1)).unwrap().len(), 1);
-    }
-
-    // --- NlmService constructor ---
-
-    #[test]
-    fn with_exports_creates_empty_service() {
-        let svc = NlmService::with_exports(vec![]);
-        assert!(svc.locks.try_read().is_ok(), "service should not block on empty read");
-    }
-
-    // --- Integration tests spanning multiple procedures ---
-
-    #[tokio::test]
-    async fn lock_unlock_lock_sequence_same_client() {
-        let svc = NlmService::default();
-        let args = Nlm4LockArgs {
-            cookie: Cookie::new(1),
-            block: false,
-            exclusive: true,
-            lock: Nlm4Lock {
-                caller_name: "client1".into(),
-                file_handle: Handle(handle(1)),
-                opaque_handle: opaque(1),
-                system_identifier: 100,
-                lock_offset: 0,
-                lock_length: 100,
-            },
-            reclaim: false,
-            state: 0,
-        };
-        assert_eq!(svc.lock(args).await.stat, Nlm4Stats::Granted);
-
-        let unlock_args = Nlm4UnlockArgs {
-            cookie: Cookie::new(2),
-            lock: Nlm4Lock {
-                caller_name: "client1".into(),
-                file_handle: Handle(handle(1)),
-                opaque_handle: opaque(1),
-                system_identifier: 100,
-                lock_offset: 0,
-                lock_length: 100,
-            },
-        };
-        assert_eq!(svc.unlock(unlock_args).await.stat, Nlm4Stats::Granted);
-
-        let relock = Nlm4LockArgs {
-            cookie: Cookie::new(3),
-            block: false,
-            exclusive: true,
-            lock: Nlm4Lock {
-                caller_name: "client1".into(),
-                file_handle: Handle(handle(1)),
-                opaque_handle: opaque(1),
-                system_identifier: 100,
-                lock_offset: 0,
-                lock_length: 100,
-            },
-            reclaim: false,
-            state: 0,
-        };
-        assert_eq!(svc.lock(relock).await.stat, Nlm4Stats::Granted);
-    }
-
-    #[tokio::test]
-    async fn multiple_clients_lock_different_ranges_on_same_file() {
-        let svc = NlmService::default();
-        let args1 = Nlm4LockArgs {
-            cookie: Cookie::new(1),
-            block: false,
-            exclusive: true,
-            lock: Nlm4Lock {
-                caller_name: "client1".into(),
-                file_handle: Handle(handle(1)),
-                opaque_handle: opaque(1),
-                system_identifier: 100,
-                lock_offset: 0,
-                lock_length: 50,
-            },
-            reclaim: false,
-            state: 0,
-        };
-        assert_eq!(svc.lock(args1).await.stat, Nlm4Stats::Granted);
-
-        let args2 = Nlm4LockArgs {
-            cookie: Cookie::new(2),
-            block: false,
-            exclusive: true,
-            lock: Nlm4Lock {
-                caller_name: "client2".into(),
-                file_handle: Handle(handle(1)),
-                opaque_handle: opaque(2),
-                system_identifier: 200,
-                lock_offset: 60,
-                lock_length: 50,
-            },
-            reclaim: false,
-            state: 0,
-        };
-        assert_eq!(svc.lock(args2).await.stat, Nlm4Stats::Granted);
-    }
-}
+mod tests;

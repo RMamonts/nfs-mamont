@@ -1,26 +1,29 @@
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs, Nlm4CancelRes};
 use crate::nlm::Nlm4Stats;
 
-use super::NlmService;
+use super::{NlmService, PendingLock};
 
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes {
+        let cookie = args.cookie;
         let fh_bytes = args.lock.file_handle.0;
+        let target = PendingLock {
+            caller_name: args.lock.caller_name,
+            system_identifier: args.lock.system_identifier,
+            exclusive: args.exclusive,
+            offset: args.lock.lock_offset,
+            length: args.lock.lock_length,
+            opaque_handle: args.lock.opaque_handle,
+            cookie,
+        };
 
         let mut registry = self.locks.write().await;
-        let removed = registry.remove_pending(
-            &fh_bytes,
-            &args.lock.caller_name,
-            args.lock.system_identifier,
-            args.exclusive,
-            args.lock.lock_offset,
-            args.lock.lock_length,
-        );
+        let removed = registry.remove_pending(&fh_bytes, &target);
 
         if removed {
-            Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
+            Nlm4CancelRes { cookie, stat: Nlm4Stats::Granted }
         } else {
-            Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Denied }
+            Nlm4CancelRes { cookie, stat: Nlm4Stats::Denied }
         }
     }
 }
@@ -34,7 +37,7 @@ mod tests {
     use crate::nlm::Nlm4Stats;
     use crate::vfs::file::Handle;
 
-    use super::super::{handle, lock_args, lock_args_block, opaque};
+    use super::super::tests::{fill_fh, fill_opaque, lock_args, lock_args_block};
 
     fn cancel_args(fh_byte: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4CancelArgs {
         Nlm4CancelArgs {
@@ -43,8 +46,8 @@ mod tests {
             exclusive: true,
             lock: Nlm4Lock {
                 caller_name: caller.into(),
-                file_handle: Handle(handle(fh_byte)),
-                opaque_handle: opaque(2),
+                file_handle: Handle(fill_fh(fh_byte)),
+                opaque_handle: fill_opaque(1),
                 system_identifier: pid,
                 lock_offset: 0,
                 lock_length: 100,

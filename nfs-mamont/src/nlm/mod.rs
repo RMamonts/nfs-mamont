@@ -62,7 +62,7 @@ pub enum NlmRes {
 }
 
 /// The unique identifier of the lock owner.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
 impl OpaqueHandle {
