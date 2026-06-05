@@ -49,7 +49,6 @@ struct PendingLock {
 }
 
 /// In-memory collection of all active locks grouped by file handle.
-#[derive(Default)]
 struct LockRegistry {
     /// Locks indexed by file handle for fast conflict checks.
     by_file: HashMap<[u8; NFS3_FHSIZE], Vec<ActiveLock>>,
@@ -178,10 +177,20 @@ fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
 /// Holds a lock registry protected by a read-write lock so that
 /// multiple `TEST` (read-only) requests can proceed concurrently
 /// while `LOCK`/`UNLOCK`/`CANCEL` (write) requests are serialised.
-#[derive(Default)]
 pub struct NlmService {
     /// Active locks grouped by file handle.
     locks: tokio::sync::RwLock<LockRegistry>,
+}
+
+impl Default for NlmService {
+    fn default() -> Self {
+        NlmService {
+            locks: tokio::sync::RwLock::new(LockRegistry {
+                by_file: HashMap::new(),
+                pending: HashMap::new(),
+            }),
+        }
+    }
 }
 
 impl NlmService {
@@ -215,6 +224,11 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 #[cfg(test)]
 use crate::vfs::file::Handle;
+
+#[cfg(test)]
+fn registry() -> LockRegistry {
+    LockRegistry { by_file: HashMap::new(), pending: HashMap::new() }
+}
 
 #[cfg(test)]
 fn push_lock(reg: &mut LockRegistry, fh_byte: u8, exclusive: bool, offset: u64, length: u64) {
@@ -331,47 +345,47 @@ mod tests {
 
     #[test]
     fn no_conflict_when_no_locks() {
-        assert!(LockRegistry::default().find_conflict(&handle(1), true, 0, 100).is_none());
+        assert!(registry().find_conflict(&handle(1), true, 0, 100).is_none());
     }
 
     #[test]
     fn exclusive_conflicts_with_existing_exclusive() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(1), true, 10, 20).is_some());
     }
 
     #[test]
     fn shared_does_not_conflict_with_shared() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, false, 0, 100);
         assert!(reg.find_conflict(&handle(1), false, 10, 20).is_none());
     }
 
     #[test]
     fn shared_conflicts_with_exclusive() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(1), false, 10, 20).is_some());
     }
 
     #[test]
     fn no_conflict_on_different_file() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 100);
         assert!(reg.find_conflict(&handle(2), true, 0, 100).is_none());
     }
 
     #[test]
     fn no_conflict_when_ranges_dont_overlap() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 10);
         assert!(reg.find_conflict(&handle(1), true, 10, 10).is_none());
     }
 
     #[test]
     fn find_conflict_returns_holder_with_correct_fields() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
             caller_name: "a".into(),
             system_identifier: 42,
@@ -392,7 +406,7 @@ mod tests {
 
     #[test]
     fn remove_by_owner_removes_matching_lock() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         reg.by_file.entry(handle(1)).or_default().push(ActiveLock {
             caller_name: "alice".into(),
             system_identifier: 100,
@@ -407,7 +421,7 @@ mod tests {
 
     #[test]
     fn remove_by_owner_removes_only_different_owner() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         let locks = reg.by_file.entry(handle(1)).or_default();
         locks.push(ActiveLock {
             caller_name: "alice".into(),
@@ -432,7 +446,7 @@ mod tests {
 
     #[test]
     fn remove_by_owner_removes_only_matching_range() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         let locks = reg.by_file.entry(handle(1)).or_default();
         locks.push(ActiveLock {
             caller_name: "Alice".into(),
@@ -457,12 +471,12 @@ mod tests {
 
     #[test]
     fn remove_by_owner_noop_on_nonexistent_file() {
-        LockRegistry::default().remove_by_owner(&handle(99), "nobody", 0, 0, 0);
+        registry().remove_by_owner(&handle(99), "nobody", 0, 0, 0);
     }
 
     #[test]
     fn remove_by_owner_cleans_up_empty_vec() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 10);
         reg.remove_by_owner(&handle(1), "a", 1, 0, 10);
         assert!(!reg.by_file.contains_key(&handle(1)));
@@ -470,7 +484,7 @@ mod tests {
 
     #[test]
     fn remove_by_owner_noop_when_range_differs() {
-        let mut reg = LockRegistry::default();
+        let mut reg = registry();
         push_lock(&mut reg, 1, true, 0, 50);
         reg.remove_by_owner(&handle(1), "a", 1, 100, 50);
         assert!(reg.by_file.contains_key(&handle(1)));
