@@ -20,7 +20,7 @@ pub(super) fn fill_opaque(value: u8) -> OpaqueHandle {
     OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
 }
 
-pub(super) fn active_lock(
+pub(super) fn make_active_lock(
     caller: &str,
     pid: i32,
     exclusive: bool,
@@ -28,14 +28,8 @@ pub(super) fn active_lock(
     length: u64,
     opaque: u8,
 ) -> ActiveLock {
-    ActiveLock {
-        caller_name: caller.into(),
-        system_identifier: pid,
-        exclusive,
-        offset,
-        length,
-        opaque_handle: fill_opaque(opaque),
-    }
+    ActiveLock::new(caller.into(), pid, exclusive, offset, length, fill_opaque(opaque))
+        .expect("Test caller_name must be valid")
 }
 
 pub(super) fn push_lock(
@@ -48,7 +42,7 @@ pub(super) fn push_lock(
     reg.by_file
         .entry(fill_fh(fh_value))
         .or_default()
-        .push(active_lock("a", 1, exclusive, offset, length, 1));
+        .push(make_active_lock("a", 1, exclusive, offset, length, 1));
 }
 
 pub(super) fn lock_args(

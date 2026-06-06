@@ -5,53 +5,35 @@ use super::{ActiveLock, NlmService, PendingLock};
 
 impl Lock for NlmService {
     async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
-        let fh_bytes = args.lock.file_handle.0;
-        let exclusive = args.exclusive;
-        let offset = args.lock.lock_offset;
-        let length = args.lock.lock_length;
-        let caller_name = args.lock.caller_name.clone();
-        let system_identifier = args.lock.system_identifier;
-        let opaque_handle = args.lock.opaque_handle.clone();
-
         let mut registry = self.locks.write().await;
 
-        let conflicting_request = ActiveLock {
-            caller_name: caller_name.clone(),
-            system_identifier,
-            exclusive,
-            offset,
-            length,
-            opaque_handle: opaque_handle.clone(),
+        let new_lock = match PendingLock::new(
+            args.lock.caller_name,
+            args.lock.system_identifier,
+            args.exclusive,
+            args.lock.lock_offset,
+            args.lock.lock_length,
+            args.lock.opaque_handle,
+            args.cookie,
+        ) {
+            Ok(new_lock) => new_lock,
+            Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
         };
 
-        if registry.find_conflict(&fh_bytes, &conflicting_request).is_none() {
-            let new_lock = ActiveLock {
-                caller_name,
-                system_identifier,
-                exclusive,
-                offset,
-                length,
-                opaque_handle,
-            };
-            registry.by_file.entry(fh_bytes).or_default().push(new_lock);
+        let fh_bytes = args.lock.file_handle.0;
+        if registry.find_conflict(&fh_bytes, &ActiveLock::from(&new_lock)).is_none() {
+            registry.by_file.entry(fh_bytes).or_default().push(ActiveLock::from(&new_lock));
 
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }
 
-        if args.block {
-            let pending_lock = PendingLock {
-                caller_name,
-                system_identifier,
-                exclusive,
-                offset,
-                length,
-                opaque_handle,
-                cookie: args.cookie,
-            };
-            registry.pending.entry(fh_bytes).or_default().push(pending_lock);
-            return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Blocked };
+        if !args.block {
+            return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Denied };
         }
-        Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Denied }
+
+        registry.pending.entry(fh_bytes).or_default().push(new_lock);
+
+        Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Blocked }
     }
 }
 
@@ -71,7 +53,21 @@ mod tests {
         length: u64,
         cookie_val: u64,
     ) -> Nlm4LockArgs {
-        lock_args_by(fh_byte, exclusive, offset, length, cookie_val, false, "test", 42, 1)
+        Nlm4LockArgs {
+            cookie: Cookie::new(cookie_val),
+            block: false,
+            exclusive,
+            lock: Nlm4Lock {
+                caller_name: "test".into(),
+                file_handle: Handle(fill_fh(fh_byte)),
+                opaque_handle: fill_opaque(1),
+                system_identifier: 42,
+                lock_offset: offset,
+                lock_length: length,
+            },
+            reclaim: false,
+            state: 0,
+        }
     }
 
     fn lock_args_block(
@@ -82,29 +78,40 @@ mod tests {
         cookie_val: u64,
         block: bool,
     ) -> Nlm4LockArgs {
-        lock_args_by(fh_byte, exclusive, offset, length, cookie_val, block, "test", 42, 1)
+        Nlm4LockArgs {
+            cookie: Cookie::new(cookie_val),
+            block,
+            exclusive,
+            lock: Nlm4Lock {
+                caller_name: "test".into(),
+                file_handle: Handle(fill_fh(fh_byte)),
+                opaque_handle: fill_opaque(1),
+                system_identifier: 42,
+                lock_offset: offset,
+                lock_length: length,
+            },
+            reclaim: false,
+            state: 0,
+        }
     }
 
-    fn lock_args_by(
+    fn other_args(
         fh_byte: u8,
         exclusive: bool,
         offset: u64,
         length: u64,
         cookie_val: u64,
         block: bool,
-        caller: &str,
-        pid: i32,
-        opaque_val: u8,
     ) -> Nlm4LockArgs {
         Nlm4LockArgs {
             cookie: Cookie::new(cookie_val),
             block,
             exclusive,
             lock: Nlm4Lock {
-                caller_name: caller.into(),
+                caller_name: "other".into(),
                 file_handle: Handle(fill_fh(fh_byte)),
-                opaque_handle: fill_opaque(opaque_val),
-                system_identifier: pid,
+                opaque_handle: fill_opaque(2),
+                system_identifier: 99,
                 lock_offset: offset,
                 lock_length: length,
             },
@@ -124,7 +131,7 @@ mod tests {
     async fn lock_denies_conflicting_exclusive() {
         let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
-        let res = svc.lock(lock_args_by(1, true, 0, 100, 1, false, "other", 99, 2)).await;
+        let res = svc.lock(other_args(1, true, 0, 100, 1, false)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
@@ -140,7 +147,7 @@ mod tests {
     async fn lock_denies_shared_against_exclusive() {
         let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
-        let res = svc.lock(lock_args_by(1, false, 10, 20, 1, false, "other", 99, 2)).await;
+        let res = svc.lock(other_args(1, false, 10, 20, 1, false)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
@@ -148,7 +155,7 @@ mod tests {
     async fn lock_denies_exclusive_against_shared() {
         let svc = NlmService::default();
         svc.lock(lock_args(1, false, 0, 100, 0)).await;
-        let res = svc.lock(lock_args_by(1, true, 10, 20, 1, false, "other", 99, 2)).await;
+        let res = svc.lock(other_args(1, true, 10, 20, 1, false)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
@@ -179,7 +186,7 @@ mod tests {
     async fn lock_blocking_returns_blocked_on_conflict() {
         let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
-        let res = svc.lock(lock_args_by(1, true, 0, 100, 1, true, "other", 99, 2)).await;
+        let res = svc.lock(other_args(1, true, 0, 100, 1, true)).await;
         assert_eq!(res.stat, Nlm4Stats::Blocked);
     }
 
@@ -194,7 +201,7 @@ mod tests {
     async fn lock_non_blocking_still_denies_on_conflict() {
         let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
-        let res = svc.lock(lock_args_by(1, true, 0, 100, 1, false, "other", 99, 2)).await;
+        let res = svc.lock(other_args(1, true, 0, 100, 1, false)).await;
         assert_eq!(res.stat, Nlm4Stats::Denied);
     }
 
