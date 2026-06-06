@@ -264,10 +264,10 @@ impl LockRegistry {
 
     /// Promotes pending lock requests that no longer conflict with active locks.
     ///
-    /// Called after releasing an active lock ([`remove_by_owner`]) to check
+    /// Called after releasing an active lock (`remove_by_owner`) to check
     /// whether any previously blocked request can now be granted.
     ///
-    /// Each non-conflicting request is moved into [`by_file`] as an [`ActiveLock`]
+    /// Each non-conflicting request is moved into `by_file` as an [`ActiveLock`]
     /// and included in the returned vector. Requests that still conflict are
     /// kept in the pending queue.
     ///
