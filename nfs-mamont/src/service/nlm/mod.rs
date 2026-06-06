@@ -8,8 +8,10 @@
 //! procedure traits from `crate::nlm::procedures`.
 
 use std::collections::HashMap;
+use std::io::Error;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
@@ -33,6 +35,40 @@ struct ActiveLock {
     length: u64,
     /// Opaque handle identifying the lock owner (returned in TEST responses).
     opaque_handle: OpaqueHandle,
+}
+
+impl ActiveLock {
+    /// Creates a new [`ActiveLock`] with validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if:
+    /// - `caller_name` is empty.
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+    pub fn new(
+        caller_name: String,
+        system_identifier: i32,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        opaque_handle: OpaqueHandle,
+    ) -> Result<Self, Error> {
+        if caller_name.is_empty() {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "caller_name must not be empty",
+            ));
+        }
+
+        if caller_name.len() > nlm::LM_MAXSTRLEN {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
+            ));
+        }
+
+        Ok(ActiveLock { caller_name, system_identifier, exclusive, offset, length, opaque_handle })
+    }
 }
 
 /// Equality compares only the unlock-identity fields
@@ -63,9 +99,52 @@ struct PendingLock {
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
     /// The cookie from the original blocking LOCK request.
-    /// Needed for NLMPROC4_GRANTED callback (#267).
+    /// TODO: Needed for NLMPROC4_GRANTED callback (#267).
     #[allow(dead_code)]
     cookie: Cookie,
+}
+
+impl PendingLock {
+    /// Creates a new [`PendingLock`] with validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if:
+    /// - `caller_name` is empty.
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+    pub fn new(
+        caller_name: String,
+        system_identifier: i32,
+        exclusive: bool,
+        offset: u64,
+        length: u64,
+        opaque_handle: OpaqueHandle,
+        cookie: Cookie,
+    ) -> Result<Self, Error> {
+        if caller_name.is_empty() {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "caller_name must not be empty",
+            ));
+        }
+
+        if caller_name.len() > nlm::LM_MAXSTRLEN {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
+            ));
+        }
+
+        Ok(PendingLock {
+            caller_name,
+            system_identifier,
+            exclusive,
+            offset,
+            length,
+            opaque_handle,
+            cookie,
+        })
+    }
 }
 
 /// Converts a [`PendingLock`] reference into an [`ActiveLock`] by copying all shared fields.
@@ -73,14 +152,15 @@ struct PendingLock {
 /// as it is only relevant for the GRANTED callback and has no meaning for an active lock.
 impl From<&PendingLock> for ActiveLock {
     fn from(p: &PendingLock) -> Self {
-        ActiveLock {
-            caller_name: p.caller_name.clone(),
-            system_identifier: p.system_identifier,
-            exclusive: p.exclusive,
-            offset: p.offset,
-            length: p.length,
-            opaque_handle: p.opaque_handle.clone(),
-        }
+        ActiveLock::new(
+            p.caller_name.clone(),
+            p.system_identifier,
+            p.exclusive,
+            p.offset,
+            p.length,
+            p.opaque_handle.clone(),
+        )
+        .expect("PendingLock must have valid caller_name")
     }
 }
 
