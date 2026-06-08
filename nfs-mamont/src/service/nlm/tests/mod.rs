@@ -8,6 +8,10 @@ use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::OpaqueHandle;
 
+pub const FH_DEFAULT: u8 = 1;
+pub const FH_OTHER: u8 = 2;
+pub const LOCK_WHOLE_LENGTH: u64 = 100;
+
 mod operations;
 mod ranges;
 mod registry;
@@ -43,10 +47,10 @@ pub fn make_lock_args_without_block(
     length: u64,
     caller: &str,
     pid: i32,
-    cookie_val: u64,
+    cookie_value: u64,
 ) -> Nlm4LockArgs {
     Nlm4LockArgs {
-        cookie: Cookie::new(cookie_val),
+        cookie: Cookie::new(cookie_value),
         block: false,
         exclusive,
         lock: Nlm4Lock {
@@ -69,10 +73,10 @@ pub fn make_lock_args_with_block(
     length: u64,
     caller: &str,
     pid: i32,
-    cookie_val: u64,
+    cookie_value: u64,
 ) -> Nlm4LockArgs {
     Nlm4LockArgs {
-        cookie: Cookie::new(cookie_val),
+        cookie: Cookie::new(cookie_value),
         block: true,
         exclusive,
         lock: Nlm4Lock {
@@ -88,16 +92,16 @@ pub fn make_lock_args_with_block(
     }
 }
 
-fn make_unlock_args(fh_value: u8, caller: &str, pid: i32, cookie_val: u64) -> Nlm4UnlockArgs {
+fn make_unlock_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> Nlm4UnlockArgs {
     Nlm4UnlockArgs {
-        cookie: Cookie::new(cookie_val),
+        cookie: Cookie::new(cookie_value),
         lock: Nlm4Lock {
             caller_name: caller.into(),
             file_handle: Handle(fill_fh(fh_value)),
             opaque_handle: fill_opaque(2),
             system_identifier: pid,
             lock_offset: 0,
-            lock_length: 100,
+            lock_length: LOCK_WHOLE_LENGTH,
         },
     }
 }
