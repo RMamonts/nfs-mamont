@@ -1,13 +1,8 @@
-use super::super::{
-    fill_fh, fill_opaque, make_lock_args_with_block, make_lock_args_without_block, make_unlock_args,
-};
-use crate::nlm::cookie::Cookie;
-use crate::nlm::lock::Nlm4Lock;
+use super::super::{make_lock_args_with_block, make_lock_args_without_block, make_unlock_args};
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs};
 use crate::nlm::procedures::unlock::Unlock;
 use crate::nlm::Nlm4Stats;
 use crate::service::nlm::NlmService;
-use crate::vfs::file::Handle;
 
 #[tokio::test]
 async fn lock_grants_exclusive_lock() {
@@ -108,19 +103,8 @@ async fn lock_reclaim_bypasses_conflict_check() {
     svc.lock(make_lock_args_without_block(1, true, 0, 100, "test", 42, 0)).await;
     let res = svc
         .lock(Nlm4LockArgs {
-            cookie: Cookie::new(1),
-            block: false,
-            exclusive: true,
-            lock: Nlm4Lock {
-                caller_name: "other".into(),
-                file_handle: Handle(fill_fh(1)),
-                opaque_handle: fill_opaque(2),
-                system_identifier: 99,
-                lock_offset: 0,
-                lock_length: 100,
-            },
             reclaim: true,
-            state: 0,
+            ..make_lock_args_without_block(1, true, 0, 100, "other", 99, 1)
         })
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
