@@ -334,9 +334,16 @@ pub struct NlmService {
     locks: tokio::sync::RwLock<LockRegistry>,
 }
 
+impl Default for NlmService {
+    /// Creates an empty [`NlmService`] with no locks registered.
+    fn default() -> Self {
+        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
+    }
+}
+
 impl NlmService {
     /// Creates an empty [`NlmService`].
     pub fn new() -> Self {
-        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
+        Self::default()
     }
 }
