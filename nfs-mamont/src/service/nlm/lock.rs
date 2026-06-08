@@ -21,7 +21,7 @@ impl Lock for NlmService {
         };
 
         let fh_bytes = args.lock.file_handle.0;
-        if registry.find_conflict(&fh_bytes, &ActiveLock::from(&new_lock)).is_none() {
+        if args.reclaim || registry.find_conflict(&fh_bytes, &ActiveLock::from(&new_lock)).is_none() {
             registry.by_file.entry(fh_bytes).or_default().push(ActiveLock::from(&new_lock));
 
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
@@ -210,6 +210,30 @@ mod tests {
         let svc = NlmService::default();
         svc.lock(lock_args(1, true, 0, 100, 0)).await;
         let res = svc.lock(lock_args(1, true, 0, 100, 1)).await;
+        assert_eq!(res.stat, Nlm4Stats::Granted);
+    }
+
+    #[tokio::test]
+    async fn lock_reclaim_bypasses_conflict_check() {
+        let svc = NlmService::default();
+        svc.lock(lock_args(1, true, 0, 100, 0)).await;
+        let res = svc
+            .lock(Nlm4LockArgs {
+                cookie: Cookie::new(1),
+                block: false,
+                exclusive: true,
+                lock: Nlm4Lock {
+                    caller_name: "other".into(),
+                    file_handle: Handle(fill_fh(1)),
+                    opaque_handle: fill_opaque(2),
+                    system_identifier: 99,
+                    lock_offset: 0,
+                    lock_length: 100,
+                },
+                reclaim: true,
+                state: 0,
+            })
+            .await;
         assert_eq!(res.stat, Nlm4Stats::Granted);
     }
 }
