@@ -1,4 +1,4 @@
-use super::super::{fill_fh, fill_opaque, lock_args};
+use super::super::{fill_fh, fill_opaque, make_lock_args_without_block};
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Lock;
@@ -38,7 +38,7 @@ async fn test_reports_granted_when_free() {
 #[tokio::test]
 async fn test_reports_denied_when_conflict() {
     let svc = NlmService::new();
-    svc.lock(lock_args(1, true, 0, 100, "alice", 100)).await;
+    svc.lock(make_lock_args_without_block(1, true, 0, 100, "alice", 100, 0)).await;
     let res = svc.test(test_args(1, true, 0, 100, 0)).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Denied);
 }
@@ -46,7 +46,7 @@ async fn test_reports_denied_when_conflict() {
 #[tokio::test]
 async fn test_denied_holder_matches_conflicting_lock() {
     let svc = NlmService::new();
-    svc.lock(lock_args(1, true, 0, 100, "alice", 42)).await;
+    svc.lock(make_lock_args_without_block(1, true, 0, 100, "alice", 42, 0)).await;
     let res = svc.test(test_args(1, true, 0, 100, 0)).await;
     let holder = res.test_stat.holder.expect("Denied response must have a holder");
     assert!(holder.exclusive);
@@ -71,7 +71,7 @@ async fn test_preserves_cookie() {
 #[tokio::test]
 async fn test_reports_shared_compatible_as_granted() {
     let svc = NlmService::new();
-    svc.lock(lock_args(1, false, 0, 100, "alice", 100)).await;
+    svc.lock(make_lock_args_without_block(1, false, 0, 100, "alice", 100, 0)).await;
     let res = svc.test(test_args(1, false, 10, 20, 0)).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
 }
