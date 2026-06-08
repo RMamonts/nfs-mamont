@@ -32,11 +32,20 @@ pub fn make_active_lock(
         .expect("Test caller_name must be valid")
 }
 
-pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, exclusive: bool, offset: u64, length: u64) {
+pub fn push_lock(
+    reg: &mut LockRegistry,
+    fh_value: u8,
+    exclusive: bool,
+    offset: u64,
+    length: u64,
+    caller: &str,
+    pid: i32,
+    opaque: u8,
+) {
     reg.by_file
         .entry(fill_fh(fh_value))
         .or_default()
-        .push(make_active_lock("a", 1, exclusive, offset, length, 1));
+        .push(make_active_lock(caller, pid, exclusive, offset, length, opaque));
 }
 
 pub fn make_lock_args_without_block(

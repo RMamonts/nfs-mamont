@@ -7,12 +7,7 @@ use crate::nlm::Nlm4Stats;
 use crate::service::nlm::NlmService;
 use crate::vfs::file::Handle;
 
-fn make_cancel_arguments(
-    fh_value: u8,
-    caller: &str,
-    pid: i32,
-    cookie_value: u64,
-) -> Nlm4CancelArgs {
+fn make_cancel_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> Nlm4CancelArgs {
     Nlm4CancelArgs {
         cookie: Cookie::new(cookie_value),
         block: false,
@@ -35,17 +30,17 @@ async fn cancel_removes_blocked_request() {
     let res = svc.lock(make_lock_args_with_block(1, true, 0, 100, "bob", 200, 0)).await;
     assert_eq!(res.stat, Nlm4Stats::Blocked);
 
-    let res = svc.cancel(make_cancel_arguments(1, "bob", 200, 0)).await;
+    let res = svc.cancel(make_cancel_args(1, "bob", 200, 0)).await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
 
-    let res = svc.cancel(make_cancel_arguments(1, "bob", 200, 0)).await;
+    let res = svc.cancel(make_cancel_args(1, "bob", 200, 0)).await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
 }
 
 #[tokio::test]
 async fn cancel_on_nonexistent_returns_denied() {
     let svc = NlmService::new();
-    let res = svc.cancel(make_cancel_arguments(1, "nobody", 0, 0)).await;
+    let res = svc.cancel(make_cancel_args(1, "nobody", 0, 0)).await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
 }
 
@@ -54,6 +49,6 @@ async fn cancel_preserves_cookie() {
     let svc = NlmService::new();
     svc.lock(make_lock_args_without_block(1, true, 0, 100, "alice", 100, 0)).await;
     svc.lock(make_lock_args_with_block(1, true, 0, 100, "bob", 200, 0)).await;
-    let res = svc.cancel(make_cancel_arguments(1, "bob", 200, 55)).await;
+    let res = svc.cancel(make_cancel_args(1, "bob", 200, 55)).await;
     assert_eq!(res.cookie.raw(), 55);
 }
