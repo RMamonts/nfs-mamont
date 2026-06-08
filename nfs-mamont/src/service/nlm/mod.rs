@@ -21,6 +21,9 @@ mod lock;
 mod test;
 mod unlock;
 
+#[cfg(test)]
+mod tests;
+
 /// A held lock with full owner identity and state.
 struct ActiveLock {
     /// Name of the client host that owns the lock.
@@ -331,19 +334,9 @@ pub struct NlmService {
     locks: tokio::sync::RwLock<LockRegistry>,
 }
 
-impl Default for NlmService {
-    /// Creates an empty [`NlmService`] with no locks registered.
-    fn default() -> Self {
-        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
-    }
-}
-
 impl NlmService {
     /// Creates an empty [`NlmService`].
     pub fn new() -> Self {
-        Self::default()
+        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
     }
 }
-
-#[cfg(test)]
-mod tests;
