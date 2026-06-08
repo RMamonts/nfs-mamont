@@ -139,7 +139,8 @@ impl UringExecutor {
         do_fsync: Option<bool>,
     ) -> io::Result<()> {
         let (reply, wait) = oneshot::channel();
-        let request = UringRequest::WriteChain { fd, offset, buffers, alloc_state, do_fsync, reply };
+        let request =
+            UringRequest::WriteChain { fd, offset, buffers, alloc_state, do_fsync, reply };
 
         if self.sender.send(request).is_err() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "io_uring worker stopped"));
@@ -223,7 +224,11 @@ impl UringPool {
 }
 
 enum UringRequest {
-    Fsync { fd: RawFd, flags: types::FsyncFlags, reply: oneshot::Sender<io::Result<()>> },
+    Fsync {
+        fd: RawFd,
+        flags: types::FsyncFlags,
+        reply: oneshot::Sender<io::Result<()>>,
+    },
     Write {
         fd: RawFd,
         offset: u64,
@@ -231,9 +236,23 @@ enum UringRequest {
         reply: oneshot::Sender<io::Result<usize>>,
         alloc_state: Option<Arc<AllocatorState>>,
     },
-    Read { fd: RawFd, offset: u64, len: usize, reply: oneshot::Sender<io::Result<Vec<u8>>> },
-    Open { path: CString, flags: i32, mode: u32, reply: oneshot::Sender<io::Result<RawFd>> },
-    Statx { path: CString, follow: bool, reply: oneshot::Sender<io::Result<StatxData>> },
+    Read {
+        fd: RawFd,
+        offset: u64,
+        len: usize,
+        reply: oneshot::Sender<io::Result<Vec<u8>>>,
+    },
+    Open {
+        path: CString,
+        flags: i32,
+        mode: u32,
+        reply: oneshot::Sender<io::Result<RawFd>>,
+    },
+    Statx {
+        path: CString,
+        follow: bool,
+        reply: oneshot::Sender<io::Result<StatxData>>,
+    },
     WriteChain {
         fd: RawFd,
         offset: u64,
@@ -244,6 +263,17 @@ enum UringRequest {
     },
 }
 
+impl UringRequest {
+    fn estimated_sqes(&self) -> usize {
+        match self {
+            UringRequest::WriteChain { buffers, do_fsync, .. } => {
+                buffers.len() + if do_fsync.is_some() { 1 } else { 0 }
+            }
+            _ => 1,
+        }
+    }
+}
+
 enum InFlight {
     Fsync(oneshot::Sender<io::Result<()>>),
     Write {
@@ -251,13 +281,25 @@ enum InFlight {
         buffer: Vec<u8>,
         alloc_state: Option<Arc<AllocatorState>>,
     },
-    ReadFixed { reply: oneshot::Sender<io::Result<Vec<u8>>>, index: usize, len: usize },
-    Open { reply: oneshot::Sender<io::Result<RawFd>>, _path: CString },
-    Statx { reply: oneshot::Sender<io::Result<StatxData>>, path: CString, statx: Box<libc::statx> },
+    ReadFixed {
+        reply: oneshot::Sender<io::Result<Vec<u8>>>,
+        index: usize,
+        len: usize,
+    },
+    Open {
+        reply: oneshot::Sender<io::Result<RawFd>>,
+        _path: CString,
+    },
+    Statx {
+        reply: oneshot::Sender<io::Result<StatxData>>,
+        path: CString,
+        statx: Box<libc::statx>,
+    },
     WriteChainItem(Arc<ChainShared>),
 }
 
-const MAX_BATCH: usize = 64;
+const MAX_BATCH_REQUESTS: usize = 512;
+const MAX_BATCH_SQES: usize = 1024;
 const DEFAULT_FIXED_BUFFER_COUNT: usize = 2048;
 const DEFAULT_FIXED_BUFFER_LEN: usize = 64 * 1024;
 
@@ -306,12 +348,30 @@ fn run_uring(
 ) {
     let mut next_id: u64 = 1;
     let mut pending: VecDeque<UringRequest> = VecDeque::new();
+    let mut overflow: VecDeque<UringRequest> = VecDeque::new();
 
     loop {
-        let mut batch = Vec::with_capacity(MAX_BATCH);
+        let mut batch = Vec::with_capacity(MAX_BATCH_REQUESTS);
+        let mut total_sqes = 0usize;
+
+        // Drain overflow from previous iteration (SQE-aware)
+        while batch.len() < MAX_BATCH_REQUESTS {
+            match overflow.pop_front() {
+                Some(request) => {
+                    let sqes = request.estimated_sqes();
+                    if total_sqes + sqes > MAX_BATCH_SQES {
+                        overflow.push_front(request);
+                        break;
+                    }
+                    total_sqes += sqes;
+                    batch.push(request);
+                }
+                None => break,
+            }
+        }
 
         // Drain pending reads that couldn't get a buffer last iteration
-        while batch.len() < MAX_BATCH {
+        while batch.len() < MAX_BATCH_REQUESTS {
             match pending.pop_front() {
                 Some(r) => batch.push(r),
                 None => break,
@@ -321,13 +381,24 @@ fn run_uring(
         // Get new requests from channel
         if batch.is_empty() {
             match receiver.blocking_recv() {
-                Some(request) => batch.push(request),
+                Some(request) => {
+                    total_sqes += request.estimated_sqes();
+                    batch.push(request);
+                }
                 None => break,
             }
         }
-        while batch.len() < MAX_BATCH {
+        while batch.len() < MAX_BATCH_REQUESTS {
             match receiver.try_recv() {
-                Ok(request) => batch.push(request),
+                Ok(request) => {
+                    let sqes = request.estimated_sqes();
+                    if total_sqes + sqes > MAX_BATCH_SQES && !batch.is_empty() {
+                        overflow.push_back(request);
+                        break;
+                    }
+                    total_sqes += sqes;
+                    batch.push(request);
+                }
                 Err(_) => break,
             }
         }
@@ -380,7 +451,14 @@ fn run_uring(
                         inflight.insert(user_data, InFlight::Write { reply, buffer, alloc_state });
                         submitted += 1;
                     }
-                    UringRequest::WriteChain { fd, offset, buffers, alloc_state, do_fsync, reply } => {
+                    UringRequest::WriteChain {
+                        fd,
+                        offset,
+                        buffers,
+                        alloc_state,
+                        do_fsync,
+                        reply,
+                    } => {
                         let n_bufs = buffers.len();
                         let n_extra = if do_fsync.is_some() { 1 } else { 0 };
                         let chain_size = n_bufs + n_extra;
@@ -391,9 +469,8 @@ fn run_uring(
 
                         let avail = submission.capacity() - submission.len();
                         if avail < chain_size {
-                            let _ = reply.send(Err(io::Error::other(
-                                "io_uring submission queue full",
-                            )));
+                            let _ =
+                                reply.send(Err(io::Error::other("io_uring submission queue full")));
                             if let Some(ref state) = alloc_state {
                                 for buf in buffers {
                                     let _ = state.pool.push(buf);
@@ -435,8 +512,10 @@ fn run_uring(
                                 .user_data(base_id + i as u64);
 
                             let _ = unsafe { submission.push(&entry) };
-                            inflight
-                                .insert(base_id + i as u64, InFlight::WriteChainItem(shared.clone()));
+                            inflight.insert(
+                                base_id + i as u64,
+                                InFlight::WriteChainItem(shared.clone()),
+                            );
                             submitted += 1;
                             buf_off += len as u64;
                         }
@@ -703,9 +782,8 @@ fn fail_inflight(
                     }
                     if let Some(reply) = reply {
                         let chain_error = shared.error.lock().unwrap().take();
-                        let err = chain_error.unwrap_or_else(|| {
-                            io::Error::new(error.kind(), error.to_string())
-                        });
+                        let err = chain_error
+                            .unwrap_or_else(|| io::Error::new(error.kind(), error.to_string()));
                         let _ = reply.send(Err(err));
                     }
                 }

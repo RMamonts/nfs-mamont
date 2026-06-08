@@ -41,9 +41,8 @@ impl write::Write for MirrorFS {
                 write::StableHow::FileSync => Some(false),
             };
 
-            if let Err(error) = uring
-                .write_chain(fd.as_raw_fd(), args.offset, buffers, alloc_state, do_fsync)
-                .await
+            if let Err(error) =
+                uring.write_chain(fd.as_raw_fd(), args.offset, buffers, alloc_state, do_fsync).await
             {
                 return Err(write::Fail {
                     error: Self::io_error_to_vfs(&error),
