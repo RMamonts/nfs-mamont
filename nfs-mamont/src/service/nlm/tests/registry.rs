@@ -18,35 +18,35 @@ fn no_conflict_when_no_locks() {
 #[test]
 fn exclusive_conflicts_with_existing_exclusive() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 100);
+    push_lock(&mut reg, 1, true, 0, 100, "a", 1, 1);
     assert!(reg.find_conflict(&fill_fh(1), &other_req()).is_some());
 }
 
 #[test]
 fn shared_does_not_conflict_with_shared() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, false, 0, 100);
+    push_lock(&mut reg, 1, false, 0, 100, "a", 1, 1);
     assert!(reg.find_conflict(&fill_fh(1), &other_req()).is_none());
 }
 
 #[test]
 fn shared_conflicts_with_exclusive() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 100);
+    push_lock(&mut reg, 1, true, 0, 100, "a", 1, 1);
     assert!(reg.find_conflict(&fill_fh(1), &other_req()).is_some());
 }
 
 #[test]
 fn no_conflict_on_different_file() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 100);
+    push_lock(&mut reg, 1, true, 0, 100, "a", 1, 1);
     assert!(reg.find_conflict(&fill_fh(2), &other_req()).is_none());
 }
 
 #[test]
 fn no_conflict_when_ranges_dont_overlap() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 10);
+    push_lock(&mut reg, 1, true, 0, 10, "a", 1, 1);
     let req = make_active_lock("other", 999, true, 10, 10, 0);
     assert!(reg.find_conflict(&fill_fh(1), &req).is_none());
 }
@@ -54,14 +54,14 @@ fn no_conflict_when_ranges_dont_overlap() {
 #[test]
 fn same_owner_lock_does_not_conflict() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 100);
+    push_lock(&mut reg, 1, true, 0, 100, "a", 1, 1);
     assert!(reg.find_conflict(&fill_fh(1), &own_req()).is_none());
 }
 
 #[test]
 fn find_conflict_returns_holder_with_correct_fields() {
     let mut reg = LockRegistry::new();
-    reg.by_file.entry(fill_fh(1)).or_default().push(make_active_lock("a", 42, true, 10, 20, 7));
+    push_lock(&mut reg, 1, true, 10, 20, "a", 42, 7);
     let holder = reg.find_conflict(&fill_fh(1), &other_req()).unwrap();
     assert!(holder.exclusive);
     assert_eq!(holder.system_identifier, 42);
@@ -73,7 +73,7 @@ fn find_conflict_returns_holder_with_correct_fields() {
 #[test]
 fn remove_by_owner_removes_matching_lock() {
     let mut reg = LockRegistry::new();
-    reg.by_file.entry(fill_fh(1)).or_default().push(make_active_lock("alice", 100, true, 0, 50, 1));
+    push_lock(&mut reg, 1, true, 0, 50, "alice", 100, 1);
     let target = make_active_lock("alice", 100, false, 0, 50, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert!(reg.by_file.is_empty());
@@ -82,9 +82,8 @@ fn remove_by_owner_removes_matching_lock() {
 #[test]
 fn remove_by_owner_removes_only_different_owner() {
     let mut reg = LockRegistry::new();
-    let locks = reg.by_file.entry(fill_fh(1)).or_default();
-    locks.push(make_active_lock("alice", 100, true, 0, 50, 1));
-    locks.push(make_active_lock("bob", 200, true, 60, 50, 2));
+    push_lock(&mut reg, 1, true, 0, 50, "alice", 100, 1);
+    push_lock(&mut reg, 1, true, 60, 50, "bob", 200, 2);
     let target = make_active_lock("alice", 100, false, 0, 50, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert_eq!(reg.by_file.get(&fill_fh(1)).unwrap().len(), 1);
@@ -94,9 +93,8 @@ fn remove_by_owner_removes_only_different_owner() {
 #[test]
 fn remove_by_owner_removes_only_matching_range() {
     let mut reg = LockRegistry::new();
-    let locks = reg.by_file.entry(fill_fh(1)).or_default();
-    locks.push(make_active_lock("Alice", 100, true, 0, 50, 1));
-    locks.push(make_active_lock("Alice", 100, true, 100, 50, 2));
+    push_lock(&mut reg, 1, true, 0, 50, "Alice", 100, 1);
+    push_lock(&mut reg, 1, true, 100, 50, "Alice", 100, 2);
     let target = make_active_lock("Alice", 100, false, 0, 50, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert_eq!(reg.by_file.get(&fill_fh(1)).unwrap().len(), 1);
@@ -112,7 +110,7 @@ fn remove_by_owner_noop_on_nonexistent_file() {
 #[test]
 fn remove_by_owner_cleans_up_empty_vec() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 10);
+    push_lock(&mut reg, 1, true, 0, 10, "a", 1, 1);
     let target = make_active_lock("a", 1, false, 0, 10, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert!(!reg.by_file.contains_key(&fill_fh(1)));
@@ -121,7 +119,7 @@ fn remove_by_owner_cleans_up_empty_vec() {
 #[test]
 fn remove_by_owner_noop_when_range_differs() {
     let mut reg = LockRegistry::new();
-    push_lock(&mut reg, 1, true, 0, 50);
+    push_lock(&mut reg, 1, true, 0, 50, "a", 1, 1);
     let target = make_active_lock("a", 1, false, 100, 50, 0);
     reg.remove_by_owner(&fill_fh(1), &target);
     assert!(reg.by_file.contains_key(&fill_fh(1)));
