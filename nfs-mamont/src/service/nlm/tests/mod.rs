@@ -21,7 +21,7 @@ pub fn fill_fh(value: u8) -> [u8; NFS3_FHSIZE] {
 }
 
 pub fn fill_opaque(value: u8) -> OpaqueHandle {
-    OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
+    OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE].to_vec()).unwrap()
 }
 
 pub fn make_active_lock(

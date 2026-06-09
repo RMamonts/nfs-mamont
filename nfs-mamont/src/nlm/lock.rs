@@ -93,8 +93,9 @@ mod tests {
         let caller_name = "host".to_string();
         let fh = [0; NFS3_FHSIZE];
         let file_handle = Handle(fh);
-        let oh = [1; OPAQUE_HANDLE_SIZE];
-        let opaque_handle = OpaqueHandle::new(oh);
+        let oh = [1; OPAQUE_HANDLE_SIZE].to_vec();
+        let oh_verf = oh.clone();
+        let opaque_handle = OpaqueHandle::new(oh).unwrap();
         let system_id = 12345;
         let offset = 0;
         let length = 0;
@@ -111,7 +112,7 @@ mod tests {
 
         assert_eq!(lock.caller_name, caller_name);
         assert_eq!(lock.file_handle.0, fh);
-        assert_eq!(lock.opaque_handle.as_bytes(), &oh);
+        assert_eq!(lock.opaque_handle.as_bytes(), oh_verf.as_slice());
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);
@@ -122,7 +123,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "".to_string(),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE]),
+            OpaqueHandle::new([1; OPAQUE_HANDLE_SIZE].to_vec()).unwrap(),
             12345,
             0,
             0,
@@ -135,7 +136,7 @@ mod tests {
         let result = Nlm4Lock::new(
             "a".repeat(nlm::LM_MAXSTRLEN + 1),
             Handle([0; NFS3_FHSIZE]),
-            OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE]),
+            OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE].to_vec()).unwrap(),
             12345,
             0,
             0,
