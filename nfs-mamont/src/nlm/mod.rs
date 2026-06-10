@@ -66,7 +66,7 @@ impl OpaqueHandle {
     #[inline]
     pub fn new(oh: Vec<u8>) -> io::Result<Self> {
         if oh.len() > OPAQUE_HANDLE_SIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
         Ok(OpaqueHandle(oh))
     }
