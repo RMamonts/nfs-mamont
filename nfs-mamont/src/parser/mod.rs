@@ -158,6 +158,7 @@ pub enum MountArguments {
     UnmountAll,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 /// Enumerates supported NLMv4 protocol procedure arguments.
 pub enum NlmArguments {
     /// Null operation arguments.

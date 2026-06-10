@@ -3,6 +3,7 @@ use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 /// NLM TEST arguments.
 ///
 /// Used to test whether a lock can be granted without actually acquiring it.
@@ -18,6 +19,7 @@ pub struct Nlm4TestArgs {
 /// NLM TEST result.
 ///
 /// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
@@ -28,6 +30,7 @@ pub struct Nlm4TestRes {
 /// NLM TEST reply status union.
 ///
 /// Contains either granted status (no holder), or denied with holder info.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4TestReply {
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,
