@@ -1,0 +1,77 @@
+//! `MOUNT` protocol implementation for NFS version 3 as specified in RFC 1813 section 5.0.
+//! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.0>.
+pub mod dump;
+pub mod export;
+pub mod mnt;
+pub mod umnt;
+pub mod umntall;
+
+use std::io;
+
+use crate::consts::mount::MOUNT_HOST_NAME_LEN;
+use crate::vfs::file;
+
+/// Client host name.
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+pub struct HostName(String);
+
+impl HostName {
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MOUNT_HOST_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "host name too long"));
+        }
+        Ok(HostName(name))
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for HostName {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MOUNT_HOST_NAME_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        HostName::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
+/// Entry of the list maintained on the server of clients
+/// that have requested file handles with the MNT procedure.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct MountEntry {
+    /// Name of the client host that is sending RPC.
+    pub hostname: HostName,
+    /// Server pathname of a directory.
+    pub directory: file::Path,
+}
+
+/// Export entry, containing list of clients, allowed to
+/// mount the specified directory.
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
+pub struct ExportEntry {
+    /// Exported directory.
+    pub directory: file::Path,
+    /// Client host names. They are implementation specific
+    /// and cannot be directly interpreted by clients.
+    pub names: Vec<HostName>,
+}
+
+/// Wrapper for mount procedure result bodies.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
+pub enum MountRes {
+    Null,
+    Mount(Result<mnt::Success, mnt::Fail>),
+    Unmount,
+    Export(export::Success),
+    Dump(dump::Success),
+    UnmountAll,
+}
+
+#[allow(dead_code)]
+pub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
+
+impl<T> Mount for T where T: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}
