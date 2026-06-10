@@ -1,0 +1,270 @@
+use std::io;
+use std::path::PathBuf;
+
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+
+use crate::consts::nfsv3::NFS3_FHSIZE;
+
+/// Unique file identifier.
+///
+/// Corresponds to the file handle from RFC 1813.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Handle(pub [u8; NFS3_FHSIZE]);
+
+/// A validated wrapper around a `String` representing a name.
+///
+/// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
+/// It provides safe construction, accessors, and conversion back into the
+/// owned inner [`String`].
+#[derive(Debug, PartialEq, Clone)]
+pub struct Name(String);
+
+impl Name {
+    /// Creates a new [`Name`] after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `name.len() > MAX_NAME_LEN`.
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > MAX_NAME_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        if name.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
+        }
+        if name.contains('/') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "name contains path separator",
+            ));
+        }
+        Ok(Name(name))
+    }
+
+    /// Consumes the wrapper and returns the inner [`String`].
+    #[inline]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Returns the inner name as a string slice.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MAX_NAME_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let name = bytes.into_iter().filter(|b| *b != b'/').collect::<Vec<u8>>();
+        let s = String::from_utf8_lossy(&name).to_string();
+        Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
+/// A validated wrapper around a [`PathBuf`].
+///
+/// [`Path`] ensures that the provided path string does not exceed
+/// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
+/// conversion back into the owned [`PathBuf`].
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct Path(PathBuf);
+
+impl Path {
+    /// Creates a new [`Path`] from a string after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `path.len() > MAX_PATH_LEN`.
+    pub fn new(path: String) -> io::Result<Self> {
+        if path.len() > MAX_PATH_LEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path too long"));
+        }
+        if path.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "path is empty"));
+        }
+        Ok(Path(PathBuf::from(path)))
+    }
+
+    /// Consumes the wrapper and returns the inner [`PathBuf`].
+    #[inline]
+    pub fn into_inner(self) -> PathBuf {
+        self.0
+    }
+
+    /// Returns the inner path as a `&Path`.
+    #[inline]
+    pub fn as_path(&self) -> &std::path::Path {
+        self.0.as_path()
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Path {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MAX_PATH_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Path::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
+/// Type of file.
+#[derive(Debug, Clone, Copy, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum Type {
+    /// Regular file.
+    Regular = 1,
+    /// Directory.
+    Directory = 2,
+    /// Block special device file.
+    BlockDevice = 3,
+    /// Character special device file.
+    CharacterDevice = 4,
+    /// Symbolic link.
+    Symlink = 5,
+    /// Socket file.
+    Socket = 6,
+    /// Named pipe.
+    Fifo = 7,
+}
+
+/// File attributes, also known as `fattr3` in RFC
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Attr {
+    /// Type of the file, see [`Type`].
+    pub file_type: Type,
+    /// Protection mode bits.
+    pub mode: u32,
+    /// Number of hard links to the file.
+    pub nlink: u32,
+    /// User ID of the owner of the file.
+    pub uid: u32,
+    /// Group ID of the group of the file.
+    pub gid: u32,
+    /// Size of the file of bytes.
+    pub size: u64,
+    /// The number of bytes of disk space that the file actually uses.
+    pub used: u64,
+    /// Describes the device file if the file type is [`Type::BlockDevice`]
+    /// or [`Type::CharacterDevice`].
+    ///
+    /// See [`Type`].
+    pub device: Device,
+    /// The file system identifier for the file system.
+    pub fs_id: u64,
+    /// The number which uniquely identifies the file within its file system.
+    pub file_id: u64,
+    /// The time when the file data was last accessed.
+    pub atime: Time,
+    /// The time when the file data was last modified.
+    pub mtime: Time,
+    /// The time when the attributes of the file were last changed.
+    ///
+    /// Writing to the file changes the ctime in addition to the mtime.
+    pub ctime: Time,
+}
+
+/// Time of file [`super::Vfs`] operations.
+///
+/// Gives the number of seconds and nanoseconds since midnight January 1, 1970 Greenwich Mean Time.
+/// It is used to pass time and date information. The times associated with files are all server
+/// times except in the case of a [`super::set_attr`] operation where the client can
+/// explicitly set the file time.
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct Time {
+    pub seconds: u32,
+    pub nanos: u32,
+}
+
+/// Major and minor device pair.
+///
+/// Used only for [`Type::BlockDevice`] and [`Type::CharacterDevice`] file types.
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
+pub struct Device {
+    pub major: u32,
+    pub minor: u32,
+}
+
+/// Weak cache consistency attributes.
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct WccAttr {
+    /// The file size in bytes of the object before the operation.
+    pub size: u64,
+    /// The time of last modification of the object before the operation.
+    pub mtime: Time,
+    /// The time of last change to the attributes of the object before the operation.
+    pub ctime: Time,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Name, MAX_PATH_LEN};
+    use crate::vfs::file::Path;
+    use crate::vfs::MAX_NAME_LEN;
+
+    #[test]
+    fn path_new_rejects_too_long() {
+        let input = "a".repeat(MAX_PATH_LEN + 1);
+        let result = Path::new(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn path_new_accepts_valid_length() {
+        let input = "/tmp/file".to_string();
+        let result = Path::new(input.clone()).unwrap();
+        let expected = std::path::Path::new(&input);
+        assert_eq!(result.as_path().as_os_str(), expected.as_os_str());
+    }
+
+    #[test]
+    fn path_empty() {
+        let input = "".to_string();
+        let path = Path::new(input);
+        assert!(path.is_err());
+    }
+
+    #[test]
+    fn name_new_accepts_valid_length() {
+        let input = "valid".to_string();
+        let name = Name::new(input.clone()).unwrap();
+        assert_eq!(name.as_str(), input);
+    }
+
+    #[test]
+    fn name_backslash_error() {
+        let input = "/folder/file.rs".to_string();
+        let name = Name::new(input);
+        assert!(name.is_err());
+    }
+    #[test]
+    fn name_new_rejects_too_long() {
+        let input = "a".repeat(MAX_NAME_LEN + 1);
+        let result = Name::new(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn name_empty() {
+        let input = "".to_string();
+        let name = Name::new(input);
+        assert!(name.is_err());
+    }
+}
