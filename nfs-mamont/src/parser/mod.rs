@@ -141,8 +141,8 @@ pub enum NfsArguments {
     Commit(commit::Args),
 }
 
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 /// Enumerates supported MOUNT protocol procedure arguments.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum MountArguments {
     /// Null operation arguments.
     Null,
@@ -158,8 +158,8 @@ pub enum MountArguments {
     UnmountAll,
 }
 
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 /// Enumerates supported NLMv4 protocol procedure arguments.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum NlmArguments {
     /// Null operation arguments.
     Null,
