@@ -2,16 +2,18 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
-use crate::consts::nlm;
-use crate::vfs;
+use std::io::Error;
+
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
-use std::io::Error;
+
+use crate::consts::nlm;
+use crate::vfs;
 
 use super::OpaqueHandle;
 
-#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
 /// This structure describes a lock request.
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
     pub caller_name: String,
