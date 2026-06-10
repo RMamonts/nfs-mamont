@@ -59,7 +59,7 @@ pub enum NlmRes {
 }
 
 /// The unique identifier of the lock owner.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
@@ -74,6 +74,10 @@ impl OpaqueHandle {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn into_inner(self) -> [u8; OPAQUE_HANDLE_SIZE] {
+        self.0
     }
 }
 
