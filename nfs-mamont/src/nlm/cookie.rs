@@ -1,5 +1,6 @@
 /// Identifies a point in the directory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Cookie(u64);
 
 impl Cookie {

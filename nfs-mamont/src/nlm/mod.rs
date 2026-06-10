@@ -16,6 +16,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
     Granted = 0,
@@ -48,6 +49,7 @@ pub enum Nlm4Stats {
 }
 
 /// Wrapper for all supported NLMv4 procedure result types.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NlmRes {
     Null,
     Lock(Nlm4LockRes),
@@ -57,6 +59,8 @@ pub enum NlmRes {
 }
 
 /// The unique identifier of the lock owner.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
 impl OpaqueHandle {

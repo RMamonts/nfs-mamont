@@ -2,13 +2,15 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
-use std::io::Error;
-
 use crate::consts::nlm;
 use crate::vfs;
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+use std::io::Error;
 
 use super::OpaqueHandle;
 
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
 /// This structure describes a lock request.
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
@@ -23,6 +25,24 @@ pub struct Nlm4Lock {
     pub lock_offset: u64,
     /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Nlm4Lock {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let caller_name = String::from_utf8_lossy(&bytes).to_string();
+        Ok(Nlm4Lock {
+            caller_name,
+            file_handle: u.arbitrary()?,
+            opaque_handle: u.arbitrary()?,
+            system_identifier: u.arbitrary()?,
+            lock_offset: u.arbitrary()?,
+            lock_length: u.arbitrary()?,
+        })
+    }
 }
 
 impl Nlm4Lock {
