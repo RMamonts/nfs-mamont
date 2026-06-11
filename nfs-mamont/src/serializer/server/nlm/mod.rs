@@ -49,7 +49,15 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
     cookie(dest, res.cookie)?;
     stat(dest, res.test_stat.stat)?;
     if res.test_stat.stat == Nlm4Stats::Denied {
-        let holder = res.test_stat.holder.expect("stat is Denied but holder is None");
+        let holder = match res.test_stat.holder {
+            Some(holder) => holder,
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Stat is Denied but holder is None",
+                ))
+            }
+        };
         u32(dest, holder.exclusive as u32)?;
         u32(dest, holder.system_identifier as u32)?;
         vector(dest, holder.opaque_handle.as_bytes())?;

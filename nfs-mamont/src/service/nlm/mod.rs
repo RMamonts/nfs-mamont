@@ -282,18 +282,17 @@ impl LockRegistry {
     /// the caller should send `NLMPROC4_GRANTED` for each one.
     fn grant_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE]) -> Vec<PendingLock> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
+        let mut granted: Vec<PendingLock> = Vec::new();
+        let mut still_pending: Vec<PendingLock> = Vec::new();
 
-        let is_grantable = |request: &PendingLock| -> bool {
-            let request_as_active: ActiveLock = request.into();
-            self.find_conflict(file_handle, &request_as_active).is_none()
-        };
-
-        let (granted, still_pending): (Vec<PendingLock>, Vec<PendingLock>) =
-            pending_requests.into_iter().partition(|r| is_grantable(r));
-
-        for request in &granted {
-            let granted_lock: ActiveLock = request.into();
-            self.by_file.entry(*file_handle).or_default().push(granted_lock);
+        for request in pending_requests {
+            let request_as_active: ActiveLock = (&request).into();
+            if self.find_conflict(file_handle, &request_as_active).is_some() {
+                still_pending.push(request);
+            } else {
+                self.by_file.entry(*file_handle).or_default().push(request_as_active);
+                granted.push(request);
+            }
         }
 
         if !still_pending.is_empty() {
