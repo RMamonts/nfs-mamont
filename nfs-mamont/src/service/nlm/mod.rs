@@ -199,6 +199,22 @@ impl LockRegistry {
     /// Looks for an existing lock that would conflict with `request`.
     /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
     /// are skipped — a client re-requesting its own range is not a conflict.
+    /// Returns `true` if there is an active lock from the same `(caller_name, system_identifier)`
+    /// with the same `exclusive` mode and an overlapping range.
+    fn has_active_lock(&self, file_handle: &Handle, request: &ActiveLock) -> bool {
+        self.by_file.get(file_handle).is_some_and(|locks| {
+            locks.iter().any(|lock| {
+                lock.caller_name == request.caller_name
+                    && lock.system_identifier == request.system_identifier
+                    && lock.exclusive == request.exclusive
+                    && ranges_overlap(lock.offset, lock.length, request.offset, request.length)
+            })
+        })
+    }
+
+    /// Looks for an existing lock that would conflict with `request`.
+    /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
+    /// are skipped — a client re-requesting its own range is not a conflict.
     fn find_conflict(&self, file_handle: &Handle, request: &ActiveLock) -> Option<Nlm4Holder> {
         let locks = self.by_file.get(file_handle)?;
         for lock in locks {

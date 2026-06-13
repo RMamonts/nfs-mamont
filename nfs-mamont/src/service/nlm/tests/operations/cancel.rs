@@ -59,3 +59,14 @@ async fn cancel_preserves_cookie() {
     let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 55)).await;
     assert_eq!(res.cookie.raw(), 55);
 }
+
+#[tokio::test]
+async fn cancel_on_granted_lock_returns_granted() {
+    let svc = NlmService::new();
+    let res = svc.lock(make_lock_args_without_block(FH_DEFAULT, true, 0, 100, "alice", 100, 0))
+        .await;
+    assert_eq!(res.stat, Nlm4Stats::Granted);
+
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "alice", 100, 0)).await;
+    assert_eq!(res.stat, Nlm4Stats::Granted);
+}

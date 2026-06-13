@@ -1,11 +1,9 @@
-use super::{NlmService, PendingLock};
+use super::{ActiveLock, NlmService, PendingLock};
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs, Nlm4CancelRes};
 use crate::nlm::Nlm4Stats;
 
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes {
-        let cookie = args.cookie;
-
         let target = match PendingLock::new(
             args.lock.caller_name,
             args.lock.system_identifier,
@@ -22,11 +20,15 @@ impl Cancel for NlmService {
         let mut registry = self.locks.write().await;
 
         let fh = args.lock.file_handle;
-        let removed = registry.remove_pending(&fh, &target);
-
-        match removed {
-            true => Nlm4CancelRes { cookie, stat: Nlm4Stats::Granted },
-            false => Nlm4CancelRes { cookie, stat: Nlm4Stats::Denied },
+        if registry.remove_pending(&fh, &target) {
+            return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }
+
+        let request_as_active: ActiveLock = (&target).into();
+        if registry.has_active_lock(&fh, &request_as_active) {
+            return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
+        }
+
+        Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Denied }
     }
 }
