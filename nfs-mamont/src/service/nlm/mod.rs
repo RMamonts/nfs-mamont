@@ -25,6 +25,7 @@ mod unlock;
 mod tests;
 
 /// A held lock with full owner identity and state.
+#[derive(Clone)]
 struct ActiveLock {
     /// Name of the client host that owns the lock.
     caller_name: String,
@@ -248,17 +249,46 @@ impl LockRegistry {
 
     /// Removes `target` from the active-lock list for `file_handle`.
     /// Matching uses `PartialEq` (caller_name, system_identifier, offset, length).
-    fn remove_by_owner(&mut self, file_handle: &Handle, target: &ActiveLock) {
+    fn remove_by_owner(&mut self, file_handle: &Handle, target: &ActiveLock) -> Result<(), Error> {
         let active_locks = match self.by_file.get_mut(file_handle) {
             Some(locks) => locks,
-            None => return,
+            None => return Ok(()),
         };
 
-        active_locks.retain(|lock| *lock != *target);
+        let unlock_start = target.offset;
+        let unlock_len = target.length;
+        let mut i = 0;
+        let mut fragments: Vec<ActiveLock> = Vec::new();
 
-        if active_locks.is_empty() {
-            self.by_file.remove(file_handle);
+        while i < active_locks.len() {
+            if active_locks[i].caller_name != target.caller_name
+                || active_locks[i].system_identifier != target.system_identifier
+            {
+                i += 1;
+                continue;
+            }
+
+            if !ranges_overlap(
+                active_locks[i].offset,
+                active_locks[i].length,
+                unlock_start,
+                unlock_len,
+            ) {
+                i += 1;
+                continue;
+            }
+
+            let lock = active_locks.swap_remove(i);
+            fragments.extend(split_lock(lock, unlock_start, unlock_len)?);
         }
+
+        if fragments.is_empty() && active_locks.is_empty() {
+            self.by_file.remove(file_handle);
+        } else {
+            active_locks.extend(fragments);
+        }
+
+        Ok(())
     }
 
     /// Promotes pending lock requests that no longer conflict with active locks.
@@ -317,6 +347,50 @@ fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
         LEN_REMAINING => u64::MAX,
         _ => start.saturating_add(len).saturating_sub(1),
     }
+}
+
+/// Returns the fragments of `lock` that remain after removing the byte range
+/// `[unlock_start, unlock_end]`.
+///
+/// Returns an empty [`Vec`] when the unlock range fully covers the lock.
+/// Returns one element when the unlock trims the lock from one side only,
+/// and two elements when the unlock splits the lock in the middle.
+fn split_lock(
+    lock: ActiveLock,
+    unlock_start: u64,
+    unlock_len: u64,
+) -> Result<Vec<ActiveLock>, Error> {
+    let lock_start = lock.offset;
+    let lock_len = lock.length;
+    let lock_end = calculate_end_of_interval(lock_start, lock_len);
+    let unlock_end = calculate_end_of_interval(unlock_start, unlock_len);
+
+    let mut fragments = Vec::new();
+
+    if lock_start < unlock_start {
+        fragments.push(ActiveLock::new(
+            lock.caller_name.clone(),
+            lock.system_identifier,
+            lock.exclusive,
+            lock_start,
+            unlock_start - lock_start,
+            lock.opaque_handle.clone(),
+        )?);
+    }
+
+    if unlock_end < lock_end {
+        let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
+        fragments.push(ActiveLock::new(
+            lock.caller_name,
+            lock.system_identifier,
+            lock.exclusive,
+            unlock_end + 1,
+            right_len,
+            lock.opaque_handle,
+        )?);
+    }
+
+    Ok(fragments)
 }
 
 /// In-memory state backing the NLM v4 service implementation.

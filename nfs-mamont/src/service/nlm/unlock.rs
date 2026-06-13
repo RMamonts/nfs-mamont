@@ -20,7 +20,9 @@ impl Unlock for NlmService {
         let mut registry = self.locks.write().await;
 
         let fh = args.lock.file_handle;
-        registry.remove_by_owner(&fh, &target);
+        if registry.remove_by_owner(&fh, &target).is_err() {
+            return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
+        }
         registry.grant_pending(&fh);
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }

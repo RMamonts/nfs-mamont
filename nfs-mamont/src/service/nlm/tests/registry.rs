@@ -75,7 +75,7 @@ fn remove_by_owner_removes_matching_lock() {
     let mut reg = LockRegistry::new();
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("alice", 100, true, 0, 50, 1));
     let target = make_active_lock("alice", 100, false, 0, 50, 0);
-    reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
     assert!(reg.by_file.is_empty());
 }
 
@@ -85,7 +85,7 @@ fn remove_by_owner_removes_only_different_owner() {
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("alice", 100, true, 0, 50, 1));
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("bob", 200, true, 60, 50, 2));
     let target = make_active_lock("alice", 100, false, 0, 50, 0);
-    reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap().len(), 1);
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap()[0].caller_name, "bob");
 }
@@ -96,7 +96,7 @@ fn remove_by_owner_removes_only_matching_range() {
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("Alice", 100, true, 0, 50, 1));
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("Alice", 100, true, 100, 50, 2));
     let target = make_active_lock("Alice", 100, false, 0, 50, 0);
-    reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap().len(), 1);
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap()[0].offset, 100);
 }
@@ -104,7 +104,7 @@ fn remove_by_owner_removes_only_matching_range() {
 #[test]
 fn remove_by_owner_noop_on_nonexistent_file() {
     let target = make_active_lock("nobody", 0, false, 0, 0, 0);
-    LockRegistry::new().remove_by_owner(&fill_fh(99), &target);
+    let _ = LockRegistry::new().remove_by_owner(&fill_fh(99), &target);
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn remove_by_owner_cleans_up_empty_vec() {
     let mut reg = LockRegistry::new();
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 10, 1));
     let target = make_active_lock("a", 1, false, 0, 10, 0);
-    reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
     assert!(!reg.by_file.contains_key(&fill_fh(FH_DEFAULT)));
 }
 
@@ -121,7 +121,103 @@ fn remove_by_owner_noop_when_range_differs() {
     let mut reg = LockRegistry::new();
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 50, 1));
     let target = make_active_lock("a", 1, false, 100, 50, 0);
-    reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
     assert!(reg.by_file.contains_key(&fill_fh(FH_DEFAULT)));
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap().len(), 1);
+}
+
+#[test]
+fn remove_by_owner_trims_left() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 100, 1));
+    let target = make_active_lock("a", 1, false, 0, 50, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 50);
+    assert_eq!(locks[0].length, 50);
+}
+
+#[test]
+fn remove_by_owner_trims_left_to_eof() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 100, 0, 1));
+    let target = make_active_lock("a", 1, false, 0, 101, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 101);
+    assert_eq!(locks[0].length, 0);
+}
+
+#[test]
+fn remove_by_owner_trims_right() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 100, 1));
+    let target = make_active_lock("a", 1, false, 50, 50, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 50);
+}
+
+#[test]
+fn remove_by_owner_splits_middle() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 100, 1));
+    let target = make_active_lock("a", 1, false, 40, 20, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 2);
+    let mut sorted: Vec<_> = locks.clone();
+    sorted.sort_by_key(|l| l.offset);
+    assert_eq!(sorted[0].offset, 0);
+    assert_eq!(sorted[0].length, 40);
+    assert_eq!(sorted[1].offset, 60);
+    assert_eq!(sorted[1].length, 40);
+}
+
+#[test]
+fn remove_by_owner_split_preserves_lock_mode() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, false, 0, 100, 1));
+    let target = make_active_lock("a", 1, false, 30, 40, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 2);
+    assert!(!locks[0].exclusive);
+    assert!(!locks[1].exclusive);
+}
+
+#[test]
+fn remove_by_owner_split_different_owner_kept() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 100, 1));
+    let target = make_active_lock("b", 1, false, 0, 50, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+}
+
+#[test]
+fn remove_by_owner_unlock_fully_contains_lock() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 50, 50, 1));
+    let target = make_active_lock("a", 1, false, 0, 200, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    assert!(!reg.by_file.contains_key(&fill_fh(FH_DEFAULT)));
+}
+
+#[test]
+fn remove_by_owner_unlock_past_eof_trims_right() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 0, 100, 1));
+    let target = make_active_lock("a", 1, false, 50, 1000, 0);
+    let _ = reg.remove_by_owner(&fill_fh(FH_DEFAULT), &target);
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 50);
 }
