@@ -10,11 +10,11 @@
 use std::collections::HashMap;
 use std::io::Error;
 
-use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
+use crate::vfs::file::Handle;
 
 mod cancel;
 mod lock;
@@ -184,9 +184,9 @@ impl PartialEq for PendingLock {
 /// In-memory collection of all active locks grouped by file handle.
 struct LockRegistry {
     /// Locks indexed by file handle for fast conflict checks.
-    by_file: HashMap<[u8; NFS3_FHSIZE], Vec<ActiveLock>>,
+    by_file: HashMap<Handle, Vec<ActiveLock>>,
     /// Blocked lock requests awaiting grant.
-    pending: HashMap<[u8; NFS3_FHSIZE], Vec<PendingLock>>,
+    pending: HashMap<Handle, Vec<PendingLock>>,
 }
 
 impl LockRegistry {
@@ -198,11 +198,7 @@ impl LockRegistry {
     /// Looks for an existing lock that would conflict with `request`.
     /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
     /// are skipped — a client re-requesting its own range is not a conflict.
-    fn find_conflict(
-        &self,
-        file_handle: &[u8; NFS3_FHSIZE],
-        request: &ActiveLock,
-    ) -> Option<Nlm4Holder> {
+    fn find_conflict(&self, file_handle: &Handle, request: &ActiveLock) -> Option<Nlm4Holder> {
         let locks = self.by_file.get(file_handle)?;
         for lock in locks {
             let is_same_owner = lock.caller_name == request.caller_name
@@ -233,7 +229,7 @@ impl LockRegistry {
     /// Matching uses `PartialEq` (caller_name, system_identifier, exclusive,
     /// offset, length, opaque_handle — cookie is ignored).
     /// Returns `true` if a matching request was found and removed.
-    fn remove_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE], target: &PendingLock) -> bool {
+    fn remove_pending(&mut self, file_handle: &Handle, target: &PendingLock) -> bool {
         let pending_requests = match self.pending.get_mut(file_handle) {
             Some(requests) => requests,
             None => return false,
@@ -252,7 +248,7 @@ impl LockRegistry {
 
     /// Removes `target` from the active-lock list for `file_handle`.
     /// Matching uses `PartialEq` (caller_name, system_identifier, offset, length).
-    fn remove_by_owner(&mut self, file_handle: &[u8; NFS3_FHSIZE], target: &ActiveLock) {
+    fn remove_by_owner(&mut self, file_handle: &Handle, target: &ActiveLock) {
         let active_locks = match self.by_file.get_mut(file_handle) {
             Some(locks) => locks,
             None => return,
@@ -280,7 +276,7 @@ impl LockRegistry {
     /// ### Returns
     /// A vector of [`PendingLock`]s that have been granted —
     /// the caller should send `NLMPROC4_GRANTED` for each one.
-    fn grant_pending(&mut self, file_handle: &[u8; NFS3_FHSIZE]) -> Vec<PendingLock> {
+    fn grant_pending(&mut self, file_handle: &Handle) -> Vec<PendingLock> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
         let mut granted: Vec<PendingLock> = Vec::new();
         let mut still_pending: Vec<PendingLock> = Vec::new();
@@ -290,13 +286,13 @@ impl LockRegistry {
             if self.find_conflict(file_handle, &request_as_active).is_some() {
                 still_pending.push(request);
             } else {
-                self.by_file.entry(*file_handle).or_default().push(request_as_active);
+                self.by_file.entry((*file_handle).clone()).or_default().push(request_as_active);
                 granted.push(request);
             }
         }
 
         if !still_pending.is_empty() {
-            self.pending.insert(*file_handle, still_pending);
+            self.pending.insert((*file_handle).clone(), still_pending);
         }
 
         granted

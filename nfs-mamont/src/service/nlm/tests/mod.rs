@@ -1,12 +1,12 @@
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
-use crate::vfs::file::Handle;
 
 use super::{ActiveLock, LockRegistry};
 use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::OpaqueHandle;
+use crate::vfs::file::Handle;
 
 pub const FH_DEFAULT: u8 = 1;
 pub const FH_OTHER: u8 = 2;
@@ -16,8 +16,8 @@ mod operations;
 mod ranges;
 mod registry;
 
-pub fn fill_fh(value: u8) -> [u8; NFS3_FHSIZE] {
-    [value; NFS3_FHSIZE]
+pub fn fill_fh(value: u8) -> Handle {
+    Handle([value; NFS3_FHSIZE])
 }
 
 pub fn fill_opaque(value: u8) -> OpaqueHandle {
@@ -55,7 +55,7 @@ pub fn make_lock_args_without_block(
         exclusive,
         lock: Nlm4Lock {
             caller_name: caller.into(),
-            file_handle: Handle(fill_fh(fh_value)),
+            file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(1),
             system_identifier: pid,
             lock_offset: offset,
@@ -81,7 +81,7 @@ pub fn make_lock_args_with_block(
         exclusive,
         lock: Nlm4Lock {
             caller_name: caller.into(),
-            file_handle: Handle(fill_fh(fh_value)),
+            file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(1),
             system_identifier: pid,
             lock_offset: offset,
@@ -97,7 +97,7 @@ fn make_unlock_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> 
         cookie: Cookie::new(cookie_value),
         lock: Nlm4Lock {
             caller_name: caller.into(),
-            file_handle: Handle(fill_fh(fh_value)),
+            file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(2),
             system_identifier: pid,
             lock_offset: 0,

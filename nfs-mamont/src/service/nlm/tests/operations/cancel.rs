@@ -8,7 +8,6 @@ use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs};
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::Nlm4Stats;
 use crate::service::nlm::NlmService;
-use crate::vfs::file::Handle;
 
 fn make_cancel_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> Nlm4CancelArgs {
     Nlm4CancelArgs {
@@ -17,7 +16,7 @@ fn make_cancel_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> 
         exclusive: true,
         lock: Nlm4Lock {
             caller_name: caller.into(),
-            file_handle: Handle(fill_fh(fh_value)),
+            file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(1),
             system_identifier: pid,
             lock_offset: 0,

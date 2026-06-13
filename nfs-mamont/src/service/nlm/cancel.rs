@@ -21,8 +21,8 @@ impl Cancel for NlmService {
 
         let mut registry = self.locks.write().await;
 
-        let fh_bytes = args.lock.file_handle.0;
-        let removed = registry.remove_pending(&fh_bytes, &target);
+        let fh = args.lock.file_handle;
+        let removed = registry.remove_pending(&fh, &target);
 
         match removed {
             true => Nlm4CancelRes { cookie, stat: Nlm4Stats::Granted },

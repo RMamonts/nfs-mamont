@@ -20,10 +20,9 @@ impl Lock for NlmService {
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
         };
 
-        let fh_bytes = args.lock.file_handle.0;
-        if args.reclaim || registry.find_conflict(&fh_bytes, &ActiveLock::from(&new_lock)).is_none()
-        {
-            registry.by_file.entry(fh_bytes).or_default().push(ActiveLock::from(&new_lock));
+        let fh = args.lock.file_handle;
+        if args.reclaim || registry.find_conflict(&fh, &ActiveLock::from(&new_lock)).is_none() {
+            registry.by_file.entry(fh).or_default().push(ActiveLock::from(&new_lock));
 
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }
@@ -32,7 +31,7 @@ impl Lock for NlmService {
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Denied };
         }
 
-        registry.pending.entry(fh_bytes).or_default().push(new_lock);
+        registry.pending.entry(fh).or_default().push(new_lock);
 
         Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Blocked }
     }

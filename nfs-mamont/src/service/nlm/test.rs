@@ -23,8 +23,8 @@ impl Test for NlmService {
             }
         };
 
-        let fh_bytes = args.lock.file_handle.0;
-        match registry.find_conflict(&fh_bytes, &request) {
+        let fh = args.lock.file_handle;
+        match registry.find_conflict(&fh, &request) {
             Some(holder) => Nlm4TestRes {
                 cookie: args.cookie,
                 test_stat: Nlm4TestReply { stat: Nlm4Stats::Denied, holder: Some(holder) },

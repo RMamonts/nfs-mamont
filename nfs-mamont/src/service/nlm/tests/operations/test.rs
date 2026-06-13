@@ -7,7 +7,6 @@ use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::test::{Nlm4TestArgs, Test};
 use crate::nlm::Nlm4Stats;
 use crate::service::nlm::NlmService;
-use crate::vfs::file::Handle;
 
 fn make_test_args(
     fh_value: u8,
@@ -21,7 +20,7 @@ fn make_test_args(
         exclusive,
         lock: Nlm4Lock {
             caller_name: "tester".into(),
-            file_handle: Handle(fill_fh(fh_value)),
+            file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(2),
             system_identifier: 99,
             lock_offset: offset,
