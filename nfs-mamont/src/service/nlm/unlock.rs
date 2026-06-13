@@ -23,7 +23,9 @@ impl Unlock for NlmService {
         if registry.remove_by_owner(&fh, &target).is_err() {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
-        registry.grant_pending(&fh);
+        if registry.grant_pending(&fh).is_err() {
+            return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
+        }
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }
     }

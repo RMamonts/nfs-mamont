@@ -248,46 +248,43 @@ impl LockRegistry {
     }
 
     /// Removes `target` from the active-lock list for `file_handle`.
-    /// Matching uses `PartialEq` (caller_name, system_identifier, offset, length).
     fn remove_by_owner(&mut self, file_handle: &Handle, target: &ActiveLock) -> Result<(), Error> {
         let active_locks = match self.by_file.get_mut(file_handle) {
             Some(locks) => locks,
             None => return Ok(()),
         };
 
-        let unlock_start = target.offset;
-        let unlock_len = target.length;
-        let mut i = 0;
-        let mut fragments: Vec<ActiveLock> = Vec::new();
+        drain_overlapping(
+            active_locks,
+            &target.caller_name,
+            target.system_identifier,
+            target.offset,
+            target.length,
+        )?;
 
-        while i < active_locks.len() {
-            if active_locks[i].caller_name != target.caller_name
-                || active_locks[i].system_identifier != target.system_identifier
-            {
-                i += 1;
-                continue;
-            }
-
-            if !ranges_overlap(
-                active_locks[i].offset,
-                active_locks[i].length,
-                unlock_start,
-                unlock_len,
-            ) {
-                i += 1;
-                continue;
-            }
-
-            let lock = active_locks.swap_remove(i);
-            fragments.extend(split_lock(lock, unlock_start, unlock_len)?);
-        }
-
-        if fragments.is_empty() && active_locks.is_empty() {
+        if active_locks.is_empty() {
             self.by_file.remove(file_handle);
-        } else {
-            active_locks.extend(fragments);
         }
+        Ok(())
+    }
 
+    /// Pushes a new active lock, replacing or trimming any existing same-owner
+    /// locks that overlap with the range of `new_lock`.
+    ///
+    /// This prevents accumulation of duplicate or overlapping locks from the same client.
+    /// A subsequent lock on the same range (e.g. upgrading from Shared to Exclusive)
+    /// replaces the old entry instead of adding a second one.
+    fn push_or_replace(&mut self, file_handle: Handle, new_lock: ActiveLock) -> Result<(), Error> {
+        let locks = self.by_file.entry(file_handle).or_default();
+        drain_overlapping(
+            locks,
+            &new_lock.caller_name,
+            new_lock.system_identifier,
+            new_lock.offset,
+            new_lock.length,
+        )?;
+        locks.push(new_lock);
+        merge_adjacent(locks);
         Ok(())
     }
 
@@ -306,7 +303,7 @@ impl LockRegistry {
     /// ### Returns
     /// A vector of [`PendingLock`]s that have been granted —
     /// the caller should send `NLMPROC4_GRANTED` for each one.
-    fn grant_pending(&mut self, file_handle: &Handle) -> Vec<PendingLock> {
+    fn grant_pending(&mut self, file_handle: &Handle) -> Result<Vec<PendingLock>, Error> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
         let mut granted: Vec<PendingLock> = Vec::new();
         let mut still_pending: Vec<PendingLock> = Vec::new();
@@ -316,7 +313,7 @@ impl LockRegistry {
             if self.find_conflict(file_handle, &request_as_active).is_some() {
                 still_pending.push(request);
             } else {
-                self.by_file.entry((*file_handle).clone()).or_default().push(request_as_active);
+                self.push_or_replace((*file_handle).clone(), request_as_active)?;
                 granted.push(request);
             }
         }
@@ -325,7 +322,7 @@ impl LockRegistry {
             self.pending.insert((*file_handle).clone(), still_pending);
         }
 
-        granted
+        Ok(granted)
     }
 }
 
@@ -391,6 +388,75 @@ fn split_lock(
     }
 
     Ok(fragments)
+}
+
+/// Removes locks owned by `(caller_name, system_identifier)` that overlap with
+/// `[start, start+len)` from `locks`, keeping the non-overlapping parts via [`split_lock`].
+fn drain_overlapping(
+    locks: &mut Vec<ActiveLock>,
+    caller_name: &str,
+    system_identifier: i32,
+    start: u64,
+    len: u64,
+) -> Result<(), Error> {
+    let mut i = 0;
+    while i < locks.len() {
+        if locks[i].caller_name != caller_name || locks[i].system_identifier != system_identifier {
+            i += 1;
+            continue;
+        }
+        if !ranges_overlap(locks[i].offset, locks[i].length, start, len) {
+            i += 1;
+            continue;
+        }
+        let old = locks.swap_remove(i);
+        locks.extend(split_lock(old, start, len)?);
+    }
+    Ok(())
+}
+
+/// Merges adjacent or overlapping lock ranges from the same owner
+/// `(caller_name, system_identifier, exclusive)`.
+///
+/// For example, `[0,5)` and `[5,10)` become `[0,10)`,
+/// and `[0,5)` with `[3,10)` also becomes `[0,10)`.
+fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
+    locks.sort_by(|a, b| {
+        a.caller_name
+            .cmp(&b.caller_name)
+            .then(a.system_identifier.cmp(&b.system_identifier))
+            .then(a.exclusive.cmp(&b.exclusive))
+            .then(a.offset.cmp(&b.offset))
+    });
+
+    let mut write = 0;
+    for read in 1..locks.len() {
+        if locks[write].caller_name == locks[read].caller_name
+            && locks[write].system_identifier == locks[read].system_identifier
+            && locks[write].exclusive == locks[read].exclusive
+        {
+            let write_end = calculate_end_of_interval(locks[write].offset, locks[write].length);
+            let read_end = calculate_end_of_interval(locks[read].offset, locks[read].length);
+
+            let adjacent_or_overlapping =
+                if write_end == u64::MAX { true } else { write_end + 1 >= locks[read].offset };
+
+            if adjacent_or_overlapping {
+                if locks[write].length == 0 || locks[read].length == 0 {
+                    locks[write].length = 0;
+                } else {
+                    let new_end = std::cmp::max(write_end, read_end);
+                    locks[write].length = new_end - locks[write].offset + 1;
+                }
+                continue;
+            }
+        }
+        write += 1;
+        if write != read {
+            locks.swap(write, read);
+        }
+    }
+    locks.truncate(write + 1);
 }
 
 /// In-memory state backing the NLM v4 service implementation.

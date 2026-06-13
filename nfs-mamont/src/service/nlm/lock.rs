@@ -22,7 +22,9 @@ impl Lock for NlmService {
 
         let fh = args.lock.file_handle;
         if args.reclaim || registry.find_conflict(&fh, &ActiveLock::from(&new_lock)).is_none() {
-            registry.by_file.entry(fh).or_default().push(ActiveLock::from(&new_lock));
+            if registry.push_or_replace(fh, ActiveLock::from(&new_lock)).is_err() {
+                return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
+            }
 
             return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }

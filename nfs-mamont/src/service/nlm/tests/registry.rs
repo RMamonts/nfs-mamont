@@ -139,6 +139,91 @@ fn remove_by_owner_trims_left() {
 }
 
 #[test]
+fn push_or_replace_merges_adjacent() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 50, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 50, 50, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 100);
+}
+
+#[test]
+fn push_or_replace_merges_overlap_left() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 50, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 25, 50, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 75);
+}
+
+#[test]
+fn push_or_replace_merges_overlap_right() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 50, 50, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 75, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 100);
+}
+
+#[test]
+fn push_or_replace_merges_multiple_adjacent() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 10, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 10, 10, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 20, 10, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 30);
+}
+
+#[test]
+fn push_or_replace_removes_covered_range() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 3, 2, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 1, 9, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 1);
+    assert_eq!(locks[0].length, 9);
+}
+
+#[test]
+fn push_or_replace_does_not_merge_different_owner() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 50, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("b", 1, true, 50, 50, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 2);
+}
+
+#[test]
+fn push_or_replace_does_not_merge_different_mode() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 50, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, false, 50, 50, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 2);
+}
+
+#[test]
+fn push_or_replace_merges_to_eof() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 10, 0, 1)).unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 5, 5, 1)).unwrap();
+    let locks = reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap();
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 5);
+    assert_eq!(locks[0].length, 0);
+}
+
+#[test]
 fn remove_by_owner_trims_left_to_eof() {
     let mut reg = LockRegistry::new();
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, 100, 0, 1));
