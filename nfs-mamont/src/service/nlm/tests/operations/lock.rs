@@ -33,7 +33,7 @@ async fn lock_allows_shared_overlapping() {
     svc.lock(make_lock_args_without_block(FH_DEFAULT, false, 0, LOCK_WHOLE_LENGTH, "test", 42, 0))
         .await;
     let res =
-        svc.lock(make_lock_args_without_block(FH_DEFAULT, false, 10, 20, "test", 42, 1)).await;
+        svc.lock(make_lock_args_without_block(FH_DEFAULT, false, 10, 20, "other", 99, 1)).await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
 }
 
