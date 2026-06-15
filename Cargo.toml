@@ -1,21 +1,16 @@
-[package]
-name = "nfs-mamont"
+[workspace]
+members = ["nfs-mamont", "mirror_fs"]
+resolver = "2"
+
+[workspace.package]
 version = "0.0.0"
 edition = "2021"
 authors = ["Rmamonts"]
-description = "A Rust NFS Server implementation"
-publish = false
 rust-version = "1.75.0"
 
-[package.metadata.cargo-udeps.ignore]
-development = ["tempfile"]
-
-[lib]
-doctest = false
-
-[dependencies]
-async-trait = "0.1.89"
-tokio = { version = "1.49", features = ["full", "time"] }
+[workspace.dependencies]
+# External dependencies
+tokio = { version = "1.52", features = ["full", "time"] }
 byteorder = "1.5.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
@@ -23,13 +18,7 @@ tracing = { version = "0.1", features = ["release_max_level_off"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
+trait-variant = "0.1.2"
 
-[dev-dependencies]
-tempfile = "3.26.0"
-clap = { version = "4.5.61", features = ["derive"] }
-serde = { version = "1.0.228", features = ["derive"] }
-toml = "0.9.6"
-
-[[example]]
-name = "mirrorfs"
-path = "examples/mirror_fs/main.rs"
+# Internal dependencies
+nfs-mamont.path = "nfs-mamont"
