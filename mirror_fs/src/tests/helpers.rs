@@ -86,7 +86,10 @@ pub async fn alloc_slice(len: usize) -> Slice {
         return Slice::empty();
     }
 
-    Slice::new(vec![vec![0u8; len].into_boxed_slice()], 0..len, None)
+    let buf = vec![0u8; len].into_boxed_slice();
+    let ptr = Box::into_raw(buf) as *mut u8;
+    let buffer = unsafe { nfs_mamont::UnownedBuffer::from_raw_parts(ptr, len) };
+    Slice::new(vec![buffer], 0..len, None)
 }
 
 pub async fn slice_from_bytes(bytes: &[u8]) -> Slice {

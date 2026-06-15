@@ -1,6 +1,7 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
 //! for user data transmission inside NFS-Mamont implementation.
 
+mod buffer;
 mod slice;
 
 #[cfg(test)]
@@ -14,15 +15,26 @@ use std::sync::Arc;
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+pub use buffer::UnownedBuffer;
 pub use slice::Slice;
-
-type Buffer = Box<[u8]>;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
 pub struct AllocatorState {
-    pub pool: ArrayQueue<Buffer>,
+    pub pool: ArrayQueue<UnownedBuffer>,
     pub semaphore: Semaphore,
+    base_ptr: *mut u8,
+    layout: Layout,
+}
+
+unsafe impl Send for AllocatorState {}
+unsafe impl Sync for AllocatorState {}
+
+impl Drop for AllocatorState {
+    fn drop(&mut self) {
+        while self.pool.pop().is_some() {}
+        unsafe { alloc::dealloc(self.base_ptr, self.layout) };
+    }
 }
 
 /// Allocates [`Slice`]'s.
@@ -59,28 +71,24 @@ impl Impl {
         let buffer_size = size.get();
         let buffer_count = count.get();
 
-        // Allocate one large contiguous block of memory
         let total_size = buffer_size.checked_mul(buffer_count).expect("size overflow");
-        let layout = Layout::from_size_align(total_size, 1).expect("invalid layout");
+        let layout = Layout::from_size_align(total_size, std::mem::align_of::<u8>())
+            .expect("invalid layout");
 
-        let base_ptr = unsafe { alloc::alloc(layout) };
+        let base_ptr = unsafe { alloc::alloc_zeroed(layout) };
         if base_ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }
 
-        // Split the large block into count chunks and create Box<[u8]> for each
         let mut current_ptr = base_ptr;
         for _ in 0..buffer_count {
-            let slice_ptr = std::ptr::slice_from_raw_parts_mut(current_ptr as *mut u8, buffer_size);
-            let boxed = unsafe { Box::from_raw(slice_ptr) };
-            pool.push(boxed).expect("can't initialize allocator");
-
-            // Move to the next chunk
+            let buffer = unsafe { UnownedBuffer::from_raw_parts(current_ptr, buffer_size) };
+            pool.push(buffer).expect("can't initialize allocator");
             current_ptr = unsafe { current_ptr.add(buffer_size) };
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore }),
+            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
             buffer_size: size,
             buffer_count: count,
         }

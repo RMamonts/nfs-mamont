@@ -1,6 +1,6 @@
 //! Defines tests for [`crate::allocator::slice::Slice::iter_mut`] interface.
 
-use crate::allocator::Slice;
+use crate::allocator::{Slice, UnownedBuffer};
 
 const FIRST_BUFFER: &[u8] = &[1, 2, 3, 4, 5];
 const SECOND_BUFFER: &[u8] = &[6, 7, 8];
@@ -17,7 +17,10 @@ where
         let mut buf = Vec::with_capacity(slice.len());
         buf.extend_from_slice(slice);
 
-        result.push(buf.into_boxed_slice())
+        let boxed = buf.into_boxed_slice();
+        let len = boxed.len();
+        let ptr = Box::into_raw(boxed) as *mut u8;
+        result.push(unsafe { UnownedBuffer::from_raw_parts(ptr, len) })
     }
 
     Slice::new(result, range, None)
