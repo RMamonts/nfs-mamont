@@ -1,5 +1,6 @@
 use std::fs as stdfs;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use tempfile::TempDir;
 
@@ -10,6 +11,8 @@ use nfs_mamont::vfs::set_attr;
 use nfs_mamont::Slice;
 
 use crate::fs::MirrorFS;
+
+static BACKING: LazyLock<Mutex<Vec<Box<[u8]>>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 pub fn expect_ok<T, E>(result: Result<T, E>, message: &str) -> T {
     match result {
@@ -87,7 +90,8 @@ pub async fn alloc_slice(len: usize) -> Slice {
     }
 
     let buf = vec![0u8; len].into_boxed_slice();
-    let ptr = Box::into_raw(buf) as *mut u8;
+    let ptr = buf.as_ptr() as *mut u8;
+    BACKING.lock().unwrap().push(buf);
     let buffer = unsafe { nfs_mamont::UnownedBuffer::from_raw_parts(ptr, len) };
     Slice::new(vec![buffer], 0..len, None)
 }
