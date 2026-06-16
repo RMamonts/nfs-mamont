@@ -236,7 +236,7 @@ impl Buffer for Slice {
     }
 
     fn is_empty(&self) -> bool {
-        self.is_empty()
+        self.range.len() == 0
     }
 
     fn empty() -> Self {

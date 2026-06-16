@@ -670,7 +670,7 @@ pub async fn read_in_slice_async<S, B>(
 ) -> Result<usize>
 where
     S: AsyncRead + Unpin,
-    B: Buffer + ?Sized,
+    B: Buffer,
 {
     let mut left_skip = to_skip;
     let mut left_write = to_write;
@@ -719,7 +719,7 @@ pub fn read_in_slice_sync<S, B>(
 ) -> Result<usize>
 where
     S: AsyncRead + Unpin,
-    B: Buffer + ?Sized,
+    B: Buffer,
 {
     let mut real_size = 0;
     for buf in buffer.chunks_mut() {
