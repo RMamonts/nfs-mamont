@@ -4,7 +4,6 @@ mod allocator;
 pub mod consts;
 mod context;
 pub mod mount;
-#[allow(dead_code)]
 mod nlm;
 mod parser;
 mod rpc;
@@ -24,7 +23,7 @@ use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
 use crate::nlm::Nlm;
-pub use allocator::{Allocator, Impl, Slice};
+pub use allocator::{Allocator, Impl, Slice, UnownedBuffer};
 pub use context::ServerContext;
 
 /// Initializes tracing logs.
