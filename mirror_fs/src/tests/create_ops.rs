@@ -330,7 +330,7 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
         "write should succeed",
     );
     assert_eq!(write_result.count, 3);
-    assert_eq!(write_result.commited, write::StableHow::DataSync);
+    assert_eq!(write_result.committed, write::StableHow::DataSync);
     assert_wcc_present(&write_result.file_wcc);
     assert_eq!(
         stdfs::read(ctx.root_path().join("file.txt")).unwrap(),
