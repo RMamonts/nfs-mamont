@@ -14,7 +14,7 @@ use crate::nlm::{Nlm4Stats, OpaqueHandle};
 use crate::serializer::{array, u32, u64, variant, vector};
 
 /// Writes an NLM cookie as an XDR `hyper`.
-fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
+pub fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
     u64(dest, cookie.raw())
 }
 
@@ -87,6 +87,7 @@ mod tests {
         unlock::Nlm4UnlockRes,
     };
     use crate::nlm::{Nlm4Stats, OpaqueHandle};
+    use crate::serializer::server::nlm::{cancel_res, lock_res, test_res, unlock_res};
 
     fn cookie(val: u64) -> Cookie {
         Cookie::new(val)
