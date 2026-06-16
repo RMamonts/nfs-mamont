@@ -1,12 +1,12 @@
+use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
-
-use super::{ActiveLock, LockRegistry};
-use crate::consts::nfsv3::NFS3_FHSIZE;
-use crate::nlm::cookie::Cookie;
 use crate::nlm::OpaqueHandle;
 use crate::vfs::file::Handle;
+
+use super::{ActiveLock, LockRegistry};
 
 pub const FH_DEFAULT: u8 = 1;
 pub const FH_OTHER: u8 = 2;
@@ -21,7 +21,7 @@ pub fn fill_fh(value: u8) -> Handle {
 }
 
 pub fn fill_opaque(value: u8) -> OpaqueHandle {
-    OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE])
+    OpaqueHandle::new([value; crate::consts::nlm::OPAQUE_HANDLE_SIZE].to_vec()).unwrap()
 }
 
 pub fn make_active_lock(

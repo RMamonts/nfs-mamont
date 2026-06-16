@@ -1,6 +1,6 @@
-use super::super::ActiveLock;
+use crate::service::nlm::{ActiveLock, LockRegistry};
+
 use super::{fill_fh, make_active_lock, push_lock, FH_DEFAULT, FH_OTHER, LOCK_WHOLE_LENGTH};
-use crate::service::nlm::LockRegistry;
 
 fn other_request() -> ActiveLock {
     make_active_lock("other", 999, false, 0, 0, 0)

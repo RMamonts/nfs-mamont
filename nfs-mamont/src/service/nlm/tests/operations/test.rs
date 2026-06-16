@@ -1,11 +1,11 @@
-use super::super::{
-    fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
-};
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::test::{Nlm4TestArgs, Test};
 use crate::nlm::Nlm4Stats;
+use crate::service::nlm::tests::{
+    fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
+};
 use crate::service::nlm::NlmService;
 
 fn make_test_args(

@@ -16,13 +16,7 @@ pub mod unlock;
 /// Decodes the lock-owner identifier from an NLM request.
 /// The wire encoding is a variable-length opaque capped at [`OPAQUE_HANDLE_SIZE`](nlm::OPAQUE_HANDLE_SIZE).
 pub fn opaque_handle(src: &mut impl Read) -> Result<OpaqueHandle> {
-    let bytes = vector(src)?;
-    if bytes.len() > nlm::OPAQUE_HANDLE_SIZE {
-        return Err(Error::BadFileHandle);
-    }
-    let mut buf = [0u8; nlm::OPAQUE_HANDLE_SIZE];
-    buf[..bytes.len()].copy_from_slice(&bytes);
-    Ok(OpaqueHandle::new(buf))
+    OpaqueHandle::new(vector(src)?).map_err(|_| Error::BadFileHandle)
 }
 
 /// Decodes the lock-arguments block shared by every LOCK/UNLOCK/TEST/CANCEL request.
