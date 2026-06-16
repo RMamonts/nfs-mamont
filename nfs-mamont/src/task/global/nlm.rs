@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
+use crate::allocator::Buffer;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
@@ -15,39 +16,33 @@ use crate::{
     parser::{NlmArgWrapper, NlmArguments},
 };
 
-/// Command sent to [`NlmTask`] from connection read tasks.
-pub struct NlmCommand {
+pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
-    /// Parsed NLM procedure arguments together with the RPC header.
+    pub result_tx: UnboundedSender<ProcReply<B>>,
+    /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 }
 
-/// Background task that processes NLMv4 commands sequentially.
-///
-/// Receives [`NlmCommand`] values from all active connections, dispatches
-/// them to the shared [`Nlm`] service, and sends the resulting
-/// [`ProcResult::Nlm4`] back to the originating connection for
-/// serialization and transmission.
-pub struct NlmTask<N>
+pub struct NlmTask<B, N>
 where
+    B: Buffer + 'static,
     N: Nlm + Send + Sync + 'static,
 {
     /// Shared NLM service implementation.
     nlm_service: Arc<N>,
 
-    /// Channel for commands from client connection tasks.
-    receiver: UnboundedReceiver<NlmCommand>,
+    /// Channel for commands from client connection tasks
+    receiver: UnboundedReceiver<NlmCommand<B>>,
 }
 
-impl<N> NlmTask<N>
+impl<B, N> NlmTask<B, N>
 where
+    B: Buffer + 'static,
     N: Nlm + Send + Sync + 'static,
 {
-    /// Creates a new [`NlmTask`] and returns the task together with a
-    /// sender handle that connection tasks use to submit commands.
-    pub fn new(nlm_service: Arc<N>) -> (Self, UnboundedSender<NlmCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand>();
+    /// Creates new instance of [`NlmTask`]
+    pub fn new(nlm_service: Arc<N>) -> (Self, UnboundedSender<NlmCommand<B>>) {
+        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand<B>>();
 
         let task = Self { nlm_service, receiver };
 

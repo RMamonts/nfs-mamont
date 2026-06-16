@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use super::Buffer;
+
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
@@ -43,9 +45,18 @@ impl Slice {
         Self { buffers, range, state }
     }
 
-    // /// Returns an empty slice that owns no buffers.
+    /// Returns an empty slice that owns no buffers.
     pub fn empty() -> Self {
         Self { buffers: Vec::new(), range: 0..0, state: None }
+    }
+
+    /// Returns the total number of bytes available in this slice.
+    pub fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.range.len() == 0
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -210,6 +221,29 @@ impl PartialEq<[u8]> for Slice {
         }
     }
 }
+
+impl Buffer for Slice {
+    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.range.len() == 0
+    }
+
+    fn empty() -> Self {
+        Self::empty()
+    }
+}
+
 #[cfg(test)]
 impl PartialEq<Slice> for [u8] {
     fn eq(&self, other: &Slice) -> bool {

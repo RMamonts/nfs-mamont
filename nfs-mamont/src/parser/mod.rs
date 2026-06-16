@@ -13,6 +13,7 @@ mod tests;
 
 use std::future::Future;
 
+use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
@@ -49,9 +50,9 @@ pub struct RpcHeader {
 
 /// Wrapper for NFS procedure arguments along with the parsed RPC header.
 /// Used to pass fully decoded request data into NFS service handlers.
-pub struct NfsArgWrapper {
+pub struct NfsArgWrapper<B: Buffer> {
     pub header: RpcHeader,
-    pub proc: Box<NfsArguments>,
+    pub proc: Box<NfsArguments<B>>,
 }
 
 /// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
@@ -68,9 +69,9 @@ pub struct NlmArgWrapper {
 
 /// Generic wrapper for RPC arguments used when the protocol type
 /// (NFS, MOUNT, or others) is already resolved at a higher layer.
-pub struct ArgWrapper {
+pub struct ArgWrapper<B: Buffer> {
     pub header: RpcHeader,
-    pub proc: ProcArguments,
+    pub proc: ProcArguments<B>,
 }
 
 /// Wrapper for [`Error`] to pass `xid` of procedure, this error
@@ -85,14 +86,14 @@ pub struct ErrorWrapper {
 ///
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept both NFSv3 and MOUNT calls from the same connection.
-pub enum ProcArguments {
-    Nfs3(Box<NfsArguments>),
+pub enum ProcArguments<B: Buffer> {
+    Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),
     Nlm4(Box<NlmArguments>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
-pub enum NfsArguments {
+pub enum NfsArguments<B: Buffer> {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -108,7 +109,7 @@ pub enum NfsArguments {
     /// Arguments for the [`read`] operation.
     Read(read::Args),
     /// Arguments for the [`mod@write`] operation.
-    Write(write::Args),
+    Write(write::Args<B>),
     /// Arguments for the [`create`] operation.
     Create(create::Args),
     /// Arguments for the [`mk_dir`] operation.

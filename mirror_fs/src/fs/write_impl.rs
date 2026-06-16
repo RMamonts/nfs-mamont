@@ -3,11 +3,12 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use nfs_mamont::vfs::{self, write};
+use nfs_mamont::Buffer;
 
 use super::MirrorFS;
 
-impl write::Write for MirrorFS {
-    async fn write(&self, args: write::Args) -> Result<write::Success, write::Fail> {
+impl<B: Buffer> write::Write<B> for MirrorFS {
+    async fn write(&self, args: write::Args<B>) -> Result<write::Success, write::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
@@ -36,7 +37,7 @@ impl write::Write for MirrorFS {
             }
         };
 
-        let data = Self::collect_slice_bytes(&args.data, args.size);
+        let data = Self::collect_buffer_bytes(&args.data, args.size);
         if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
