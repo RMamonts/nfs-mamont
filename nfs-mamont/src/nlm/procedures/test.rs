@@ -1,3 +1,8 @@
+//! NLMv4 TEST procedure types.
+//!
+//! Defines argument and result structures for the `NLMPROC4_TEST`
+//! operation as specified in RFC 1813.
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
@@ -33,4 +38,14 @@ pub struct Nlm4TestReply {
     pub stat: Nlm4Stats,
     /// Present only when stat is Denied — info about current lock holder.
     pub holder: Option<Nlm4Holder>,
+}
+
+/// Trait for handling NLMv4 `TEST` procedure calls.
+///
+/// Implementations should check whether a lock could be granted
+/// without actually acquiring it, returning either `Granted` or
+/// `Denied` with details of the conflicting lock.
+#[trait_variant::make(Send)]
+pub trait Test {
+    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes;
 }

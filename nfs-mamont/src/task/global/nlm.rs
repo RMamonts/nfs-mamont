@@ -1,45 +1,75 @@
+//! NLMv4 task dispatcher.
+//!
+//! Runs a background task that receives parsed NLM procedure calls from
+//! connection read tasks, forwards them to the [`Nlm`] service, and sends
+//! the serialized reply back to the appropriate write task.
+
+use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
+use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
 
+/// Command sent to [`NlmTask`] from connection read tasks.
 pub struct NlmCommand {
     /// Channel used to pass the result to write task.
     pub result_tx: UnboundedSender<ProcReply>,
-    /// Placeholder for NLM procedure args.
+    /// Parsed NLM procedure arguments together with the RPC header.
     pub args: NlmArgWrapper,
 }
 
-pub struct NlmTask {
-    // Channel for commands from client connection tasks
+/// Background task that processes NLMv4 commands sequentially.
+///
+/// Receives [`NlmCommand`] values from all active connections, dispatches
+/// them to the shared [`Nlm`] service, and sends the resulting
+/// [`ProcResult::Nlm4`] back to the originating connection for
+/// serialization and transmission.
+pub struct NlmTask<N>
+where
+    N: Nlm + Send + Sync + 'static,
+{
+    /// Shared NLM service implementation.
+    nlm_service: Arc<N>,
+
+    /// Channel for commands from client connection tasks.
     receiver: UnboundedReceiver<NlmCommand>,
 }
 
-impl NlmTask {
-    /// Creates new instance of [`NlmTask`]
-    pub fn new() -> (Self, UnboundedSender<NlmCommand>) {
+impl<N> NlmTask<N>
+where
+    N: Nlm + Send + Sync + 'static,
+{
+    /// Creates a new [`NlmTask`] and returns the task together with a
+    /// sender handle that connection tasks use to submit commands.
+    pub fn new(nlm_service: Arc<N>) -> (Self, UnboundedSender<NlmCommand>) {
         let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand>();
 
-        let task = Self { receiver };
+        let task = Self { nlm_service, receiver };
 
         (task, sender)
     }
 
-    /// Spawns a [`NlmTask`]  that processes nlm commands received from
-    /// `ReadTask` and returns results to `WriteTask`.
+    /// Spawns the [`NlmTask`] on the current Tokio runtime.
+    ///
+    /// The task processes NLM commands received from read tasks and
+    /// returns results to write tasks.
     ///
     /// # Panics
     ///
-    /// If called outside of tokio runtime context.
+    /// If called outside a Tokio runtime context.
     pub fn spawn(self) {
         tokio::spawn(async move { self.run().await });
     }
 
+    /// Main event loop: waits for commands, dispatches to the NLM service,
+    /// and sends replies back.
     async fn run(self) {
+        let nlm_service = self.nlm_service;
         let mut receiver = self.receiver;
 
         while let Some(command) = receiver.recv().await {
@@ -49,7 +79,26 @@ impl NlmTask {
 
             let nlm_result = match *proc {
                 NlmArguments::Null => NlmRes::Null,
-                _ => todo!(),
+                NlmArguments::Lock(nlm4_lock_args) => {
+                    debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
+                    let res = nlm_service.lock(nlm4_lock_args).await;
+                    NlmRes::Lock(res)
+                }
+                NlmArguments::Unlock(nlm4_unlock_args) => {
+                    debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
+                    let res = nlm_service.unlock(nlm4_unlock_args).await;
+                    NlmRes::Unlock(res)
+                }
+                NlmArguments::Test(nlm4_test_args) => {
+                    debug!(xid = header.xid, "nlm task: proc=NLM TEST");
+                    let res = nlm_service.test(nlm4_test_args).await;
+                    NlmRes::Test(Box::new(res))
+                }
+                NlmArguments::Cancel(nlm4_cancel_args) => {
+                    debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
+                    let res = nlm_service.cancel(nlm4_cancel_args).await;
+                    NlmRes::Cancel(res)
+                }
             };
 
             // TODO:
