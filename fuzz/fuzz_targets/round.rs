@@ -4,7 +4,9 @@ use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::parser::primitive::{u32_as_usize, ALIGNMENT};
-use nfs_mamont::parser::{mount, nfsv3, MountArguments, NfsArguments, ProcArguments};
+use nfs_mamont::parser::{
+    mount, nfsv3, nlm, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+};
 use nfs_mamont::serializer::client::arguments;
 
 const DEFAULT_CAPACITY: usize =
@@ -144,6 +146,22 @@ fuzz_target!(|data: ProcArguments| {
 
             MountArguments::Unmount(arg) => {
                 roundtrip!(arg, arguments::mount::unmnt::unmount_args, mount::umnt::unmount)
+            }
+            _ => {}
+        },
+
+        ProcArguments::Nlm4(nlm) => match *nlm {
+            NlmArguments::Lock(arg) => {
+                roundtrip!(arg, arguments::nlm4::lock::lock_args, nlm::lock::lock)
+            }
+            NlmArguments::Unlock(arg) => {
+                roundtrip!(arg, arguments::nlm4::unlock::unlock_args, nlm::unlock::unlock)
+            }
+            NlmArguments::Test(arg) => {
+                roundtrip!(arg, arguments::nlm4::test::test_args, nlm::test::test)
+            }
+            NlmArguments::Cancel(arg) => {
+                roundtrip!(arg, arguments::nlm4::cancel::cancel_args, nlm::cancel::cancel)
             }
             _ => {}
         },

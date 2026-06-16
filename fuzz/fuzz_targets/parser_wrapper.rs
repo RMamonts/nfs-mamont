@@ -6,14 +6,14 @@ use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
 use nfs_mamont::parser::{
-    ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, ProcArguments,
+    ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
 };
 use nfs_mamont::serializer::client::arguments;
 use nfs_mamont::serializer::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::{mount, rpc};
+use nfs_mamont::{consts::mount, rpc};
 
 const FAULT_VERSION: u32 = 7;
 const FAULT_PROGRAM: u32 = 1;
@@ -107,22 +107,22 @@ impl<'a> Arbitrary<'a> for RpcRequest {
             (nfsv3::NFS_PROGRAM, nfsv3::COMMIT) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::NULL) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_NULL) => {
                 ProcArguments::Mount(Box::new(MountArguments::Null))
             }
-            (mount::MOUNT_PROGRAM, mount::MOUNT) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_MNT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::DUMP) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_DUMP) => {
                 ProcArguments::Mount(Box::new(MountArguments::Dump))
             }
-            (mount::MOUNT_PROGRAM, mount::UNMOUNT) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_UMNT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::UNMOUNTALL) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_UMNTALL) => {
                 ProcArguments::Mount(Box::new(MountArguments::UnmountAll))
             }
-            (mount::MOUNT_PROGRAM, mount::EXPORT) => {
+            (mount::MOUNT_PROGRAM, mount::MOUNT_EXPORT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Export))
             }
             _ => u.arbitrary::<ProcArguments>()?,
@@ -272,6 +272,21 @@ impl<A: Allocator> ParserWrapper<A> {
                 MountArguments::Dump => (),
                 MountArguments::UnmountAll => (),
                 MountArguments::Null => (),
+            },
+            ProcArguments::Nlm4(nlm) => match *nlm {
+                NlmArguments::Cancel(cancel) => {
+                    arguments::nlm4::cancel::cancel_args(&mut tmp_buffer, cancel).unwrap()
+                }
+                NlmArguments::Test(test) => {
+                    arguments::nlm4::test::test_args(&mut tmp_buffer, test).unwrap()
+                }
+                NlmArguments::Lock(lock) => {
+                    arguments::nlm4::lock::lock_args(&mut tmp_buffer, lock).unwrap()
+                }
+                NlmArguments::Unlock(unlock) => {
+                    arguments::nlm4::unlock::unlock_args(&mut tmp_buffer, unlock).unwrap()
+                }
+                NlmArguments::Null => (),
             },
         }
 
