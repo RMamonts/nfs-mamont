@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct UnownedBuffer {
     ptr: *mut u8,
     len: usize,

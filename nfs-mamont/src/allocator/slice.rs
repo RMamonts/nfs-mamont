@@ -193,11 +193,15 @@ impl Arbitrary<'_> for Slice {
         let length = u.int_in_range(1..=super::TEST_SIZE)?;
         let mut size = 0;
         let mut bufs = Vec::new();
+
         while size < length {
             let n = u.int_in_range(1..=(length - size))?;
-            bufs.push(vec![8u8; n].into_boxed_slice());
+            let buffer =
+                unsafe { super::UnownedBuffer::from_raw_parts(vec![8u8; n].as_mut_ptr(), n) };
+            bufs.push(buffer);
             size += n;
         }
+
         Ok(Self::new(bufs, 0..length, None))
     }
 }
