@@ -1,5 +1,7 @@
 [workspace]
-members = ["nfs-mamont", "mirror_fs"]
+members = ["nfs-mamont", "mirror_fs", "mock-vfs"]
+default-members = ["nfs-mamont", "mirror_fs"]
+
 resolver = "2"
 
 [workspace.package]
@@ -19,6 +21,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
+criterion = { version = "0.5", features = ["async_tokio"] }
 
 # Internal dependencies
 nfs-mamont.path = "nfs-mamont"

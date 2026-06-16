@@ -25,6 +25,7 @@ use crate::{mount::Mount, task::connection};
 
 pub use allocator::{Allocator, Impl, Slice, UnownedBuffer};
 pub use context::ServerContext;
+pub use rpc::{AuthFlavor, OpaqueAuth};
 
 /// Initializes tracing logs.
 ///
@@ -55,6 +56,9 @@ where
 
     loop {
         let (socket, _) = listener.accept().await?;
+
+        // Disable Nagle on accepted sockets to prevent multi-buffer write latency
+        let _ = socket.set_nodelay(true);
 
         connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
     }
