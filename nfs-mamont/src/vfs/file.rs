@@ -13,7 +13,7 @@ use crate::consts::nfsv3::NFS3_FHSIZE;
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Handle(pub [u8; NFS3_FHSIZE]);
 

@@ -164,15 +164,11 @@ pub enum NlmArguments {
     /// Null operation arguments.
     Null,
     /// Arguments for the Lock operation.
-    #[allow(dead_code)]
     Lock(Nlm4LockArgs),
     /// Arguments for the Unlock operation.
-    #[allow(dead_code)]
     Unlock(Nlm4UnlockArgs),
     /// Arguments for the Test operation.
-    #[allow(dead_code)]
     Test(Nlm4TestArgs),
     /// Arguments for the Cancel operation.
-    #[allow(dead_code)]
     Cancel(Nlm4CancelArgs),
 }

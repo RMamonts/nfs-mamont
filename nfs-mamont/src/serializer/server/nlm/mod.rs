@@ -3,17 +3,18 @@
 //! Serializes NLM procedure responses (Lock, Unlock, Test, Cancel)
 //! into XDR wire format for transmission back to the client.
 
+use std::io;
+use std::io::Write;
+
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use crate::nlm::{Nlm4Stats, OpaqueHandle};
 use crate::serializer::{array, u32, u64, variant, vector};
-use std::io;
-use std::io::Write;
 
 /// Writes an NLM cookie as an XDR `hyper`.
-pub fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
+fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
     u64(dest, cookie.raw())
 }
 
@@ -54,7 +55,15 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
     cookie(dest, res.cookie)?;
     stat(dest, res.test_stat.stat)?;
     if res.test_stat.stat == Nlm4Stats::Denied {
-        let holder = res.test_stat.holder.expect("stat is Denied but holder is None");
+        let holder = match res.test_stat.holder {
+            Some(holder) => holder,
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Stat is Denied but holder is None",
+                ))
+            }
+        };
         u32(dest, holder.exclusive as u32)?;
         u32(dest, holder.system_identifier as u32)?;
         vector(dest, holder.opaque_handle.as_bytes())?;
@@ -68,7 +77,6 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
 mod tests {
     use std::io::Cursor;
 
-    use super::*;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::holder::Nlm4Holder;
