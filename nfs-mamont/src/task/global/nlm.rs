@@ -80,22 +80,22 @@ where
             let nlm_result = match *proc {
                 NlmArguments::Null => NlmRes::Null,
                 NlmArguments::Lock(nlm4_lock_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM");
+                    debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
                     let res = nlm_service.lock(nlm4_lock_args).await;
                     NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM");
+                    debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
                     let res = nlm_service.unlock(nlm4_unlock_args).await;
                     NlmRes::Unlock(res)
                 }
                 NlmArguments::Test(nlm4_test_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM");
+                    debug!(xid = header.xid, "nlm task: proc=NLM TEST");
                     let res = nlm_service.test(nlm4_test_args).await;
                     NlmRes::Test(Box::new(res))
                 }
                 NlmArguments::Cancel(nlm4_cancel_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM");
+                    debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
                     let res = nlm_service.cancel(nlm4_cancel_args).await;
                     NlmRes::Cancel(res)
                 }

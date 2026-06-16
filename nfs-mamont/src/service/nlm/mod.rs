@@ -41,6 +41,25 @@ struct ActiveLock {
     opaque_handle: OpaqueHandle,
 }
 
+/// # Errors
+///
+/// Returns [`Error`] if:
+/// - `caller_name` is empty.
+/// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+fn check_caller_name(caller_name: &str) -> Result<(), Error> {
+    if caller_name.is_empty() {
+        return Err(Error::new(std::io::ErrorKind::InvalidInput, "caller_name must not be empty"));
+    }
+
+    if caller_name.len() > nlm::LM_MAXSTRLEN {
+        return Err(Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
+        ));
+    }
+    Ok(())
+}
+
 impl ActiveLock {
     /// Creates a new [`ActiveLock`] with validation.
     ///
@@ -57,19 +76,7 @@ impl ActiveLock {
         length: u64,
         opaque_handle: OpaqueHandle,
     ) -> Result<Self, Error> {
-        if caller_name.is_empty() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "caller_name must not be empty",
-            ));
-        }
-
-        if caller_name.len() > nlm::LM_MAXSTRLEN {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
-            ));
-        }
+        check_caller_name(&caller_name)?;
 
         Ok(ActiveLock { caller_name, system_identifier, exclusive, offset, length, opaque_handle })
     }
@@ -125,20 +132,7 @@ impl PendingLock {
         opaque_handle: OpaqueHandle,
         cookie: Cookie,
     ) -> Result<Self, Error> {
-        if caller_name.is_empty() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "caller_name must not be empty",
-            ));
-        }
-
-        if caller_name.len() > nlm::LM_MAXSTRLEN {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
-            ));
-        }
-
+        check_caller_name(&caller_name)?;
         Ok(PendingLock {
             caller_name,
             system_identifier,
@@ -263,20 +257,23 @@ impl LockRegistry {
         has_request_been_deleted
     }
 
-    /// Removes `target` from the active-lock list for `file_handle`.
-    fn remove_by_owner(&mut self, file_handle: &Handle, target: &ActiveLock) -> Result<(), Error> {
+    /// Removes active locks owned by `(caller_name, system_identifier)` that overlap
+    /// with `[offset, offset+len)` from the active-lock list for `file_handle`.
+    /// Non-overlapping portions are preserved via range splitting.
+    fn remove_by_owner(
+        &mut self,
+        file_handle: &Handle,
+        caller_name: &str,
+        system_identifier: i32,
+        offset: u64,
+        len: u64,
+    ) -> Result<(), Error> {
         let active_locks = match self.by_file.get_mut(file_handle) {
             Some(locks) => locks,
             None => return Ok(()),
         };
 
-        drain_overlapping(
-            active_locks,
-            &target.caller_name,
-            target.system_identifier,
-            target.offset,
-            target.length,
-        )?;
+        drain_overlapping(active_locks, caller_name, system_identifier, offset, len)?;
 
         if active_locks.is_empty() {
             self.by_file.remove(file_handle);
