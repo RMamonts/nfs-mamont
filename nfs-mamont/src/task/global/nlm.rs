@@ -31,7 +31,7 @@ where
     /// Shared NLM service implementation.
     nlm_service: Arc<N>,
 
-    // Channel for commands from client connection tasks
+    /// Channel for commands from client connection tasks
     receiver: UnboundedReceiver<NlmCommand<B>>,
 }
 
