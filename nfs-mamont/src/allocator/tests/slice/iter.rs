@@ -1,26 +1,17 @@
 //! Defines tests for [`crate::allocator::slice::Slice::iter`] interface.
 
+use super::test_helpers::SliceGuard;
 use crate::allocator::Slice;
 
 const FIRST_BUFFER: &[u8] = &[1, 2, 3, 4, 5];
 const SECOND_BUFFER: &[u8] = &[6, 7, 8];
 const THIRD_BUFFER: &[u8] = &[9, 10, 11];
 
-fn make_slice<Buffers>(buffers: Buffers, range: std::ops::Range<usize>) -> Slice
+fn make_slice<Buffers>(buffers: Buffers, range: std::ops::Range<usize>) -> SliceGuard
 where
     Buffers: IntoIterator<IntoIter: ExactSizeIterator<Item = &'static [u8]>>,
 {
-    let buffers = buffers.into_iter();
-
-    let mut result = Vec::with_capacity(buffers.len());
-    for slice in buffers {
-        let mut buf = Vec::with_capacity(slice.len());
-        buf.extend_from_slice(slice);
-
-        result.push(buf.into_boxed_slice())
-    }
-
-    Slice::new(result, range, None)
+    SliceGuard::new(buffers, range)
 }
 
 fn check_iter_is_empty<'a>(iter: &'a mut impl Iterator<Item = &'a [u8]>) {
