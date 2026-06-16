@@ -4,36 +4,39 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
+use crate::allocator::Buffer;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
-pub struct MountCommand {
+pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
+    pub result_tx: UnboundedSender<ProcReply<B>>,
     /// Client socket address from connection task.
     pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
 
-pub struct MountTask<M>
+pub struct MountTask<M, B>
 where
     M: Mount + Send + Sync + 'static,
+    B: Buffer,
 {
     mount_service: Arc<M>,
     // channel for commands from client connection tasks
-    receiver: UnboundedReceiver<MountCommand>,
+    receiver: UnboundedReceiver<MountCommand<B>>,
 }
 
-impl<M> MountTask<M>
+impl<M, B> MountTask<M, B>
 where
     M: Mount + Send + Sync + 'static,
+    B: Buffer + 'static,
 {
     /// Creates new instance of [`MountTask`]
-    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
+    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand<B>>) {
+        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand<B>>();
 
         let task = Self { mount_service, receiver };
 

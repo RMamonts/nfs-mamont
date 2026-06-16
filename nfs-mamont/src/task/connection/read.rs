@@ -1,4 +1,5 @@
 use std::io;
+use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -8,7 +9,7 @@ use tracing::{debug, error};
 
 use async_channel::Sender;
 
-use crate::allocator::Allocator;
+use crate::allocator::{Allocator, Buffer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -24,33 +25,38 @@ use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
-pub struct ReadTask<A: Allocator + Send + Sync + 'static> {
+pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     // to send messages into mount task
-    mount_sender: UnboundedSender<MountCommand>,
+    mount_sender: UnboundedSender<MountCommand<B>>,
     // to send messages into nlm task
-    nlm_sender: UnboundedSender<NlmCommand>,
+    nlm_sender: UnboundedSender<NlmCommand<B>>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
     // to bypass vfs with null procedure
-    result_sender: UnboundedSender<ProcReply>,
+    result_sender: UnboundedSender<ProcReply<B>>,
     allocator: Arc<A>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
-    pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
+    pool_sender: Sender<(NfsArgWrapper<B>, UnboundedSender<ProcReply<B>>)>,
+    _phantom: PhantomData<B>,
 }
 
-impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
+impl<A, B> ReadTask<A, B>
+where
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+{
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        mount_sender: UnboundedSender<MountCommand>,
-        nlm_sender: UnboundedSender<NlmCommand>,
-        result_sender: UnboundedSender<ProcReply>,
+        mount_sender: UnboundedSender<MountCommand<B>>,
+        nlm_sender: UnboundedSender<NlmCommand<B>>,
+        result_sender: UnboundedSender<ProcReply<B>>,
         allocator: Arc<A>,
-        pool_sender: Sender<(NfsArgWrapper, UnboundedSender<ProcReply>)>,
+        pool_sender: Sender<(NfsArgWrapper<B>, UnboundedSender<ProcReply<B>>)>,
     ) -> Self {
         Self {
             readhalf,
@@ -60,6 +66,7 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
             result_sender,
             allocator,
             pool_sender,
+            _phantom: PhantomData,
         }
     }
 
@@ -68,7 +75,10 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
+    pub fn spawn(self)
+    where
+        B: 'static,
+    {
         tokio::spawn(async move { self.run().await });
     }
 
@@ -177,8 +187,8 @@ impl<A: Allocator + Send + Sync + 'static> ReadTask<A> {
     }
 }
 
-fn send_broken_pipe(
-    sender: &UnboundedSender<ProcReply>,
+fn send_broken_pipe<B: Buffer + 'static>(
+    sender: &UnboundedSender<ProcReply<B>>,
     xid: u32,
     err: impl std::fmt::Display,
 ) -> io::Result<()> {
