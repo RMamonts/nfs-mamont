@@ -1,12 +1,12 @@
-use super::super::{
-    fill_fh, fill_opaque, make_lock_args_with_block, make_lock_args_without_block, FH_DEFAULT,
-    LOCK_WHOLE_LENGTH,
-};
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs};
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::Nlm4Stats;
+use crate::service::nlm::tests::{
+    fill_fh, fill_opaque, make_lock_args_with_block, make_lock_args_without_block, FH_DEFAULT,
+    LOCK_WHOLE_LENGTH,
+};
 use crate::service::nlm::NlmService;
 
 fn make_cancel_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> Nlm4CancelArgs {
