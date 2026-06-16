@@ -3,6 +3,7 @@
 mod parser_wrapper;
 
 use crate::parser_wrapper::RpcRequest;
+
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;

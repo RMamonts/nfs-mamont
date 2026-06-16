@@ -11,7 +11,7 @@
 //!   with padding bytes inserted as needed
 
 #[allow(dead_code)]
-#[cfg(test)]
+#[cfg(any(feature = "arbitrary", test))]
 pub mod client;
 pub mod files;
 

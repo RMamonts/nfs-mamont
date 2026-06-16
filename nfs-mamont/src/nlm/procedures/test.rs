@@ -3,7 +3,7 @@ use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// NLM TEST arguments.
 ///
 /// Used to test whether a lock can be granted without actually acquiring it.

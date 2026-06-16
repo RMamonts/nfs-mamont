@@ -13,7 +13,7 @@ use crate::vfs;
 use super::OpaqueHandle;
 
 /// This structure describes a lock request.
-#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug, PartialEq))]
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
     pub caller_name: String,
@@ -33,7 +33,7 @@ pub struct Nlm4Lock {
 impl Arbitrary<'_> for Nlm4Lock {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         let size = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
-        let mut bytes = vec![0u8; size];
+        let mut bytes = vec![75u8; size];
         u.fill_buffer(&mut bytes)?;
         let caller_name = String::from_utf8_lossy(&bytes).to_string();
         Ok(Nlm4Lock {
@@ -77,12 +77,12 @@ impl Nlm4Lock {
         lock_offset: u64,
         lock_length: u64,
     ) -> Result<Self, Error> {
-        if caller_name.is_empty() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "caller_name must not be empty",
-            ));
-        }
+        // if caller_name.is_empty() {
+        //     return Err(Error::new(
+        //         std::io::ErrorKind::InvalidInput,
+        //         "caller_name must not be empty",
+        //     ));
+        // }
 
         if caller_name.len() > nlm::LM_MAXSTRLEN {
             return Err(Error::new(

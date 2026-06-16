@@ -2,7 +2,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// Defines the information needed to remove a previously established lock.
 pub struct Nlm4UnlockArgs {
     /// Transaction identifier for matching request/response.

@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = { version = "0.4.10", features = ["arbitrary-derive"] }
-nfs-mamont = { path = "..", features = ["arbitrary"] }
+nfs-mamont = { path = "../nfs-mamont", features = ["arbitrary"] }
 arbitrary = "1.4.2"
 tokio = "1.49.0"
 
