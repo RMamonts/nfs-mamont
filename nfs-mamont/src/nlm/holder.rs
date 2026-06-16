@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn new_holder_succeeds() {
         let oh = [1; OPAQUE_HANDLE_SIZE].to_vec();
-        let oh_verf = oh.clone();
+        let oh_expected = oh.clone();
         let opaque_handle = OpaqueHandle::new(oh).unwrap();
         let system_id = 12345;
         let offset = 0;
@@ -59,7 +59,7 @@ mod tests {
 
         let lock = Nlm4Holder::new(true, system_id, opaque_handle, offset, length);
 
-        assert_eq!(lock.opaque_handle.as_bytes(), oh_verf.as_slice());
+        assert_eq!(lock.opaque_handle.as_bytes(), oh_expected.as_slice());
         assert_eq!(lock.system_identifier, system_id);
         assert_eq!(lock.lock_offset, offset);
         assert_eq!(lock.lock_length, length);

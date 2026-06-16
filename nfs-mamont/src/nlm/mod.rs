@@ -8,12 +8,14 @@ pub mod lock;
 pub mod procedures;
 pub mod share;
 
+use std::io;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
-use num_derive::{FromPrimitive, ToPrimitive};
-use std::io;
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
@@ -109,7 +111,7 @@ impl<T> Nlm for T where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{OpaqueHandle, OPAQUE_HANDLE_SIZE};
 
     #[test]
     fn opaque_handle_bytes() {

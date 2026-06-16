@@ -1,12 +1,12 @@
+use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
-
-use super::{ActiveLock, LockRegistry};
-use crate::consts::nfsv3::NFS3_FHSIZE;
-use crate::nlm::cookie::Cookie;
 use crate::nlm::OpaqueHandle;
 use crate::vfs::file::Handle;
+
+use super::{ActiveLock, LockRegistry};
 
 pub const FH_DEFAULT: u8 = 1;
 pub const FH_OTHER: u8 = 2;

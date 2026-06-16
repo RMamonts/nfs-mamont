@@ -82,11 +82,11 @@ impl Nlm4Lock {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::vfs::file::Handle;
+
+    use super::{nlm::LM_MAXSTRLEN, Nlm4Lock, OpaqueHandle};
 
     #[test]
     fn new_lock_succeeds() {
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn new_lock_fails_on_too_long_caller_name() {
         let result = Nlm4Lock::new(
-            "a".repeat(nlm::LM_MAXSTRLEN + 1),
+            "a".repeat(LM_MAXSTRLEN + 1),
             Handle([0; NFS3_FHSIZE]),
             OpaqueHandle::new([0; OPAQUE_HANDLE_SIZE].to_vec()).unwrap(),
             12345,

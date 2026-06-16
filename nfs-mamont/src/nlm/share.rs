@@ -101,11 +101,11 @@ impl Nlm4Share {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::vfs::file::Handle;
+
+    use super::{FileSharingAccess, FileSharingMode, Nlm4Share, OpaqueHandle};
 
     #[test]
     fn new_share_succeeds() {

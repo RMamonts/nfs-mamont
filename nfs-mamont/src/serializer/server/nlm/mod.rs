@@ -71,7 +71,6 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
 mod tests {
     use std::io::Cursor;
 
-    use super::*;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::nlm::cookie::Cookie;
     use crate::nlm::holder::Nlm4Holder;
@@ -82,6 +81,8 @@ mod tests {
         unlock::Nlm4UnlockRes,
     };
     use crate::nlm::{Nlm4Stats, OpaqueHandle};
+
+    use super::{cancel_res, lock_res, test_res, unlock_res};
 
     fn cookie(val: u64) -> Cookie {
         Cookie::new(val)
