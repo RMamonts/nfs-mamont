@@ -49,14 +49,20 @@ pub enum Nlm4Stats {
 
 /// Wrapper for all supported NLMv4 procedure result types.
 pub enum NlmRes {
+    /// NLM NULL procedure — no data.
     Null,
+    /// NLM LOCK procedure response.
     Lock(Nlm4LockRes),
+    /// NLM UNLOCK procedure response.
     Unlock(Nlm4UnlockRes),
+    /// NLM TEST procedure response.
     Test(Box<Nlm4TestRes>),
+    /// NLM CANCEL procedure response.
     Cancel(Nlm4CancelRes),
 }
 
 /// The unique identifier of the lock owner.
+#[derive(Clone, PartialEq)]
 pub struct OpaqueHandle([u8; OPAQUE_HANDLE_SIZE]);
 
 impl OpaqueHandle {
@@ -71,6 +77,30 @@ impl OpaqueHandle {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+}
+
+/// Composite trait for the complete NLM v4 service.
+///
+/// A type implementing [`Nlm`] must provide all four lock-management
+/// operations defined by the NLM v4 protocol:
+/// - [`Lock`](procedures::lock::Lock) — acquire a lock
+/// - [`Unlock`](procedures::unlock::Unlock) — release a lock
+/// - [`Test`](procedures::test::Test) — test whether a lock could be granted
+/// - [`Cancel`](procedures::cancel::Cancel) — cancel a pending lock request
+pub trait Nlm:
+    procedures::lock::Lock
+    + procedures::unlock::Unlock
+    + procedures::test::Test
+    + procedures::cancel::Cancel
+{
+}
+
+impl<T> Nlm for T where
+    T: procedures::lock::Lock
+        + procedures::unlock::Unlock
+        + procedures::test::Test
+        + procedures::cancel::Cancel
+{
 }
 
 #[cfg(test)]
