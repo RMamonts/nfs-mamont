@@ -21,9 +21,8 @@ pub fn opaque_handle(src: &mut impl Read) -> Result<OpaqueHandle> {
 
 /// Decodes the lock-arguments block shared by every LOCK/UNLOCK/TEST/CANCEL request.
 pub fn parse_lock(src: &mut impl Read) -> Result<Nlm4Lock> {
-    let caller_name = string_max_size(src, nlm::LM_MAXSTRLEN)?;
     Nlm4Lock::new(
-        caller_name,
+        string_max_size(src, nlm::LM_MAXSTRLEN)?,
         file::handle(src)?,
         opaque_handle(src)?,
         i32(src)?,
