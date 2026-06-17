@@ -5,7 +5,7 @@
 //! the serialized reply back to the appropriate write task.
 
 use std::sync::Arc;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use async_channel::{Receiver, Sender};
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -18,7 +18,7 @@ use crate::{
 
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply<B>>,
+    pub result_tx: Sender<ProcReply<B>>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 }
@@ -32,7 +32,7 @@ where
     nlm_service: Arc<N>,
 
     /// Channel for commands from client connection tasks
-    receiver: UnboundedReceiver<NlmCommand<B>>,
+    receiver: Receiver<NlmCommand<B>>,
 }
 
 impl<B, N> NlmTask<B, N>
@@ -41,8 +41,8 @@ where
     N: Nlm + Send + Sync + 'static,
 {
     /// Creates new instance of [`NlmTask`]
-    pub fn new(nlm_service: Arc<N>) -> (Self, UnboundedSender<NlmCommand<B>>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<NlmCommand<B>>();
+    pub fn new(nlm_service: Arc<N>) -> (Self, Sender<NlmCommand<B>>) {
+        let (sender, receiver) = async_channel::unbounded::<NlmCommand<B>>();
 
         let task = Self { nlm_service, receiver };
 
@@ -65,9 +65,9 @@ where
     /// and sends replies back.
     async fn run(self) {
         let nlm_service = self.nlm_service;
-        let mut receiver = self.receiver;
+        let receiver = self.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Ok(command) = receiver.recv().await {
             let NlmCommand { result_tx, args } = command;
             let NlmArgWrapper { header, proc } = args;
             debug!(xid = header.xid, "nlm task: command received");
@@ -103,7 +103,7 @@ where
             let _ = result_tx.send(ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
-            });
+            }).await;
             debug!(xid = header.xid, "nlm task: reply queued");
         }
     }

@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use async_channel::{Receiver, Sender};
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -12,7 +12,7 @@ use crate::task::{ProcReply, ProcResult};
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply<B>>,
+    pub result_tx: Sender<ProcReply<B>>,
     /// Client socket address from connection task.
     pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
@@ -26,7 +26,7 @@ where
 {
     mount_service: Arc<M>,
     // channel for commands from client connection tasks
-    receiver: UnboundedReceiver<MountCommand<B>>,
+    receiver: Receiver<MountCommand<B>>,
 }
 
 impl<M, B> MountTask<M, B>
@@ -35,8 +35,8 @@ where
     B: Buffer + 'static,
 {
     /// Creates new instance of [`MountTask`]
-    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand<B>>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand<B>>();
+    pub fn new(mount_service: Arc<M>) -> (Self, Sender<MountCommand<B>>) {
+        let (sender, receiver) = async_channel::unbounded::<MountCommand<B>>();
 
         let task = Self { mount_service, receiver };
 
@@ -56,9 +56,9 @@ where
 
     async fn run(self) {
         let mount_service = self.mount_service;
-        let mut receiver = self.receiver;
+        let receiver = self.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Ok(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
             debug!(client=%client_addr, xid=header.xid, "mount task: command received");
@@ -117,7 +117,7 @@ where
             let _ = result_tx.send(ProcReply {
                 xid: header.xid,
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
-            });
+            }).await;
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }
