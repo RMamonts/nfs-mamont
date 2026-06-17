@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::error;
 
 use crate::allocator::Buffer;
@@ -12,7 +11,7 @@ use crate::task::ProcReply;
 /// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
-    result_receiver: UnboundedReceiver<ProcReply<B>>,
+    result_receiver: async_channel::Receiver<ProcReply<B>>,
     _phantom: PhantomData<B>,
 }
 
@@ -20,7 +19,7 @@ impl<B: Buffer> WriteTask<B> {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: OwnedWriteHalf,
-        result_receiver: UnboundedReceiver<ProcReply<B>>,
+        result_receiver: async_channel::Receiver<ProcReply<B>>,
     ) -> Self {
         Self { writehalf, result_receiver, _phantom: PhantomData }
     }
@@ -38,11 +37,11 @@ impl<B: Buffer> WriteTask<B> {
     }
 
     async fn run(self) {
-        let mut result_receiver = self.result_receiver;
+        let result_receiver = self.result_receiver;
         let mut serializer =
             serializer::server::serialize_struct::Serializer::<B, _>::new(self.writehalf);
 
-        while let Some(reply) = result_receiver.recv().await {
+        while let Ok(reply) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
