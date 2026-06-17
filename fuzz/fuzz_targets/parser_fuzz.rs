@@ -17,13 +17,13 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static PARSER: OnceLock<Mutex<ParserWrapper<MockAllocator>>> = OnceLock::new();
+static PARSER: OnceLock<Mutex<ParserWrapper>> = OnceLock::new();
 
 fn get_runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| Runtime::new().unwrap())
 }
 
-fn get_parser() -> &'static Mutex<ParserWrapper<MockAllocator>> {
+fn get_parser() -> &'static Mutex<ParserWrapper> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
         let mut parser =
