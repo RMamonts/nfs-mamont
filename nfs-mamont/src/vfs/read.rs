@@ -1,16 +1,16 @@
 //! Defines NFSv3 [`Read`] interface.
 
-use super::file;
-use crate::allocator::Slice;
-use crate::vfs;
+use crate::allocator::Buffer;
+use crate::vfs::file;
+use crate::{vfs, Slice};
 
 /// Success result.
 #[cfg_attr(feature = "arbitrary", derive(Debug))]
-pub struct Success {
+pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
     /// The counted data read from the file.
-    pub data: Slice,
+    pub data: B,
 }
 
 #[cfg_attr(feature = "arbitrary", derive(Debug))]
@@ -24,7 +24,7 @@ pub struct SuccessPartial {
 }
 
 #[cfg(feature = "arbitrary")]
-impl arbitrary::Arbitrary<'_> for Success {
+impl<B: Buffer> arbitrary::Arbitrary<'_> for Success<B> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         let data = Slice::arbitrary(u)?;
         let count = data.iter().map(|block| block.len()).sum::<usize>();
@@ -69,10 +69,10 @@ pub struct Args {
 }
 
 #[trait_variant::make(Send)]
-pub trait Read {
+pub trait Read<B: Buffer> {
     /// Reads data from a file into a server-provided buffer.
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: Slice) -> Result<Success, Fail>;
+    async fn read(&self, args: Args, data: B) -> Result<Success<B>, Fail>;
 }

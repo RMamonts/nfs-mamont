@@ -1,6 +1,7 @@
-use super::{ActiveLock, NlmService, PendingLock};
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs, Nlm4CancelRes};
 use crate::nlm::Nlm4Stats;
+
+use super::{ActiveLock, NlmService, PendingLock};
 
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes {

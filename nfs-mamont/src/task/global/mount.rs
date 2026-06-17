@@ -1,39 +1,42 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use async_channel::{Receiver, Sender};
 use tracing::debug;
 
+use crate::allocator::Buffer;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
-pub struct MountCommand {
+pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: UnboundedSender<ProcReply>,
+    pub result_tx: Sender<ProcReply<B>>,
     /// Client socket address from connection task.
     pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
 
-pub struct MountTask<M>
+pub struct MountTask<M, B>
 where
     M: Mount + Send + Sync + 'static,
+    B: Buffer,
 {
     mount_service: Arc<M>,
     // channel for commands from client connection tasks
-    receiver: UnboundedReceiver<MountCommand>,
+    receiver: Receiver<MountCommand<B>>,
 }
 
-impl<M> MountTask<M>
+impl<M, B> MountTask<M, B>
 where
     M: Mount + Send + Sync + 'static,
+    B: Buffer + 'static,
 {
     /// Creates new instance of [`MountTask`]
-    pub fn new(mount_service: Arc<M>) -> (Self, UnboundedSender<MountCommand>) {
-        let (sender, receiver) = mpsc::unbounded_channel::<MountCommand>();
+    pub fn new(mount_service: Arc<M>) -> (Self, Sender<MountCommand<B>>) {
+        let (sender, receiver) = async_channel::unbounded::<MountCommand<B>>();
 
         let task = Self { mount_service, receiver };
 
@@ -53,9 +56,9 @@ where
 
     async fn run(self) {
         let mount_service = self.mount_service;
-        let mut receiver = self.receiver;
+        let receiver = self.receiver;
 
-        while let Some(command) = receiver.recv().await {
+        while let Ok(command) = receiver.recv().await {
             let MountCommand { result_tx, client_addr, args } = command;
             let MountArgWrapper { header, proc } = args;
             debug!(client=%client_addr, xid=header.xid, "mount task: command received");
@@ -111,10 +114,12 @@ where
             // - some logs when occurred error
             // - or retry with fail
             // * but don't stop task
-            let _ = result_tx.send(ProcReply {
-                xid: header.xid,
-                proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
-            });
+            let _ = result_tx
+                .send(ProcReply {
+                    xid: header.xid,
+                    proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
+                })
+                .await;
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }

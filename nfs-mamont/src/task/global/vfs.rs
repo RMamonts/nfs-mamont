@@ -2,28 +2,27 @@ use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, warn};
 
-use crate::allocator::{Allocator, Slice};
+use crate::allocator::{Allocator, Buffer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand = (NfsArgWrapper, UnboundedSender<ProcReply>);
+pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
 /// Sender to enqueue work in the pool.
-pub type VfsCommandSender = Sender<VfsCommand>;
+pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 /// Receiver from the pool, each worker competes for the same command stream.
-type VfsCommandReceiver = Receiver<VfsCommand>;
+type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Fixed-size pool of [`VfsTask`] workers fed from a single unbounded command channel.
-pub struct VfsPool {
+pub struct VfsPool<B: Buffer> {
     /// Sender to enqueue work in the pool for execution.
-    sender: VfsCommandSender,
+    sender: VfsCommandSender<B>,
 }
 
-impl VfsPool {
+impl<B: Buffer + 'static> VfsPool<B> {
     /// Creates a new [`VfsPool`] with the given number of workers.
     ///
     /// # Parameters
@@ -37,10 +36,10 @@ impl VfsPool {
     /// A new [`VfsPool`] with the given number of workers.
     pub fn new<A, V>(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self
     where
-        A: Allocator + Send + Sync + 'static,
-        V: Vfs + Send + Sync + 'static,
+        A: Allocator<Buffer = B> + Send + Sync + 'static,
+        V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand>();
+        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
         (0..num.get()).for_each(|_| {
             let rx_clone = rx.clone();
@@ -51,12 +50,12 @@ impl VfsPool {
     }
 
     /// Returns a clone of the command sender for enqueueing work in the pool.
-    pub fn sender(&self) -> VfsCommandSender {
+    pub fn sender(&self) -> VfsCommandSender<B> {
         self.sender.clone()
     }
 }
 
-impl Drop for VfsPool {
+impl<B: Buffer> Drop for VfsPool<B> {
     /// Closes the pool's sender so workers stop after channel is empty.
     fn drop(&mut self) {
         self.sender.close();
@@ -64,23 +63,25 @@ impl Drop for VfsPool {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask<A, V>
+pub struct VfsTask<A, V, B>
 where
-    A: Allocator + Send + Sync + 'static,
-    V: vfs::Vfs + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer,
+    V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Shared filesystem implementation.
     backend: Arc<V>,
     /// Allocator used for read buffers.
     allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
-    command_receiver: VfsCommandReceiver,
+    command_receiver: VfsCommandReceiver<B>,
 }
 
-impl<A, V> VfsTask<A, V>
+impl<A, V, B> VfsTask<A, V, B>
 where
-    A: Allocator + Send + Sync + 'static,
-    V: vfs::Vfs + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+    V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
@@ -93,7 +94,11 @@ where
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backend: Arc<V>, allocator: Arc<A>, command_receiver: VfsCommandReceiver) -> Self {
+    pub fn new(
+        backend: Arc<V>,
+        allocator: Arc<A>,
+        command_receiver: VfsCommandReceiver<B>,
+    ) -> Self {
         Self { backend, allocator, command_receiver }
     }
 
@@ -125,7 +130,7 @@ where
                 }
                 NfsArguments::Read(args) => {
                     let data_result = if args.count == 0 {
-                        Ok(Slice::empty())
+                        Ok(B::empty())
                     } else {
                         let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
@@ -171,14 +176,14 @@ where
             };
 
             // Write task may already be closed; then this connection pipeline is done.
-            if tx.send(reply).is_err() {
+            if tx.send(reply).await.is_err() {
                 warn!("writer task closed, connection pipeline is done");
             }
         }
     }
 
     /// Static label for logging/tracing for the given procedure variant.
-    fn proc_name(proc: &NfsArguments) -> &'static str {
+    fn proc_name(proc: &NfsArguments<B>) -> &'static str {
         match proc {
             NfsArguments::Null => "NULL",
             NfsArguments::GetAttr(_) => "GETATTR",
@@ -206,7 +211,7 @@ where
     }
 
     /// Returns the domain error when the NFS result variant is `Err`, if present.
-    fn error_from_response(response: &NfsRes) -> Option<vfs::Error> {
+    fn error_from_response(response: &NfsRes<B>) -> Option<vfs::Error> {
         match response {
             NfsRes::Null => None,
             NfsRes::GetAttr(Err(err)) => Some(err.error),
