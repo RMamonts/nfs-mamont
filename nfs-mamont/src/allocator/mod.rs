@@ -9,6 +9,7 @@ mod tests;
 
 use std::alloc::{self, Layout};
 use std::future::Future;
+use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -101,8 +102,16 @@ impl Impl {
             .expect("invalid layout");
 
         let base_ptr = unsafe { alloc::alloc_zeroed(layout) };
+
         if base_ptr.is_null() {
             alloc::handle_alloc_error(layout);
+        }
+
+        let ptr = base_ptr as *mut libc::c_void;
+
+        if unsafe { libc::mlock(ptr, total_size) } != 0 {
+            let err = io::Error::last_os_error();
+            panic!("mlock failed (size={}): {err}", size.get());
         }
 
         let mut current_ptr = base_ptr;
