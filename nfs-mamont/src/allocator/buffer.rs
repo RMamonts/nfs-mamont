@@ -1,10 +1,12 @@
+use std::alloc;
+use std::alloc::Layout;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct UnownedBuffer {
-    ptr: *mut u8,
-    len: usize,
+    pub ptr: *mut u8,
+    pub len: usize,
 }
 
 impl UnownedBuffer {
@@ -26,6 +28,17 @@ impl UnownedBuffer {
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    #[cfg(feature = "arbitrary")]
+    pub fn deallocate(self) {
+        unsafe {
+            let layout = match Layout::from_size_align(self.len, align_of::<u8>()) {
+                Ok(layout) => layout,
+                Err(_) => unreachable!("invalid layout"),
+            };
+            alloc::dealloc(self.ptr, layout)
+        }
     }
 }
 

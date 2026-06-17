@@ -1,6 +1,11 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
+
+use std::alloc;
+use std::alloc::Layout;
 use std::sync::Arc;
 
+#[cfg(feature = "arbitrary")]
+use crate::allocator::TEST_SIZE;
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
 
@@ -72,6 +77,10 @@ impl Slice {
             }
             if count > 0 {
                 state.semaphore.add_permits(count);
+            }
+        } else {
+            for buffer in self.buffers.drain(..) {
+                buffer.deallocate();
             }
         }
     }
@@ -190,14 +199,16 @@ impl PartialEq for Slice {
 #[cfg(feature = "arbitrary")]
 impl Arbitrary<'_> for Slice {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
-        let length = u.int_in_range(1..=super::TEST_SIZE)?;
+        let length = u.int_in_range(1..=TEST_SIZE)?;
         let mut size = 0;
         let mut bufs = Vec::new();
 
         while size < length {
             let n = u.int_in_range(1..=(length - size))?;
-            let buffer =
-                unsafe { super::UnownedBuffer::from_raw_parts(vec![8u8; n].as_mut_ptr(), n) };
+            let layout = Layout::from_size_align(n, align_of::<u8>()).unwrap();
+            let pointer = unsafe { alloc::alloc_zeroed(layout) };
+            assert!(!pointer.is_null());
+            let buffer = unsafe { super::UnownedBuffer::from_raw_parts(pointer, n) };
             bufs.push(buffer);
             size += n;
         }
