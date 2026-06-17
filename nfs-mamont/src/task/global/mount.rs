@@ -114,10 +114,12 @@ where
             // - some logs when occurred error
             // - or retry with fail
             // * but don't stop task
-            let _ = result_tx.send(ProcReply {
-                xid: header.xid,
-                proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
-            }).await;
+            let _ = result_tx
+                .send(ProcReply {
+                    xid: header.xid,
+                    proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
+                })
+                .await;
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }

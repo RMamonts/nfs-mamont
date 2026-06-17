@@ -4,8 +4,8 @@
 //! connection read tasks, forwards them to the [`Nlm`] service, and sends
 //! the serialized reply back to the appropriate write task.
 
-use std::sync::Arc;
 use async_channel::{Receiver, Sender};
+use std::sync::Arc;
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -100,10 +100,12 @@ where
             // - some logs when occurred error
             // - or retry with fail
             // * but don't stop task
-            let _ = result_tx.send(ProcReply {
-                xid: header.xid,
-                proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
-            }).await;
+            let _ = result_tx
+                .send(ProcReply {
+                    xid: header.xid,
+                    proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
+                })
+                .await;
             debug!(xid = header.xid, "nlm task: reply queued");
         }
     }
