@@ -9,7 +9,6 @@
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
@@ -25,8 +24,8 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub async fn new<A, V, B>(
     socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand<B>>,
-    nlm_sender: mpsc::UnboundedSender<NlmCommand<B>>,
+    mount_sender: async_channel::Sender<MountCommand<B>>,
+    nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
@@ -42,7 +41,7 @@ pub async fn new<A, V, B>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply<B>>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
 
     read::ReadTask::<A, B>::new(

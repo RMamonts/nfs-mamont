@@ -2,7 +2,6 @@ use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, warn};
 
 use crate::allocator::{Allocator, Buffer};
@@ -11,7 +10,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, UnboundedSender<ProcReply<B>>);
+pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
 /// Sender to enqueue work in the pool.
 pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 /// Receiver from the pool, each worker competes for the same command stream.
@@ -177,7 +176,7 @@ where
             };
 
             // Write task may already be closed; then this connection pipeline is done.
-            if tx.send(reply).is_err() {
+            if tx.send(reply).await.is_err() {
                 warn!("writer task closed, connection pipeline is done");
             }
         }
