@@ -101,19 +101,20 @@ impl Nlm4Share {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
     use crate::vfs::file::Handle;
+
+    use super::{FileSharingAccess, FileSharingMode, Nlm4Share, OpaqueHandle};
 
     #[test]
     fn new_share_succeeds() {
         let caller_name = "host".to_string();
         let fh = [0; NFS3_FHSIZE];
         let file_handle = Handle(fh);
-        let oh = [1; OPAQUE_HANDLE_SIZE];
-        let opaque_handle = OpaqueHandle::new(oh);
+        let oh = [1; OPAQUE_HANDLE_SIZE].to_vec();
+        let oh_verf = oh.clone();
+        let opaque_handle = OpaqueHandle::new(oh).unwrap();
         let fsh4_mode = FileSharingMode::Read;
         let fsh4_access = FileSharingAccess::ReadWrite;
 
@@ -123,7 +124,7 @@ mod tests {
 
         assert_eq!(lock.caller_name, caller_name);
         assert_eq!(lock.file_handle.0, fh);
-        assert_eq!(lock.opaque_handle.as_bytes(), &oh);
+        assert_eq!(lock.opaque_handle.as_bytes(), oh_verf.as_slice());
         assert_eq!(lock.fsh4_access, fsh4_access);
         assert_eq!(lock.fsh4_mode, fsh4_mode);
     }

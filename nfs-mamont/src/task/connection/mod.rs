@@ -9,10 +9,9 @@
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::allocator::Allocator;
+use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::NlmCommand;
@@ -23,14 +22,15 @@ pub mod read;
 pub mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new<A, V>(
+pub async fn new<A, V, B>(
     socket: TcpStream,
-    mount_sender: mpsc::UnboundedSender<MountCommand>,
-    nlm_sender: mpsc::UnboundedSender<NlmCommand>,
-    context: &ServerContext<A, V>,
+    mount_sender: async_channel::Sender<MountCommand<B>>,
+    nlm_sender: async_channel::Sender<NlmCommand<B>>,
+    context: &ServerContext<A, V, B>,
 ) where
-    A: Allocator + Send + Sync + 'static,
-    V: Vfs + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+    V: Vfs<B> + Send + Sync + 'static,
 {
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
@@ -41,9 +41,14 @@ pub async fn new<A, V>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = mpsc::unbounded_channel::<ProcReply>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
+<<<<<<< HEAD
     read::ReadTask::new(
+=======
+
+    read::ReadTask::<A, B>::new(
+>>>>>>> main
         readhalf,
         peer_addr,
         mount_sender,
@@ -54,5 +59,5 @@ pub async fn new<A, V>(
     )
     .spawn();
 
-    write::WriteTask::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
 }

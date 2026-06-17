@@ -4,9 +4,9 @@ use arbitrary::{Arbitrary, Unstructured};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::allocator::Slice;
+use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
-use crate::vfs;
+use crate::{vfs, Slice};
 
 use super::file;
 
@@ -57,13 +57,13 @@ pub struct Fail {
 /// [`Write::write`] arguments.
 #[derive(Debug)]
 #[cfg_attr(feature = "arbitrary", derive(PartialEq, Clone))]
-pub struct Args {
+pub struct Args<B: Buffer> {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].
     pub file: file::Handle,
     /// The position within file at which the write is to begin.
     pub offset: u64,
-    /// Size of data in `Slice`
+    /// Size of data in buffer
     pub size: u32,
     /// Server's behaviour after performing write
     pub stable: StableHow,
@@ -72,11 +72,11 @@ pub struct Args {
     /// The size of data must be less than or equal to the value of the server's
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
-    pub data: Slice,
+    pub data: B,
 }
 
 #[cfg(feature = "arbitrary")]
-impl Arbitrary<'_> for Args {
+impl<B: Buffer> Arbitrary<'_> for Args<B> {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let data = Slice::arbitrary(u)?;
         Ok(Self {
@@ -89,14 +89,14 @@ impl Arbitrary<'_> for Args {
     }
 }
 
-/// equal to `Args` structure used to separate parsing of `Slice` from other fields
+/// equal to `Args` structure used to separate parsing of buffer from other fields
 pub struct ArgsPartial {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].
     pub file: file::Handle,
     /// The position within file at which the write is to begin.
     pub offset: u64,
-    /// Size of data in `Slice`
+    /// Size of data in `Buffer`
     pub size: u32,
     /// If `stable` is [`StableHow::FileSync`], the server must commit the data
     /// written plus all file system metadata to stable storage before returning results.
@@ -110,7 +110,7 @@ pub struct ArgsPartial {
 }
 
 #[trait_variant::make(Send)]
-pub trait Write {
+pub trait Write<B: Buffer> {
     /// Writes data to a file.
     ///
     /// Some implementations may return [`vfs::Error::NoSpace`] instead of
@@ -118,5 +118,5 @@ pub trait Write {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args) -> Result<Success, Fail>;
+    async fn write(&self, args: Args<B>) -> Result<Success, Fail>;
 }

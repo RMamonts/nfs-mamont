@@ -2,6 +2,8 @@
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::allocator::Buffer;
+
 pub mod access;
 pub mod commit;
 pub mod create;
@@ -152,14 +154,14 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-pub trait Vfs:
+pub trait Vfs<B: Buffer>:
     get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
     + access::Access
     + read_link::ReadLink
-    + read::Read
-    + write::Write
+    + read::Read<B>
+    + write::Write<B>
     + create::Create
     + mk_dir::MkDir
     + symlink::Symlink
@@ -177,14 +179,16 @@ pub trait Vfs:
 {
 }
 
-impl<T> Vfs for T where
+impl<T, B> Vfs<B> for T
+where
+    B: Buffer,
     T: get_attr::GetAttr
         + set_attr::SetAttr
         + lookup::Lookup
         + access::Access
         + read_link::ReadLink
-        + read::Read
-        + write::Write
+        + read::Read<B>
+        + write::Write<B>
         + create::Create
         + mk_dir::MkDir
         + symlink::Symlink
@@ -198,20 +202,20 @@ impl<T> Vfs for T where
         + fs_stat::FsStat
         + fs_info::FsInfo
         + path_conf::PathConf
-        + commit::Commit
+        + commit::Commit,
 {
 }
 
 /// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub enum NfsRes {
+pub enum NfsRes<B: Buffer> {
     Null,
     GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),
     SetAttr(std::result::Result<set_attr::Success, set_attr::Fail>),
     LookUp(std::result::Result<lookup::Success, lookup::Fail>),
     Access(std::result::Result<access::Success, access::Fail>),
     ReadLink(std::result::Result<read_link::Success, read_link::Fail>),
-    Read(std::result::Result<read::Success, read::Fail>),
+    Read(std::result::Result<read::Success<B>, read::Fail>),
     Write(std::result::Result<write::Success, write::Fail>),
     Create(std::result::Result<create::Success, create::Fail>),
     MkDir(std::result::Result<mk_dir::Success, mk_dir::Fail>),

@@ -1,4 +1,4 @@
-use super::super::ranges_overlap;
+use crate::service::nlm::ranges_overlap;
 
 #[test]
 fn overlapping_ranges_detect_overlap() {

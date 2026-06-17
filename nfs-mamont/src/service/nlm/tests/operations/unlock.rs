@@ -1,10 +1,10 @@
-use super::super::{
-    make_lock_args_with_block, make_lock_args_without_block, make_unlock_args, FH_DEFAULT,
-    LOCK_WHOLE_LENGTH,
-};
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::unlock::Unlock;
 use crate::nlm::Nlm4Stats;
+use crate::service::nlm::tests::{
+    make_lock_args_with_block, make_lock_args_without_block, make_unlock_args, FH_DEFAULT,
+    LOCK_WHOLE_LENGTH,
+};
 use crate::service::nlm::NlmService;
 
 #[tokio::test]

@@ -1,20 +1,21 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use crate::allocator::Allocator;
+use crate::allocator::{Allocator, Buffer};
 use crate::task::global::vfs::VfsPool;
 use crate::vfs;
 
 /// Shared server resources: VFS worker pool, buffer allocators, and backend.
 ///
 /// Construct once at startup and share across connection handlers.
-pub struct ServerContext<A, V>
+pub struct ServerContext<A, V, B>
 where
-    A: Allocator + Send + Sync + 'static,
-    V: vfs::Vfs + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+    V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Pool of async workers that execute NFS procedures against [`crate::vfs::Vfs`].
-    vfs_pool: VfsPool,
+    vfs_pool: VfsPool<B>,
     /// Allocator for read buffers (sliced from a pre-sized pool).
     read_allocator: Arc<A>,
     /// Allocator for write-side buffers when needed by the stack.
@@ -23,10 +24,11 @@ where
     backend: Arc<V>,
 }
 
-impl<A, V> ServerContext<A, V>
+impl<A, V, B> ServerContext<A, V, B>
 where
-    A: Allocator + Send + Sync + 'static,
-    V: vfs::Vfs + Send + Sync + 'static,
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+    V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Creates a context with the given backend and buffer pool sizes.
     pub fn new(
@@ -43,7 +45,7 @@ where
 
     /// Returns the shared VFS worker pool used to dispatch NFS procedure work.
     #[inline]
-    pub fn get_vfs_pool(&self) -> &VfsPool {
+    pub fn get_vfs_pool(&self) -> &VfsPool<B> {
         &self.vfs_pool
     }
 
