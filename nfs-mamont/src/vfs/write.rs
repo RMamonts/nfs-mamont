@@ -1,8 +1,7 @@
 //! Defines NFSv3 [`Write`] interface.
-#[cfg(feature = "arbitrary")]
-use arbitrary;
-
+use arbitrary::{Arbitrary, Unstructured};
 use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
@@ -55,11 +54,7 @@ pub struct Fail {
 }
 
 /// [`Write::write`] arguments.
-#[cfg_attr(
-    feature = "arbitrary",
-    derive(arbitrary::Arbitrary, Clone, Debug),
-    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
-)]
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
 pub struct Args<B: Buffer> {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].
@@ -76,6 +71,20 @@ pub struct Args<B: Buffer> {
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
     pub data: B,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, B: Buffer + Arbitrary<'a>> arbitrary::Arbitrary<'a> for Args<B> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let data = B::arbitrary(u)?;
+        Ok(Self {
+            file: u.arbitrary()?,
+            offset: u.arbitrary()?,
+            size: data.len().to_u32().ok_or(arbitrary::Error::IncorrectFormat)?,
+            stable: u.arbitrary()?,
+            data,
+        })
+    }
 }
 
 /// equal to `Args` structure used to separate parsing of buffer from other fields
