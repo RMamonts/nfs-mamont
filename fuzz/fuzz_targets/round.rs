@@ -8,6 +8,7 @@ use nfs_mamont::parser::{
     mount, nfsv3, nlm, MountArguments, NfsArguments, NlmArguments, ProcArguments,
 };
 use nfs_mamont::serializer::client::arguments;
+use nfs_mamont::Slice;
 
 const DEFAULT_CAPACITY: usize =
     nfs_mamont::parser::parser_struct::DEFAULT_SIZE + nfs_mamont::allocator::TEST_SIZE;
@@ -23,7 +24,7 @@ macro_rules! roundtrip {
     }};
 }
 
-fuzz_target!(|data: ProcArguments| {
+fuzz_target!(|data: ProcArguments<Slice>| {
     match data {
         ProcArguments::Nfs3(nfs) => match *nfs {
             NfsArguments::GetAttr(arg) => {

@@ -87,7 +87,7 @@ impl OpaqueHandle {
         &self.0
     }
 
-    pub fn into_inner(self) -> [u8; OPAQUE_HANDLE_SIZE] {
+    pub fn into_inner(self) -> Vec<u8> {
         self.0
     }
 }

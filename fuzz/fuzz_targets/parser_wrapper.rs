@@ -1,7 +1,7 @@
 use arbitrary::{Arbitrary, Unstructured};
-use nfs_mamont::allocator::Allocator;
 use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::consts::nfsv3;
+use nfs_mamont::mocks::alloc::MockAllocator;
 use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
@@ -13,8 +13,9 @@ use nfs_mamont::serializer::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::{consts::mount, rpc};
+use nfs_mamont::{consts::mount, rpc, Slice};
 
+type TestParser = RpcParser<MockAllocator, FuzzMockSocket>;
 const FAULT_VERSION: u32 = 7;
 const FAULT_PROGRAM: u32 = 1;
 
@@ -30,7 +31,7 @@ pub struct RpcRequest {
     pub auth: u32,
     // for now only None (0)
     pub auth_verf: u32,
-    pub args: ProcArguments,
+    pub args: ProcArguments<Slice>,
 }
 
 impl<'a> Arbitrary<'a> for RpcRequest {
@@ -125,7 +126,7 @@ impl<'a> Arbitrary<'a> for RpcRequest {
             (mount::MOUNT_PROGRAM, mount::MOUNT_EXPORT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Export))
             }
-            _ => u.arbitrary::<ProcArguments>()?,
+            _ => u.arbitrary::<ProcArguments<Slice>>()?,
         };
         Ok(Self {
             xid: u.arbitrary()?,
@@ -145,13 +146,13 @@ impl<'a> Arbitrary<'a> for RpcRequest {
     }
 }
 
-pub struct ParserWrapper<A: Allocator> {
-    parser: RpcParser<A, FuzzMockSocket>,
+pub struct ParserWrapper {
+    parser: TestParser,
     sender: FuzzSocketHandler,
 }
 
-impl<A: Allocator> ParserWrapper<A> {
-    pub fn new(parser: RpcParser<A, FuzzMockSocket>, sender: FuzzSocketHandler) -> Self {
+impl ParserWrapper {
+    pub fn new(parser: TestParser, sender: FuzzSocketHandler) -> Self {
         Self { parser, sender }
     }
 
@@ -297,7 +298,7 @@ impl<A: Allocator> ParserWrapper<A> {
         // there should be sending to mpsc
         self.sender.send_data(tmp_buffer);
     }
-    pub async fn parse_message(&mut self) -> core::result::Result<ArgWrapper, ErrorWrapper> {
+    pub async fn parse_message(&mut self) -> Result<ArgWrapper<Slice>, ErrorWrapper> {
         self.parser.next_message().await
     }
 }

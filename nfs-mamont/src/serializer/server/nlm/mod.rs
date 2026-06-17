@@ -11,7 +11,7 @@ use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 use crate::nlm::{Nlm4Stats, OpaqueHandle};
-use crate::serializer::{array, u32, u64, variant, vector};
+use crate::serializer::{u32, u64, variant, vector};
 
 /// Writes an NLM cookie as an XDR `hyper`.
 pub fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
@@ -43,7 +43,7 @@ pub fn cancel_res(dest: &mut impl Write, res: Nlm4CancelRes) -> io::Result<()> {
 
 pub fn opaque_handle(dest: &mut impl Write, opaque_handle: OpaqueHandle) -> io::Result<()> {
     u32(dest, OPAQUE_HANDLE_SIZE as u32)?;
-    array(dest, opaque_handle.into_inner())
+    vector(dest, opaque_handle.as_bytes())
 }
 
 /// Serializes an [`Nlm4TestRes`] as the XDR reply body for `NLMPROC4_TEST`.
@@ -88,8 +88,6 @@ mod tests {
     };
     use crate::nlm::{Nlm4Stats, OpaqueHandle};
     use crate::serializer::server::nlm::{cancel_res, lock_res, test_res, unlock_res};
-
-    use super::{cancel_res, lock_res, test_res, unlock_res};
 
     fn cookie(val: u64) -> Cookie {
         Cookie::new(val)

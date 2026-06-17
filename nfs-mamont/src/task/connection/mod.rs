@@ -43,12 +43,7 @@ pub async fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
-<<<<<<< HEAD
-    read::ReadTask::new(
-=======
-
     read::ReadTask::<A, B>::new(
->>>>>>> main
         readhalf,
         peer_addr,
         mount_sender,

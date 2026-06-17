@@ -13,6 +13,9 @@ mod tests;
 
 use std::future::Future;
 
+#[cfg(feature = "arbitrary")]
+use arbitrary;
+
 use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
@@ -86,7 +89,11 @@ pub struct ErrorWrapper {
 ///
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept both NFSv3 and MOUNT calls from the same connection.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
+#[cfg_attr(
+    feature = "arbitrary",
+    derive(arbitrary::Arbitrary, Clone, Debug),
+    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
+)]
 pub enum ProcArguments<B: Buffer> {
     Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),
@@ -94,7 +101,11 @@ pub enum ProcArguments<B: Buffer> {
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
+#[cfg_attr(
+    feature = "arbitrary",
+    derive(arbitrary::Arbitrary, Clone, Debug),
+    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
+)]
 pub enum NfsArguments<B: Buffer> {
     /// Null operation arguments.
     Null,

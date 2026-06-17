@@ -1,11 +1,15 @@
 //! Defines NFSv3 [`Read`] interface.
 
 use crate::allocator::Buffer;
+use crate::vfs;
 use crate::vfs::file;
-use crate::{vfs, Slice};
 
 /// Success result.
-#[cfg_attr(feature = "arbitrary", derive(Debug))]
+#[cfg_attr(
+    feature = "arbitrary",
+    derive(arbitrary::Arbitrary, Debug),
+    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
+)]
 pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
@@ -13,7 +17,7 @@ pub struct Success<B: Buffer> {
     pub data: B,
 }
 
-#[cfg_attr(feature = "arbitrary", derive(Debug))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct SuccessPartial {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
@@ -21,23 +25,6 @@ pub struct SuccessPartial {
     pub count: u32,
     /// If the read ended at the end-of-file.
     pub eof: bool,
-}
-
-#[cfg(feature = "arbitrary")]
-impl<B: Buffer> arbitrary::Arbitrary<'_> for Success<B> {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-        let data = Slice::arbitrary(u)?;
-        let count = data.iter().map(|block| block.len()).sum::<usize>();
-        assert!(count < u32::MAX as usize);
-        Ok(Self {
-            head: SuccessPartial {
-                file_attr: u.arbitrary::<Option<file::Attr>>()?,
-                count: count as u32,
-                eof: u.arbitrary::<bool>()?,
-            },
-            data,
-        })
-    }
 }
 
 /// Fail result.
