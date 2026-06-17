@@ -20,7 +20,6 @@ pub use slice::Slice;
 
 #[cfg(feature = "arbitrary")]
 pub const TEST_SIZE: usize = 5000;
-type Buffer = Box<[u8]>;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
