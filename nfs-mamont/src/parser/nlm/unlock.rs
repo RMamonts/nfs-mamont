@@ -9,9 +9,7 @@ use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `UNLOCK` operation from the provided `Read` source.
 pub fn unlock(src: &mut impl Read) -> Result<Nlm4UnlockArgs> {
-    let cookie = Cookie::new(u64(src)?);
-    let lock = parse_lock(src)?;
-    Ok(Nlm4UnlockArgs { cookie, lock })
+    Ok(Nlm4UnlockArgs { cookie: Cookie::new(u64(src)?), lock: parse_lock(src)? })
 }
 
 #[cfg(test)]
@@ -23,13 +21,13 @@ mod tests {
     #[test]
     fn test_unlock() {
         let mut data = Vec::new();
+        data.extend(xdr::u64_val(42));
         data.extend(xdr::string("nfs-client"));
         data.extend(xdr::handle(&[0xFE; 8]));
         data.extend(xdr::opaque(&[0xAB, 0xCD]));
         data.extend(xdr::i32_val(-1));
         data.extend(xdr::u64_val(50));
         data.extend(xdr::u64_val(0));
-        data.extend(xdr::u64_val(42));
 
         let result = super::unlock(&mut Cursor::new(data)).unwrap();
 

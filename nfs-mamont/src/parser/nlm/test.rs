@@ -25,14 +25,14 @@ mod tests {
     #[test]
     fn test_test() {
         let mut data = Vec::new();
+        data.extend(xdr::u64_val(1));
+        data.extend(xdr::bool_val(true));
         data.extend(xdr::string("host"));
         data.extend(xdr::handle(&[0x01; 8]));
         data.extend(xdr::opaque(&[0xCD; 4]));
         data.extend(xdr::i32_val(42));
         data.extend(xdr::u64_val(100));
         data.extend(xdr::u64_val(200));
-        data.extend(xdr::u64_val(1));
-        data.extend(xdr::bool_val(true));
 
         let result = super::test(&mut Cursor::new(data)).unwrap();
 
