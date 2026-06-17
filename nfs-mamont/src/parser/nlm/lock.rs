@@ -9,13 +9,11 @@ use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `LOCK` operation from the provided `Read` source.
 pub fn lock(src: &mut impl Read) -> Result<Nlm4LockArgs> {
-    let lock = parse_lock(src)?;
-
     Ok(Nlm4LockArgs {
         cookie: Cookie::new(u64(src)?),
         block: bool(src)?,
         exclusive: bool(src)?,
-        lock,
+        lock: parse_lock(src)?,
         reclaim: bool(src)?,
         state: u32(src)?,
     })
