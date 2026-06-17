@@ -9,9 +9,8 @@ use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `UNLOCK` operation from the provided `Read` source.
 pub fn unlock(src: &mut impl Read) -> Result<Nlm4UnlockArgs> {
-    let lock = parse_lock(src)?;
     let cookie = Cookie::new(u64(src)?);
-
+    let lock = parse_lock(src)?;
     Ok(Nlm4UnlockArgs { cookie, lock })
 }
 

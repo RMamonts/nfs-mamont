@@ -6,7 +6,6 @@
 use std::io;
 use std::io::Write;
 
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
@@ -42,8 +41,8 @@ pub fn cancel_res(dest: &mut impl Write, res: Nlm4CancelRes) -> io::Result<()> {
 }
 
 pub fn opaque_handle(dest: &mut impl Write, opaque_handle: OpaqueHandle) -> io::Result<()> {
-    u32(dest, OPAQUE_HANDLE_SIZE as u32)?;
-    vector(dest, opaque_handle.as_bytes())
+    let vec = opaque_handle.into_inner();
+    vector(dest, vec.as_slice())
 }
 
 /// Serializes an [`Nlm4TestRes`] as the XDR reply body for `NLMPROC4_TEST`.

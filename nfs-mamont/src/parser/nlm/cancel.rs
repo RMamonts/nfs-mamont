@@ -9,13 +9,11 @@ use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `CANCEL` operation from the provided `Read` source.
 pub fn cancel(src: &mut impl Read) -> Result<Nlm4CancelArgs> {
-    let lock = parse_lock(src)?;
-
     Ok(Nlm4CancelArgs {
         cookie: Cookie::new(u64(src)?),
         block: bool(src)?,
         exclusive: bool(src)?,
-        lock,
+        lock: parse_lock(src)?,
     })
 }
 

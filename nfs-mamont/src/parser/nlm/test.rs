@@ -9,9 +9,11 @@ use std::io::Read;
 
 /// Parses the arguments for an NLMv4 `TEST` operation from the provided `Read` source.
 pub fn test(src: &mut impl Read) -> Result<Nlm4TestArgs> {
-    let lock = parse_lock(src)?;
-
-    Ok(Nlm4TestArgs { cookie: Cookie::new(u64(src)?), exclusive: bool(src)?, lock })
+    Ok(Nlm4TestArgs {
+        cookie: Cookie::new(u64(src)?),
+        exclusive: bool(src)?,
+        lock: parse_lock(src)?,
+    })
 }
 
 #[cfg(test)]
