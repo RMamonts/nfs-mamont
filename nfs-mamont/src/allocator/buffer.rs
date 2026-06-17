@@ -3,7 +3,6 @@ use std::alloc::Layout;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct UnownedBuffer {
     pub ptr: *mut u8,
     pub len: usize,
@@ -35,10 +34,27 @@ impl UnownedBuffer {
         unsafe {
             let layout = match Layout::from_size_align(self.len, align_of::<u8>()) {
                 Ok(layout) => layout,
-                Err(_) => unreachable!("invalid layout"),
+                Err(_) => panic!("invalid layout"),
             };
             alloc::dealloc(self.ptr, layout)
         }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Clone for UnownedBuffer {
+    fn clone(&self) -> Self {
+        let ptr = unsafe {
+            let layout = match Layout::from_size_align(self.len, align_of::<u8>()) {
+                Ok(layout) => layout,
+                Err(_) => panic!("invalid layout"),
+            };
+            alloc::alloc_zeroed(layout)
+        };
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.ptr, ptr, self.len);
+        }
+        Self { ptr, len: self.len }
     }
 }
 
