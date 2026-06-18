@@ -6,8 +6,7 @@ mod context;
 #[cfg(any(feature = "arbitrary", test))]
 pub mod mocks;
 pub mod mount;
-#[allow(dead_code)]
-mod nlm;
+pub mod nlm;
 pub mod parser;
 pub mod rpc;
 pub mod serializer;
