@@ -7,18 +7,16 @@ mod slice;
 #[cfg(test)]
 mod tests;
 
-use crossbeam_queue::ArrayQueue;
 use std::alloc::{self, Layout};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+
+use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
-
-#[cfg(feature = "arbitrary")]
-pub const TEST_SIZE: usize = 5000;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
