@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
 use nfs_mamont::mocks::alloc::MockAllocator;
-use nfs_mamont::mocks::buffer::{MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE};
+use nfs_mamont::mocks::buffer::MAX_BLOCK_AMOUNT;
 use nfs_mamont::mocks::read_socket::FuzzMockSocket;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::{NfsArguments, ProcArguments};
@@ -28,7 +28,7 @@ fn get_parser() -> &'static Mutex<ParserWrapper> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
         let mut parser = ParserWrapper::new(
-            RpcParser::new(sock, Arc::new(MockAllocator::new(MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE))),
+            RpcParser::new(sock, Arc::new(MockAllocator::new(MAX_BLOCK_AMOUNT))),
             hand,
         );
         let initial_value = RpcRequest {

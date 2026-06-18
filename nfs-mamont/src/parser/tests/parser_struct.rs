@@ -375,7 +375,7 @@ async fn parse_write() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(1, 0x24));
+    let alloc = Arc::new(MockAllocator::new(0x24));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
 
     let result = parser.next_message().await.unwrap();
@@ -419,7 +419,7 @@ async fn parse_write_after_error() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(1, 0x24));
+    let alloc = Arc::new(MockAllocator::new(0x24));
     let mut parser = RpcParser::with_capacity(socket, alloc, 80);
 
     let result = parser.next_message().await;
@@ -535,7 +535,7 @@ async fn parse_write_with_empty_payload() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(1, 2));
+    let alloc = Arc::new(MockAllocator::new(2));
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);

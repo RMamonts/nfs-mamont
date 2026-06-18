@@ -1,11 +1,11 @@
 //! Defines NFSv3 [`Write`] interface.
-use arbitrary::{Arbitrary, Unstructured};
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::ToPrimitive;
-
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::vfs;
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 
 use super::file;
 
