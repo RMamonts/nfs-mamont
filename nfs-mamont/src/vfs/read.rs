@@ -3,7 +3,6 @@
 use crate::allocator::Buffer;
 use crate::vfs;
 use crate::vfs::file;
-use arbitrary::Arbitrary;
 
 /// Success result.
 #[cfg_attr(feature = "arbitrary", derive(Debug))]
@@ -55,7 +54,7 @@ pub struct Args {
 #[cfg(feature = "arbitrary")]
 impl<'a, B> arbitrary::Arbitrary<'a> for Success<B>
 where
-    B: Arbitrary<'a> + Buffer,
+    B: arbitrary::Arbitrary<'a> + Buffer,
 {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let data = B::arbitrary(u)?;

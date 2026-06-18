@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+#[cfg(feature = "arbitrary")]
 use arbitrary::Unstructured;
 
 use crate::Buffer;
@@ -10,8 +11,7 @@ pub const MAX_BLOCK_AMOUNT: usize = 64;
 #[cfg(feature = "arbitrary")]
 pub const MAX_BLOCK_SIZE: usize = 64;
 
-#[derive(Clone)]
-#[cfg_attr(feature = "arbitrary", derive(Debug))]
+#[derive(Clone, Debug)]
 pub struct MockBuffers {
     bufs: Vec<Box<[u8]>>,
     range: Range<usize>,
