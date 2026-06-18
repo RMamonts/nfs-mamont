@@ -21,15 +21,15 @@ impl Allocator for MockAllocator {
     type Buffer = MockBuffers;
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<MockBuffers> {
-        println!("I am here");
-
+        if self.block_size == 0 {
+            return None;
+        }
         let mut actual_size = 0;
         let mut collector = Vec::new();
         while actual_size < size.get() {
             let buf = vec![0; self.block_size].into_boxed_slice();
             actual_size += buf.len();
             collector.push(buf);
-            println!("here")
         }
         Some(MockBuffers::new(collector, size.get()))
     }
