@@ -12,6 +12,7 @@
 use std::cmp::min;
 use std::io;
 use std::io::{ErrorKind, Read};
+
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::parser::{Error, Result};
@@ -69,7 +70,7 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
         if bytes_read == 0 {
-            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed there"));
+            return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
 
         self.bufs[self.write].extend(bytes_read);

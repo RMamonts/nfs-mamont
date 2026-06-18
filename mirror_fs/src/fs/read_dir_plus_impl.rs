@@ -60,6 +60,7 @@ impl read_dir_plus::ReadDirPlus for MirrorFS {
         Ok(read_dir_plus::Success {
             dir_attr: Some(dir_attr),
             cookie_verifier: verifier,
+            eof: start >= entries.len() || start.saturating_add(result.len()) >= entries.len(),
             entries: result,
         })
     }
