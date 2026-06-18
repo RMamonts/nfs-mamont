@@ -21,12 +21,72 @@ impl MockBuffers {
     pub fn new(vec: Vec<Box<[u8]>>, len: usize) -> Self {
         Self { bufs: vec, range: 0..len }
     }
-    fn iter(&self) -> impl Iterator<Item = &[u8]> {
-        self.bufs.iter().map(|buf| buf.as_ref())
+    fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        BufferIter { bufs: self.bufs.iter(), range: self.range.clone() }
     }
 
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut [u8]> {
-        self.bufs.iter_mut().map(|buf| buf.as_mut())
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + '_ {
+        BufferIterMut { bufs: self.bufs.iter_mut(), range: self.range.clone() }
+    }
+}
+
+/// Iterator over MockBuffers respecting the range bounds
+struct BufferIter<'a> {
+    bufs: std::slice::Iter<'a, Box<[u8]>>,
+    range: Range<usize>,
+}
+
+impl<'a> Iterator for BufferIter<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let result = self.bufs.next()?;
+            let len = result.len();
+            let start = self.range.start;
+            let end = self.range.end;
+
+            if start == end {
+                return None;
+            }
+
+            self.range.start = self.range.start.saturating_sub(len);
+            self.range.end = self.range.end.saturating_sub(len);
+
+            if len > start {
+                return Some(&result[start..end.min(len)]);
+            }
+        }
+    }
+}
+
+/// Mutable iterator over MockBuffers respecting the range bounds
+struct BufferIterMut<'a> {
+    bufs: std::slice::IterMut<'a, Box<[u8]>>,
+    range: Range<usize>,
+}
+
+impl<'a> Iterator for BufferIterMut<'a> {
+    type Item = &'a mut [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let result = self.bufs.next()?;
+            let len = result.len();
+            let start = self.range.start;
+            let end = self.range.end;
+
+            if start == end {
+                return None;
+            }
+
+            self.range.start = self.range.start.saturating_sub(len);
+            self.range.end = self.range.end.saturating_sub(len);
+
+            if len > start {
+                return Some(&mut result[start..end.min(len)]);
+            }
+        }
     }
 }
 
