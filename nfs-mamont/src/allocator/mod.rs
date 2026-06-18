@@ -4,6 +4,7 @@
 mod buffer;
 mod slice;
 
+pub mod mock;
 #[cfg(test)]
 mod tests;
 

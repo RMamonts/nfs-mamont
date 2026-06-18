@@ -1,16 +1,17 @@
 #![no_main]
 
 mod parser_wrapper;
+pub mod read_socket;
 
 use std::sync::{Arc, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
-use nfs_mamont::mocks::alloc::MockAllocator;
-use nfs_mamont::mocks::buffer::MAX_BLOCK_AMOUNT;
-use nfs_mamont::mocks::read_socket::FuzzMockSocket;
+use nfs_mamont::allocator::mock::alloc::MockAllocator;
+use nfs_mamont::allocator::mock::buffer::MAX_BLOCK_AMOUNT;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::{NfsArguments, ProcArguments};
 use nfs_mamont::rpc::{Error, RpcBody, RPC_VERSION};
+use read_socket::FuzzMockSocket;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
