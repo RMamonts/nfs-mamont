@@ -29,6 +29,13 @@ pub struct Success {
     pub cookie_verifier: CookieVerifier,
     /// Zero or more directory [`Entry`] entries.
     pub entries: Vec<Entry>,
+    /// `true` if the last member of [`Self::entries`] is the last
+    /// entry in the directory or the list [`Self::entries`] is
+    /// empty and the cookie corresponded to the end of the
+    /// directory.
+    ///
+    /// If `false`, there may be more entries to read.
+    pub eof: bool,
 }
 
 /// Fail result.

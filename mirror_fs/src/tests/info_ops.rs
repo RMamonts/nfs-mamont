@@ -284,6 +284,7 @@ async fn read_dir_plus_returns_handles_and_supports_pagination() {
         "read_dir_plus first page should succeed",
     );
     assert_eq!(first.entries.len(), 2);
+    assert!(!first.eof);
     assert!(first
         .entries
         .iter()
@@ -304,6 +305,7 @@ async fn read_dir_plus_returns_handles_and_supports_pagination() {
         "read_dir_plus second page should succeed",
     );
     assert_eq!(second.entries.len(), 1);
+    assert!(second.eof);
     assert_eq!(second.entries[0].file_name.as_str(), "c.txt");
 }
 

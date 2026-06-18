@@ -6,4 +6,4 @@ write_buffer_count = 2048
 
 [exports]
 root = "/tmp/nfs"
-paths = ["fs"]
+paths = ["fs01", "fs02"]
