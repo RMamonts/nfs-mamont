@@ -2,19 +2,20 @@
 
 mod parser_wrapper;
 
-use crate::parser_wrapper::RpcRequest;
+use std::sync::{Arc, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
-use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::mocks::alloc::MockAllocator;
+use nfs_mamont::mocks::buffer::{MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE};
 use nfs_mamont::mocks::read_socket::FuzzMockSocket;
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::{NfsArguments, ProcArguments};
 use nfs_mamont::rpc::{Error, RpcBody, RPC_VERSION};
-use parser_wrapper::ParserWrapper;
-use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+
+use crate::parser_wrapper::ParserWrapper;
+use crate::parser_wrapper::RpcRequest;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PARSER: OnceLock<Mutex<ParserWrapper>> = OnceLock::new();
@@ -26,8 +27,10 @@ fn get_runtime() -> &'static Runtime {
 fn get_parser() -> &'static Mutex<ParserWrapper> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
-        let mut parser =
-            ParserWrapper::new(RpcParser::new(sock, Arc::new(MockAllocator::new(TEST_SIZE))), hand);
+        let mut parser = ParserWrapper::new(
+            RpcParser::new(sock, Arc::new(MockAllocator::new(MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE))),
+            hand,
+        );
         let initial_value = RpcRequest {
             xid: 78,
             request: RpcBody::Call as u32,

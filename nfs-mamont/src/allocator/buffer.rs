@@ -2,8 +2,8 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
 pub struct UnownedBuffer {
-    pub ptr: *mut u8,
-    pub len: usize,
+    ptr: *mut u8,
+    len: usize,
 }
 
 impl UnownedBuffer {

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::Buffer;
 
 /// Represents bounded by custome range list of buffers.
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,

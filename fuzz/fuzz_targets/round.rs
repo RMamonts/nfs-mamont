@@ -3,15 +3,16 @@
 use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
+use nfs_mamont::mocks::buffer::MockBuffers;
 use nfs_mamont::parser::primitive::{u32_as_usize, ALIGNMENT};
 use nfs_mamont::parser::{
     mount, nfsv3, nlm, MountArguments, NfsArguments, NlmArguments, ProcArguments,
 };
 use nfs_mamont::serializer::client::arguments;
-use nfs_mamont::Slice;
+use nfs_mamont::Buffer;
 
 const DEFAULT_CAPACITY: usize =
-    nfs_mamont::parser::parser_struct::DEFAULT_SIZE + nfs_mamont::allocator::TEST_SIZE;
+    nfs_mamont::parser::parser_struct::DEFAULT_SIZE + nfs_mamont::mocks::buffer::TEST_SIZE;
 
 macro_rules! roundtrip {
     ($arg:expr, $write:path, $read:path) => {{
@@ -24,7 +25,7 @@ macro_rules! roundtrip {
     }};
 }
 
-fuzz_target!(|data: ProcArguments<Slice>| {
+fuzz_target!(|data: ProcArguments<MockBuffers>| {
     match data {
         ProcArguments::Nfs3(nfs) => match *nfs {
             NfsArguments::GetAttr(arg) => {
@@ -64,7 +65,7 @@ fuzz_target!(|data: ProcArguments<Slice>| {
                 let opaque = buf.into_inner();
                 let mut read = pos;
 
-                for block in args.data.iter() {
+                for block in args.data.chunks() {
                     let size = block.len();
                     assert_eq!(*block, opaque[read..read + size]);
                     read += size;
