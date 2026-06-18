@@ -1,3 +1,5 @@
+use std::alloc;
+use std::alloc::Layout;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
@@ -27,6 +29,18 @@ impl Allocator for MockAllocator {
             Some(Slice::new(vec![buffer], 0..size.get(), None))
         } else {
             None
+        }
+    }
+}
+
+impl Drop for MockAllocator {
+    fn drop(&mut self) {
+        let mut backing = self._backing.lock().unwrap();
+        for buf in backing.iter_mut() {
+            let ptr = buf.as_mut_ptr();
+            let len = buf.len();
+            let layout = Layout::for_value(&ptr);
+            unsafe { alloc::dealloc(ptr, layout) }
         }
     }
 }
