@@ -1,7 +1,7 @@
 use arbitrary::{Arbitrary, Unstructured};
-use nfs_mamont::allocator::TEST_SIZE;
 use nfs_mamont::consts::nfsv3;
 use nfs_mamont::mocks::alloc::MockAllocator;
+use nfs_mamont::mocks::buffer::{MockBuffers, TEST_SIZE};
 use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
@@ -13,7 +13,7 @@ use nfs_mamont::serializer::client::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::{consts::mount, rpc, Slice};
+use nfs_mamont::{consts::mount, rpc};
 
 type TestParser = RpcParser<MockAllocator, FuzzMockSocket>;
 const FAULT_VERSION: u32 = 7;
@@ -31,7 +31,7 @@ pub struct RpcRequest {
     pub auth: u32,
     // for now only None (0)
     pub auth_verf: u32,
-    pub args: ProcArguments<Slice>,
+    pub args: ProcArguments<MockBuffers>,
 }
 
 impl<'a> Arbitrary<'a> for RpcRequest {
@@ -126,7 +126,7 @@ impl<'a> Arbitrary<'a> for RpcRequest {
             (mount::MOUNT_PROGRAM, mount::MOUNT_EXPORT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Export))
             }
-            _ => u.arbitrary::<ProcArguments<Slice>>()?,
+            _ => u.arbitrary::<ProcArguments<MockBuffers>>()?,
         };
         Ok(Self {
             xid: u.arbitrary()?,
@@ -298,7 +298,7 @@ impl ParserWrapper {
         // there should be sending to mpsc
         self.sender.send_data(tmp_buffer);
     }
-    pub async fn parse_message(&mut self) -> Result<ArgWrapper<Slice>, ErrorWrapper> {
+    pub async fn parse_message(&mut self) -> Result<ArgWrapper<MockBuffers>, ErrorWrapper> {
         self.parser.next_message().await
     }
 }

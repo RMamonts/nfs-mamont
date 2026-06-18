@@ -1,46 +1,47 @@
-use std::alloc;
-use std::alloc::Layout;
+use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
-use crate::allocator::{Allocator, Slice, UnownedBuffer};
+use crate::allocator::Allocator;
+use crate::mocks::buffer::MockBuffers;
 
 pub struct MockAllocator {
     max_size: usize,
-    _backing: Mutex<Vec<Box<[u8]>>>,
+    _backing: Mutex<VecDeque<Box<[u8]>>>,
 }
 
 impl MockAllocator {
-    pub fn new(max_size: usize) -> Self {
-        Self { max_size, _backing: Mutex::new(Vec::new()) }
+    pub fn new(block_amounts: usize, block_size: usize) -> Self {
+        let mut bufs = VecDeque::with_capacity(block_amounts);
+        for _ in 0..block_amounts {
+            let buf = vec![0; block_size].into_boxed_slice();
+            bufs.push_back(buf);
+        }
+        let max_size = block_amounts.checked_mul(block_size).expect("size overflow");
+        Self { max_size, _backing: Mutex::new(bufs) }
+    }
+
+    pub fn empty() -> Self {
+        Self { max_size: 0, _backing: Mutex::new(VecDeque::new()) }
     }
 }
 
 impl Allocator for MockAllocator {
-    type Buffer = Slice;
+    type Buffer = MockBuffers;
 
-    async fn allocate(&self, size: NonZeroUsize) -> Option<Slice> {
+    async fn allocate(&self, size: NonZeroUsize) -> Option<MockBuffers> {
         if size.get() <= self.max_size {
-            let buf = vec![0; size.get()].into_boxed_slice();
-            let len = buf.len();
-            let ptr = buf.as_ptr() as *mut u8;
-            self._backing.lock().unwrap().push(buf);
-            let buffer = unsafe { UnownedBuffer::from_raw_parts(ptr, len) };
-            Some(Slice::new(vec![buffer], 0..size.get(), None))
+            let mut guard = self._backing.lock().unwrap();
+            let mut actual_size = 0;
+            let mut collector = Vec::new();
+            while actual_size < size.get() {
+                let next = guard.pop_front()?;
+                actual_size += next.len();
+                collector.push(next);
+            }
+            Some(MockBuffers::new(collector, size.get()))
         } else {
             None
-        }
-    }
-}
-
-impl Drop for MockAllocator {
-    fn drop(&mut self) {
-        let mut backing = self._backing.lock().unwrap();
-        for buf in backing.iter_mut() {
-            let ptr = buf.as_mut_ptr();
-            let len = buf.len();
-            let layout = Layout::for_value(&ptr);
-            unsafe { alloc::dealloc(ptr, layout) }
         }
     }
 }

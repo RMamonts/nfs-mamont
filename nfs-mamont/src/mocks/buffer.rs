@@ -10,23 +10,17 @@ pub const MAX_BLOCK_AMOUNT: usize = 64;
 #[cfg(feature = "arbitrary")]
 pub const MAX_BLOCK_SIZE: usize = 64;
 
-struct MockBuffers {
-    block_amounts: usize,
-    block_size: usize,
+#[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
+pub struct MockBuffers {
     bufs: Vec<Box<[u8]>>,
     range: Range<usize>,
 }
 
 impl MockBuffers {
-    fn new(block_amounts: usize, block_size: usize) -> Self {
-        let mut bufs = Vec::with_capacity(block_amounts);
-        for _ in 0..block_amounts {
-            let buf = vec![0; block_size].into_boxed_slice();
-            bufs.push(buf);
-        }
-        Self { block_amounts, block_size, bufs, range: 0..(block_size * block_amounts) }
+    pub fn new(vec: Vec<Box<[u8]>>, len: usize) -> Self {
+        Self { bufs: vec, range: 0..len }
     }
-
     fn iter(&self) -> impl Iterator<Item = &[u8]> {
         self.bufs.iter().map(|buf| buf.as_ref())
     }
@@ -46,7 +40,7 @@ impl Buffer for MockBuffers {
     }
 
     fn len(&self) -> usize {
-        self.block_amounts * self.block_size
+        self.range.end - self.range.start
     }
 
     fn is_empty(&self) -> bool {
@@ -57,7 +51,7 @@ impl Buffer for MockBuffers {
     where
         Self: Sized,
     {
-        Self::new(1, 0)
+        Self::new(vec![], 0)
     }
 }
 
@@ -82,7 +76,13 @@ impl arbitrary::Arbitrary<'_> for MockBuffers {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let block_amounts = u.int_in_range(1..=MAX_BLOCK_AMOUNT)?;
         let block_size = u.int_in_range(1..=MAX_BLOCK_SIZE)?;
-        Ok(Self::new(block_amounts, block_size))
+        let vec = (0..block_amounts)
+            .map(|_| {
+                let buf = vec![0; block_size].into_boxed_slice();
+                Ok(buf)
+            })
+            .collect::<arbitrary::Result<Vec<Box<[u8]>>>>()?;
+        Ok(Self::new(vec, block_size * block_amounts))
     }
 }
 
