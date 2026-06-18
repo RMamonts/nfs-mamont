@@ -1,20 +1,11 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
-use std::alloc;
-use std::alloc::Layout;
 use std::sync::Arc;
-
-#[cfg(feature = "arbitrary")]
-use arbitrary::{Arbitrary, Unstructured};
-
-#[cfg(feature = "arbitrary")]
-use crate::allocator::TEST_SIZE;
 
 use super::Buffer;
 
 /// Represents bounded by custome range list of buffers.
 #[derive(Debug)]
-#[cfg_attr(feature = "arbitrary", derive(Clone))]
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,
@@ -89,10 +80,6 @@ impl Slice {
             }
             if count > 0 {
                 state.semaphore.add_permits(count);
-            }
-        } else {
-            for buffer in self.buffers.drain(..) {
-                buffer.deallocate();
             }
         }
     }
@@ -189,43 +176,6 @@ impl<'a> IntoIterator for &'a mut Slice {
 
     fn into_iter(self) -> Self::IntoIter {
         IterMut { slice_iter: self.buffers.iter_mut(), range: self.range.clone() }
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl PartialEq for Slice {
-    fn eq(&self, other: &Self) -> bool {
-        if self.range == other.range {
-            //yet we can't compare Slices
-            return false;
-        }
-        for (left, right) in self.iter().zip(other.iter()) {
-            if left != right {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-#[cfg(feature = "arbitrary")]
-impl Arbitrary<'_> for Slice {
-    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
-        let length = u.int_in_range(1..=TEST_SIZE)?;
-        let mut size = 0;
-        let mut bufs = Vec::new();
-
-        while size < length {
-            let n = u.int_in_range(1..=(length - size))?;
-            let layout = Layout::from_size_align(n, align_of::<u8>()).unwrap();
-            let pointer = unsafe { alloc::alloc_zeroed(layout) };
-            assert!(!pointer.is_null());
-            let buffer = unsafe { super::UnownedBuffer::from_raw_parts(pointer, n) };
-            bufs.push(buffer);
-            size += n;
-        }
-
-        Ok(Self::new(bufs, 0..length, None))
     }
 }
 
