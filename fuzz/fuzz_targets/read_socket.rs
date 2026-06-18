@@ -64,8 +64,10 @@ impl AsyncRead for FuzzMockSocket {
             inner.add_data();
         }
         let remaining_data = inner.end - inner.start;
+        if remaining_data == 0 {
+            return Poll::Pending;
+        }
         let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
-        assert!(to_read > 0);
         if to_read > 0 {
             let start = inner.start;
             let end = inner.start + to_read;

@@ -1,14 +1,17 @@
 #![no_main]
 
+pub mod write_socket;
+
 use libfuzzer_sys::fuzz_target;
-use nfs_mamont::mocks::buffer::MockBuffers;
-use nfs_mamont::mocks::write_socket::MockWriter;
+use nfs_mamont::allocator::mock::buffer::MockBuffers;
 use nfs_mamont::rpc::{AuthFlavor, OpaqueAuth};
 use nfs_mamont::serializer::server::serialize_struct::Serializer;
 use nfs_mamont::task::ProcReply;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+
+use write_socket::MockWriter;
 
 type TestSerializer = Serializer<MockBuffers, MockWriter>;
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();

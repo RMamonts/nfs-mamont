@@ -1,8 +1,7 @@
 use arbitrary::{Arbitrary, Unstructured};
+use nfs_mamont::allocator::mock::alloc::MockAllocator;
+use nfs_mamont::allocator::mock::buffer::{MockBuffers, TEST_SIZE};
 use nfs_mamont::consts::nfsv3;
-use nfs_mamont::mocks::alloc::MockAllocator;
-use nfs_mamont::mocks::buffer::{MockBuffers, TEST_SIZE};
-use nfs_mamont::mocks::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 use nfs_mamont::parser::parser_struct::RpcParser;
 use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
 use nfs_mamont::parser::{
@@ -14,6 +13,8 @@ use nfs_mamont::serializer::client::arguments::nfsv3::{
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
 use nfs_mamont::{consts::mount, rpc};
+
+use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 
 type TestParser = RpcParser<MockAllocator, FuzzMockSocket>;
 const FAULT_VERSION: u32 = 7;

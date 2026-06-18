@@ -116,22 +116,6 @@ impl Buffer for MockBuffers {
 }
 
 #[cfg(feature = "arbitrary")]
-impl PartialEq for MockBuffers {
-    fn eq(&self, other: &Self) -> bool {
-        if self.range == other.range {
-            //yet we can't compare Slices
-            return false;
-        }
-        for (left, right) in self.iter().zip(other.iter()) {
-            if left != right {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-#[cfg(feature = "arbitrary")]
 impl arbitrary::Arbitrary<'_> for MockBuffers {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let block_amounts = u.int_in_range(1..=MAX_BLOCK_AMOUNT)?;
