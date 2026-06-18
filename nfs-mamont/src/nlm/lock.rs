@@ -32,10 +32,17 @@ pub struct Nlm4Lock {
 #[cfg(feature = "arbitrary")]
 impl Arbitrary<'_> for Nlm4Lock {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-        let size = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
-        let mut bytes = vec![75u8; size];
-        u.fill_buffer(&mut bytes)?;
-        let caller_name = String::from_utf8_lossy(&bytes).to_string();
+        let max_len = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
+        let mut caller_name = String::new();
+
+        for _ in 0..max_len {
+            match u.int_in_range(0u32..=25u32) {
+                Ok(idx) => {
+                    caller_name.push((b'a' + idx as u8) as char);
+                }
+                Err(_) => break,
+            }
+        }
         Ok(Nlm4Lock {
             caller_name,
             file_handle: u.arbitrary()?,
