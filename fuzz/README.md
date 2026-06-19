@@ -24,7 +24,7 @@ cargo +nightly fuzz list
 ## Run target
 
 ```bash
-cargo +nightly fuzz run <target_name> -- -only_ascii=1 -max_len=4096 -max_total_time=300
+cargo +nightly fuzz run <target_name> -- -max_len=4096 -max_total_time=300
 ```
 
 
