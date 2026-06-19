@@ -9,6 +9,7 @@ mod tests;
 
 use std::alloc::{self, Layout};
 use std::future::Future;
+#[cfg(feature = "mlock")]
 use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -34,6 +35,10 @@ unsafe impl Sync for AllocatorState {}
 impl Drop for AllocatorState {
     fn drop(&mut self) {
         while self.pool.pop().is_some() {}
+        #[cfg(feature = "mlock")]
+        unsafe {
+            libc::munlock(self.base_ptr as *mut libc::c_void, self.layout.size());
+        }
         unsafe { alloc::dealloc(self.base_ptr, self.layout) };
     }
 }
@@ -107,11 +112,13 @@ impl Impl {
             alloc::handle_alloc_error(layout);
         }
 
-        let ptr = base_ptr as *mut libc::c_void;
-
-        if unsafe { libc::mlock(ptr, total_size) } != 0 {
-            let err = io::Error::last_os_error();
-            panic!("mlock failed (size={}): {err}", size.get());
+        #[cfg(feature = "mlock")]
+        {
+            let ptr = base_ptr as *mut libc::c_void;
+            if unsafe { libc::mlock(ptr, total_size) } != 0 {
+                let err = io::Error::last_os_error();
+                panic!("mlock failed (size={}): {err}", size.get());
+            }
         }
 
         let mut current_ptr = base_ptr;
