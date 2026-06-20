@@ -16,7 +16,7 @@ use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
 use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ProcReply, ProcResult, RPCReply};
 use crate::vfs::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
@@ -227,17 +227,13 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(
-        &mut self,
-        reply: ProcReply<B>,
-        verifier: OpaqueAuth,
-    ) -> io::Result<()> {
+    pub async fn form_reply(&mut self, reply: RPCReply<B>) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
-        match reply.proc_result {
+        match reply.result {
             Ok(proc) => {
                 u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                auth(&mut self.buffer, verifier)?;
+                auth(&mut self.buffer, reply.verifier)?;
                 u32(&mut self.buffer, AcceptStat::Success as u32)?;
                 self.process_result(proc).await
             }
@@ -250,7 +246,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     | Error::MaxElemLimit
                     | Error::IncorrectString(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
                         self.buffer.send_inner_buffer().await
@@ -270,19 +266,19 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
                         u32(&mut self.buffer, info.high)?;
@@ -290,7 +286,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
                         self.buffer.send_inner_buffer().await
                     }

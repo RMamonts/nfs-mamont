@@ -6,7 +6,7 @@
 use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
-use crate::rpc::Error;
+use crate::rpc::{Error, OpaqueAuth};
 use crate::vfs::NfsRes;
 
 pub mod connection;
@@ -23,4 +23,10 @@ pub enum ProcResult<B: Buffer> {
 pub struct ProcReply<B: Buffer> {
     pub xid: u32,
     pub proc_result: Result<ProcResult<B>, Error>,
+}
+
+pub struct RPCReply<B: Buffer> {
+    pub xid: u32,
+    pub verifier: OpaqueAuth,
+    pub result: Result<ProcResult<B>, Error>,
 }
