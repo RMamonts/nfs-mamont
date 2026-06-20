@@ -47,11 +47,7 @@ pub struct Nlm4TestReply {
 impl arbitrary::Arbitrary<'_> for Nlm4TestReply {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         let stat = Nlm4Stats::arbitrary(u)?;
-        let holder = if stat == Nlm4Stats::Denied {
-            Some(Nlm4Holder::arbitrary(u)?)
-        } else {
-            Option::<Nlm4Holder>::arbitrary(u)?
-        };
+        let holder = if stat == Nlm4Stats::Denied { Some(Nlm4Holder::arbitrary(u)?) } else { None };
         Ok(Self { stat, holder })
     }
 }
