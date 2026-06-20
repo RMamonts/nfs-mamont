@@ -1,5 +1,7 @@
+use nfs_mamont_derive::XDRSize;
+
 /// Identifies a point in the directory.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, XDRSize)]
 pub struct Cookie(u64);
 
 impl Cookie {

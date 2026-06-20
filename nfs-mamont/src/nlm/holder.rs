@@ -2,9 +2,12 @@
 //!
 //! Contains [`Nlm4Holder`] which represents the current holder of a lock.
 
+use nfs_mamont_derive::XDRSize;
+
 use super::OpaqueHandle;
 
 /// This structure indicates the holder of a lock.
+#[derive(XDRSize)]
 pub struct Nlm4Holder {
     /// Tells whether the holder has an exclusive lock or a shared lock.
     pub exclusive: bool,
