@@ -30,13 +30,13 @@ impl XDRSize for usize {
 
 impl<const N: usize> XDRSize for [u8; N] {
     fn xdr_size(&self) -> usize {
-        (N + Self::ALIGNMENT) & !Self::ALIGNMENT
+        (N + (Self::ALIGNMENT - 1)) & !(Self::ALIGNMENT - 1)
     }
 }
 
 impl XDRSize for Vec<u8> {
     fn xdr_size(&self) -> usize {
-        Self::INTEGER + ((self.len() + Self::ALIGNMENT) & !Self::ALIGNMENT)
+        Self::INTEGER + ((self.len() + (Self::ALIGNMENT - 1)) & !(Self::ALIGNMENT - 1))
     }
 }
 
@@ -57,17 +57,18 @@ impl<T: XDRSize> XDRSize for Option<T> {
 
 impl XDRSize for String {
     fn xdr_size(&self) -> usize {
-        Self::INTEGER + ((self.len() + Self::ALIGNMENT) & !Self::ALIGNMENT)
+        Self::INTEGER + ((self.len() + (Self::ALIGNMENT - 1)) & !(Self::ALIGNMENT - 1))
     }
 }
 
 impl XDRSize for PathBuf {
     fn xdr_size(&self) -> usize {
         let path_str = self.to_string_lossy();
-        Self::INTEGER + ((path_str.len() + Self::ALIGNMENT) & !Self::ALIGNMENT)
+        Self::INTEGER + ((path_str.len() + (Self::ALIGNMENT - 1)) & !(Self::ALIGNMENT - 1))
     }
 }
 
+//TODO: more tests!!!
 #[cfg(test)]
 mod tests {
     use super::XDRSize;
