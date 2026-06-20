@@ -2,10 +2,10 @@
 
 use crate::allocator::Buffer;
 use crate::vfs;
-
-use super::file;
+use crate::vfs::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
@@ -13,6 +13,7 @@ pub struct Success<B: Buffer> {
     pub data: B,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct SuccessPartial {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
@@ -23,6 +24,7 @@ pub struct SuccessPartial {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -31,6 +33,8 @@ pub struct Fail {
 }
 
 /// [`Read::read`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle of the file from which data is to be read.
     /// This must identify a file system object of type [`file::Type::Regular`],
@@ -45,6 +49,26 @@ pub struct Args {
     /// to the value of the server's [`super::fs_info::Success::read_max`] field. If greater,
     /// the server may return fewer bytes, resulting in a short read.
     pub count: u32,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, B> arbitrary::Arbitrary<'a> for Success<B>
+where
+    B: arbitrary::Arbitrary<'a> + Buffer,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let data = B::arbitrary(u)?;
+        let count = data.len();
+        assert!(count < u32::MAX as usize);
+        Ok(Self {
+            head: SuccessPartial {
+                file_attr: u.arbitrary::<Option<file::Attr>>()?,
+                count: count as u32,
+                eof: u.arbitrary::<bool>()?,
+            },
+            data,
+        })
+    }
 }
 
 #[trait_variant::make(Send)]

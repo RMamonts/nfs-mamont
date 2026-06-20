@@ -6,6 +6,7 @@
 use super::MountEntry;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// List of remotely mounted file systems.
     /// Contains one entry for each client host name and directory pair.

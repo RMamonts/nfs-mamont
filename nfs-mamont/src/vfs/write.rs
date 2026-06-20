@@ -1,6 +1,8 @@
 //! Defines NFSv3 [`Write`] interface.
-
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
 use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::ToPrimitive;
 
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
@@ -19,6 +21,7 @@ use super::file;
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
 /// committed to stable storage.
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
@@ -26,9 +29,11 @@ pub enum StableHow {
 }
 
 /// Opaque byte array of [`NFS3_WRITEVERFSIZE`] used in [`Success`]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
@@ -41,6 +46,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -49,6 +55,7 @@ pub struct Fail {
 }
 
 /// [`Write::write`] arguments.
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug))]
 pub struct Args<B: Buffer> {
     /// The file handle for the file to which data is to be written.
     /// This must identify a file system object of type [`file::Type::Regular`].
@@ -65,6 +72,20 @@ pub struct Args<B: Buffer> {
     /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,
     /// resulting in a short write.
     pub data: B,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, B: Buffer + Arbitrary<'a>> arbitrary::Arbitrary<'a> for Args<B> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let data = B::arbitrary(u)?;
+        Ok(Self {
+            file: u.arbitrary()?,
+            offset: u.arbitrary()?,
+            size: data.len().to_u32().ok_or(arbitrary::Error::IncorrectFormat)?,
+            stable: u.arbitrary()?,
+            data,
+        })
+    }
 }
 
 /// equal to `Args` structure used to separate parsing of buffer from other fields

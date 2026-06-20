@@ -19,6 +19,7 @@ use crate::nlm::procedures::{
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
     Granted = 0,
@@ -51,6 +52,7 @@ pub enum Nlm4Stats {
 }
 
 /// Wrapper for all supported NLMv4 procedure result types.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,
@@ -65,7 +67,8 @@ pub enum NlmRes {
 }
 
 /// The unique identifier of the lock owner.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OpaqueHandle(Vec<u8>);
 
 impl OpaqueHandle {
@@ -82,6 +85,10 @@ impl OpaqueHandle {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
     }
 }
 

@@ -7,6 +7,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// Defines the information needed to request a lock on a server.
 pub struct Nlm4LockArgs {
     /// Transaction identifier for matching request/response.
@@ -24,6 +25,7 @@ pub struct Nlm4LockArgs {
     pub state: u32,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 /// NLM LOCK result.
 ///
 /// Returned by [`NLMPROC4_LOCK`](crate::consts::nlm::NLMPROC4_LOCK) procedure.

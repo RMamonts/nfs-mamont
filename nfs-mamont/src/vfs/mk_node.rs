@@ -6,6 +6,8 @@ use super::file;
 use super::set_attr::NewAttr;
 
 /// A discriminated union identifying the type of the special file to be created.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub enum What {
     /// Create character special file with specified initial attributes and device numbers.
     Char(NewAttr, file::Device),
@@ -24,6 +26,7 @@ pub enum What {
 }
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The file handle for the newly created special file.
     pub file: Option<file::Handle>,
@@ -34,6 +37,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -42,6 +46,8 @@ pub struct Fail {
 }
 
 /// [`MkNode::mk_node`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The location of the special file to be created
     pub object: vfs::DirOpArgs,

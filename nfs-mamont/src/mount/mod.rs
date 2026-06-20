@@ -22,15 +22,25 @@ impl HostName {
         }
         Ok(HostName(name))
     }
-
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for HostName {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=MOUNT_HOST_NAME_LEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        HostName::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
     pub hostname: HostName,
@@ -41,6 +51,7 @@ pub struct MountEntry {
 /// Export entry, containing list of clients, allowed to
 /// mount the specified directory.
 #[derive(Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct ExportEntry {
     /// Exported directory.
     pub directory: file::Path,
@@ -50,6 +61,7 @@ pub struct ExportEntry {
 }
 
 /// Wrapper for mount procedure result bodies.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum MountRes {
     Null,
     Mount(Result<mnt::Success, mnt::Fail>),

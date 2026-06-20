@@ -21,3 +21,8 @@ tracing-subscriber.workspace = true
 async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
+
+arbitrary = { version = "1", optional = true, features = ["derive"] }
+
+[features]
+arbitrary = ["dep:arbitrary"]

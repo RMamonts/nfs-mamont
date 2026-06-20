@@ -5,6 +5,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The attributes of the mount point.
     pub root_attr: Option<file::Attr>,
@@ -35,6 +36,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -43,7 +45,8 @@ pub struct Fail {
 }
 
 /// [`FsStat::fs_stat`] arguments.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     /// A file handle identifying a mount point in the file system.
     pub root: file::Handle,

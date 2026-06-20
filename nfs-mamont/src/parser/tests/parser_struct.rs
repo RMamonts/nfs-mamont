@@ -1,11 +1,11 @@
 use num_traits::ToPrimitive;
 use std::sync::Arc;
 
+use crate::allocator::mock::alloc::MockAllocator;
 use crate::allocator::Buffer;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
-use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
@@ -232,7 +232,7 @@ async fn parse_mount_call() {
         push_opaque(buf, b"/mnt/vol");
     });
     let socket = MockSocket::new(frame.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await.unwrap();
@@ -259,7 +259,7 @@ async fn parse_mount_after_error() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
 
     let first_result = parser.next_message().await;
@@ -292,7 +292,7 @@ async fn parse_two_correct() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.next_message().await.unwrap();
@@ -328,7 +328,7 @@ async fn parse_after_error() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
 
     let result = parser.next_message().await;
@@ -379,11 +379,9 @@ async fn parse_write() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 72);
 
     let result = parser.next_message().await.unwrap();
-
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 
     let result = parser.next_message().await.unwrap();
-
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
 
@@ -444,7 +442,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
         0x00, 0x00, 0x00, 0x05, // invalid rpc version (must be 2)
     ];
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
 
     let result = parser.next_message().await;
@@ -463,7 +461,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
     ];
 
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 32);
 
     let result = parser.next_message().await;
@@ -489,7 +487,7 @@ async fn parse_rejects_any_non_call_message_type() {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
 
     let result = parser.next_message().await;
@@ -507,7 +505,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
         0x80, 0x00, 0x00, 0x03, // head with invalid frame size (less than 4)
     ];
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
 
     let result = parser.next_message().await;
@@ -552,7 +550,7 @@ async fn parse_rejects_non_none_cred_auth() {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
     });
     let socket = MockSocket::new(frame.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
@@ -571,7 +569,7 @@ async fn parse_rejects_non_none_verf_auth() {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
     });
     let socket = MockSocket::new(frame.as_slice());
-    let alloc = Arc::new(MockAllocator::new(0));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;

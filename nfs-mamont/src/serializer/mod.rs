@@ -11,12 +11,11 @@
 //!   with padding bytes inserted as needed
 
 #[allow(dead_code)]
-#[cfg(test)]
+#[cfg(any(feature = "arbitrary", test))]
 pub mod client;
+pub mod files;
 
 pub mod server;
-
-mod files;
 
 use std::io::{self, Error, ErrorKind, Write};
 
