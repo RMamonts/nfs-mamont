@@ -1,12 +1,14 @@
 //! Defines NFSv3 [`ReadDir`] interface.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
-use crate::vfs;
+use crate::{vfs, xdr};
 
 use super::file;
 
 /// Identifies a point in the directory.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, XDRSize)]
 pub struct Cookie(u64);
 
 impl Cookie {
@@ -44,7 +46,7 @@ impl Cookie {
 }
 
 /// Verifies that point identified by [`Cookie`] is still valid.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, XDRSize)]
 pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
@@ -82,6 +84,7 @@ impl CookieVerifier {
 }
 
 // not exactly as in RFC, but possible
+#[derive(XDRSize)]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -103,7 +106,20 @@ pub struct Success {
     pub eof: bool,
 }
 
+impl xdr::XDRSize for Success {
+    fn xdr_size(&self) -> usize {
+        let entries_len =
+            self.entries.iter().map(|entry| entry.xdr_size() + Self::INTEGER).sum::<usize>()
+                + Self::INTEGER;
+        self.dir_attr.xdr_size()
+            + self.cookie_verifier.xdr_size()
+            + entries_len
+            + self.eof.xdr_size()
+    }
+}
+
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

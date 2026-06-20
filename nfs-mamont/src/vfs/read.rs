@@ -1,11 +1,13 @@
 //! Defines NFSv3 [`Read`] interface.
 
+use nfs_mamont_derive::XDRSize;
+
+use super::file;
 use crate::allocator::Buffer;
 use crate::vfs;
 
-use super::file;
-
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
     pub head: SuccessPartial,
@@ -13,6 +15,7 @@ pub struct Success<B: Buffer> {
     pub data: B,
 }
 
+#[derive(XDRSize)]
 pub struct SuccessPartial {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
@@ -23,6 +26,7 @@ pub struct SuccessPartial {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

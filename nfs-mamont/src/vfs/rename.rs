@@ -1,8 +1,11 @@
 //! Defines NFSv3 [`Rename`] interface.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::vfs;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// Weak cache consistency data for the directory, `from_dir`.
     pub from_dir_wcc: vfs::WccData,
@@ -11,6 +14,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

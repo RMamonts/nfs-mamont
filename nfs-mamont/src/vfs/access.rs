@@ -1,14 +1,18 @@
 //! Defines NFSv3 [`Access`] interface.
 
-use super::{file, Error};
+use nfs_mamont_derive::XDRSize;
+
+use crate::vfs::{file, Error};
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     pub object_attr: Option<file::Attr>,
     pub access: Mask,
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: Error,
@@ -16,7 +20,7 @@ pub struct Fail {
 }
 
 /// Mask of [`Access::access`] rights.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, XDRSize)]
 pub struct Mask(u32);
 
 impl Mask {

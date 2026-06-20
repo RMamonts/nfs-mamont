@@ -1,5 +1,7 @@
 //! Defines NFSv3 [`Create`] interface.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::vfs;
 
@@ -37,6 +39,7 @@ pub enum HowMode {
 }
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The file handle of the newly created regular file.
     pub file: Option<file::Handle>,
@@ -47,6 +50,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

@@ -1,14 +1,17 @@
 //! Defines NFSv3 [`RmDir`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// Weak cache consistency data for the directory.
     pub wcc_data: vfs::WccData,
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
