@@ -8,11 +8,13 @@ pub mod umntall;
 
 use std::io;
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::consts::mount::MOUNT_HOST_NAME_LEN;
 use crate::vfs::file;
-
+use crate::xdr;
 /// Client host name.
-#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq, XDRSize)]
 pub struct HostName(String);
 
 impl HostName {
@@ -30,7 +32,7 @@ impl HostName {
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, XDRSize)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
     pub hostname: HostName,
@@ -47,6 +49,14 @@ pub struct ExportEntry {
     /// Client host names. They are implementation specific
     /// and cannot be directly interpreted by clients.
     pub names: Vec<HostName>,
+}
+
+impl xdr::XDRSize for ExportEntry {
+    fn xdr_size(&self) -> usize {
+        self.directory.xdr_size()
+            + Self::INTEGER
+            + self.names.iter().map(|name| name.xdr_size() + Self::INTEGER).sum::<usize>()
+    }
 }
 
 /// Wrapper for mount procedure result bodies.

@@ -2,6 +2,7 @@
 //!
 //! as defined in RFC 1813 section 5.2.2.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
+use crate::xdr;
 
 use super::MountEntry;
 
@@ -13,6 +14,14 @@ pub struct Success {
     /// of clients that have requested file handles with the MNT procedure.
     pub mount_list: Vec<MountEntry>,
 }
+
+impl xdr::XDRSize for Success {
+    fn xdr_size(&self) -> usize {
+        self.mount_list.iter().map(|entry| entry.xdr_size() + Self::INTEGER).sum::<usize>()
+            + Self::INTEGER
+    }
+}
+
 #[trait_variant::make(Send)]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.

@@ -5,12 +5,13 @@
 
 use std::net::SocketAddr;
 
+use nfs_mamont_derive::XDRSize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::vfs::file;
 
-#[derive(Debug, ToPrimitive, FromPrimitive)]
+#[derive(Debug, ToPrimitive, FromPrimitive, XDRSize)]
 /// Possible MOUNT errors
 pub enum Fail {
     /// Not owner
@@ -34,6 +35,7 @@ pub enum Fail {
 }
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The file handle for the mounted directory.
     /// This file handle may be used in the NFS protocol.
