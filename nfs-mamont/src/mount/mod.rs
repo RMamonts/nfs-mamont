@@ -60,7 +60,6 @@ impl xdr::XDRSize for ExportEntry {
 }
 
 /// Wrapper for mount procedure result bodies.
-#[derive(XDRSize)]
 pub enum MountRes {
     Null,
     Mount(Result<mnt::Success, mnt::Fail>),
@@ -68,6 +67,22 @@ pub enum MountRes {
     Export(export::Success),
     Dump(dump::Success),
     UnmountAll,
+}
+
+impl xdr::XDRSize for MountRes {
+    fn xdr_size(&self) -> usize {
+        match self {
+            MountRes::Null => 0,
+            MountRes::Mount(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            MountRes::Unmount => 0,
+            MountRes::Dump(res) => res.xdr_size(),
+            MountRes::UnmountAll => 0,
+            MountRes::Export(res) => res.xdr_size(),
+        }
+    }
 }
 
 #[allow(dead_code)]

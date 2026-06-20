@@ -14,6 +14,7 @@ use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
+use crate::xdr;
 use nfs_mamont_derive::XDRSize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
@@ -51,7 +52,6 @@ pub enum Nlm4Stats {
 }
 
 /// Wrapper for all supported NLMv4 procedure result types.
-#[derive(XDRSize)]
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,
@@ -63,6 +63,18 @@ pub enum NlmRes {
     Test(Box<Nlm4TestRes>),
     /// NLM CANCEL procedure response.
     Cancel(Nlm4CancelRes),
+}
+
+impl xdr::XDRSize for NlmRes {
+    fn xdr_size(&self) -> usize {
+        match self {
+            NlmRes::Null => 0,
+            NlmRes::Lock(res) => res.xdr_size(),
+            NlmRes::Unlock(res) => res.xdr_size(),
+            NlmRes::Test(res) => res.xdr_size(),
+            NlmRes::Cancel(res) => res.xdr_size(),
+        }
+    }
 }
 
 /// The unique identifier of the lock owner.

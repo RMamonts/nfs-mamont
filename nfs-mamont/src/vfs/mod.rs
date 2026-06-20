@@ -1,6 +1,7 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
 use crate::allocator::Buffer;
+use crate::xdr;
 use nfs_mamont_derive::XDRSize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
@@ -203,7 +204,6 @@ where
 }
 
 /// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
-#[derive(XDRSize)]
 pub enum NfsRes<B: Buffer> {
     Null,
     GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),
@@ -227,4 +227,97 @@ pub enum NfsRes<B: Buffer> {
     FsInfo(std::result::Result<fs_info::Success, fs_info::Fail>),
     PathConf(std::result::Result<path_conf::Success, path_conf::Fail>),
     Commit(std::result::Result<commit::Success, commit::Fail>),
+}
+
+impl<B: Buffer> xdr::XDRSize for NfsRes<B> {
+    fn xdr_size(&self) -> usize {
+        match self {
+            NfsRes::Null => 0,
+            NfsRes::GetAttr(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::SetAttr(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::SymLink(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Commit(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Access(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Create(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::FsInfo(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::FsStat(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Link(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::MkNod(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::MkDir(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::PathConf(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::ReadDir(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::ReadLink(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Remove(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Rename(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::RmDir(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+
+            NfsRes::LookUp(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Read(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::Write(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            NfsRes::ReadDirPlus(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+        }
+    }
 }
