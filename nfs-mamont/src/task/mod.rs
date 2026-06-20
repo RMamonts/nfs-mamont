@@ -2,7 +2,6 @@
 //!
 //! This module provides the task infrastructure for handling NFS server operations,
 //! including connection-specific tasks and global task coordination.
-use nfs_mamont_derive::XDRSize;
 
 use crate::allocator::Buffer;
 use crate::mount::MountRes;
@@ -15,11 +14,20 @@ pub mod connection;
 pub mod global;
 
 /// Tagged union of top-level RPC program results supported by this server.
-#[derive(XDRSize)]
 pub enum ProcResult<B: Buffer> {
     Nfs3(Box<NfsRes<B>>),
     Mount(Box<MountRes>),
     Nlm4(Box<NlmRes>),
+}
+
+impl<B: Buffer> xdr::XDRSize for ProcResult<B> {
+    fn xdr_size(&self) -> usize {
+        match self {
+            ProcResult::Nfs3(x) => x.xdr_size(),
+            ProcResult::Mount(x) => x.xdr_size(),
+            ProcResult::Nlm4(x) => x.xdr_size(),
+        }
+    }
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
