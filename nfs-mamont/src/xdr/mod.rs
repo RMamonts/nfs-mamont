@@ -15,6 +15,12 @@ impl XDRSize for u32 {
     }
 }
 
+impl XDRSize for i32 {
+    fn xdr_size(&self) -> usize {
+        Self::INTEGER
+    }
+}
+
 impl XDRSize for u64 {
     fn xdr_size(&self) -> usize {
         Self::HYPER_INTEGER

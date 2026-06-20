@@ -7,6 +7,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use nfs_mamont_derive::XDRSize;
 
 /// NLM TEST arguments.
 ///
@@ -23,6 +24,7 @@ pub struct Nlm4TestArgs {
 /// NLM TEST result.
 ///
 /// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
+#[derive(XDRSize)]
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
@@ -33,6 +35,7 @@ pub struct Nlm4TestRes {
 /// NLM TEST reply status union.
 ///
 /// Contains either granted status (no holder), or denied with holder info.
+#[derive(XDRSize)]
 pub struct Nlm4TestReply {
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,

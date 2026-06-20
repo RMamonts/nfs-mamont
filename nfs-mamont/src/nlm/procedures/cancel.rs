@@ -3,6 +3,8 @@
 //! Defines argument and result structures for the `NLMPROC4_CANCEL`
 //! operation as specified in RFC 1813.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -24,6 +26,7 @@ pub struct Nlm4CancelArgs {
 /// NLM CANCEL result.
 ///
 /// Returned by [`NLMPROC4_CANCEL`](crate::consts::nlm::NLMPROC4_CANCEL) procedure.
+#[derive(XDRSize)]
 pub struct Nlm4CancelRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
