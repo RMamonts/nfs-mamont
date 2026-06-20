@@ -40,6 +40,12 @@ impl XDRSize for Vec<u8> {
     }
 }
 
+impl<T: XDRSize> XDRSize for Vec<T> {
+    fn xdr_size(&self) -> usize {
+        Self::INTEGER + self.iter().map(|item| item.xdr_size()).sum::<usize>()
+    }
+}
+
 impl XDRSize for bool {
     fn xdr_size(&self) -> usize {
         Self::INTEGER
