@@ -1,7 +1,5 @@
-//! Proc-macro derives for [`nfs_mamont::xdr::XDRSize`].
-
-use proc_macro_crate::{crate_name, FoundCrate};
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Meta, Path};
 
@@ -14,9 +12,7 @@ pub fn derive_xdr_size(input: TokenStream) -> TokenStream {
     let mut generics = input.generics.clone();
     let xdr_size_bound = format!("{}::xdr::XDRSize", path_to_string(&crate_path));
     for param in generics.type_params_mut() {
-        param
-            .bounds
-            .push(syn::parse_str(&xdr_size_bound).expect("XDRSize bound"));
+        param.bounds.push(syn::parse_str(&xdr_size_bound).expect("XDRSize bound"));
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -51,10 +47,9 @@ fn crate_path(attrs: &[syn::Attribute]) -> Path {
             continue;
         };
         let mut crate_name = None;
-        for nested in list.parse_args_with(
-            syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated,
-        )
-        .unwrap_or_default()
+        for nested in list
+            .parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+            .unwrap_or_default()
         {
             let Meta::NameValue(name_value) = nested else {
                 continue;
@@ -71,9 +66,8 @@ fn crate_path(attrs: &[syn::Attribute]) -> Path {
             crate_name = Some(lit_str);
         }
         if let Some(lit_str) = crate_name {
-            return syn::parse_str::<Path>(&lit_str.value()).unwrap_or_else(|_err| {
-                default_crate_path()
-            });
+            return syn::parse_str::<Path>(&lit_str.value())
+                .unwrap_or_else(|_err| default_crate_path());
         }
     }
 
@@ -83,9 +77,8 @@ fn crate_path(attrs: &[syn::Attribute]) -> Path {
 fn default_crate_path() -> Path {
     match crate_name("nfs_mamont") {
         Ok(FoundCrate::Itself) | Err(_) => syn::parse_str("crate").expect("crate path"),
-        Ok(FoundCrate::Name(name)) => syn::parse_str(&name).unwrap_or_else(|_| {
-            syn::parse_str("nfs_mamont").expect("nfs_mamont path")
-        }),
+        Ok(FoundCrate::Name(name)) => syn::parse_str(&name)
+            .unwrap_or_else(|_| syn::parse_str("nfs_mamont").expect("nfs_mamont path")),
     }
 }
 
@@ -120,7 +113,11 @@ fn struct_body(crate_path: &Path, fields: &Fields) -> proc_macro2::TokenStream {
     }
 }
 
-fn enum_body(crate_path: &Path, name: &syn::Ident, data: &syn::DataEnum) -> proc_macro2::TokenStream {
+fn enum_body(
+    crate_path: &Path,
+    name: &syn::Ident,
+    data: &syn::DataEnum,
+) -> proc_macro2::TokenStream {
     let xdr_size = parse_xdr_size_path(crate_path);
 
     let variants = data.variants.iter().map(|variant| {
@@ -143,10 +140,7 @@ fn enum_body(crate_path: &Path, name: &syn::Ident, data: &syn::DataEnum) -> proc
                     .iter()
                     .enumerate()
                     .map(|(idx, _)| {
-                        syn::Ident::new(
-                            &format!("field_{idx}"),
-                            proc_macro2::Span::call_site(),
-                        )
+                        syn::Ident::new(&format!("field_{idx}"), proc_macro2::Span::call_site())
                     })
                     .collect();
                 let sizes = bindings.iter().map(|ident| {

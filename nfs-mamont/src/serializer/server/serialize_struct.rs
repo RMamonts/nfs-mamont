@@ -41,10 +41,6 @@ const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_MASK: usize = 0x8000_0000;
 
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
-
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
         match $res {
@@ -219,12 +215,10 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         }
     }
 
-    /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.
+    /// Serializes [`RPCReply`] into a complete XDR RPC reply and writes it to the underlying writer.
     ///
     /// ## Arguments:
-    /// *   `reply` - procedure result of [`ProcReply`] type
-    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
-    ///     order to validate itself to the client
+    /// *   `reply` - procedure result of [`RPCReply`] type
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
     pub async fn form_reply(&mut self, reply: RPCReply<B>) -> io::Result<()> {
