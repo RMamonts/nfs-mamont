@@ -13,11 +13,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
-use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
-
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcReply, ProcResult, RPCReply};
-use crate::vfs::{NfsRes, STATUS_OK};
+use crate::rpc::{AcceptStat, Error, RejectedReply, ReplyBody, RpcBody};
 
 use super::mount::mnt;
 use super::nfs::{
@@ -27,6 +23,10 @@ use super::nfs::{
 };
 use super::nlm;
 use super::rpc::auth;
+use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::task::{ProcResult, RPCReply};
+use crate::vfs::{NfsRes, STATUS_OK};
+use crate::xdr::XDRSize;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
@@ -228,6 +228,8 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
     pub async fn form_reply(&mut self, reply: RPCReply<B>) -> io::Result<()> {
+        let fragment_size = reply.xdr_size();
+        self.buffer.append_fragment_size(fragment_size)?;
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
         match reply.result {
@@ -331,9 +333,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     /// Resets the internal write cursor to the start of the buffer.
     fn clean(&mut self) {
         self.buf.clear();
-        // reserve first 4 bytes to write header by RMS
-        // https://datatracker.ietf.org/doc/html/rfc5531#autoid-19
-        self.buf.extend_from_slice(&[0, 0, 0, 0]);
     }
 
     fn append_fragment_size(&mut self, size: usize) -> io::Result<()> {
@@ -345,16 +344,13 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
                 "Fragmented messages not supported",
             ));
         }
-        // there is no need for check, since we initialize vector in new()
-        // and we append 4 bytes after clean()
-        // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
-        self.buf[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
-        Ok(())
+
+        let head = HEADER_MASK | size;
+        usize_as_u32(self, head)
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
@@ -373,7 +369,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         u32(&mut self.buf, count as u32)?;
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)
