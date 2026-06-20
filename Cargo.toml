@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont", "mirror_fs"]
+members = ["nfs-mamont", "nfs-mamont-derive", "mirror_fs"]
 resolver = "2"
 
 [workspace.package]
@@ -22,3 +22,8 @@ trait-variant = "0.1.2"
 
 # Internal dependencies
 nfs-mamont.path = "nfs-mamont"
+nfs-mamont-derive.path = "nfs-mamont-derive"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
+proc-macro-crate = "3.2"
