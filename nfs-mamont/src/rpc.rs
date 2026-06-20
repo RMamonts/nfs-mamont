@@ -59,7 +59,7 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, XDRSize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,

@@ -51,6 +51,7 @@ pub enum Nlm4Stats {
 }
 
 /// Wrapper for all supported NLMv4 procedure result types.
+#[derive(XDRSize)]
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,

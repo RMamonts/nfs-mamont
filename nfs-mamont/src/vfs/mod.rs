@@ -203,6 +203,7 @@ where
 }
 
 /// Wrapper for all supported NFSv3 procedure result types coming from [`Vfs`].
+#[derive(XDRSize)]
 pub enum NfsRes<B: Buffer> {
     Null,
     GetAttr(std::result::Result<get_attr::Success, get_attr::Fail>),
