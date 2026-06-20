@@ -80,6 +80,21 @@ impl XDRSize for PathBuf {
     }
 }
 
+impl<T: XDRSize, E: XDRSize> XDRSize for Result<T, E> {
+    fn xdr_size(&self) -> usize {
+        match self {
+            Ok(value) => true.xdr_size() + value.xdr_size(),
+            Err(err) => false.xdr_size() + err.xdr_size(),
+        }
+    }
+}
+
+impl<T: XDRSize> XDRSize for Box<T> {
+    fn xdr_size(&self) -> usize {
+        (**self).xdr_size()
+    }
+}
+
 //TODO: more tests!!!
 #[cfg(test)]
 mod tests {

@@ -60,6 +60,7 @@ impl xdr::XDRSize for ExportEntry {
 }
 
 /// Wrapper for mount procedure result bodies.
+#[derive(XDRSize)]
 pub enum MountRes {
     Null,
     Mount(Result<mnt::Success, mnt::Fail>),
