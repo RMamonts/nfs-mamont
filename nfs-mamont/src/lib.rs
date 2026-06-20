@@ -12,6 +12,7 @@ mod serializer;
 pub mod service;
 mod task;
 pub mod vfs;
+pub mod xdr;
 
 use std::sync::Arc;
 
