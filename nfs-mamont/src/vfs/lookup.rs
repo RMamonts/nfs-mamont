@@ -1,10 +1,13 @@
 //! Defines NFSv3 [`Lookup`] interface.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::vfs;
 
 use super::file;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     pub file: file::Handle,
     pub file_attr: Option<file::Attr>,
@@ -12,6 +15,7 @@ pub struct Success {
 }
 
 /// Failed result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

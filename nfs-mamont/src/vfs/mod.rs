@@ -1,8 +1,8 @@
 //! Defines NFSv3 Virtual File System interface --- [`Vfs`].
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use crate::allocator::Buffer;
+use nfs_mamont_derive::XDRSize;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
 pub mod commit;
@@ -37,7 +37,7 @@ pub const MAX_PATH_LEN: usize = 1024;
 pub const STATUS_OK: usize = 0;
 
 /// [`Vfs`] errors.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive, XDRSize)]
 pub enum Error {
     /// Not owner. The operation was not allowed because the
     /// caller is either not a privileged user (root) or not the
@@ -132,7 +132,7 @@ pub enum Error {
     JUKEBOX = 10008,
 }
 
-#[derive(Clone)]
+#[derive(Clone, XDRSize)]
 pub struct WccData {
     pub before: Option<file::WccAttr>,
     pub after: Option<file::Attr>,

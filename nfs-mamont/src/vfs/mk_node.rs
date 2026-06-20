@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
 use super::set_attr::NewAttr;
@@ -24,6 +25,7 @@ pub enum What {
 }
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The file handle for the newly created special file.
     pub file: Option<file::Handle>,
@@ -34,6 +36,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

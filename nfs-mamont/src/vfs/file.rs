@@ -1,16 +1,16 @@
 use std::io;
 use std::path::PathBuf;
 
+use crate::xdr::XDRSize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
-
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, XDRSize)]
 pub struct Handle(pub [u8; NFS3_FHSIZE]);
 
 /// A validated wrapper around a `String` representing a name.
@@ -18,7 +18,7 @@ pub struct Handle(pub [u8; NFS3_FHSIZE]);
 /// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
 /// It provides safe construction, accessors, and conversion back into the
 /// owned inner [`String`].
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, XDRSize)]
 pub struct Name(String);
 
 impl Name {
@@ -61,7 +61,7 @@ impl Name {
 /// [`Path`] ensures that the provided path string does not exceed
 /// [`MAX_PATH_LEN`]. It offers safe construction, accessors, and
 /// conversion back into the owned [`PathBuf`].
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, XDRSize)]
 pub struct Path(PathBuf);
 
 impl Path {
@@ -94,7 +94,7 @@ impl Path {
 }
 
 /// Type of file.
-#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
+#[derive(Clone, Copy, FromPrimitive, ToPrimitive, XDRSize)]
 pub enum Type {
     /// Regular file.
     Regular = 1,
@@ -113,7 +113,7 @@ pub enum Type {
 }
 
 /// File attributes, also known as `fattr3` in RFC
-#[derive(Clone)]
+#[derive(Clone, XDRSize)]
 pub struct Attr {
     /// Type of the file, see [`Type`].
     pub file_type: Type,
@@ -155,7 +155,7 @@ pub struct Attr {
 /// times except in the case of a [`super::set_attr`] operation where the client can
 /// explicitly set the file time.
 #[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, XDRSize)]
 pub struct Time {
     pub seconds: u32,
     pub nanos: u32,
@@ -164,7 +164,7 @@ pub struct Time {
 /// Major and minor device pair.
 ///
 /// Used only for [`Type::BlockDevice`] and [`Type::CharacterDevice`] file types.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, XDRSize)]
 pub struct Device {
     pub major: u32,
     pub minor: u32,
@@ -172,7 +172,7 @@ pub struct Device {
 
 /// Weak cache consistency attributes.
 #[cfg_attr(test, derive(PartialEq))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, XDRSize)]
 pub struct WccAttr {
     /// The file size in bytes of the object before the operation.
     pub size: u64,

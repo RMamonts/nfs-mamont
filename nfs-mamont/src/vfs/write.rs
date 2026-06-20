@@ -1,10 +1,10 @@
 //! Defines NFSv3 [`Write`] interface.
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use super::file;
 
@@ -18,7 +18,7 @@ use super::file;
 /// `data` and the metadata to stable storage, including all or none, before returning a reply
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
 /// committed to stable storage.
-#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug, XDRSize)]
 pub enum StableHow {
     Unstable = 0,
     DataSync = 1,
@@ -26,9 +26,11 @@ pub enum StableHow {
 }
 
 /// Opaque byte array of [`NFS3_WRITEVERFSIZE`] used in [`Success`]
+#[derive(XDRSize)]
 pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
@@ -41,6 +43,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

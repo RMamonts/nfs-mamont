@@ -1,9 +1,12 @@
 //! Defines NFSv3 [`Commit`] interface.
+use nfs_mamont_derive::XDRSize;
+
 use crate::vfs;
 
 use super::file;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
@@ -14,6 +17,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

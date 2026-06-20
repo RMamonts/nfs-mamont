@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
 
@@ -39,11 +40,13 @@ pub struct Args {
 }
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     pub wcc_data: vfs::WccData,
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

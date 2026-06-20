@@ -1,11 +1,13 @@
 //! Defines NFSv3 [`ReadDirPlus`] interface.
 
-use crate::vfs;
-use crate::vfs::read_dir::Cookie;
-use crate::vfs::read_dir::CookieVerifier;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
+use crate::vfs::read_dir::Cookie;
+use crate::vfs::read_dir::CookieVerifier;
+use crate::{vfs, xdr};
 
+#[derive(XDRSize)]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -35,7 +37,20 @@ pub struct Success {
     pub eof: bool,
 }
 
+impl xdr::XDRSize for Success {
+    fn xdr_size(&self) -> usize {
+        let entries_len =
+            self.entries.iter().map(|entry| entry.xdr_size() + Self::INTEGER).sum::<usize>()
+                + Self::INTEGER;
+        self.dir_attr.xdr_size()
+            + self.cookie_verifier.xdr_size()
+            + entries_len
+            + self.eof.xdr_size()
+    }
+}
+
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
