@@ -1,10 +1,12 @@
 //! Defines NFSv3 [`ReadLink`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,
@@ -13,6 +15,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// The post-operation attributes for the symbolic link.
     pub symlink_attr: Option<file::Attr>,

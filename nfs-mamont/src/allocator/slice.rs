@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use crate::xdr;
+
 use super::Buffer;
 
 /// Represents bounded by custome range list of buffers.
@@ -241,6 +243,12 @@ impl Buffer for Slice {
 
     fn empty() -> Self {
         Self::empty()
+    }
+}
+
+impl xdr::XDRSize for Slice {
+    fn xdr_size(&self) -> usize {
+        Self::INTEGER + ((self.len() + (Self::ALIGNMENT - 1)) & !(Self::ALIGNMENT - 1))
     }
 }
 

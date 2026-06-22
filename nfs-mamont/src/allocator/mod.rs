@@ -15,6 +15,8 @@ use std::sync::Arc;
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+use crate::xdr;
+
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
 
@@ -40,7 +42,7 @@ impl Drop for AllocatorState {
 /// Abstract buffer type returned by [`Allocator`].
 ///
 /// Implementations provide chunked read/write access to the allocated memory.
-pub trait Buffer: Send + Sync {
+pub trait Buffer: Send + Sync + xdr::XDRSize {
     /// Returns an iterator over read-only byte chunks of this buffer.
     fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_;
 

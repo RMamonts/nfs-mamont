@@ -13,11 +13,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
-use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
-
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{NfsRes, STATUS_OK};
+use crate::rpc::{AcceptStat, Error, RejectedReply, ReplyBody, RpcBody};
 
 use super::mount::mnt;
 use super::nfs::{
@@ -27,6 +23,10 @@ use super::nfs::{
 };
 use super::nlm;
 use super::rpc::auth;
+use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::task::{ProcResult, RPCReply};
+use crate::vfs::{NfsRes, STATUS_OK};
+use crate::xdr::XDRSize;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
@@ -40,10 +40,6 @@ const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
 /// Header mask of RMS
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_MASK: usize = 0x8000_0000;
-
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -219,25 +215,21 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         }
     }
 
-    /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.
+    /// Serializes [`RPCReply`] into a complete XDR RPC reply and writes it to the underlying writer.
     ///
     /// ## Arguments:
-    /// *   `reply` - procedure result of [`ProcReply`] type
-    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
-    ///     order to validate itself to the client
+    /// *   `reply` - procedure result of [`RPCReply`] type
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(
-        &mut self,
-        reply: ProcReply<B>,
-        verifier: OpaqueAuth,
-    ) -> io::Result<()> {
+    pub async fn form_reply(&mut self, reply: RPCReply<B>) -> io::Result<()> {
+        let fragment_size = reply.xdr_size();
+        self.buffer.append_fragment_size(fragment_size)?;
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
-        match reply.proc_result {
+        match reply.result {
             Ok(proc) => {
                 u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                auth(&mut self.buffer, verifier)?;
+                auth(&mut self.buffer, reply.verifier)?;
                 u32(&mut self.buffer, AcceptStat::Success as u32)?;
                 self.process_result(proc).await
             }
@@ -250,7 +242,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     | Error::MaxElemLimit
                     | Error::IncorrectString(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
                         self.buffer.send_inner_buffer().await
@@ -270,19 +262,19 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
                         u32(&mut self.buffer, info.high)?;
@@ -290,7 +282,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
-                        auth(&mut self.buffer, verifier)?;
+                        auth(&mut self.buffer, reply.verifier)?;
                         u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
                         self.buffer.send_inner_buffer().await
                     }
@@ -335,9 +327,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     /// Resets the internal write cursor to the start of the buffer.
     fn clean(&mut self) {
         self.buf.clear();
-        // reserve first 4 bytes to write header by RMS
-        // https://datatracker.ietf.org/doc/html/rfc5531#autoid-19
-        self.buf.extend_from_slice(&[0, 0, 0, 0]);
     }
 
     fn append_fragment_size(&mut self, size: usize) -> io::Result<()> {
@@ -349,16 +338,13 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
                 "Fragmented messages not supported",
             ));
         }
-        // there is no need for check, since we initialize vector in new()
-        // and we append 4 bytes after clean()
-        // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
-        self.buf[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
-        Ok(())
+
+        let head = HEADER_MASK | size;
+        usize_as_u32(self, head)
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
@@ -377,7 +363,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         u32(&mut self.buf, count as u32)?;
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
         self.socket.write_all(&self.buf).await?;
 
         // later change to explicit cursor (when one implemented)

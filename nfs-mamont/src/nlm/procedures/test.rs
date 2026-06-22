@@ -2,11 +2,13 @@
 //!
 //! Defines argument and result structures for the `NLMPROC4_TEST`
 //! operation as specified in RFC 1813.
+use nfs_mamont_derive::XDRSize;
 
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::xdr;
 
 /// NLM TEST arguments.
 ///
@@ -23,6 +25,7 @@ pub struct Nlm4TestArgs {
 /// NLM TEST result.
 ///
 /// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
+#[derive(XDRSize)]
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
@@ -38,6 +41,16 @@ pub struct Nlm4TestReply {
     pub stat: Nlm4Stats,
     /// Present only when stat is Denied — info about current lock holder.
     pub holder: Option<Nlm4Holder>,
+}
+
+impl xdr::XDRSize for Nlm4TestReply {
+    fn xdr_size(&self) -> usize {
+        if let Some(ref x) = self.holder {
+            x.xdr_size() + self.stat.xdr_size()
+        } else {
+            self.stat.xdr_size()
+        }
+    }
 }
 
 /// Trait for handling NLMv4 `TEST` procedure calls.

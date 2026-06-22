@@ -1,10 +1,12 @@
 //! Defines NFSv3 [`Symlink`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The file handle for the newly created symbolic link.
     pub file: Option<file::Handle>,
@@ -15,6 +17,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

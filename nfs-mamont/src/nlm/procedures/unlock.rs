@@ -3,6 +3,8 @@
 //! Defines argument and result structures for the `NLMPROC4_UNLOCK`
 //! operation as specified in RFC 1813.
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -18,6 +20,7 @@ pub struct Nlm4UnlockArgs {
 /// NLM UNLOCK result.
 ///
 /// Returned by [`NLMPROC4_UNLOCK`](crate::consts::nlm::NLMPROC4_UNLOCK) procedure.
+#[derive(XDRSize)]
 pub struct Nlm4UnlockRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

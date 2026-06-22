@@ -6,7 +6,7 @@ use tracing::error;
 use crate::allocator::Buffer;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::ProcReply;
+use crate::task::{ProcReply, RPCReply};
 
 /// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
@@ -46,7 +46,9 @@ impl<B: Buffer> WriteTask<B> {
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-            match serializer.form_reply(reply, verifier).await {
+            let msg = RPCReply { xid: reply.xid, verifier, result: reply.proc_result };
+
+            match serializer.form_reply(msg).await {
                 Ok(_) => {
                     // Reply successfully written to socket
                 }

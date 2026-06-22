@@ -1,10 +1,12 @@
 //! Defines NFSv3 [`FsStat`] interface.
 
 use crate::vfs;
+use nfs_mamont_derive::XDRSize;
 
 use super::file;
 
 /// Success result.
+#[derive(XDRSize)]
 pub struct Success {
     /// The attributes of the mount point.
     pub root_attr: Option<file::Attr>,
@@ -35,6 +37,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[derive(XDRSize)]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

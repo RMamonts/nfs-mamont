@@ -1,6 +1,7 @@
 use std::io;
 use std::string::FromUtf8Error;
 
+use nfs_mamont_derive::XDRSize;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 pub const RPC_VERSION: u32 = 2;
@@ -48,7 +49,7 @@ pub enum ReplyBody {
 }
 
 /// Authentication flavors.
-#[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Clone, ToPrimitive, FromPrimitive, XDRSize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum AuthFlavor {
     None = 0,
@@ -58,7 +59,7 @@ pub enum AuthFlavor {
     RpcSecGss = 6,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, XDRSize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,

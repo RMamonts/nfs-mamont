@@ -10,15 +10,16 @@ pub mod share;
 
 use std::io;
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
+use crate::xdr;
+use nfs_mamont_derive::XDRSize;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 /// `Nlm4Stats` indicates the success or failure of a call.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive, XDRSize)]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
     Granted = 0,
@@ -64,8 +65,20 @@ pub enum NlmRes {
     Cancel(Nlm4CancelRes),
 }
 
+impl xdr::XDRSize for NlmRes {
+    fn xdr_size(&self) -> usize {
+        match self {
+            NlmRes::Null => 0,
+            NlmRes::Lock(res) => res.xdr_size(),
+            NlmRes::Unlock(res) => res.xdr_size(),
+            NlmRes::Test(res) => res.xdr_size(),
+            NlmRes::Cancel(res) => res.xdr_size(),
+        }
+    }
+}
+
 /// The unique identifier of the lock owner.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, XDRSize)]
 pub struct OpaqueHandle(Vec<u8>);
 
 impl OpaqueHandle {

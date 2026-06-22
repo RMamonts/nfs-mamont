@@ -8,11 +8,13 @@ pub mod umntall;
 
 use std::io;
 
+use nfs_mamont_derive::XDRSize;
+
 use crate::consts::mount::MOUNT_HOST_NAME_LEN;
 use crate::vfs::file;
-
+use crate::xdr;
 /// Client host name.
-#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq, XDRSize)]
 pub struct HostName(String);
 
 impl HostName {
@@ -30,7 +32,7 @@ impl HostName {
 
 /// Entry of the list maintained on the server of clients
 /// that have requested file handles with the MNT procedure.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, XDRSize)]
 pub struct MountEntry {
     /// Name of the client host that is sending RPC.
     pub hostname: HostName,
@@ -49,6 +51,14 @@ pub struct ExportEntry {
     pub names: Vec<HostName>,
 }
 
+impl xdr::XDRSize for ExportEntry {
+    fn xdr_size(&self) -> usize {
+        self.directory.xdr_size()
+            + Self::INTEGER
+            + self.names.iter().map(|name| name.xdr_size() + Self::INTEGER).sum::<usize>()
+    }
+}
+
 /// Wrapper for mount procedure result bodies.
 pub enum MountRes {
     Null,
@@ -57,6 +67,22 @@ pub enum MountRes {
     Export(export::Success),
     Dump(dump::Success),
     UnmountAll,
+}
+
+impl xdr::XDRSize for MountRes {
+    fn xdr_size(&self) -> usize {
+        match self {
+            MountRes::Null => 0,
+            MountRes::Mount(res) => match res {
+                Ok(x) => x.xdr_size() + Self::INTEGER,
+                Err(err) => err.xdr_size(),
+            },
+            MountRes::Unmount => 0,
+            MountRes::Dump(res) => res.xdr_size(),
+            MountRes::UnmountAll => 0,
+            MountRes::Export(res) => res.xdr_size(),
+        }
+    }
 }
 
 #[allow(dead_code)]
