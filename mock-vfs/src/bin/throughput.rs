@@ -274,8 +274,8 @@ async fn worker(
 async fn start_local_server() -> std::net::SocketAddr {
     let config = MockVfsConfig::default();
     let backend = Arc::new(MockVfs::new(config));
-    let buf_size = NonZeroUsize::new(1048576).unwrap();
-    let buf_count = NonZeroUsize::new(64).unwrap();
+    let buf_size = NonZeroUsize::new(65536).unwrap();
+    let buf_count = NonZeroUsize::new(1024).unwrap();
     let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
     let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
     let pool_size = NonZeroUsize::new(4).unwrap();
