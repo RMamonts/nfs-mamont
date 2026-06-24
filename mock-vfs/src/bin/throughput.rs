@@ -11,6 +11,7 @@ use nfs_mamont::{handle_forever, Impl, ServerContext};
 
 use mock_vfs::config::MockVfsConfig;
 use mock_vfs::mock::{MockMount, MockVfs};
+use mock_vfs::xdr::{build_rpc_frame, push_opaque, push_u32, push_u64};
 
 // ── Arg parsing ─────────────────────────────────────────────────────────
 
@@ -124,56 +125,9 @@ fn parse_size(s: &str) -> usize {
     num.parse::<usize>().unwrap_or_else(|_| panic!("Invalid block size: {s}")) * mult
 }
 
-// ── XDR helpers ─────────────────────────────────────────────────────────
+// ── Request builders ───────────────────────────────────────────────────
 
-fn push_u32(buf: &mut Vec<u8>, v: u32) {
-    buf.extend_from_slice(&v.to_be_bytes());
-}
-
-fn push_u64(buf: &mut Vec<u8>, v: u64) {
-    buf.extend_from_slice(&v.to_be_bytes());
-}
-
-fn pad(buf: &mut Vec<u8>, n: usize) {
-    let p = (4 - (n & 3)) & 3;
-    buf.extend(std::iter::repeat_n(0u8, p));
-}
-
-fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
-    push_u32(buf, bytes.len() as u32);
-    buf.extend_from_slice(bytes);
-    pad(buf, bytes.len());
-}
-
-// ── RPC frame builders ─────────────────────────────────────────────────
-
-const FRAG_LAST: u32 = 0x8000_0000;
 const XID_BASE: u32 = 1000;
-const MSG_CALL: u32 = 0;
-const RPC_VERS: u32 = 2;
-const NFS_PROG: u32 = 100003;
-const NFS_VERS: u32 = 3;
-const AUTH_NONE: u32 = 0;
-
-fn build_rpc_frame(proc: u32, xid: u32, args: &[u8]) -> Vec<u8> {
-    let mut body = Vec::new();
-    push_u32(&mut body, xid);
-    push_u32(&mut body, MSG_CALL);
-    push_u32(&mut body, RPC_VERS);
-    push_u32(&mut body, NFS_PROG);
-    push_u32(&mut body, NFS_VERS);
-    push_u32(&mut body, proc);
-    push_u32(&mut body, AUTH_NONE);
-    push_u32(&mut body, 0);
-    push_u32(&mut body, AUTH_NONE);
-    push_u32(&mut body, 0);
-    body.extend_from_slice(args);
-
-    let mut frame = Vec::with_capacity(body.len() + 4);
-    push_u32(&mut frame, FRAG_LAST | (body.len() as u32));
-    frame.extend_from_slice(&body);
-    frame
-}
 
 fn build_read_req(fh: &[u8; 8], offset: u64, count: u32, xid: u32) -> Vec<u8> {
     let mut a = Vec::new();
@@ -195,19 +149,14 @@ fn build_write_req(fh: &[u8; 8], offset: u64, data: &[u8], xid: u32) -> Vec<u8> 
 
 // ── Response reader ─────────────────────────────────────────────────────
 
-async fn read_response(stream: &mut TcpStream) {
+async fn read_response(stream: &mut TcpStream, buf: &mut Vec<u8>) {
     let mut header = [0u8; 4];
     stream.read_exact(&mut header).await.unwrap();
     let frag = u32::from_be_bytes(header);
     let len = (frag & 0x7FFF_FFFF) as usize;
 
-    let mut buf = vec![0u8; len.min(1048576)];
-    let mut remaining = len;
-    while remaining > 0 {
-        let n = buf.len().min(remaining);
-        stream.read_exact(&mut buf[..n]).await.unwrap();
-        remaining -= n;
-    }
+    buf.resize(len, 0);
+    stream.read_exact(buf).await.unwrap();
 }
 
 // ── Worker task ─────────────────────────────────────────────────────────
@@ -227,7 +176,9 @@ async fn worker(
     stats: Arc<ThreadStats>,
 ) {
     let mut stream = TcpStream::connect(addr).await.unwrap();
-    stream.set_nodelay(true).unwrap();
+    if let Err(e) = stream.set_nodelay(true) {
+        eprintln!("[debug] set_nodelay failed on conn {conn_id}: {e}");
+    }
 
     let fh: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
     let write_buf = if cfg.mode == Mode::Write || cfg.mode == Mode::Randrw {
@@ -241,6 +192,7 @@ async fn worker(
     let max_offset = 1024u64 * 1024 * 1024;
 
     let mut xid = XID_BASE + conn_id * 10000;
+    let mut resp_buf = Vec::with_capacity(1024);
 
     while !*stop.borrow() {
         let is_read = match cfg.mode {
@@ -255,14 +207,14 @@ async fn worker(
         if is_read {
             let req = build_read_req(&fh, offset, block_size_u32, xid);
             stream.write_all(&req).await.unwrap();
-            read_response(&mut stream).await;
+            read_response(&mut stream, &mut resp_buf).await;
             stats.read_ops.fetch_add(1, Ordering::Relaxed);
             stats.read_bytes.fetch_add(cfg.block_size as u64, Ordering::Relaxed);
         } else {
             let data = write_buf.as_deref().unwrap();
             let req = build_write_req(&fh, offset, data, xid);
             stream.write_all(&req).await.unwrap();
-            read_response(&mut stream).await;
+            read_response(&mut stream, &mut resp_buf).await;
             stats.write_ops.fetch_add(1, Ordering::Relaxed);
             stats.write_bytes.fetch_add(cfg.block_size as u64, Ordering::Relaxed);
         }
@@ -289,8 +241,13 @@ async fn start_local_server() -> std::net::SocketAddr {
         handle_forever(listener, context, mount_service).await.unwrap();
     });
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    addr
+    for _ in 0..100 {
+        if TcpStream::connect(addr).await.is_ok() {
+            return addr;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("Local server did not become ready within 1s");
 }
 
 // ── Main ────────────────────────────────────────────────────────────────

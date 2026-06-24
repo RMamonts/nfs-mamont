@@ -10,57 +10,9 @@ use nfs_mamont::{handle_forever, Impl, ServerContext};
 
 use mock_vfs::config::MockVfsConfig;
 use mock_vfs::mock::{MockMount, MockVfs};
+use mock_vfs::xdr::{build_rpc_frame, pad, push_opaque, push_u32, push_u64};
 
-// ── XDR helpers ────────────────────────────────────────────────────────
-
-fn push_u32(buf: &mut Vec<u8>, v: u32) {
-    buf.extend_from_slice(&v.to_be_bytes());
-}
-
-fn push_u64(buf: &mut Vec<u8>, v: u64) {
-    buf.extend_from_slice(&v.to_be_bytes());
-}
-
-fn pad(buf: &mut Vec<u8>, n: usize) {
-    let p = (4 - (n & 3)) & 3;
-    buf.extend(std::iter::repeat_n(0u8, p));
-}
-
-fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
-    push_u32(buf, bytes.len() as u32);
-    buf.extend_from_slice(bytes);
-    pad(buf, bytes.len());
-}
-
-// ── RPC frame builders ─────────────────────────────────────────────────
-
-const FRAG_LAST: u32 = 0x8000_0000;
 const XID: u32 = 42;
-const MSG_CALL: u32 = 0;
-const RPC_VERS: u32 = 2;
-const NFS_PROG: u32 = 100003;
-const NFS_VERS: u32 = 3;
-const AUTH_NONE: u32 = 0;
-
-fn build_rpc_frame(proc: u32, args: &[u8]) -> Vec<u8> {
-    let mut body = Vec::new();
-    push_u32(&mut body, XID);
-    push_u32(&mut body, MSG_CALL);
-    push_u32(&mut body, RPC_VERS);
-    push_u32(&mut body, NFS_PROG);
-    push_u32(&mut body, NFS_VERS);
-    push_u32(&mut body, proc);
-    push_u32(&mut body, AUTH_NONE);
-    push_u32(&mut body, 0);
-    push_u32(&mut body, AUTH_NONE);
-    push_u32(&mut body, 0);
-    body.extend_from_slice(args);
-
-    let mut frame = Vec::with_capacity(body.len() + 4);
-    push_u32(&mut frame, FRAG_LAST | (body.len() as u32));
-    frame.extend_from_slice(&body);
-    frame
-}
 
 // ── Request builders ───────────────────────────────────────────────────
 
@@ -69,7 +21,7 @@ const HANDLE: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
 fn getattr_req() -> Vec<u8> {
     let mut a = Vec::new();
     push_opaque(&mut a, &HANDLE);
-    build_rpc_frame(1, &a)
+    build_rpc_frame(1, XID, &a)
 }
 
 fn read_req(count: u32) -> Vec<u8> {
@@ -77,7 +29,7 @@ fn read_req(count: u32) -> Vec<u8> {
     push_opaque(&mut a, &HANDLE);
     push_u64(&mut a, 0);
     push_u32(&mut a, count);
-    build_rpc_frame(6, &a)
+    build_rpc_frame(6, XID, &a)
 }
 
 fn write_req(data: &[u8]) -> Vec<u8> {
@@ -87,7 +39,7 @@ fn write_req(data: &[u8]) -> Vec<u8> {
     push_u32(&mut a, data.len() as u32);
     push_u32(&mut a, 2);
     push_opaque(&mut a, data);
-    build_rpc_frame(7, &a)
+    build_rpc_frame(7, XID, &a)
 }
 
 fn lookup_req() -> Vec<u8> {
@@ -96,7 +48,7 @@ fn lookup_req() -> Vec<u8> {
     push_u32(&mut a, 4);
     a.extend_from_slice(b"file");
     pad(&mut a, 4);
-    build_rpc_frame(3, &a)
+    build_rpc_frame(3, XID, &a)
 }
 
 fn readdir_req() -> Vec<u8> {
@@ -105,7 +57,7 @@ fn readdir_req() -> Vec<u8> {
     push_u64(&mut a, 0);
     push_u64(&mut a, 0);
     push_u32(&mut a, 8192);
-    build_rpc_frame(16, &a)
+    build_rpc_frame(16, XID, &a)
 }
 
 fn commit_req() -> Vec<u8> {
@@ -113,7 +65,7 @@ fn commit_req() -> Vec<u8> {
     push_opaque(&mut a, &HANDLE);
     push_u64(&mut a, 0);
     push_u32(&mut a, 0);
-    build_rpc_frame(21, &a)
+    build_rpc_frame(21, XID, &a)
 }
 
 // ── Response reader ────────────────────────────────────────────────────
@@ -183,7 +135,12 @@ fn bench_nfs_pipeline(c: &mut Criterion) {
             handle_forever(listener, context, mount_service).await.unwrap();
         });
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        for _ in 0..100 {
+            if rt.block_on(TcpStream::connect(addr)).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         addr
     };
 
