@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -22,6 +22,7 @@ struct Config {
     connections: u32,
     duration_s: f64,
     rwmixread: u8,
+    endless: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -40,6 +41,7 @@ fn parse_args() -> Config {
         connections: 4,
         duration_s: 5.0,
         rwmixread: 50,
+        endless: false,
     };
 
     while let Some(arg) = args.next() {
@@ -80,6 +82,9 @@ fn parse_args() -> Config {
                     .parse()
                     .expect("--rwmixread must be 0..100");
             }
+            "--endless" => {
+                cfg.endless = true;
+            }
             "--help" | "-h" => {
                 eprintln!(
                     "\
@@ -92,6 +97,7 @@ Options:
   --connections <n>     Number of concurrent connections (default: 4)
   --duration <secs>     Test duration in seconds (default: 5.0)
   --rwmixread <percent> Read percentage for randrw mode (default: 50)
+  --endless             Run until Ctrl+C (ignore --duration)
   --help, -h            Show this help and exit
 "
                 );
@@ -157,6 +163,58 @@ async fn read_response(stream: &mut TcpStream, buf: &mut Vec<u8>) {
 
     buf.resize(len, 0);
     stream.read_exact(buf).await.unwrap();
+}
+
+// ── Live stats reporter ─────────────────────────────────────────────────
+
+struct StatsSnapshot {
+    read_ops: u64,
+    read_bytes: u64,
+    write_ops: u64,
+    write_bytes: u64,
+}
+
+impl StatsSnapshot {
+    fn from_atomics(s: &ThreadStats) -> Self {
+        Self {
+            read_ops: s.read_ops.load(Ordering::Relaxed),
+            read_bytes: s.read_bytes.load(Ordering::Relaxed),
+            write_ops: s.write_ops.load(Ordering::Relaxed),
+            write_bytes: s.write_bytes.load(Ordering::Relaxed),
+        }
+    }
+}
+
+async fn print_stats(stats: Arc<ThreadStats>, mut stop: watch::Receiver<bool>) {
+    let start = Instant::now();
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.tick().await; // skip first immediate tick
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = stop.wait_for(|v| *v) => break,
+        }
+
+        let cur = StatsSnapshot::from_atomics(&stats);
+        let elapsed = start.elapsed().as_secs_f64();
+
+        let total_ops = cur.read_ops + cur.write_ops;
+        let total_bytes = cur.read_bytes + cur.write_bytes;
+        let mb_s = total_bytes as f64 / elapsed / 1_000_000.0;
+
+        eprint!(
+            "\r[{:>4}s] read: {:>7} ops {:>8.1} MB/s | write: {:>7} ops {:>8.1} MB/s | total: {:>7} ops {:>8.1} MB/s  ",
+            elapsed as u64,
+            cur.read_ops,
+            cur.read_bytes as f64 / elapsed / 1_000_000.0,
+            cur.write_ops,
+            cur.write_bytes as f64 / elapsed / 1_000_000.0,
+            total_ops,
+            mb_s,
+        );
+    }
+    eprintln!();
 }
 
 // ── Worker task ─────────────────────────────────────────────────────────
@@ -266,11 +324,11 @@ async fn main() {
     };
 
     eprintln!(
-        "Mode: {:?}, block: {}, connections: {}, duration: {}s",
+        "Mode: {:?}, block: {}, connections: {}, {}",
         cfg.mode,
         format_size(cfg.block_size),
         cfg.connections,
-        cfg.duration_s,
+        if cfg.endless { "endless".to_string() } else { format!("duration: {}s", cfg.duration_s) },
     );
 
     let stats = Arc::new(ThreadStats {
@@ -291,12 +349,23 @@ async fn main() {
         handles.push(tokio::spawn(worker(i, addr, cfg, stop_rx, stats)));
     }
 
-    tokio::time::sleep(Duration::from_secs_f64(cfg.duration_s)).await;
+    let reporter_stop = stop_rx.clone();
+    let reporter_stats = Arc::clone(&stats);
+    let reporter = tokio::spawn(print_stats(reporter_stats, reporter_stop));
+
+    let start = Instant::now();
+    if cfg.endless {
+        eprintln!("Running until Ctrl+C...");
+        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    } else {
+        tokio::time::sleep(Duration::from_secs_f64(cfg.duration_s)).await;
+    }
     stop_tx.send(true).unwrap();
 
     for h in handles {
         h.await.unwrap();
     }
+    reporter.await.unwrap();
 
     let read_ops = stats.read_ops.load(Ordering::Relaxed);
     let read_bytes = stats.read_bytes.load(Ordering::Relaxed);
@@ -305,7 +374,7 @@ async fn main() {
 
     let total_ops = read_ops + write_ops;
     let total_bytes = read_bytes + write_bytes;
-    let dur = cfg.duration_s;
+    let dur = start.elapsed().as_secs_f64();
     let mb_per_s = total_bytes as f64 / dur / 1_000_000.0;
     let ops_per_s = total_ops as f64 / dur;
 
@@ -314,7 +383,7 @@ async fn main() {
     println!("Mode:        {:?}", cfg.mode);
     println!("Block size:  {}", cfg.block_size);
     println!("Connections: {}", cfg.connections);
-    println!("Duration:    {dur}s");
+    println!("Duration:    {dur:.1}s");
     println!();
 
     if read_ops > 0 {
@@ -333,7 +402,7 @@ async fn main() {
     }
     println!();
     println!(
-        "Total: {} in {dur}s = {:.1} MB/s, {:.0} ops/s",
+        "Total: {} in {dur:.1}s = {:.1} MB/s, {:.0} ops/s",
         format_size(total_bytes as usize),
         mb_per_s,
         ops_per_s,
