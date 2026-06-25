@@ -394,7 +394,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
             let mut to_skip = written;
             let mut iov: Vec<IoSlice<'_>> = Vec::new();
 
-            // skip fully-written chunks, partial-write starts at the correct offset
             for chunk in &chunks {
                 if to_skip == 0 {
                     iov.push(IoSlice::new(chunk));
@@ -406,7 +405,6 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
                 }
             }
 
-            // append padding (or its remainder after partial write)
             if to_skip < padding {
                 iov.push(IoSlice::new(&padding_bytes[to_skip..padding]));
             }
