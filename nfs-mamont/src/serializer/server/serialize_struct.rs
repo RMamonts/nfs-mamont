@@ -390,9 +390,11 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         let mut written: usize = 0;
         let total_payload: usize = chunks.iter().map(|c| c.len()).sum::<usize>() + padding;
 
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(chunks.len() + 1);
+
         while written < total_payload {
+            iov.clear();
             let mut to_skip = written;
-            let mut iov: Vec<IoSlice<'_>> = Vec::new();
 
             for chunk in &chunks {
                 if to_skip == 0 {
