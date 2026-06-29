@@ -384,19 +384,18 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
 
         self.socket.write_all(&self.buf).await?;
 
-        let chunks: Vec<&[u8]> = buffer.chunks().collect();
         let padding_bytes = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total_payload: usize = chunks.iter().map(|c| c.len()).sum::<usize>() + padding;
+        let total_payload: usize = buffer.len() + padding;
 
-        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(chunks.len() + 1);
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 1);
 
         while written < total_payload {
             iov.clear();
             let mut to_skip = written;
 
-            for chunk in &chunks {
+            for chunk in buffer.chunks() {
                 if to_skip == 0 {
                     iov.push(IoSlice::new(chunk));
                 } else if to_skip < chunk.len() {
