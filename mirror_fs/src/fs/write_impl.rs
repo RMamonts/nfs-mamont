@@ -37,7 +37,19 @@ impl<B: Buffer> write::Write<B> for MirrorFS {
             }
         };
 
-        let data: Vec<IoSlice<'_>> = args.data.chunks().map(IoSlice::new).collect();
+        let mut remaining = args.size as usize;
+        let data: Vec<IoSlice<'_>> = args
+            .data
+            .chunks()
+            .filter_map(|chunk| {
+                if remaining == 0 {
+                    return None;
+                }
+                let take = chunk.len().min(remaining);
+                remaining -= take;
+                Some(IoSlice::new(&chunk[..take]))
+            })
+            .collect();
         if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
