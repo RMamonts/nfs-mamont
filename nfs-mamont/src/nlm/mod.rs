@@ -1,0 +1,123 @@
+//! Defines NLMv4 Network Lock Manager interface.
+//!
+//! This module contains types and structures for NLMv4 as defined in RFC 1813.
+
+pub mod cookie;
+pub mod holder;
+pub mod lock;
+pub mod procedures;
+pub mod share;
+
+use std::io;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::nlm::procedures::{
+    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
+};
+
+/// `Nlm4Stats` indicates the success or failure of a call.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+pub enum Nlm4Stats {
+    /// The call was successfully completed, and the lock was set.
+    Granted = 0,
+    /// For attempts to set a lock.
+    /// If the client retries the call later, it may succeed.
+    Denied = 1,
+    /// The call failed because the server could not allocate the necessary resources.
+    DeniedNolocks = 2,
+    /// The request is queued.
+    /// The server will issue an [`NLMPROC4_GRANTED`](crate::consts::nlm::NLMPROC4_GRANTED) callback
+    /// to the client when the lock is granted.
+    Blocked = 3,
+    /// The call failed because the server is reestablishing old
+    /// locks after a reboot and is not yet ready to resume normal service.
+    DeniedGracePeriod = 4,
+    /// The request could not be granted and blocking would cause a deadlock.
+    Deadlock = 5,
+    /// The call failed because the remote file system is read-only.
+    Rofs = 6,
+    /// The call failed because it uses an invalid file handle.
+    /// This can happen if the file has been removed
+    /// or if access to the file has been revoked on the server.
+    StaleFh = 7,
+    /// The call failed because it specified a length or offset
+    /// that exceeds the range supported by the server.
+    Fbig = 8,
+    /// The call failed for some reason not already listed.
+    /// The client should take this status as a strong hint not to retry the request.
+    Failed = 9,
+}
+
+/// Wrapper for all supported NLMv4 procedure result types.
+pub enum NlmRes {
+    /// NLM NULL procedure — no data.
+    Null,
+    /// NLM LOCK procedure response.
+    Lock(Nlm4LockRes),
+    /// NLM UNLOCK procedure response.
+    Unlock(Nlm4UnlockRes),
+    /// NLM TEST procedure response.
+    Test(Box<Nlm4TestRes>),
+    /// NLM CANCEL procedure response.
+    Cancel(Nlm4CancelRes),
+}
+
+/// The unique identifier of the lock owner.
+#[derive(Clone, PartialEq)]
+pub struct OpaqueHandle(Vec<u8>);
+
+impl OpaqueHandle {
+    /// Creates a new opaque lock owner identifier.
+    #[inline]
+    pub fn new(oh: Vec<u8>) -> io::Result<Self> {
+        if oh.len() > OPAQUE_HANDLE_SIZE {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
+        }
+        Ok(OpaqueHandle(oh))
+    }
+
+    /// Returns the underlying bytes of the opaque handle.
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// Composite trait for the complete NLM v4 service.
+///
+/// A type implementing [`Nlm`] must provide all four lock-management
+/// operations defined by the NLM v4 protocol:
+/// - [`Lock`](procedures::lock::Lock) — acquire a lock
+/// - [`Unlock`](procedures::unlock::Unlock) — release a lock
+/// - [`Test`](procedures::test::Test) — test whether a lock could be granted
+/// - [`Cancel`](procedures::cancel::Cancel) — cancel a pending lock request
+pub trait Nlm:
+    procedures::lock::Lock
+    + procedures::unlock::Unlock
+    + procedures::test::Test
+    + procedures::cancel::Cancel
+{
+}
+
+impl<T> Nlm for T where
+    T: procedures::lock::Lock
+        + procedures::unlock::Unlock
+        + procedures::test::Test
+        + procedures::cancel::Cancel
+{
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpaqueHandle, OPAQUE_HANDLE_SIZE};
+
+    #[test]
+    fn opaque_handle_bytes() {
+        let bytes = [0x01; OPAQUE_HANDLE_SIZE].to_vec();
+        let verifier = bytes.clone();
+        let oh = OpaqueHandle::new(bytes).unwrap();
+        assert_eq!(oh.as_bytes(), verifier.as_slice());
+    }
+}

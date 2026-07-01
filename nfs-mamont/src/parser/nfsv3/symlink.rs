@@ -1,0 +1,72 @@
+//! Implements parsing for [`symlink::Args`] structure.
+
+use std::io::Read;
+
+use crate::parser::nfsv3::file;
+use crate::parser::nfsv3::file::{file_name, file_path};
+use crate::parser::nfsv3::set_attr::new_attr;
+use crate::parser::Result;
+use crate::vfs::symlink;
+
+/// Parses the arguments for an NFSv3 `SYMLINK` operation from the provided `Read` source.
+pub fn args(src: &mut impl Read) -> Result<symlink::Args> {
+    Ok(symlink::Args {
+        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        attr: new_attr(src)?,
+        path: file_path(src)?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::vfs::set_attr;
+
+    #[test]
+    fn test_symlink() {
+        #[rustfmt::skip]
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00, 0x04,
+            b'l', b'i', b'n', b'k', 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x01, 0xA4, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x06, b'/', b'p', b'a', b't',
+            b'h', b'/', 0x00, 0x00,
+        ];
+
+        let result = super::args(&mut Cursor::new(DATA)).unwrap();
+
+        assert_eq!(result.object.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(result.object.name.as_str(), "link");
+        assert!(matches!(
+            result.attr,
+            set_attr::NewAttr {
+                mode: Some(0o644),
+                uid: None,
+                gid: None,
+                size: None,
+                atime: set_attr::SetTime::DontChange,
+                mtime: set_attr::SetTime::DontChange,
+            }
+        ));
+        assert_eq!(result.path.as_path().as_os_str(), "/path/");
+    }
+
+    #[test]
+    fn test_symlink_unaligned_path() {
+        const DATA: &[u8] = &[
+            0x00, 0x00, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00,
+            0x00, 0x03, b'l', b'i', b'n', 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0xA4, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0xA4, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, b'/', b'p', b'a', b't', b'h',
+        ];
+
+        let result = super::args(&mut Cursor::new(DATA));
+        assert!(result.is_err());
+    }
+}
