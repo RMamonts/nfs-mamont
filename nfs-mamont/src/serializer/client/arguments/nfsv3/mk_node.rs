@@ -27,9 +27,6 @@ fn serialize_how(dest: &mut impl Write, what: What) -> Result<()> {
         What::Fifo(attr) => {
             u32(dest, Type::Fifo as u32).and_then(|_| serialize_new_attr(dest, attr))
         }
-        What::Regular => u32(dest, Type::Regular as u32),
-        What::Directory => u32(dest, Type::Directory as u32),
-        What::SymbolicLink => u32(dest, Type::Symlink as u32),
     }
 }
 
