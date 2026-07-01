@@ -175,63 +175,26 @@ async fn mk_dir_creates_directory_and_applies_mode() {
 }
 
 #[tokio::test]
-async fn mk_node_handles_supported_and_unsupported_types() {
+async fn mk_node_handles_all_types_as_unsupported() {
     let ctx = TestContext::new();
     let root = ctx.root_handle().await;
 
-    let regular = expect_ok(
-        mk_node::MkNode::mk_node(
-            &ctx.fs,
-            mk_node::Args {
-                object: dir_op(root.clone(), "node-file.txt"),
-                what: mk_node::What::Regular,
-            },
-        )
-        .await,
-        "mk_node regular should succeed",
-    );
-    assert!(regular.file.is_some());
-    assert!(matches!(regular.attr.unwrap().file_type, file::Type::Regular));
-
-    let directory = expect_ok(
-        mk_node::MkNode::mk_node(
-            &ctx.fs,
-            mk_node::Args {
-                object: dir_op(root.clone(), "node-dir"),
-                what: mk_node::What::Directory,
-            },
-        )
-        .await,
-        "mk_node directory should succeed",
-    );
-    assert!(directory.file.is_some());
-    assert!(matches!(directory.attr.unwrap().file_type, file::Type::Directory));
-
-    let bad_type = expect_err(
-        mk_node::MkNode::mk_node(
-            &ctx.fs,
-            mk_node::Args {
-                object: dir_op(root.clone(), "node-link"),
-                what: mk_node::What::SymbolicLink,
-            },
-        )
-        .await,
-        "mk_node symlink should fail with bad type",
-    );
-    assert_eq!(bad_type.error, vfs::Error::BadType);
-
-    let not_supported = expect_err(
-        mk_node::MkNode::mk_node(
-            &ctx.fs,
-            mk_node::Args {
-                object: dir_op(root, "node-socket"),
-                what: mk_node::What::Socket(default_new_attr()),
-            },
-        )
-        .await,
-        "mk_node socket should be unsupported",
-    );
-    assert_eq!(not_supported.error, vfs::Error::NotSupported);
+    for (what, name) in [
+        (mk_node::What::Char(default_new_attr(), file::Device { major: 0, minor: 0 }), "node-char"),
+        (mk_node::What::Block(default_new_attr(), file::Device { major: 0, minor: 0 }), "node-block"),
+        (mk_node::What::Socket(default_new_attr()), "node-socket"),
+        (mk_node::What::Fifo(default_new_attr()), "node-fifo"),
+    ] {
+        let err = expect_err(
+            mk_node::MkNode::mk_node(
+                &ctx.fs,
+                mk_node::Args { object: dir_op(root.clone(), name), what },
+            )
+            .await,
+            &format!("mk_node {name} should be unsupported"),
+        );
+        assert_eq!(err.error, vfs::Error::NotSupported);
+    }
 }
 
 #[tokio::test]
