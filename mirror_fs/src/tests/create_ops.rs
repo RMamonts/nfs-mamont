@@ -181,7 +181,10 @@ async fn mk_node_handles_all_types_as_unsupported() {
 
     for (what, name) in [
         (mk_node::What::Char(default_new_attr(), file::Device { major: 0, minor: 0 }), "node-char"),
-        (mk_node::What::Block(default_new_attr(), file::Device { major: 0, minor: 0 }), "node-block"),
+        (
+            mk_node::What::Block(default_new_attr(), file::Device { major: 0, minor: 0 }),
+            "node-block",
+        ),
         (mk_node::What::Socket(default_new_attr()), "node-socket"),
         (mk_node::What::Fifo(default_new_attr()), "node-fifo"),
     ] {
