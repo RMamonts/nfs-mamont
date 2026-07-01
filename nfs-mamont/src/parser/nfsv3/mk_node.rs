@@ -77,6 +77,7 @@ mod tests {
                 mtime: set_attr::SetTime::DontChange,
             })
         ));
+    }
 
     #[test]
     fn test_what_block() {
