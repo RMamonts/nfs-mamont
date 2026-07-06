@@ -40,6 +40,7 @@ pub fn cancel_res(dest: &mut impl Write, res: Nlm4CancelRes) -> io::Result<()> {
     stat(dest, res.stat)
 }
 
+#[allow(dead_code)]
 pub fn opaque_handle(dest: &mut impl Write, opaque_handle: OpaqueHandle) -> io::Result<()> {
     let vec = opaque_handle.into_inner();
     vector(dest, vec.as_slice())
