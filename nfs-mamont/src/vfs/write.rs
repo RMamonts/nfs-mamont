@@ -2,6 +2,7 @@
 #[cfg(feature = "arbitrary")]
 use arbitrary::{Arbitrary, Unstructured};
 use num_derive::{FromPrimitive, ToPrimitive};
+#[cfg(feature = "arbitrary")]
 use num_traits::ToPrimitive;
 
 use crate::allocator::Buffer;
