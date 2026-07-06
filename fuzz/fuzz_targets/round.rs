@@ -1,18 +1,14 @@
 #![no_main]
 
+use libfuzzer_sys::fuzz_target;
 use std::io::Cursor;
 
-use libfuzzer_sys::fuzz_target;
-use nfs_mamont::allocator::mock::buffer::MockBuffers;
-use nfs_mamont::parser::primitive::{u32_as_usize, ALIGNMENT};
-use nfs_mamont::parser::{
-    mount, nfsv3, nlm, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+use nfs_mamont::{
+    arguments, nfsv3, parser_mount, parser_nlm, u32_as_usize, Buffer, MockBuffers, MountArguments,
+    NfsArguments, NlmArguments, ProcArguments, ALIGNMENT, DEFAULT_SIZE, TEST_SIZE,
 };
-use nfs_mamont::serializer::client::arguments;
-use nfs_mamont::Buffer;
 
-const DEFAULT_CAPACITY: usize = nfs_mamont::parser::parser_struct::DEFAULT_SIZE
-    + nfs_mamont::allocator::mock::buffer::TEST_SIZE;
+const DEFAULT_CAPACITY: usize = DEFAULT_SIZE + TEST_SIZE;
 
 macro_rules! roundtrip {
     ($arg:expr, $write:path, $read:path) => {{
@@ -143,27 +139,27 @@ fuzz_target!(|data: ProcArguments<MockBuffers>| {
 
         ProcArguments::Mount(mnt) => match *mnt {
             MountArguments::Mount(arg) => {
-                roundtrip!(arg, arguments::mount::mnt::mount_args, mount::mnt::mount)
+                roundtrip!(arg, arguments::mount::mnt::mount_args, parser_mount::mnt::mount)
             }
 
             MountArguments::Unmount(arg) => {
-                roundtrip!(arg, arguments::mount::unmnt::unmount_args, mount::umnt::unmount)
+                roundtrip!(arg, arguments::mount::unmnt::unmount_args, parser_mount::umnt::unmount)
             }
             _ => {}
         },
 
         ProcArguments::Nlm4(nlm) => match *nlm {
             NlmArguments::Lock(arg) => {
-                roundtrip!(arg, arguments::nlm4::lock::lock_args, nlm::lock::lock)
+                roundtrip!(arg, arguments::nlm4::lock::lock_args, parser_nlm::lock::lock)
             }
             NlmArguments::Unlock(arg) => {
-                roundtrip!(arg, arguments::nlm4::unlock::unlock_args, nlm::unlock::unlock)
+                roundtrip!(arg, arguments::nlm4::unlock::unlock_args, parser_nlm::unlock::unlock)
             }
             NlmArguments::Test(arg) => {
-                roundtrip!(arg, arguments::nlm4::test::test_args, nlm::test::test)
+                roundtrip!(arg, arguments::nlm4::test::test_args, parser_nlm::test::test)
             }
             NlmArguments::Cancel(arg) => {
-                roundtrip!(arg, arguments::nlm4::cancel::cancel_args, nlm::cancel::cancel)
+                roundtrip!(arg, arguments::nlm4::cancel::cancel_args, parser_nlm::cancel::cancel)
             }
             _ => {}
         },

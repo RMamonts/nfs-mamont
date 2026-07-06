@@ -3,17 +3,17 @@
 mod parser_wrapper;
 pub mod read_socket;
 
-use std::sync::{Arc, OnceLock};
-
 use libfuzzer_sys::fuzz_target;
-use nfs_mamont::allocator::mock::alloc::MockAllocator;
-use nfs_mamont::allocator::mock::buffer::MAX_BLOCK_AMOUNT;
-use nfs_mamont::parser::parser_struct::RpcParser;
-use nfs_mamont::parser::{NfsArguments, ProcArguments};
-use nfs_mamont::rpc::{Error, RpcBody, RPC_VERSION};
-use read_socket::FuzzMockSocket;
+use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+
+use nfs_mamont::{
+    Error, MockAllocator, NfsArguments, ProcArguments, RpcBody, RpcParser, MAX_BLOCK_AMOUNT,
+    NFS_PROGRAM, NFS_VERSION, NULL, RPC_VERSION,
+};
+
+use read_socket::FuzzMockSocket;
 
 use crate::parser_wrapper::ParserWrapper;
 use crate::parser_wrapper::RpcRequest;
@@ -36,9 +36,9 @@ fn get_parser() -> &'static Mutex<ParserWrapper> {
             xid: 78,
             request: RpcBody::Call as u32,
             rpc_version: RPC_VERSION,
-            prog: nfs_mamont::consts::nfsv3::NFS_PROGRAM,
-            version: nfs_mamont::consts::nfsv3::NFS_VERSION,
-            proc: nfs_mamont::consts::nfsv3::NULL,
+            prog: NFS_PROGRAM,
+            version: NFS_VERSION,
+            proc: NULL,
             auth: 0,
             auth_verf: 0,
             args: ProcArguments::Nfs3(Box::new(NfsArguments::Null)),

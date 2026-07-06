@@ -1,15 +1,19 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
-pub mod allocator;
+#[macro_use]
+mod macros;
+
+mod allocator;
 pub mod consts;
 mod context;
+
 pub mod mount;
-pub mod nlm;
-pub mod parser;
-pub mod rpc;
-pub mod serializer;
+mod nlm;
+mod parser;
+mod rpc;
+mod serializer;
 pub mod service;
-pub mod task;
+mod task;
 pub mod vfs;
 
 use std::sync::Arc;
@@ -17,14 +21,76 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
+use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::NlmTask;
 use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
-use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use context::ServerContext;
+
+pub_use_if_feature!(
+    "arbitrary",
+    allocator::mock::alloc::MockAllocator,
+    allocator::mock::buffer::MockBuffers,
+    allocator::mock::buffer::MAX_BLOCK_AMOUNT,
+    allocator::mock::buffer::TEST_SIZE,
+    parser::parser_struct::RpcParser,
+    parser::parser_struct::DEFAULT_SIZE,
+    parser::parser_struct::RMS_HEADER_SIZE,
+    parser::MountArguments,
+    parser::NfsArguments,
+    parser::NlmArguments,
+    parser::ProcArguments,
+    parser::primitive::u32_as_usize,
+    parser::primitive::ALIGNMENT,
+    parser::ArgWrapper,
+    parser::ErrorWrapper,
+    parser::nfsv3,
+    parser::mount as parser_mount,
+    parser::nlm as parser_nlm,
+    consts::nfsv3::NFS_PROGRAM,
+    consts::nfsv3::NFS_VERSION,
+    consts::nfsv3::NULL,
+    consts::nfsv3::GETATTR,
+    consts::nfsv3::SETATTR,
+    consts::nfsv3::LOOKUP,
+    consts::nfsv3::ACCESS,
+    consts::nfsv3::READLINK,
+    consts::nfsv3::READ,
+    consts::nfsv3::WRITE,
+    consts::nfsv3::CREATE,
+    consts::nfsv3::MKDIR,
+    consts::nfsv3::SYMLINK,
+    consts::nfsv3::MKNOD,
+    consts::nfsv3::REMOVE,
+    consts::nfsv3::RMDIR,
+    consts::nfsv3::RENAME,
+    consts::nfsv3::LINK,
+    consts::nfsv3::READDIR,
+    consts::nfsv3::READDIRPLUS,
+    consts::nfsv3::FSSTAT,
+    consts::nfsv3::FSINFO,
+    consts::nfsv3::PATHCONF,
+    consts::nfsv3::COMMIT,
+    consts::mount::MOUNT_PROGRAM,
+    consts::mount::MOUNT_VERSION,
+    consts::mount::MOUNT_NULL,
+    consts::mount::MOUNT_MNT,
+    consts::mount::MOUNT_DUMP,
+    consts::mount::MOUNT_UMNT,
+    consts::mount::MOUNT_UMNTALL,
+    consts::mount::MOUNT_EXPORT,
+    serializer::client::arguments,
+    serializer::server::serialize_struct::Serializer,
+    rpc::AuthFlavor,
+    rpc::Error,
+    rpc::OpaqueAuth,
+    rpc::RpcBody,
+    rpc::RPC_VERSION,
+    task::ProcReply,
+);
 
 /// Initializes tracing logs.
 ///
