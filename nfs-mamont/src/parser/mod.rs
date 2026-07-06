@@ -13,9 +13,6 @@ mod tests;
 
 use std::future::Future;
 
-#[cfg(feature = "arbitrary")]
-use arbitrary;
-
 use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
