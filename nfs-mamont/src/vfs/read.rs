@@ -59,7 +59,9 @@ where
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let data = B::arbitrary(u)?;
         let count = data.len();
-        assert!(count < u32::MAX as usize);
+        if count >= u32::MAX as usize {
+            return Err(arbitrary::Error::IncorrectFormat);
+        }
         Ok(Self {
             head: SuccessPartial {
                 file_attr: u.arbitrary::<Option<file::Attr>>()?,

@@ -1,7 +1,8 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use std::io::Cursor;
+
+use libfuzzer_sys::fuzz_target;
 
 use nfs_mamont::{
     arguments, nfsv3, parser_mount, parser_nlm, u32_as_usize, Buffer, MockBuffers, MountArguments,

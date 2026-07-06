@@ -1,15 +1,14 @@
 use arbitrary::{Arbitrary, Unstructured};
 
 use nfs_mamont::{
-    arguments, nfsv3, parser_mount, parser_nlm, ArgWrapper, ErrorWrapper, MockAllocator,
-    MockBuffers, MountArguments, NfsArguments, NlmArguments, ProcArguments, RpcBody, RpcParser,
-    ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD,
-    MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
-    MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK,
-    REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE, RPC_VERSION, SETATTR, SYMLINK, TEST_SIZE, WRITE,
+    arguments, ArgWrapper, ErrorWrapper, MockAllocator, MockBuffers, MountArguments, NfsArguments,
+    NlmArguments, ProcArguments, RpcBody, RpcParser, ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO,
+    FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL,
+    MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL,
+    PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE,
+    RPC_VERSION, SETATTR, SYMLINK, TEST_SIZE, WRITE,
 };
 
-// Re-export serializer functions
 use nfs_mamont::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -178,115 +177,10 @@ impl ParserWrapper {
         // now we can do only Auth::None
         tmp_buffer.extend_from_slice(&arg.auth_verf.to_be_bytes());
         match arg.args {
-            ProcArguments::Nfs3(nfs) => match *nfs {
-                NfsArguments::GetAttr(get) => {
-                    get_attr::get_attr_args(&mut tmp_buffer, get).unwrap()
-                }
-
-                NfsArguments::SetAttr(set) => {
-                    set_attr::set_attr_args(&mut tmp_buffer, set).unwrap()
-                }
-
-                NfsArguments::LookUp(lookup) => {
-                    lookup::lookup_args(&mut tmp_buffer, lookup).unwrap()
-                }
-
-                NfsArguments::Access(access) => {
-                    access::access_args(&mut tmp_buffer, access).unwrap()
-                }
-
-                NfsArguments::ReadLink(link) => {
-                    read_link::read_link_args(&mut tmp_buffer, link).unwrap()
-                }
-
-                NfsArguments::Read(read) => read::read_args(&mut tmp_buffer, read).unwrap(),
-
-                NfsArguments::Write(write) => write::write_args(&mut tmp_buffer, write).unwrap(),
-
-                NfsArguments::Create(create) => {
-                    create::create_args(&mut tmp_buffer, create).unwrap()
-                }
-
-                NfsArguments::MkDir(mkdir) => mk_dir::mk_dir_args(&mut tmp_buffer, mkdir).unwrap(),
-
-                NfsArguments::SymLink(symlink) => {
-                    symlink::symlink_args(&mut tmp_buffer, symlink).unwrap()
-                }
-
-                NfsArguments::MkNod(mknod) => {
-                    mk_node::mk_node_args(&mut tmp_buffer, mknod).unwrap()
-                }
-
-                NfsArguments::Remove(remove) => {
-                    remove::remove_args(&mut tmp_buffer, remove).unwrap()
-                }
-
-                NfsArguments::RmDir(rmdir) => rm_dir::rm_dir_args(&mut tmp_buffer, rmdir).unwrap(),
-
-                NfsArguments::Rename(rename) => {
-                    rename::rename_args(&mut tmp_buffer, rename).unwrap()
-                }
-
-                NfsArguments::Link(link) => link::link_args(&mut tmp_buffer, link).unwrap(),
-
-                NfsArguments::ReadDir(read_dir) => {
-                    read_dir::read_dir_args(&mut tmp_buffer, read_dir).unwrap()
-                }
-
-                NfsArguments::ReadDirPlus(read_dir_plus) => {
-                    read_dir_plus::read_dir_plus_args(&mut tmp_buffer, read_dir_plus).unwrap()
-                }
-
-                NfsArguments::FsStat(fs_stat) => {
-                    fs_stat::fs_stat_args(&mut tmp_buffer, fs_stat).unwrap()
-                }
-
-                NfsArguments::FsInfo(fs_info) => {
-                    fs_info::fs_info_args(&mut tmp_buffer, fs_info).unwrap()
-                }
-
-                NfsArguments::PathConf(path) => {
-                    path_conf::path_conf_args(&mut tmp_buffer, path).unwrap()
-                }
-
-                NfsArguments::Commit(commit) => {
-                    commit::commit_args(&mut tmp_buffer, commit).unwrap()
-                }
-
-                NfsArguments::Null => (),
-            },
-
-            ProcArguments::Mount(mnt) => match *mnt {
-                MountArguments::Mount(mount) => {
-                    arguments::mount::mnt::mount_args(&mut tmp_buffer, mount).unwrap()
-                }
-
-                MountArguments::Unmount(unmount) => {
-                    arguments::mount::unmnt::unmount_args(&mut tmp_buffer, unmount).unwrap()
-                }
-
-                MountArguments::Export => (),
-                MountArguments::Dump => (),
-                MountArguments::UnmountAll => (),
-                MountArguments::Null => (),
-            },
-            ProcArguments::Nlm4(nlm) => match *nlm {
-                NlmArguments::Cancel(cancel) => {
-                    arguments::nlm4::cancel::cancel_args(&mut tmp_buffer, cancel).unwrap()
-                }
-                NlmArguments::Test(test) => {
-                    arguments::nlm4::test::test_args(&mut tmp_buffer, test).unwrap()
-                }
-                NlmArguments::Lock(lock) => {
-                    arguments::nlm4::lock::lock_args(&mut tmp_buffer, lock).unwrap()
-                }
-                NlmArguments::Unlock(unlock) => {
-                    arguments::nlm4::unlock::unlock_args(&mut tmp_buffer, unlock).unwrap()
-                }
-                NlmArguments::Null => (),
-            },
+            ProcArguments::Nfs3(nfs) => Self::match_nfsv3(&mut tmp_buffer, nfs),
+            ProcArguments::Mount(mnt) => Self::match_mount(&mut tmp_buffer, mnt),
+            ProcArguments::Nlm4(nlm) => Self::match_nlm(&mut tmp_buffer, nlm),
         }
-
         let pos = tmp_buffer.len();
         assert!(pos - RMS_HEADER_SIZE < 0x8000_0000);
         let size = ((pos - RMS_HEADER_SIZE) as u32 | 0x8000_0000).to_be_bytes();
@@ -296,5 +190,88 @@ impl ParserWrapper {
     }
     pub async fn parse_message(&mut self) -> Result<ArgWrapper<MockBuffers>, ErrorWrapper> {
         self.parser.next_message().await
+    }
+
+    fn match_nfsv3(tmp_buffer: &mut Vec<u8>, nfs: Box<NfsArguments<MockBuffers>>) {
+        match *nfs {
+            NfsArguments::GetAttr(get) => get_attr::get_attr_args(tmp_buffer, get).unwrap(),
+
+            NfsArguments::SetAttr(set) => set_attr::set_attr_args(tmp_buffer, set).unwrap(),
+
+            NfsArguments::LookUp(lookup) => lookup::lookup_args(tmp_buffer, lookup).unwrap(),
+
+            NfsArguments::Access(access) => access::access_args(tmp_buffer, access).unwrap(),
+
+            NfsArguments::ReadLink(link) => read_link::read_link_args(tmp_buffer, link).unwrap(),
+
+            NfsArguments::Read(read) => read::read_args(tmp_buffer, read).unwrap(),
+
+            NfsArguments::Write(write) => write::write_args(tmp_buffer, write).unwrap(),
+
+            NfsArguments::Create(create) => create::create_args(tmp_buffer, create).unwrap(),
+
+            NfsArguments::MkDir(mkdir) => mk_dir::mk_dir_args(tmp_buffer, mkdir).unwrap(),
+
+            NfsArguments::SymLink(symlink) => symlink::symlink_args(tmp_buffer, symlink).unwrap(),
+
+            NfsArguments::MkNod(mknod) => mk_node::mk_node_args(tmp_buffer, mknod).unwrap(),
+
+            NfsArguments::Remove(remove) => remove::remove_args(tmp_buffer, remove).unwrap(),
+
+            NfsArguments::RmDir(rmdir) => rm_dir::rm_dir_args(tmp_buffer, rmdir).unwrap(),
+
+            NfsArguments::Rename(rename) => rename::rename_args(tmp_buffer, rename).unwrap(),
+
+            NfsArguments::Link(link) => link::link_args(tmp_buffer, link).unwrap(),
+
+            NfsArguments::ReadDir(read_dir) => {
+                read_dir::read_dir_args(tmp_buffer, read_dir).unwrap()
+            }
+
+            NfsArguments::ReadDirPlus(read_dir_plus) => {
+                read_dir_plus::read_dir_plus_args(tmp_buffer, read_dir_plus).unwrap()
+            }
+
+            NfsArguments::FsStat(fs_stat) => fs_stat::fs_stat_args(tmp_buffer, fs_stat).unwrap(),
+
+            NfsArguments::FsInfo(fs_info) => fs_info::fs_info_args(tmp_buffer, fs_info).unwrap(),
+
+            NfsArguments::PathConf(path) => path_conf::path_conf_args(tmp_buffer, path).unwrap(),
+
+            NfsArguments::Commit(commit) => commit::commit_args(tmp_buffer, commit).unwrap(),
+
+            NfsArguments::Null => (),
+        }
+    }
+
+    fn match_mount(tmp_buffer: &mut Vec<u8>, mnt: Box<MountArguments>) {
+        match *mnt {
+            MountArguments::Mount(mount) => {
+                arguments::mount::mnt::mount_args(tmp_buffer, mount).unwrap()
+            }
+
+            MountArguments::Unmount(unmount) => {
+                arguments::mount::unmnt::unmount_args(tmp_buffer, unmount).unwrap()
+            }
+
+            MountArguments::Export => (),
+            MountArguments::Dump => (),
+            MountArguments::UnmountAll => (),
+            MountArguments::Null => (),
+        }
+    }
+
+    fn match_nlm(tmp_buffer: &mut Vec<u8>, nlm: Box<NlmArguments>) {
+        match *nlm {
+            NlmArguments::Cancel(cancel) => {
+                arguments::nlm4::cancel::cancel_args(tmp_buffer, cancel).unwrap()
+            }
+            NlmArguments::Test(test) => arguments::nlm4::test::test_args(tmp_buffer, test).unwrap(),
+            NlmArguments::Lock(lock) => arguments::nlm4::lock::lock_args(tmp_buffer, lock).unwrap(),
+            NlmArguments::Unlock(unlock) => {
+                arguments::nlm4::unlock::unlock_args(tmp_buffer, unlock).unwrap()
+            }
+            NlmArguments::Null => (),
+        }
     }
 }
