@@ -382,18 +382,22 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
 
-        self.socket.write_all(&self.buf).await?;
-
-        let padding_bytes = [0u8; ALIGNMENT];
+        const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total_payload: usize = buffer.len() + padding;
+        let total: usize = self.buf.len() + buffer.len() + padding;
 
-        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 1);
-
-        while written < total_payload {
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
+        while written < total {
             iov.clear();
             let mut to_skip = written;
+
+            if to_skip < self.buf.len() {
+                iov.push(IoSlice::new(&self.buf[to_skip..]));
+                to_skip = 0;
+            } else {
+                to_skip -= self.buf.len();
+            }
 
             for chunk in buffer.chunks() {
                 if to_skip == 0 {
@@ -407,7 +411,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
             }
 
             if to_skip < padding {
-                iov.push(IoSlice::new(&padding_bytes[to_skip..padding]));
+                iov.push(IoSlice::new(&PADDING_BYTES[to_skip..padding]));
             }
 
             if !iov.is_empty() {
