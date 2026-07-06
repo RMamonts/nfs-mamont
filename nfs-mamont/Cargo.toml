@@ -10,6 +10,11 @@ rust-version.workspace = true
 [lib]
 doctest = true
 
+[features]
+default = []
+mlock = ["dep:libc"]
+arbitrary = ["dep:arbitrary"]
+
 [dependencies]
 # External dependencies
 tokio.workspace = true
@@ -24,5 +29,4 @@ trait-variant.workspace = true
 
 arbitrary = { version = "1", optional = true, features = ["derive"] }
 
-[features]
-arbitrary = ["dep:arbitrary"]
+libc = { version = "0.2.186", optional = true }
