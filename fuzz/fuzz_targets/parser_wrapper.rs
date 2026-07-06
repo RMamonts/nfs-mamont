@@ -1,18 +1,19 @@
 use arbitrary::{Arbitrary, Unstructured};
-use nfs_mamont::allocator::mock::alloc::MockAllocator;
-use nfs_mamont::allocator::mock::buffer::{MockBuffers, TEST_SIZE};
-use nfs_mamont::consts::nfsv3;
-use nfs_mamont::parser::parser_struct::RpcParser;
-use nfs_mamont::parser::parser_struct::{DEFAULT_SIZE, RMS_HEADER_SIZE};
-use nfs_mamont::parser::{
-    ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+
+use nfs_mamont::{
+    arguments, nfsv3, parser_mount, parser_nlm, ArgWrapper, ErrorWrapper, MockAllocator,
+    MockBuffers, MountArguments, NfsArguments, NlmArguments, ProcArguments, RpcBody, RpcParser,
+    ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD,
+    MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
+    MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK,
+    REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE, RPC_VERSION, SETATTR, SYMLINK, TEST_SIZE, WRITE,
 };
-use nfs_mamont::serializer::client::arguments;
-use nfs_mamont::serializer::client::arguments::nfsv3::{
+
+// Re-export serializer functions
+use nfs_mamont::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use nfs_mamont::{consts::mount, rpc};
 
 use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 
@@ -37,107 +38,101 @@ pub struct RpcRequest {
 
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let prog = *u.choose(&[mount::MOUNT_PROGRAM, nfsv3::NFS_PROGRAM, FAULT_PROGRAM])?;
+        let prog = *u.choose(&[MOUNT_PROGRAM, NFS_PROGRAM, FAULT_PROGRAM])?;
         let proc = match prog {
-            nfsv3::NFS_PROGRAM => u.int_in_range(0..=22)?,
-            mount::MOUNT_PROGRAM => u.int_in_range(0..=6)?,
+            NFS_PROGRAM => u.int_in_range(0..=22)?,
+            MOUNT_PROGRAM => u.int_in_range(0..=6)?,
             FAULT_PROGRAM => u.int_in_range(0..=22)?,
             _ => u.int_in_range(0..=22)?,
         };
         let args = match (prog, proc) {
-            (nfsv3::NFS_PROGRAM, nfsv3::NULL) => ProcArguments::Nfs3(Box::new(NfsArguments::Null)),
-            (nfsv3::NFS_PROGRAM, nfsv3::GETATTR) => {
+            (NFS_PROGRAM, NULL) => ProcArguments::Nfs3(Box::new(NfsArguments::Null)),
+            (NFS_PROGRAM, GETATTR) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::GetAttr(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::SETATTR) => {
+            (NFS_PROGRAM, SETATTR) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::SetAttr(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::LOOKUP) => {
+            (NFS_PROGRAM, LOOKUP) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::LookUp(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::ACCESS) => {
+            (NFS_PROGRAM, ACCESS) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Access(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::READLINK) => {
+            (NFS_PROGRAM, READLINK) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::READ) => {
+            (NFS_PROGRAM, READ) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::WRITE) => {
+            (NFS_PROGRAM, WRITE) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::CREATE) => {
+            (NFS_PROGRAM, CREATE) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Create(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::MKDIR) => {
+            (NFS_PROGRAM, MKDIR) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::MkDir(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::SYMLINK) => {
+            (NFS_PROGRAM, SYMLINK) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::SymLink(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::MKNOD) => {
+            (NFS_PROGRAM, MKNOD) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::MkNod(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::REMOVE) => {
+            (NFS_PROGRAM, REMOVE) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Remove(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::RMDIR) => {
+            (NFS_PROGRAM, RMDIR) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::RmDir(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::RENAME) => {
+            (NFS_PROGRAM, RENAME) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Rename(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::LINK) => {
+            (NFS_PROGRAM, LINK) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Link(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::READDIR) => {
+            (NFS_PROGRAM, READDIR) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::ReadDir(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::READDIRPLUS) => {
+            (NFS_PROGRAM, READDIRPLUS) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::ReadDirPlus(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::FSSTAT) => {
+            (NFS_PROGRAM, FSSTAT) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::FsStat(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::FSINFO) => {
+            (NFS_PROGRAM, FSINFO) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::FsInfo(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::PATHCONF) => {
+            (NFS_PROGRAM, PATHCONF) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::PathConf(u.arbitrary()?)))
             }
-            (nfsv3::NFS_PROGRAM, nfsv3::COMMIT) => {
+            (NFS_PROGRAM, COMMIT) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_NULL) => {
-                ProcArguments::Mount(Box::new(MountArguments::Null))
-            }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_MNT) => {
+            (MOUNT_PROGRAM, MOUNT_NULL) => ProcArguments::Mount(Box::new(MountArguments::Null)),
+            (MOUNT_PROGRAM, MOUNT_MNT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_DUMP) => {
-                ProcArguments::Mount(Box::new(MountArguments::Dump))
-            }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_UMNT) => {
+            (MOUNT_PROGRAM, MOUNT_DUMP) => ProcArguments::Mount(Box::new(MountArguments::Dump)),
+            (MOUNT_PROGRAM, MOUNT_UMNT) => {
                 ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?)))
             }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_UMNTALL) => {
+            (MOUNT_PROGRAM, MOUNT_UMNTALL) => {
                 ProcArguments::Mount(Box::new(MountArguments::UnmountAll))
             }
-            (mount::MOUNT_PROGRAM, mount::MOUNT_EXPORT) => {
-                ProcArguments::Mount(Box::new(MountArguments::Export))
-            }
+            (MOUNT_PROGRAM, MOUNT_EXPORT) => ProcArguments::Mount(Box::new(MountArguments::Export)),
             _ => u.arbitrary::<ProcArguments<MockBuffers>>()?,
         };
         Ok(Self {
             xid: u.arbitrary()?,
-            request: *u.choose(&[rpc::RpcBody::Call as u32, rpc::RpcBody::Reply as u32])?,
+            request: *u.choose(&[RpcBody::Call as u32, RpcBody::Reply as u32])?,
             //so there would be RpcVersionMismatch
-            rpc_version: *u.choose(&[rpc::RPC_VERSION, FAULT_VERSION])?,
+            rpc_version: *u.choose(&[RPC_VERSION, FAULT_VERSION])?,
             //so there would be ProgramMismatch
             prog,
             //so there would be ProgramVersionMismatch
-            version: *u.choose(&[mount::MOUNT_VERSION, nfsv3::NFS_VERSION, FAULT_VERSION])?,
+            version: *u.choose(&[MOUNT_VERSION, NFS_VERSION, FAULT_VERSION])?,
             //so there would be ProcedureMismatch (nfsv3 has 21 proc)
             proc,
             auth: 0,
