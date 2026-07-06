@@ -3,8 +3,9 @@
 mod parser_wrapper;
 pub mod read_socket;
 
-use libfuzzer_sys::fuzz_target;
 use std::sync::{Arc, OnceLock};
+
+use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 

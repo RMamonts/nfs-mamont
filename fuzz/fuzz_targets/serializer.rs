@@ -2,8 +2,9 @@
 
 pub mod write_socket;
 
-use libfuzzer_sys::fuzz_target;
 use std::sync::OnceLock;
+
+use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
