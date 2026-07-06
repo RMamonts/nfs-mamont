@@ -14,14 +14,14 @@ use write_socket::MockWriter;
 
 type TestSerializer = Serializer<MockBuffers, MockWriter>;
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static PARSER: OnceLock<Mutex<TestSerializer>> = OnceLock::new();
+static SERIALIZER: OnceLock<Mutex<TestSerializer>> = OnceLock::new();
 
 fn get_runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| Runtime::new().unwrap())
 }
 
 fn get_serializer() -> &'static Mutex<TestSerializer> {
-    PARSER.get_or_init(|| Mutex::new(Serializer::new(MockWriter)))
+    SERIALIZER.get_or_init(|| Mutex::new(Serializer::new(MockWriter)))
 }
 
 fuzz_target!(|data: ProcReply<MockBuffers>| {
