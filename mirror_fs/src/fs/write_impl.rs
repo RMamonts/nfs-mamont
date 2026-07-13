@@ -1,4 +1,4 @@
-use std::io::SeekFrom;
+use std::io::{IoSlice, SeekFrom};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -37,19 +37,36 @@ impl<B: Buffer> write::Write<B> for MirrorFS {
             }
         };
 
-        let data = Self::collect_buffer_bytes(&args.data, args.size);
+        let mut remaining = args.size as usize;
+        let data: Vec<IoSlice<'_>> = args
+            .data
+            .chunks()
+            .filter_map(|chunk| {
+                if remaining == 0 {
+                    return None;
+                }
+                let take = chunk.len().min(remaining);
+                remaining -= take;
+                Some(IoSlice::new(&chunk[..take]))
+            })
+            .collect();
         if let Err(error) = file.seek(SeekFrom::Start(args.offset)).await {
             return Err(write::Fail {
                 error: Self::io_error_to_vfs(&error),
                 wcc_data: Self::wcc_data(&path, before),
             });
         }
-        if let Err(error) = file.write_all(&data).await {
-            return Err(write::Fail {
-                error: Self::io_error_to_vfs(&error),
-                wcc_data: Self::wcc_data(&path, before),
-            });
-        }
+
+        let size = match file.write_vectored(&data).await {
+            Ok(n) => n as u32,
+            Err(error) => {
+                return Err(write::Fail {
+                    error: Self::io_error_to_vfs(&error),
+                    wcc_data: Self::wcc_data(&path, before),
+                });
+            }
+        };
+
         let sync_result = match args.stable {
             write::StableHow::Unstable => Ok(()),
             write::StableHow::DataSync => file.sync_data().await,
@@ -64,7 +81,7 @@ impl<B: Buffer> write::Write<B> for MirrorFS {
 
         Ok(write::Success {
             file_wcc: Self::wcc_data(&path, before),
-            count: data.len() as u32,
+            count: size,
             committed: args.stable,
             verifier: self.write_verifier(),
         })

@@ -435,6 +435,7 @@ dependencies = [
  "async-channel",
  "byteorder",
  "crossbeam-queue",
+ "libc",
  "num-derive",
  "num-traits",
  "tokio",
