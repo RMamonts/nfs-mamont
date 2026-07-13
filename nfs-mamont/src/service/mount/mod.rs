@@ -21,7 +21,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
@@ -54,12 +53,8 @@ struct ExportRegistry {
 impl ExportRegistry {
     fn from_entries(entries: Vec<ExportEntryWrapper>) -> Self {
         let mut by_directory = HashMap::new();
-        for entry in entries.into_iter() {
-            let file_handle = entry.root_handle.clone();
-            by_directory.insert(
-                entry.export.directory.clone(),
-                ExportEntryWrapper { export: entry.export, root_handle: file_handle },
-            );
+        for entry in entries {
+            by_directory.insert(entry.export.directory.clone(), entry);
         }
         Self { by_directory }
     }
@@ -80,23 +75,39 @@ struct MountRegistry {
     by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
 }
 
+struct MountServiceInner {
+    exports: ExportRegistry,
+    mounts: MountRegistry,
+}
+
 /// In-memory state backing the MOUNT v3 service implementation
 pub struct MountService {
-    /// Exported directories that are available for mounting
-    exports: Arc<ExportRegistry>,
-    /// Active mounts keyed by client.
-    mounts: RwLock<MountRegistry>,
+    inner: RwLock<MountServiceInner>,
 }
 
 impl MountService {
     pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self {
-            exports: Arc::new(ExportRegistry::from_entries(entries)),
-            mounts: RwLock::new(MountRegistry::default()),
+            inner: RwLock::new(MountServiceInner {
+                exports: ExportRegistry::from_entries(entries),
+                mounts: MountRegistry::default(),
+            }),
         }
     }
 
-    async fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
-        self.exports.by_path(path)
+    pub async fn add_export(&self, entry: ExportEntryWrapper) {
+        self.inner.write().await.exports.by_directory.insert(entry.export.directory.clone(), entry);
+    }
+
+    pub async fn remove_export(&self, path: &file::Path) -> bool {
+        self.inner.write().await.exports.by_directory.remove(path).is_some()
+    }
+
+    pub async fn export_list(&self) -> Vec<ExportEntry> {
+        self.inner.read().await.exports.export_list()
+    }
+
+    async fn export_entry(&self, path: &file::Path) -> Option<ExportEntryWrapper> {
+        self.inner.read().await.exports.by_path(path).cloned()
     }
 }

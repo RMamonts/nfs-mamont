@@ -8,6 +8,6 @@ use super::MountService;
 
 impl Umntall for MountService {
     async fn umntall(&self, client_addr: SocketAddr) {
-        self.mounts.write().await.by_client.remove(&client_addr);
+        self.inner.write().await.mounts.by_client.remove(&client_addr);
     }
 }

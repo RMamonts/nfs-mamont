@@ -20,8 +20,8 @@ impl Mnt for MountService {
     ) -> Result<Success, Fail> {
         let Some(export) = self.export_entry(&args.dirpath).await else {
             let configured = self
-                .exports
                 .export_list()
+                .await
                 .into_iter()
                 .map(|entry| entry.directory.as_path().to_string_lossy().into_owned())
                 .collect::<Vec<_>>();
@@ -34,13 +34,20 @@ impl Mnt for MountService {
             return Err(Fail::Access);
         };
 
-        let file_handle = export.root_handle.clone();
+        let file_handle = export.root_handle;
 
         let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 
-        self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
+        self.inner
+            .write()
+            .await
+            .mounts
+            .by_client
+            .entry(client_addr)
+            .or_default()
+            .insert(mount_entry);
 
         Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
     }

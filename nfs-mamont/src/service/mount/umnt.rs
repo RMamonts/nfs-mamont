@@ -8,12 +8,12 @@ use super::MountService;
 
 impl Umnt for MountService {
     async fn umnt(&self, args: Args, client_addr: SocketAddr) {
-        let mut mounts = self.mounts.write().await;
+        let mut inner = self.inner.write().await;
 
-        if let Some(entries) = mounts.by_client.get_mut(&client_addr) {
+        if let Some(entries) = inner.mounts.by_client.get_mut(&client_addr) {
             entries.retain(|entry| entry.directory != args.dirpath);
             if entries.is_empty() {
-                mounts.by_client.remove(&client_addr);
+                inner.mounts.by_client.remove(&client_addr);
             }
         }
     }

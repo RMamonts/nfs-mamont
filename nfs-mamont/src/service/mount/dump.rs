@@ -7,9 +7,10 @@ use super::MountService;
 impl Dump for MountService {
     async fn dump(&self) -> Success {
         let mount_list = self
-            .mounts
+            .inner
             .read()
             .await
+            .mounts
             .by_client
             .values()
             .flat_map(|entries| entries.iter().cloned())

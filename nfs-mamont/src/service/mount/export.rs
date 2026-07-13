@@ -6,7 +6,7 @@ use super::MountService;
 
 impl Export for MountService {
     async fn export(&self) -> Success {
-        let exports = self.exports.export_list();
+        let exports = self.export_list().await;
         Success { exports }
     }
 }
