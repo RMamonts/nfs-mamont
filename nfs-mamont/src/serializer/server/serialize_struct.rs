@@ -6,7 +6,7 @@
 //! RPC reply to an async writer.
 
 use std::io;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, IoSlice, Write};
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -365,6 +365,9 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     }
 
     /// Flushes the staged XDR bytes followed by a streamed payload [`Buffer`] (used for READ data).
+    ///
+    /// Uses vectored I/O to coalesce all data chunks and padding into a single
+    /// `writev`-style syscall, reducing kernel transitions.
     async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
@@ -378,16 +381,49 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
+
         self.socket.write_all(&self.buf).await?;
 
-        // later change to explicit cursor (when one implemented)
-        for buf in buffer.chunks() {
-            self.socket.write_all(buf).await?;
+        let padding_bytes = [0u8; ALIGNMENT];
+
+        let mut written: usize = 0;
+        let total_payload: usize = buffer.len() + padding;
+
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 1);
+
+        while written < total_payload {
+            iov.clear();
+            let mut to_skip = written;
+
+            for chunk in buffer.chunks() {
+                if to_skip == 0 {
+                    iov.push(IoSlice::new(chunk));
+                } else if to_skip < chunk.len() {
+                    iov.push(IoSlice::new(&chunk[to_skip..]));
+                    to_skip = 0;
+                } else {
+                    to_skip -= chunk.len();
+                }
+            }
+
+            if to_skip < padding {
+                iov.push(IoSlice::new(&padding_bytes[to_skip..padding]));
+            }
+
+            if !iov.is_empty() {
+                let n = self.socket.write_vectored(&iov).await?;
+                if n == 0 {
+                    return Err(io::Error::new(
+                        ErrorKind::WriteZero,
+                        "failed to write data to socket",
+                    ));
+                }
+                written += n;
+            } else {
+                break;
+            }
         }
 
-        // write padding directly to socket
-        let slice = [0u8; ALIGNMENT];
-        self.socket.write_all(&slice[..padding]).await?;
         self.clean();
         Ok(())
     }
