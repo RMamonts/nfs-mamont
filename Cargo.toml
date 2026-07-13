@@ -10,13 +10,13 @@ rust-version = "1.75.0"
 
 [workspace.dependencies]
 # External dependencies
-tokio = { version = "1.52", features = ["full", "time"] }
+tokio = { version = "1.43.*", features = ["full", "time"] }
 byteorder = "1.5.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 tracing = { version = "0.1", features = ["release_max_level_off"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-async-channel = "2.5.0"
+async-channel = "2.3.*"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
 
