@@ -5,6 +5,10 @@ use super::MockVfs;
 
 impl read::Read for MockVfs {
     async fn read(&self, args: read::Args, mut data: Slice) -> Result<read::Success, read::Fail> {
+        // ADD wait option
+        //
+        tokio::time::sleep(std::time::Duration::from_millis(crate::REQUEST_LATENCY)).await;
+
         let count =
             (args.count as u64).min(self.config.file_size.saturating_sub(args.offset)) as u32;
 
