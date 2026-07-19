@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::parser::nlm::lock",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nlm/lock.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub lock (src: &mut impl Read) -> Result<Nlm4LockArgs>"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::task",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/mod.rs",
+  "public_structs": [
+    {
+      "name": "ProcReply",
+      "fields": "pub xid: u32, pub proc_result: Result<ProcResult<B>, Error>",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Tagged union of top-level RPC program results supported by this server.\npub enum ProcResult<B: Buffer> {\n    Nfs3(Box<NfsRes<B>>),\n    Mount(Box<MountRes>),\n    Nlm4(Box<NlmRes>),\n}"
+  ],
+  "public_traits": [],
+  "public_functions": []
+}

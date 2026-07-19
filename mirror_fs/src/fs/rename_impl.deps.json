@@ -1,0 +1,26 @@
+{
+  "module_path": "mirrorfs::fs::rename_impl",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/rename_impl.rs",
+  "dependency": [
+    {
+      "module_path": "mirrorfs::fs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs::rename",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rename.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rename.rs.spec.md"
+    }
+  ]
+}

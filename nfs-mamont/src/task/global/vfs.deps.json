@@ -1,0 +1,36 @@
+{
+  "module_path": "nfs_mamont::task::global::vfs",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/vfs.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::task",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs::read",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/read.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/read.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::allocator",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::parser",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs.spec.md"
+    }
+  ]
+}

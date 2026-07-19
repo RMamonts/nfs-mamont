@@ -1,0 +1,26 @@
+{
+  "module_path": "mirrorfs::config",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/config.rs",
+  "public_structs": [
+    {
+      "name": "ExportConfig",
+      "fields": "pub local_path: PathBuf, pub mount_path: String",
+      "methods": []
+    },
+    {
+      "name": "Config",
+      "fields": "pub allocator: AllocatorConfig, pub vfs_pool_size: NonZeroUsize, pub export_root: PathBuf, pub exports: Vec<ExportConfig>",
+      "methods": []
+    },
+    {
+      "name": "AllocatorConfig",
+      "fields": "pub read_buffer_size: NonZeroUsize, pub read_buffer_count: NonZeroUsize, pub write_buffer_size: NonZeroUsize, pub write_buffer_count: NonZeroUsize",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub load_config (path: &Path) -> std::io::Result<Config>"
+  ]
+}

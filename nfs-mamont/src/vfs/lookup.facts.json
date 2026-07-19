@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::lookup",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/lookup.rs",
+  "public_structs": [
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// The post-operation attributes of the directory\n    pub dir_attr: Option<file::Attr>",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// File handle for the directory to search.\n    pub parent: file::Handle, /// File name to be searched for.\n    pub name: file::Name",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "pub file: file::Handle, pub file_attr: Option<file::Attr>, pub dir_attr: Option<file::Attr>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Lookup {\n    /// Searches a directory for a specific name and returns the file handle for the corresponding\n    /// file system object.\n    ///\n    /// Note that this procedure does not follow symbolic links.\n    async fn lookup(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

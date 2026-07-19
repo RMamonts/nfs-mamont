@@ -1,0 +1,31 @@
+{
+  "module_path": "nfs_mamont::service::nlm::test",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/nlm/test.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::nlm::procedures::test",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/test.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/test.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::nlm::procedures",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::service::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/nlm/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/nlm/mod.rs.spec.md"
+    }
+  ]
+}

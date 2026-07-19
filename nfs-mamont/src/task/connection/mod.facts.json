@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::task::connection",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/connection/mod.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub new <A, V, B> (\n    socket: TcpStream,\n    mount_sender: async_channel::Sender<MountCommand<B>>,\n    nlm_sender: async_channel::Sender<NlmCommand<B>>,\n    context: &ServerContext<A, V, B>,\n) where\n    A: Allocator<Buffer = B> + Send + Sync + 'static,\n    B: Buffer + 'static,\n    V: Vfs<B> + Send + Sync + 'static,"
+  ]
+}

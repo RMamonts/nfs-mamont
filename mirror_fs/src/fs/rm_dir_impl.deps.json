@@ -1,0 +1,26 @@
+{
+  "module_path": "mirrorfs::fs::rm_dir_impl",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/rm_dir_impl.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::vfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "mirrorfs::fs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs::rm_dir",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rm_dir.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rm_dir.rs.spec.md"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "module_path": "nfs_mamont::serializer::files",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/files.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub nfs_time (dest: &mut impl Write, arg: file::Time) -> io::Result<()>",
+    "pub file_handle (dest: &mut impl Write, fh: file::Handle) -> io::Result<()>",
+    "pub error (dest: &mut impl Write, stat: vfs::Error) -> io::Result<()>",
+    "pub file_type (dest: &mut impl Write, file_type: file::Type) -> io::Result<()>",
+    "pub file_attr (dest: &mut impl Write, attr: &file::Attr) -> io::Result<()>",
+    "pub wcc_attr (dest: &mut impl Write, wcc: file::WccAttr) -> io::Result<()>",
+    "pub wcc_data (dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()>",
+    "pub file_name (dest: &mut impl Write, file_name: file::Name) -> io::Result<()>",
+    "pub file_path (dest: &mut impl Write, file_name: file::Path) -> io::Result<()>",
+    "pub dir_op_arg (dest: &mut impl Write, arg: DirOpArgs) -> io::Result<()>"
+  ]
+}

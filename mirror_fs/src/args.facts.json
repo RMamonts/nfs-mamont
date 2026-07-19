@@ -1,0 +1,14 @@
+{
+  "module_path": "mirrorfs::args",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/args.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// Path to TOML configuration file\n    #[arg(short = 'c', long = \"config\", value_hint = clap::ValueHint::AnyPath)]\n    pub config_path: PathBuf, /// IP address and TCP port to listen to.\n    #[arg(short, long, default_value = \"0.0.0.0:2049\")]\n    pub addr: SocketAddr",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

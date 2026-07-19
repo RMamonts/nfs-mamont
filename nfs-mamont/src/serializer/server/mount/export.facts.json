@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::serializer::server::mount::export",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/export.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub export_entry (dest: &mut impl Write, arg: mount::ExportEntry) -> io::Result<()>",
+    "pub result_ok (dest: &mut impl Write, arg: export::Success) -> io::Result<()>"
+  ]
+}

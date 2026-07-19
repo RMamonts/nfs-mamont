@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::parser::nfsv3::rm_dir",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nfsv3/rm_dir.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub args (src: &mut impl Read) -> Result<rm_dir::Args>"
+  ]
+}

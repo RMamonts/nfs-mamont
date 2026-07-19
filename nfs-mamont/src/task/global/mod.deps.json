@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::task::global",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/mod.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::task::global::mount",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/mount.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/mount.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::task::global::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/nlm.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/nlm.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::task::global::vfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/vfs.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/vfs.rs.spec.md"
+    }
+  ]
+}

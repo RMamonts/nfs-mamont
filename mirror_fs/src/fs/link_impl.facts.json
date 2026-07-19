@@ -1,0 +1,8 @@
+{
+  "module_path": "mirrorfs::fs::link_impl",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/link_impl.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

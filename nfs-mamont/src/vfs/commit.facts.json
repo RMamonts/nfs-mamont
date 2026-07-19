@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::commit",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/commit.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// Weak cache consistency data for the file.\n    pub file_wcc: vfs::WccData, /// This is a cookie that the client can use to determine\n    /// whether the server has rebooted between a call to [vfs::write::Write::write]\n    /// and a subsequent call to [`Commit::commit`].\n    pub verifier: vfs::write::Verifier",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the file.\n    pub file_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The file handle for the file to which data is to be flushed.\n    pub file: file::Handle, /// The position within the file at which the flush is to begin.\n    pub offset: u64, /// The number of bytes of data to flush. If count is `0`, a\n    /// flush from offset to the end of file is done.\n    pub count: u32",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Commit {\n    /// Forces or flushes data to stable storage that was previously written.\n    async fn commit(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

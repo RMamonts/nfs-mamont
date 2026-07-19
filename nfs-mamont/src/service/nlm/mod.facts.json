@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::service::nlm",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/nlm/mod.rs",
+  "public_structs": [
+    {
+      "name": "NlmService",
+      "fields": "",
+      "methods": [
+        "pub new () -> Self"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::serializer::server::nfs::rename",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/rename.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub result_ok (dest: &mut impl Write, arg: rename::Success) -> io::Result<()>",
+    "pub result_fail (dest: &mut impl Write, arg: rename::Fail) -> io::Result<()>"
+  ]
+}

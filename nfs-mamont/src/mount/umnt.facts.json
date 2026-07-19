@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::mount::umnt",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/umnt.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "pub dirpath: file::Path",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Umnt {\n    /// Removes the mount list entry for the directory that was\n    /// previously the subject of a MNT call from this client.\n    ///\n    /// # Parameters:\n    /// * `dirpath` --- a server pathname of a directory.\n    ///\n    /// AUTH_UNIX authentication or better is required.\n    /// There are no MOUNT protocol errors which can be returned from this procedure.\n    async fn umnt(&self, args: Args, client_addr: SocketAddr);\n}"
+  ],
+  "public_functions": []
+}

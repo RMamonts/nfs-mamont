@@ -1,0 +1,18 @@
+{
+  "module_path": "mirrorfs::fs",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs/mod.rs",
+  "public_structs": [
+    {
+      "name": "MirrorFS",
+      "fields": "",
+      "methods": [
+        "pub new (root: PathBuf) -> Self",
+        "pub root_handle (&self) -> file::Handle",
+        "pub handle_for_path (&self, path: &Path) -> Result<file::Handle, vfs::Error>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

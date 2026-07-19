@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::nlm::holder",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/holder.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4Holder",
+      "fields": "/// Tells whether the holder has an exclusive lock or a shared lock.\n    pub exclusive: bool, /// PID of the process holding the lock.\n    pub system_identifier: i32, /// Host or process that is holding the lock.\n    pub opaque_handle: OpaqueHandle, /// Offset for the lock region.\n    pub lock_offset: u64, /// Length of the blocking region. An l_len of 0 means \"to end of file\".\n    pub lock_length: u64",
+      "methods": [
+        "pub new (\n        exclusive: bool,\n        system_identifier: i32,\n        opaque_handle: OpaqueHandle,\n        lock_offset: u64,\n        lock_length: u64,\n    ) -> Self"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

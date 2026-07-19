@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::nlm::procedures::unlock",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/unlock.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4UnlockArgs",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// Lock details (caller name, file handle, offset, length).\n    pub lock: Nlm4Lock",
+      "methods": []
+    },
+    {
+      "name": "Nlm4UnlockRes",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// Status code (Granted, Denied, etc.).\n    pub stat: Nlm4Stats",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "/// Trait for handling NLMv4 `UNLOCK` procedure calls.\n///\n/// Implementations should remove a previously granted lock matching\n/// the request parameters and return the result status.\n#[trait_variant::make(Send)]\npub trait Unlock {\n    async fn unlock(&self, args: Nlm4UnlockArgs) -> Nlm4UnlockRes;\n}"
+  ],
+  "public_functions": []
+}

@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::nlm::procedures::test",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/test.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4TestRes",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// Status with optional holder info (if denied).\n    pub test_stat: Nlm4TestReply",
+      "methods": []
+    },
+    {
+      "name": "Nlm4TestArgs",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// `True` for exclusive lock, `false` for shared lock.\n    pub exclusive: bool, /// Lock details (caller name, file handle, offset, length).\n    pub lock: Nlm4Lock",
+      "methods": []
+    },
+    {
+      "name": "Nlm4TestReply",
+      "fields": "/// Status code (Granted, Denied, etc.).\n    pub stat: Nlm4Stats, /// Present only when stat is Denied — info about current lock holder.\n    pub holder: Option<Nlm4Holder>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "/// Trait for handling NLMv4 `TEST` procedure calls.\n///\n/// Implementations should check whether a lock could be granted\n/// without actually acquiring it, returning either `Granted` or\n/// `Denied` with details of the conflicting lock.\n#[trait_variant::make(Send)]\npub trait Test {\n    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes;\n}"
+  ],
+  "public_functions": []
+}

@@ -1,0 +1,19 @@
+{
+  "module_path": "nfs_mamont::nlm::share",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/share.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4Share",
+      "fields": "/// Name of the client host making the lock request.\n    pub caller_name: String, /// Handle to the file to share.\n    pub file_handle: vfs::file::Handle, /// Host or process that is making the request.\n    pub opaque_handle: OpaqueHandle, /// Specifies operations prohibited to other clients.\n    pub fsh4_mode: FileSharingMode, /// Specifies operations allowed to the requesting client.\n    pub fsh4_access: FileSharingAccess",
+      "methods": [
+        "pub new (\n        caller_name: String,\n        file_handle: vfs::file::Handle,\n        opaque_handle: OpaqueHandle,\n        fsh4_mode: FileSharingMode,\n        fsh4_access: FileSharingAccess,\n    ) -> Result<Self, Error>"
+      ]
+    }
+  ],
+  "public_enums": [
+    "/// DOS-style file sharing mode.\n///\n/// Defines what operations other clients are prohibited from performing.\n#[derive(Debug, Copy, Clone, PartialEq)]\npub enum FileSharingMode {\n    /// Other clients may perform any operation.\n    None = 0,\n    /// Other clients are prohibited from reading the file.\n    Read = 1,\n    /// Other clients are prohibited from writing to the file.\n    Write = 2,\n    /// Other clients are prohibited from reading and writing.\n    ReadWrite = 3,\n}",
+    "/// DOS-style file sharing access mode.\n///\n/// Defines what operations the requesting client is allowed to perform.\n#[derive(Debug, Copy, Clone, PartialEq)]\npub enum FileSharingAccess {\n    /// Client has no access to the file.\n    None = 0,\n    /// Client may read the file.\n    Read = 1,\n    /// Client may write to the file.\n    Write = 2,\n    /// Client may read and write the file.\n    ReadWrite = 3,\n}"
+  ],
+  "public_traits": [],
+  "public_functions": []
+}

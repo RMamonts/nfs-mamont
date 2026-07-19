@@ -1,0 +1,31 @@
+{
+  "module_path": "nfs_mamont::vfs::read_dir_plus",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/read_dir_plus.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// The attributes of the directory, `dir`.\n    pub dir_attr: Option<file::Attr>, /// The cookie verifier.\n    pub cookie_verifier: CookieVerifier, /// Zero or more directory [`Entry`] entries.\n    pub entries: Vec<Entry>, /// `true` if the last member of [`Self::entries`] is the last\n    /// entry in the directory or the list [`Self::entries`] is\n    /// empty and the cookie corresponded to the end of the\n    /// directory.\n    ///\n    /// If `false`, there may be more entries to read.\n    pub eof: bool",
+      "methods": []
+    },
+    {
+      "name": "Entry",
+      "fields": "/// Since UNIX clients give a special meaning to the fileid\n    /// value zero, UNIX clients should be careful to map zero\n    /// fileid values to some other value and servers should try\n    /// to avoid sending a zero fileid.\n    pub file_id: u64, pub file_name: file::Name, pub cookie: Cookie, pub file_attr: Option<file::Attr>, pub file_handle: Option<file::Handle>",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// The attributes of the directory, `dir`.\n    pub dir_attr: Option<file::Attr>",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The file handle for the directory to be read.\n    pub dir: file::Handle, /// This should be set to 0 on the first request to read a directory.\n    /// On subsequent requests, it should be a cookie as returned by the server.\n    pub cookie: Cookie, /// This should be set to 0 in the first request to read the directory.\n    /// On subsequent requests, it should be a cookie_verifier as returned by the server. The\n    /// cookie_verifier must match that returned by the [`ReadDirPlus::read_dir_plus`] in which the cookie\n    /// was acquired.\n    pub cookie_verifier: CookieVerifier, /// The maximum number of bytes of directory information returned. This number should not\n    /// include the size of the attributes and file handle portions of the result.\n    pub dir_count: u32, /// The maximum size of the [`Success`] structure, in bytes. The size must include all XDR\n    /// overhead. The server is free to return fewer than maxcount bytes of data.\n    pub max_count: u32",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait ReadDirPlus {\n    /// Retrieves a variable number of entries from a file system directory and returns complete\n    /// information about each.\n    async fn read_dir_plus(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

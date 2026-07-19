@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::nlm::procedures",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/mod.rs",
+  "public_structs": [],
+  "public_enums": [
+    "/// NLMv4 RPC procedure numbers.\n///\n/// Corresponds to NLM version 4 protocol as defined in RFC 1813.\npub enum Nlm4Procedures {\n    /// NLM4_NULL — no operation, used to test server availability.\n    Null = 0,\n    /// NLM4_TEST — test for a lock.\n    Test = 1,\n    /// NLM4_LOCK — request a lock.\n    Lock = 2,\n    /// NLM4_CANCEL — cancel an outstanding lock request.\n    Cancel = 3,\n    /// NLM4_UNLOCK — release a lock.\n    Unlock = 4,\n}"
+  ],
+  "public_traits": [],
+  "public_functions": []
+}

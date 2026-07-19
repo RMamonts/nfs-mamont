@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::get_attr",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/get_attr.rs",
+  "public_structs": [
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// File handle of an object whose attributes are to be retrieved.\n    pub file: file::Handle",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "pub object: file::Attr",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait GetAttr {\n    /// Retrieves the attributes for a specified file system object.\n    async fn get_attr(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

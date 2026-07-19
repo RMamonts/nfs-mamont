@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::nlm::procedures::cancel",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/cancel.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4CancelRes",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// Status code (Granted, Denied, etc.).\n    pub stat: Nlm4Stats",
+      "methods": []
+    },
+    {
+      "name": "Nlm4CancelArgs",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// `True` if the client wishes the procedure call to block until the lock can be granted.\n    /// A `false` value will cause the procedure call to return immediately if the lock cannot be granted.\n    pub block: bool, /// `True` for exclusive lock, `false` for shared lock.\n    pub exclusive: bool, /// Lock details (caller name, file handle, offset, length).\n    pub lock: Nlm4Lock",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "/// Trait for handling NLMv4 `CANCEL` procedure calls.\n///\n/// Implementations should cancel a pending (blocked) lock request\n/// that matches the given parameters.\n#[trait_variant::make(Send)]\npub trait Cancel {\n    async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes;\n}"
+  ],
+  "public_functions": []
+}

@@ -1,0 +1,28 @@
+{
+  "module_path": "nfs_mamont::vfs::mk_node",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mk_node.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// The file handle for the newly created special file.\n    pub file: Option<file::Handle>, /// The attributes for the newly created special file.\n    pub attr: Option<file::Attr>, /// Weak cache consistency data for the directory.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory from [`Args::object`].\n    pub dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The location of the special file to be created\n    pub object: vfs::DirOpArgs, /// The type of the special file to be created. See [`What`].\n    pub what: What",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// A discriminated union identifying the type of the special file to be created.\npub enum What {\n    /// Create character special file with specified initial attributes and device numbers.\n    Char(NewAttr, file::Device),\n    /// Create block special file with specified initial attributes and device numbers.\n    Block(NewAttr, file::Device),\n    /// Create socket special file with specified initial attributes.\n    Socket(NewAttr),\n    /// Create fifo special file with specified initial attributes.\n    Fifo(NewAttr),\n}"
+  ],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait MkNode {\n    /// Creates a new special file of the type `what`.\n    ///\n    /// If the server does not support any of the defined types, the error,\n    /// [`vfs::Error::NotSupported`], should be returned.\n    ///\n    /// Otherwise, if the server does not support the target type the error,\n    /// [`vfs::Error::BadType`], should be returned.\n    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

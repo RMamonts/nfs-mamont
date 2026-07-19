@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::mount::export",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/export.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::mount",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mod.rs.spec.md"
+    }
+  ]
+}

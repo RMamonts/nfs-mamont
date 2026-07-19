@@ -1,0 +1,20 @@
+{
+  "module_path": "nfs_mamont::context",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/context.rs",
+  "public_structs": [
+    {
+      "name": "ServerContext",
+      "fields": "",
+      "methods": [
+        "pub new (\n        backend: Arc<V>,\n        read_allocator: Arc<A>,\n        write_allocator: Arc<A>,\n        vfs_pool_size: NonZeroUsize,\n    ) -> Self",
+        "pub get_vfs_pool (&self) -> &VfsPool<B>",
+        "pub get_backend (&self) -> Arc<V>",
+        "pub get_read_allocator (&self) -> Arc<A>",
+        "pub get_write_allocator (&self) -> Arc<A>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

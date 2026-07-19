@@ -1,0 +1,27 @@
+{
+  "module_path": "nfs_mamont::rpc",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/rpc.rs",
+  "public_structs": [
+    {
+      "name": "VersionMismatch",
+      "fields": "pub low: u32, pub high: u32",
+      "methods": []
+    },
+    {
+      "name": "OpaqueAuth",
+      "fields": "pub flavor: AuthFlavor, pub body: Vec<u8>",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "#[derive(ToPrimitive, FromPrimitive)]\npub enum AcceptStat {\n    Success = 0,\n    ProgUnavail = 1,\n    ProgMismatch = 2,\n    ProcUnavail = 3,\n    GarbageArgs = 4,\n    SystemErr = 5,\n}",
+    "#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]\npub enum AuthStat {\n    Ok = 0,\n    BadCred = 1,\n    RejectedCred = 2,\n    BadVerf = 3,\n    RejectedVerf = 4,\n    TooWeak = 5,\n    InvalidResp = 6,\n    Failed = 7,\n    KerbGeneric = 8,\n    TimeExpire = 9,\n    TktFile = 10,\n    Decode = 11,\n    NetAddr = 12,\n    RpcSecGssCredProblem = 13,\n    RpcSecGssCtxProblem = 14,\n}",
+    "#[derive(ToPrimitive, FromPrimitive)]\npub enum RpcBody {\n    Call = 0,\n    Reply = 1,\n}",
+    "pub enum ReplyBody {\n    MsgAccepted = 0,\n    MsgDenied = 1,\n}",
+    "/// Authentication flavors.\n#[derive(Debug, Clone, ToPrimitive, FromPrimitive)]\n#[cfg_attr(test, derive(PartialEq))]\npub enum AuthFlavor {\n    None = 0,\n    Sys = 1,\n    Short = 2,\n    Dh = 3,\n    RpcSecGss = 6,\n}",
+    "pub enum RejectedReply {\n    RpcMismatch = 0,\n    AuthError = 1,\n}",
+    "/// Errors that can occur during parsing.\n#[derive(Debug)]\npub enum Error {\n    /// The maximum element limit was exceeded.\n    MaxElemLimit,\n    /// An I/O error occurred.\n    IO(io::Error),\n    /// An enum discriminant mismatch occurred.\n    EnumDiscMismatch,\n    /// An incorrect string was encountered during UTF-8 conversion.\n    IncorrectString(FromUtf8Error),\n    /// An impossible type cast was attempted.\n    ImpossibleTypeCast,\n    /// A bad file handle was encountered.\n    BadFileHandle,\n    /// A message type mismatch occurred.\n    MessageTypeMismatch,\n    /// An RPC version mismatch occurred.\n    RpcVersionMismatch(VersionMismatch),\n    /// An authentication error occurred.\n    Auth(AuthStat),\n    /// A program mismatch occurred.\n    ProgramMismatch,\n    /// A procedure mismatch occurred.\n    ProcedureMismatch,\n    /// A program version mismatch occurred.\n    ProgramVersionMismatch(VersionMismatch),\n}"
+  ],
+  "public_traits": [],
+  "public_functions": []
+}

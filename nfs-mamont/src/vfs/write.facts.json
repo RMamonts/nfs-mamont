@@ -1,0 +1,38 @@
+{
+  "module_path": "nfs_mamont::vfs::write",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/write.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// The file handle for the file to which data is to be written.\n    /// This must identify a file system object of type [`file::Type::Regular`].\n    pub file: file::Handle, /// The position within file at which the write is to begin.\n    pub offset: u64, /// Size of data in buffer\n    pub size: u32, /// Server's behaviour after performing write\n    pub stable: StableHow, /// The data to be written to the file.\n    ///\n    /// The size of data must be less than or equal to the value of the server's\n    /// [`super::fs_info::Success::write_max`] field. If greater, the server may write fewer bytes,\n    /// resulting in a short write.\n    pub data: B",
+      "methods": []
+    },
+    {
+      "name": "Verifier",
+      "fields": "pub [u8; NFS3_WRITEVERFSIZE]",
+      "methods": []
+    },
+    {
+      "name": "ArgsPartial",
+      "fields": "/// The file handle for the file to which data is to be written.\n    /// This must identify a file system object of type [`file::Type::Regular`].\n    pub file: file::Handle, /// The position within file at which the write is to begin.\n    pub offset: u64, /// Size of data in `Buffer`\n    pub size: u32, /// If `stable` is [`StableHow::FileSync`], the server must commit the data\n    /// written plus all file system metadata to stable storage before returning results.\n    /// If `stable` is [`StableHow::DataSync`], then server must commit all of the data\n    /// to stable storage and enough of the metadata to retrieve the data before returning.\n    /// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the\n    /// `data` and the metadata to stable storage, including all or none, before returning a reply\n    /// the client. There is no guarantee whether or when any uncommitted data will subsequently be\n    /// committed to stable storage.\n    pub stable: StableHow",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// Weak cache consistency data for the file.\n    pub file_wcc: vfs::WccData, /// The number of bytes of data written to the file.\n    pub count: u32, /// The indication of the level of commitment of the data and metadata.\n    pub committed: StableHow, /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].\n    pub verifier: Verifier",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the file.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Enum describing servers behaviour after performing write:\n///\n/// If `stable` is [`StableHow::FileSync`], the server must commit the data\n/// written plus all file system metadata to stable storage before returning results.\n/// If `stable` is [`StableHow::DataSync`], then server must commit all of the data\n/// to stable storage and enough of the metadata to retrieve the data before returning.\n/// If `stable` is [`StableHow::Unstable`], the server is free to commit any part of the\n/// `data` and the metadata to stable storage, including all or none, before returning a reply\n/// the client. There is no guarantee whether or when any uncommitted data will subsequently be\n/// committed to stable storage.\n#[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]\npub enum StableHow {\n    Unstable = 0,\n    DataSync = 1,\n    FileSync = 2,\n}"
+  ],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Write<B: Buffer> {\n    /// Writes data to a file.\n    ///\n    /// Some implementations may return [`vfs::Error::NoSpace`] instead of\n    /// [`vfs::Error::QuotaExceeded`] when a user's quota is exceeded.\n    ///\n    /// If the `file` system object type was not a [`file::Type::Regular`] file,\n    /// [`vfs::Error::InvalidArgument`] is returned.\n    async fn write(&self, args: Args<B>) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

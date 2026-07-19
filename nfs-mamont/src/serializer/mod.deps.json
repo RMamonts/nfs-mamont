@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::serializer",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/mod.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::serializer::files",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/files.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/files.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mod.rs.spec.md"
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "module_path": "nfs_mamont::serializer::server::serialize_struct",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/serialize_struct.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::set_attr",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/set_attr.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/set_attr.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::create",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/create.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/create.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::vfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::mk_dir",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mk_dir.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mk_dir.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::mk_node",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mk_node.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mk_node.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::read_dir",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_dir.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_dir.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::fs_stat",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/fs_stat.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/fs_stat.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::allocator",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::mount::dump",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/dump.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/dump.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::access",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/access.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/access.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::commit",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/commit.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/commit.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::read_dir_plus",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_dir_plus.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_dir_plus.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::mount::mnt",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/mnt.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/mnt.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::lookup",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/lookup.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/lookup.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::rename",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/rename.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/rename.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nlm/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nlm/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::mount::export",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/export.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/export.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::read",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::mount",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/mount/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::symlink",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/symlink.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/symlink.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::get_attr",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/get_attr.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/get_attr.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::read_link",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_link.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/read_link.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::rpc",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/rpc.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/rpc.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::rpc",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/rpc.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/rpc.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::fs_info",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/fs_info.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/fs_info.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::task",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::write",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/write.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/write.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::rm_dir",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/rm_dir.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/rm_dir.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::link",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/link.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/link.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::mount",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mod.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mod.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::path_conf",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/path_conf.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/path_conf.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::serializer::server::nfs::remove",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/remove.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/remove.rs.spec.md"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::serializer::server::nfs::lookup",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/lookup.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub result_ok (dest: &mut impl Write, arg: lookup::Success) -> io::Result<()>",
+    "pub result_fail (dest: &mut impl Write, arg: lookup::Fail) -> io::Result<()>"
+  ]
+}

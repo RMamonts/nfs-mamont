@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::serializer::server::nfs::link",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/link.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub result_ok (dest: &mut impl Write, arg: link::Success) -> io::Result<()>",
+    "pub result_fail (dest: &mut impl Write, arg: link::Fail) -> io::Result<()>"
+  ]
+}

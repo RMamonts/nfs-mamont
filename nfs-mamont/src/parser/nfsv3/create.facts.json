@@ -1,0 +1,14 @@
+{
+  "module_path": "nfs_mamont::parser::nfsv3::create",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nfsv3/create.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub new_attr (src: &mut impl Read) -> Result<NewAttr>",
+    "pub set_time (src: &mut impl Read) -> Result<SetTime>",
+    "pub nfs_time (src: &mut impl Read) -> Result<Time>",
+    "pub how (src: &mut impl Read) -> Result<create::How>",
+    "pub args (src: &mut impl Read) -> Result<create::Args>"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "module_path": "nfs_mamont::allocator",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/mod.rs",
+  "public_structs": [
+    {
+      "name": "AllocatorState",
+      "fields": "pub pool: ArrayQueue<UnownedBuffer>, pub semaphore: Semaphore",
+      "methods": []
+    },
+    {
+      "name": "Impl",
+      "fields": "",
+      "methods": [
+        "pub new (size: NonZeroUsize, count: NonZeroUsize) -> Self"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "/// Abstract buffer type returned by [`Allocator`].\n///\n/// Implementations provide chunked read/write access to the allocated memory.\npub trait Buffer: Send + Sync {\n    /// Returns an iterator over read-only byte chunks of this buffer.\n    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_;\n\n    /// Returns an iterator over mutable byte chunks of this buffer.\n    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_;\n\n    /// Returns the total number of bytes in the buffer.\n    fn len(&self) -> usize;\n\n    /// Returns `true` if the buffer is empty.\n    fn is_empty(&self) -> bool;\n\n    /// Creates an empty, zero-length buffer with no backing memory.\n    fn empty() -> Self\n    where\n        Self: Sized;\n}",
+    "/// Allocates buffers for user data transmission inside NFS-Mamont implementation.\npub trait Allocator {\n    /// Type of buffer returned by this allocator.\n    type Buffer: Buffer;\n\n    /// Returns a buffer of at least `size` bytes.\n    ///\n    /// # Parameters\n    ///\n    /// - `size` --- minimum size of the returned buffer in bytes.\n    ///\n    /// # Panic\n    ///\n    /// This method returns [`None`] if size is greater then allocator capacity.\n    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;\n}"
+  ],
+  "public_functions": []
+}

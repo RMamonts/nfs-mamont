@@ -1,0 +1,12 @@
+{
+  "module_path": "nfs_mamont::parser::nfsv3::read_dir_plus",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nfsv3/read_dir_plus.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub cookie (src: &mut impl Read) -> Result<read_dir::Cookie>",
+    "pub cookie_verifier (src: &mut impl Read) -> Result<read_dir::CookieVerifier>",
+    "pub args (src: &mut impl Read) -> Result<read_dir_plus::Args>"
+  ]
+}

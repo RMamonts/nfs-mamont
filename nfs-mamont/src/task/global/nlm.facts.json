@@ -1,0 +1,22 @@
+{
+  "module_path": "nfs_mamont::task::global::nlm",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/nlm.rs",
+  "public_structs": [
+    {
+      "name": "NlmCommand",
+      "fields": "/// Channel used to pass the result to write task.\n    pub result_tx: Sender<ProcReply<B>>, /// Placeholder for NLM procedure args.\n    pub args: NlmArgWrapper",
+      "methods": []
+    },
+    {
+      "name": "NlmTask",
+      "fields": "",
+      "methods": [
+        "pub new (nlm_service: Arc<N>) -> (Self, Sender<NlmCommand<B>>)",
+        "pub spawn (self)"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

@@ -1,0 +1,17 @@
+{
+  "module_path": "nfs_mamont::task::connection::read",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/connection/read.rs",
+  "public_structs": [
+    {
+      "name": "ReadTask",
+      "fields": "",
+      "methods": [
+        "pub new (\n        readhalf: OwnedReadHalf,\n        client_addr: SocketAddr,\n        mount_sender: Sender<MountCommand<B>>,\n        nlm_sender: Sender<NlmCommand<B>>,\n        result_sender: Sender<ProcReply<B>>,\n        allocator: Arc<A>,\n        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,\n    ) -> Self",
+        "pub spawn (self) where\n        B: 'static,"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

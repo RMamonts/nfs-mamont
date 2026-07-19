@@ -1,0 +1,17 @@
+{
+  "module_path": "nfs_mamont::serializer::server::serialize_struct",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/serialize_struct.rs",
+  "public_structs": [
+    {
+      "name": "Serializer",
+      "fields": "",
+      "methods": [
+        "pub new (writer: T) -> Self",
+        "pub form_reply (\n        &mut self,\n        reply: ProcReply<B>,\n        verifier: OpaqueAuth,\n    ) -> io::Result<()>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

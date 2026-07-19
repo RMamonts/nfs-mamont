@@ -1,0 +1,31 @@
+{
+  "module_path": "nfs_mamont::mount",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mod.rs",
+  "public_structs": [
+    {
+      "name": "ExportEntry",
+      "fields": "/// Exported directory.\n    pub directory: file::Path, /// Client host names. They are implementation specific\n    /// and cannot be directly interpreted by clients.\n    pub names: Vec<HostName>",
+      "methods": []
+    },
+    {
+      "name": "MountEntry",
+      "fields": "/// Name of the client host that is sending RPC.\n    pub hostname: HostName, /// Server pathname of a directory.\n    pub directory: file::Path",
+      "methods": []
+    },
+    {
+      "name": "HostName",
+      "fields": "",
+      "methods": [
+        "pub new (name: String) -> io::Result<Self>",
+        "pub as_str (&self) -> &str"
+      ]
+    }
+  ],
+  "public_enums": [
+    "/// Wrapper for mount procedure result bodies.\npub enum MountRes {\n    Null,\n    Mount(Result<mnt::Success, mnt::Fail>),\n    Unmount,\n    Export(export::Success),\n    Dump(dump::Success),\n    UnmountAll,\n}"
+  ],
+  "public_traits": [
+    "#[allow(dead_code)]\npub trait Mount: mnt::Mnt + umnt::Umnt + umntall::Umntall + export::Export + dump::Dump {}"
+  ],
+  "public_functions": []
+}
