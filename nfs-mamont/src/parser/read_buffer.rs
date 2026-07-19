@@ -1,362 +1,190 @@
-//! Buffered reading utilities for parsing XDR-encoded RPC messages.
+//! Buffered frame reading for parsing XDR-encoded RPC messages.
 //!
-//! This module provides a double-buffered reader that efficiently handles
-//! asynchronous reading from network sockets while supporting retry logic
-//! for parsing operations that may require additional data.
+//! This module provides [`FrameReader`] --- a buffered reader that exposes the
+//! bodies of RMS frames (RFC 5531, section 11) of an async stream to
+//! synchronous parsing code.
 //!
-//! The main component is [`CountBuffer`], which wraps an [`AsyncRead`] stream
-//! and provides a [`Read`] interface for synchronous parsing functions. It uses
-//! two internal buffers to allow reading new data while
-//! still being able to retry parsing from a previous position if needed.
+//! The reader guarantees that after [`FrameReader::begin_body`] the first
+//! `min(frame_size, capacity)` bytes of the frame body (the "head window") are
+//! buffered in memory, so procedure arguments are parsed synchronously via the
+//! [`Read`] implementation without any retries or awaits. Only opaque payloads
+//! that do not fit into the head window (NFSv3 `WRITE` data) are read from the
+//! socket directly via [`FrameReader::read_body_exact`].
+//!
+//! Synchronous reads never cross the frame boundary: [`Read::read`] is limited
+//! by the number of unconsumed frame body bytes, so a parser can never consume
+//! bytes of the next frame. Bytes of the next frame that were buffered while
+//! refilling are consumed by the next [`FrameReader::read_frame_header`] call.
 
 use std::cmp::min;
-use std::io;
-use std::io::{ErrorKind, Read};
+use std::io::{self, ErrorKind, Read};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use crate::parser::{Error, Result};
+/// Size of an RMS frame header in bytes.
+const RMS_HEADER_SIZE: usize = 4;
 
-/// A buffered reader that wraps an async stream and provides synchronous reading
-/// with retry capability.
+/// A buffered reader exposing RMS frame bodies of an async stream.
 ///
-/// `CountBuffer` uses a double-buffering strategy with two internal [`ReadBuffer`]
-/// instances. This allows the parser to:
-/// - Read new data from the socket into one buffer while parsing from another
-/// - Retry parsing operations by resetting read positions when more data is needed
-/// - Track the total number of bytes consumed from the stream
-///
-/// The buffer implements [`Read`] to work with synchronous parsing functions,
-/// while internally managing asynchronous I/O operations.
-pub struct CountBuffer<S: AsyncRead + Unpin> {
-    // actually, there are definitely two
-    bufs: Vec<ReadBuffer>,
-    read: usize,
-    write: usize,
-    retry_mode: bool,
+/// The internal buffer holds a sliding window of unconsumed stream bytes.
+/// Invariant: direct socket reads ([`FrameReader::read_body_exact`],
+/// [`FrameReader::discard_body`]) are only performed when the buffer is empty,
+/// so stream bytes are always consumed in order.
+pub struct FrameReader<S: AsyncRead + Unpin> {
     socket: S,
-    total_bytes: usize,
+    buf: Vec<u8>,
+    /// Start of the unconsumed bytes in `buf`.
+    start: usize,
+    /// End of the valid bytes in `buf`.
+    end: usize,
+    /// Bytes of the current frame body not yet consumed.
+    frame_remaining: usize,
 }
 
-impl<S: AsyncRead + Unpin> CountBuffer<S> {
-    /// Creates a new `CountBuffer` with the specified capacity for each internal buffer.
+impl<S: AsyncRead + Unpin> FrameReader<S> {
+    /// Creates a new `FrameReader` with the given buffer capacity.
     ///
-    /// # Arguments
+    /// The capacity bounds the head window of a frame: the arguments of every
+    /// procedure (except opaque `WRITE` data, which is streamed) must fit into
+    /// `capacity` bytes, otherwise parsing fails with `InvalidData`.
     ///
-    /// * `capacity` - The size in bytes for each of the two internal buffers
-    /// * `socket` - The async stream to read from
-    pub fn new(capacity: usize, socket: S) -> CountBuffer<S> {
-        Self {
-            bufs: vec![ReadBuffer::new(capacity), ReadBuffer::new(capacity)],
-            read: 0,
-            write: 1,
-            retry_mode: false,
-            socket,
-            total_bytes: 0,
-        }
+    /// # Panics
+    ///
+    /// If `capacity` is less than the RMS header size (4 bytes).
+    pub fn new(capacity: usize, socket: S) -> FrameReader<S> {
+        assert!(capacity >= RMS_HEADER_SIZE, "capacity must hold at least an RMS header");
+        Self { socket, buf: vec![0u8; capacity], start: 0, end: 0, frame_remaining: 0 }
     }
 
-    /// Fills the write buffer by reading data from the socket.
-    ///
-    /// This method reads available data from the async stream into the current
-    /// write buffer. It returns the number of bytes read, or an error if the
-    /// connection is closed or an I/O error occurs.
-    ///
-    /// Returns `Ok(0)` if the write buffer is full and no more data can be read.
-    async fn fill_internal(&mut self) -> io::Result<usize> {
-        if self.bufs[self.write].available_write() == 0 {
-            return Ok(0);
-        }
+    /// Number of buffered unconsumed bytes.
+    #[inline]
+    fn buffered(&self) -> usize {
+        self.end - self.start
+    }
 
-        let bytes_read = self.socket.read(self.bufs[self.write].write_slice()).await?;
+    /// Number of unconsumed bytes of the current frame body.
+    #[inline]
+    pub fn frame_remaining(&self) -> usize {
+        self.frame_remaining
+    }
+
+    /// Reads more data from the socket into the buffer, compacting it first
+    /// if the write area is exhausted.
+    async fn fill(&mut self) -> io::Result<usize> {
+        if self.end == self.buf.len() {
+            self.buf.copy_within(self.start..self.end, 0);
+            self.end -= self.start;
+            self.start = 0;
+        }
+        let bytes_read = self.socket.read(&mut self.buf[self.end..]).await?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
-
-        self.bufs[self.write].extend(bytes_read);
-
+        self.end += bytes_read;
         Ok(bytes_read)
     }
 
-    /// Parses a value using the provided parsing function, with automatic retry on EOF.
+    /// Fills the buffer until at least `n` unconsumed bytes are available.
     ///
-    /// This method attempts to parse a value using a synchronous parsing function.
-    /// If the parsing function encounters an `UnexpectedEof` error, this method will:
-    /// 1. Read more data from the socket into the write buffer
-    /// 2. Reset read positions to allow retrying from the same point
-    /// 3. Retries the parsing operation in loop until it succeeds or encounters a non-EOF error
-    ///
-    /// After successful parsing, if retry mode was used, the buffers are swapped
-    /// to prepare for the next parsing operation.
-    ///
-    /// # Arguments
-    ///
-    /// * `caller` - A function that takes a `&mut dyn Read` and returns a `Result<T>`
-    ///
-    /// # Returns
-    ///
-    /// Returns the parsed value, or an error if parsing fails or I/O errors occur.
-    pub async fn parse_with_retry<T>(
-        &mut self,
-        caller: impl Fn(&mut Self) -> Result<T>,
-    ) -> Result<T> {
-        let retry_start_read = self.bufs[self.read].bytes_read();
-        let retry_start_write = self.bufs[self.write].bytes_read();
-        let retry_total = self.total_bytes;
-        // there is no need to check if we reach end of buffer while appending data to buffer since we have buffer, that would
-        // definitely be enough to read what we are planning
-        loop {
-            match caller(self) {
-                Err(Error::IO(err)) if err.kind() == ErrorKind::UnexpectedEof => {
-                    self.retry_mode = true;
-                    // called whenever we need to read more data
-                    match self.fill_internal().await {
-                        Ok(_) => {
-                            self.bufs[self.read].reset_read(retry_start_read);
-                            self.bufs[self.write].reset_read(retry_start_write);
-                            self.total_bytes = retry_total;
-                            continue;
-                        }
-                        Err(e) => return Err(Error::IO(e)),
-                    }
-                }
-                Ok(val) => {
-                    if self.retry_mode {
-                        self.bufs[self.read].clean();
-                        self.write = (self.write + 1) % 2;
-                        self.read = (self.read + 1) % 2;
-                    }
-                    if self.read == self.write {
-                        return Err(Error::IO(io::Error::other(
-                            "Cannot read and write to one buffer simultaneously",
-                        )));
-                    }
-                    self.retry_mode = false;
-                    return Ok(val);
-                }
-                Err(err) => return Err(err),
-            }
+    /// `n` must not exceed the buffer capacity.
+    async fn ensure_buffered(&mut self, n: usize) -> io::Result<()> {
+        debug_assert!(n <= self.buf.len());
+        while self.buffered() < n {
+            self.fill().await?;
         }
-    }
-
-    /// Reads an exact number of bytes from the socket into the provided buffer.
-    ///
-    /// This method uses `read_exact` to ensure the entire buffer is filled.
-    /// The total byte count is updated to reflect the bytes read.
-    ///
-    /// # Arguments
-    ///
-    /// * `dest` - The destination buffer to fill
-    ///
-    /// # Returns
-    ///
-    /// Returns the number of bytes read (equal to `dest.len()`), or an error
-    /// if the connection is closed before the buffer can be filled.
-    pub async fn read_from_async(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        self.socket.read_exact(dest).await?;
-        self.total_bytes += dest.len();
-        Ok(dest.len())
-    }
-
-    /// Resets the total byte counter to zero.
-    ///
-    /// This is typically called after successfully parsing a complete message
-    /// to prepare for parsing the next message.
-    #[inline]
-    pub fn clean(&mut self) {
-        self.total_bytes = 0;
-    }
-
-    /// Reads data from the internal buffers into the provided destination buffer.
-    ///
-    /// This method reads from internal buffers,
-    /// filling the destination buffer with available data.
-    ///
-    /// # Arguments
-    ///
-    /// * `dest` - The destination buffer to fill
-    ///
-    /// # Returns
-    ///
-    /// Returns the number of bytes read, which may be less than `dest.len()`
-    /// if not enough data is available in the internal buffers.
-    pub fn read_from_inner(&mut self, dest: &mut [u8]) -> io::Result<usize> {
-        if dest.is_empty() {
-            return Ok(0);
-        }
-        self.read(dest)
-    }
-
-    /// Returns the total number of bytes consumed from the stream since the last reset.
-    ///
-    /// This count includes all bytes that have been read from the socket,
-    /// whether they were consumed by parsing operations or discarded.
-    #[inline]
-    pub fn total_bytes(&self) -> usize {
-        self.total_bytes
-    }
-
-    /// Discards the specified number of bytes from the stream.
-    ///
-    /// This method is used to skip over unparsed or unwanted data. It first
-    /// consumes available bytes from the internal buffers, then reads and discards
-    /// any remaining bytes directly from the socket.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of bytes to discard
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if exactly `n` bytes were discarded, or an error if
-    /// the connection is closed before all bytes can be discarded.
-    pub async fn discard_bytes(&mut self, n: usize) -> io::Result<()> {
-        let from_inner = {
-            let from_inner1 = min(self.bufs[self.read].available_read(), n);
-            self.bufs[self.read].consume(from_inner1);
-            let from_inner2 = min(self.bufs[self.write].available_read(), n - from_inner1);
-            self.bufs[self.write].consume(from_inner2);
-            from_inner1 + from_inner2
-        };
-
-        self.total_bytes += from_inner;
-        let from_socket = n - from_inner;
-        if from_socket == 0 {
-            return Ok(());
-        }
-
-        let mut src = (&mut self.socket).take(from_socket as u64);
-
-        let mut actual = 0;
-
-        loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
-            if n == 0 {
-                break;
-            }
-            actual += n;
-        }
-
-        self.total_bytes += actual;
-
-        // probably useless, since we have guarantees from Take
-        if actual != from_socket {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "Discarded not valid amount of bytes",
-            ));
-        }
-
         Ok(())
     }
-}
 
-impl<S: AsyncRead + Unpin> Read for CountBuffer<S> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n1 = self.bufs[self.read].read(buf)?;
-        let n2 = self.bufs[self.write].read(&mut buf[n1..])?;
-        self.total_bytes += n1 + n2;
-        Ok(n1 + n2)
+    /// Reads the 4-byte RMS frame header from the stream.
+    ///
+    /// The header is not part of the frame body and is not accounted for in
+    /// [`FrameReader::frame_remaining`].
+    pub async fn read_frame_header(&mut self) -> io::Result<u32> {
+        self.ensure_buffered(RMS_HEADER_SIZE).await?;
+        let bytes: [u8; RMS_HEADER_SIZE] =
+            self.buf[self.start..self.start + RMS_HEADER_SIZE].try_into().unwrap();
+        self.start += RMS_HEADER_SIZE;
+        Ok(u32::from_be_bytes(bytes))
+    }
+
+    /// Starts a frame body of `size` bytes and buffers its head window
+    /// (`min(size, capacity)` bytes), so subsequent synchronous parsing does
+    /// not run out of data before the window is exhausted.
+    pub async fn begin_body(&mut self, size: usize) -> io::Result<()> {
+        self.frame_remaining = size;
+        let head = min(size, self.buf.len());
+        self.ensure_buffered(head).await
+    }
+
+    /// Reads exactly `dest.len()` bytes of the frame body, first from the
+    /// buffer, then directly from the socket.
+    ///
+    /// Used for opaque payloads (NFSv3 `WRITE` data) that may not fit into
+    /// the buffered head window.
+    pub async fn read_body_exact(&mut self, dest: &mut [u8]) -> io::Result<()> {
+        if dest.len() > self.frame_remaining {
+            return Err(io::Error::new(ErrorKind::InvalidData, "Read beyond frame bounds"));
+        }
+        let from_buf = min(dest.len(), self.buffered());
+        dest[..from_buf].copy_from_slice(&self.buf[self.start..self.start + from_buf]);
+        self.start += from_buf;
+        self.frame_remaining -= from_buf;
+
+        let rest = &mut dest[from_buf..];
+        if !rest.is_empty() {
+            // from_buf < dest.len() implies the buffer is empty, so a direct
+            // socket read preserves stream ordering.
+            self.socket.read_exact(rest).await?;
+            self.frame_remaining -= rest.len();
+        }
+        Ok(())
+    }
+
+    /// Discards `n` bytes of the frame body, first from the buffer, then from
+    /// the socket (reusing the buffer as scratch space).
+    pub async fn discard_body(&mut self, n: usize) -> io::Result<()> {
+        if n > self.frame_remaining {
+            return Err(io::Error::new(ErrorKind::InvalidData, "Discard beyond frame bounds"));
+        }
+        let from_buf = min(n, self.buffered());
+        self.start += from_buf;
+        self.frame_remaining -= from_buf;
+
+        let mut left = n - from_buf;
+        if left > 0 {
+            // left > 0 implies the buffer is empty; reuse it as scratch space.
+            self.start = 0;
+            self.end = 0;
+            while left > 0 {
+                let take = min(left, self.buf.len());
+                self.socket.read_exact(&mut self.buf[..take]).await?;
+                left -= take;
+                self.frame_remaining -= take;
+            }
+        }
+        Ok(())
+    }
+
+    /// Discards all unconsumed bytes of the current frame body, aligning the
+    /// stream to the next frame after a protocol-level error.
+    pub async fn discard_rest_of_frame(&mut self) -> io::Result<()> {
+        let remaining = self.frame_remaining;
+        self.discard_body(remaining).await
     }
 }
 
-/// An internal buffer for managing read and write positions.
-///
-/// `ReadBuffer` maintains a fixed-size buffer with separate read and write
-/// positions, allowing efficient tracking of available data and available space.
-/// It implements [`Read`] to provide a standard interface for consuming data.
-pub struct ReadBuffer {
-    data: Vec<u8>,
-    read_pos: usize,
-    write_pos: usize,
-}
-
-impl ReadBuffer {
-    /// Creates a new `ReadBuffer` with the specified capacity.
+impl<S: AsyncRead + Unpin> Read for FrameReader<S> {
+    /// Reads buffered frame body bytes.
     ///
-    /// The buffer is initialized with zeros and both read and write positions
-    /// start at the beginning.
-    fn new(capacity: usize) -> Self {
-        Self { data: vec![0u8; capacity], read_pos: 0, write_pos: 0 }
-    }
-
-    /// Returns the current read position (number of bytes consumed).
-    #[inline]
-    fn bytes_read(&self) -> usize {
-        self.read_pos
-    }
-
-    /// Returns the number of bytes available to read.
-    ///
-    /// This is the difference between the write position and read position.
-    #[inline]
-    fn available_read(&self) -> usize {
-        self.write_pos - self.read_pos
-    }
-
-    /// Returns the number of bytes available for writing.
-    ///
-    /// This is the remaining space in the buffer from the write position to the end.
-    #[inline]
-    fn available_write(&self) -> usize {
-        self.data.len() - self.write_pos
-    }
-
-    /// Returns a mutable slice of the buffer starting from the write position.
-    ///
-    /// This slice can be used to write data directly into the buffer.
-    #[inline]
-    fn write_slice(&mut self) -> &mut [u8] {
-        &mut self.data[self.write_pos..]
-    }
-
-    /// Advances the read position by `n` bytes, consuming that many bytes.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of bytes to consume
-    #[inline]
-    fn consume(&mut self, n: usize) {
-        self.read_pos += n;
-    }
-
-    /// Advances the write position by `n` bytes, indicating that data has been written.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of bytes that were written
-    #[inline]
-    fn extend(&mut self, n: usize) {
-        self.write_pos += n;
-    }
-
-    /// Resets the read position to a specific value.
-    ///
-    /// This is used during retry operations to allow re-reading from a previous position.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The new read position
-    #[inline]
-    fn reset_read(&mut self, n: usize) {
-        self.read_pos = n;
-    }
-
-    /// Resets both read and write positions to zero, clearing the buffer.
-    ///
-    /// This prepares the buffer for reuse after a complete message has been processed.
-    #[inline]
-    fn clean(&mut self) {
-        self.read_pos = 0;
-        self.write_pos = 0;
-    }
-}
-
-impl Read for ReadBuffer {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = min(buf.len(), self.available_read());
-        buf[..len].copy_from_slice(&self.data[self.read_pos..self.read_pos + len]);
-        self.consume(len);
-        Ok(len)
+    /// The read is limited both by the buffered data and by the frame
+    /// boundary; `Ok(0)` with a non-empty `dest` means either the frame body
+    /// is fully consumed or the head window is exhausted (arguments larger
+    /// than the buffer).
+    fn read(&mut self, dest: &mut [u8]) -> io::Result<usize> {
+        let n = min(dest.len(), min(self.buffered(), self.frame_remaining));
+        dest[..n].copy_from_slice(&self.buf[self.start..self.start + n]);
+        self.start += n;
+        self.frame_remaining -= n;
+        Ok(n)
     }
 }
