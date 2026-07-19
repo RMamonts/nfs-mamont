@@ -9,7 +9,7 @@
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
 use tokio::net::TcpStream;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
@@ -39,6 +39,12 @@ pub async fn new<A, V, B>(
             return;
         }
     };
+    // NFS is a request/response protocol with many small replies: Nagle's
+    // algorithm combined with the client's delayed ACK adds tens of
+    // milliseconds of latency to metadata operations, so disable it.
+    if let Err(err) = socket.set_nodelay(true) {
+        warn!(error=%err, "failed to set TCP_NODELAY");
+    }
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
