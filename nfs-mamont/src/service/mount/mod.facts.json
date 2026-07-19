@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::service::mount",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/mount/mod.rs",
+  "public_structs": [
+    {
+      "name": "MountService",
+      "fields": "",
+      "methods": [
+        "pub with_exports (entries: Vec<ExportEntryWrapper>) -> Self"
+      ]
+    },
+    {
+      "name": "ExportEntryWrapper",
+      "fields": "pub export: ExportEntry, pub root_handle: file::Handle",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::rm_dir",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rm_dir.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// Weak cache consistency data for the directory.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory from [`Args::object`].\n    pub dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// A [`vfs::DirOpArgs`] structure identifying the directory entry\n    /// to be removed.\n    pub object: vfs::DirOpArgs",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait RmDir {\n    /// Removes (deletes) a subdirectory from a directory.\n    ///\n    /// On some servers, the filename, \".\", is illegal. These servers will return\n    /// the error, [`vfs::Error::InvalidArgument`].\n    ///\n    /// On some servers, the filename, \"..\", is illegal. These servers will return\n    /// the error, [`vfs::Error::Exist`].\n    async fn rm_dir(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

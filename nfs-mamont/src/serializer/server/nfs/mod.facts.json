@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::serializer::server::nfs",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nfs/mod.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub error (dest: &mut impl Write, stat: vfs::Error) -> Result<()>"
+  ]
+}

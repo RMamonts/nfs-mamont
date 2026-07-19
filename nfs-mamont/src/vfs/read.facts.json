@@ -1,0 +1,31 @@
+{
+  "module_path": "nfs_mamont::vfs::read",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/read.rs",
+  "public_structs": [
+    {
+      "name": "SuccessPartial",
+      "fields": "/// The attributes of the file on completion of the read.\n    pub file_attr: Option<file::Attr>, /// The number of bytes of data returned by the read.\n    pub count: u32, /// If the read ended at the end-of-file.\n    pub eof: bool",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The file handle of the file from which data is to be read.\n    /// This must identify a file system object of type [`file::Type::Regular`],\n    /// otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.\n    pub file: file::Handle, /// The position within file at which the read is to begin. If\n    /// `offset` is greater than or equal to the size of the file, the [`Success`] is\n    /// returned with `count` set to 0\n    pub offset: u64, /// The number of bytes of data that are to be read. If count is `0`, the\n    /// [`Read::read`] will succeed and return `0` bytes of data. Must be less than or equal\n    /// to the value of the server's [`super::fs_info::Success::read_max`] field. If greater,\n    /// the server may return fewer bytes, resulting in a short read.\n    pub count: u32",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// The attributes of the file on completion of the read.\n    pub head: SuccessPartial, /// The counted data read from the file.\n    pub data: B",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// The post-operation attributes of the file.\n    pub file_attr: Option<file::Attr>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Read<B: Buffer> {\n    /// Reads data from a file into a server-provided buffer.\n    ///\n    /// The `data` buffer is allocated by NFS-Mamont allocator and must be\n    /// filled by implementation. This keeps allocation policy under server control.\n    async fn read(&self, args: Args, data: B) -> Result<Success<B>, Fail>;\n}"
+  ],
+  "public_functions": []
+}

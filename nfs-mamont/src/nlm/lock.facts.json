@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::nlm::lock",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/lock.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4Lock",
+      "fields": "/// Name of the client host making the lock request.\n    pub caller_name: String, /// Handle to the file to lock.\n    pub file_handle: vfs::file::Handle, /// Host or process that is making the request.\n    pub opaque_handle: OpaqueHandle, /// PID of the process making the request.\n    pub system_identifier: i32, /// Offset for the lock region.\n    pub lock_offset: u64, /// Length of the blocking region. An l_len of 0 means \"to end of file\".\n    pub lock_length: u64",
+      "methods": [
+        "pub new (\n        caller_name: String,\n        file_handle: vfs::file::Handle,\n        opaque_handle: OpaqueHandle,\n        system_identifier: i32,\n        lock_offset: u64,\n        lock_length: u64,\n    ) -> Result<Self, Error>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

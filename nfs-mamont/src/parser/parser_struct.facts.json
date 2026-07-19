@@ -1,0 +1,23 @@
+{
+  "module_path": "nfs_mamont::parser::parser_struct",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/parser_struct.rs",
+  "public_structs": [
+    {
+      "name": "RpcParser",
+      "fields": "",
+      "methods": [
+        "pub new (socket: S, allocator: Arc<A>) -> Self",
+        "pub with_capacity (socket: S, allocator: Arc<A>, size: usize) -> Self",
+        "pub parse_nfs_message (&mut self) -> Result<NfsArgWrapper<A::Buffer>>",
+        "pub next_message (\n        &mut self,\n    ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper>",
+        "pub parse_mount_message (&mut self) -> Result<MountArgWrapper>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub read_in_slice_async <S, B> (\n    src: &mut CountBuffer<S>,\n    buffer: &mut B,\n    to_skip: usize,\n    to_write: usize,\n) -> Result<usize> where\n    S: AsyncRead + Unpin,\n    B: Buffer,",
+    "pub read_in_slice_sync <S, B> (\n    src: &mut CountBuffer<S>,\n    buffer: &mut B,\n    left_size: usize,\n) -> Result<usize> where\n    S: AsyncRead + Unpin,\n    B: Buffer,"
+  ]
+}

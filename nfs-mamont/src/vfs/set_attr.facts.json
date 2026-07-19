@@ -1,0 +1,38 @@
+{
+  "module_path": "nfs_mamont::vfs::set_attr",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/set_attr.rs",
+  "public_structs": [
+    {
+      "name": "NewAttr",
+      "fields": "pub mode: Option<u32>, pub uid: Option<u32>, pub gid: Option<u32>, pub size: Option<u64>, pub atime: SetTime, pub mtime: SetTime",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The file handle for the object.\n    pub file: file::Handle, /// Structure describing the attributes to be set and the new values for those attributes.\n    pub new_attr: NewAttr, /// Optionally verify that `ctime` of the object matches the client expectation.\n    pub guard: Option<Guard>",
+      "methods": []
+    },
+    {
+      "name": "Guard",
+      "fields": "pub ctime: file::Time",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Strategy for updating timestamps in [`SetAttr`].\n#[derive(Copy, Clone)]\npub enum SetTime {\n    DontChange,\n    ToServer,\n    ToClient(file::Time),\n}"
+  ],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait SetAttr {\n    /// Changes one or more of the attributes of a file system object on the server.\n    ///\n    /// If [`Args::guard`] is [`Some`] and object ctime differs from the guard one then\n    /// implementation must preserve the object attributes and must return a status of\n    /// [`vfs::Error::NotSync`].\n    ///\n    /// [`SetAttr::set_attr`] is not guaranteed atomic. A failed [`SetAttr::set_attr`]\n    /// may partially change a file's attributes.\n    ///\n    /// The [`Args::new_attr`] size field is used to request changes to the size of a file.\n    /// A value of `0` causes the file to be truncated, a value less then the current size\n    /// of the file causes data from new size to the end off the file to be discarded,\n    /// and a size greater than the current size of the file causes logically zeroed\n    /// data bytes to be added to the end of the file. Implementation are free to\n    /// implement this using holes or actual zero data bytes. Implementation must support\n    /// extending the file size.\n    ///\n    /// Changing the size of a file with [`SetAttr::set_attr`] indirectly\n    /// changes the `mtime`.\n    ///\n    /// [`vfs::Error::InvalidArgument`] may be returned\n    /// - if implementation can not store a uid or gid in its own representation\n    /// - if implementation can only support 32 bit offset and sizes,\n    ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than\n    ///   can be represented in 32 bit.\n    async fn set_attr(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

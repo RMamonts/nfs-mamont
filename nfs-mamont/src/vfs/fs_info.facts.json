@@ -1,0 +1,35 @@
+{
+  "module_path": "nfs_mamont::vfs::fs_info",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/fs_info.rs",
+  "public_structs": [
+    {
+      "name": "Properties",
+      "fields": "",
+      "methods": [
+        "pub from_wire (raw: u32) -> Self",
+        "pub bits (self) -> u32",
+        "pub contains (self, flag: u32) -> bool"
+      ]
+    },
+    {
+      "name": "Success",
+      "fields": "/// The attributes of the file system root.\n    pub root_attr: Option<file::Attr>, /// The maximum size in bytes of a [`vfs::read::Read::read`] request supported by the server.\n    /// Any [`vfs::read::Read::read`] with a number greater than rtmax will result in a short\n    /// read of rtmax bytes or less.\n    pub read_max: u32, /// The preferred size of a [`vfs::read::Read::read`] request. This should be the same as\n    /// rtmax unless there is a clear benefit in performance or efficiency.\n    pub read_pref: u32, /// The suggested multiple for the size of a [`vfs::read::Read::read`] request.\n    pub read_mult: u32, /// The maximum size of a [`vfs::write::Write::write`] request supported by the server.\n    /// In general, the client is limited by [`Self::write_max`] since there is no guarantee that a\n    /// server can handle a larger write. Any [`vfs::write::Write::write`] with a count greater\n    /// than [`Self::write_max`] will result in a short write of at most [`Self::write_max`] bytes.\n    pub write_max: u32, /// The preferred size of a [`vfs::write::Write::write`] request. This should be\n    /// the same as [`Self::write_max`] unless there is a clear benefit in performance or efficiency.\n    pub write_pref: u32, /// The suggested multiple for the size of a [`vfs::write::Write::write`] request.\n    pub write_mult: u32, /// The preferred size of a [`vfs::read_dir::ReadDir::read_dir`] request.\n    pub read_dir_pref: u32, /// The maximum size of a file on the file system.\n    pub max_file_size: u64, /// The server time granularity.\n    ///\n    /// When setting a file time using [`vfs::set_attr::SetAttr::set_attr`],\n    /// the server guarantees only to preserve times to this accuracy.\n    pub time_delta: vfs::file::Time, /// A bit mask of file system properties.\n    pub properties: Properties",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// A file handle identifying a mount point in the file system.\n    pub root: file::Handle",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// The attributes of the file system root.\n    pub root_attr: Option<file::Attr>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait FsInfo {\n    /// Retrieves nonvolatile file system state information and general information.\n    async fn fs_info(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

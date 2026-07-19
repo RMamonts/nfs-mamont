@@ -1,0 +1,122 @@
+<!-- SPEC_HASH: 8252c7c6cdeab9b4e06529cb20955c2b58fc71b5cde58ba721ce06154310efc9 -->
+# Module Specification
+
+Module: nfs_mamont::serializer::server::mount
+Rust File: src/serializer/server/mount/mod.rs
+
+---
+
+## 1. Dependencies
+
+From *.deps.json, for each dependency, write down its purpose — why it is used in this module.
+
+- **`std::io::Write`**: Used as the trait bound for the `dest` parameter in `mount_stat`. It allows the serializer to write the encoded status code to any byte stream (e.g., a network buffer or memory vector).
+- **`crate::mount::mnt::Fail`**: Used as the input type for the `mount_stat` function. This enum represents the specific error codes defined by the MOUNT protocol (RFC 1813) that need to be transmitted to the client when a request fails.
+- **`crate::serializer::variant`**: Used to perform the actual serialization of the `Fail` enum. It converts the enum variant into its integer discriminant (a `u32`) and writes it to the destination using XDR (External Data Representation) encoding rules.
+- **Sub-modules (`dump`, `export`, `mnt`)**: These are declared as public modules. They contain the serializers for the successful response bodies of the respective MOUNT protocol procedures (DUMP, EXPORT, MNT). The current module acts as a parent namespace, aggregating these specific serializers alongside the generic error serializer.
+
+---
+
+## 2. Mechanics
+
+Here you need to list the key mechanisms implemented in this module. 
+A key mechanism can be identified by its semantic complexity and/or its public visibility.
+
+### Mechanism 1: MOUNT Status Serialization (`mount_stat`)
+
+**Intent:**
+To serialize the `mountstat3` enum, which represents the status code of a MOUNT protocol reply. This function is used when a MOUNT procedure (MNT, UMNT, etc.) fails or when the RPC layer needs to encode the status discriminant of the response union.
+
+**Inputs:**
+- `dest`: A mutable reference to a type implementing `std::io::Write`.
+- `status`: A `Fail` enum variant from `crate::mount::mnt`.
+
+**Outputs:**
+- `io::Result<()>`: Indicates success or failure of the write operation.
+
+**Steps:**
+1. The function delegates the serialization logic to the `crate::serializer::variant` function.
+2. It passes the `dest` writer and the `status` enum to `variant`.
+3. The `variant` function converts the `Fail` enum to its primitive integer representation (e.g., `Perm` becomes `1`, `NoEnt` becomes `2`) and writes it as a big-endian 32-bit integer to `dest`.
+
+**Edge Cases:**
+- **Conversion Failure**: If the `Fail` enum variant cannot be converted to a primitive integer (unlikely given the `num_derive` usage in the `mnt` module), the `variant` function will return an error.
+
+**Complexity:**
+- Time: O(1). The operation involves writing a fixed-size integer (4 bytes).
+- Space: O(1) auxiliary space.
+
+**Determinism:**
+- Deterministic. The same `Fail` variant will always produce the same byte sequence.
+
+---
+
+## 3. Dependency Mechanics
+
+List here the key mechanisms that are important for this module from the Mechanics section of the dependency specifications.
+
+- **From `nfs_mamont::serializer`**:
+ - **`variant`**: This is the core primitive used by `mount_stat`. It abstracts the conversion of an enum to a `u32` and the subsequent XDR encoding (endianness, padding). The current module relies on this to ensure that the error codes sent to the client are compliant with the ONC RPC standard.
+
+- **From `nfs_mamont::mount::mnt`**:
+ - **`Fail` Enum**: This module defines the specific error codes (e.g., `Perm`, `NoEnt`, `Access`) that correspond to the integer values defined in RFC 1813. The `mount_stat` function consumes this enum, acting as the bridge between the server's internal error representation and the wire format.
+
+- **From Sub-modules (`dump`, `export`, `mnt`)**:
+ - **Procedure-Specific Serializers**: While not directly called by the code in `mod.rs`, these modules are exposed publicly. They handle the serialization of the "OK" branches of the MOUNT protocol responses (e.g., `mountres3_ok`, `exportlist`). The current module provides the namespace for these, grouping them with the error serializer (`mount_stat`) to form a complete serialization suite for the MOUNT protocol.
+
+---
+
+## 4. Data Model
+
+Entities:
+- **`mount_stat` function**: Represents the serializer for the XDR `mountstat3` enum. It maps a Rust `Fail` enum to a 4-byte big-endian integer.
+
+Relations:
+- **`mount_stat` → `variant` (1:1)**: `mount_stat` is a thin wrapper that invokes `variant` for the `Fail` type.
+
+Global Invariants:
+- The output of `mount_stat` must be a valid XDR encoded integer representing one of the `mountstat3` status codes defined in RFC 1813.
+
+## 5. Error Model
+
+Error Types:
+- **`std::io::Error`**: The only error type returned.
+
+Error Propagation Strategy:
+- **Direct Propagation**: The `mount_stat` function uses the `?` operator to return any error generated by the underlying `variant` function or the `Write` implementation immediately.
+
+Recoverability:
+- **Recoverable**: The function returns a `Result`, allowing the RPC layer to catch the error (e.g., if the network buffer is full) and handle it appropriately (e.g., by closing the connection).
+
+Panics:
+- **Allowed**: No.
+- **Conditions**: The code does not perform any operations that could panic. It relies entirely on the `variant` function and the `Write` trait, both of which are expected to return errors on failure.
+
+---
+
+## 6. Traits
+
+List which external traits this module implements:
+- None. This module defines free-standing serialization functions and re-exports sub-modules.
+
+---
+
+## 7. Overview
+
+This section is needed for the evolution of project understanding. 
+Because each module is invoked with its own context, you MUST provide enough information about the purpose of the system that incorporates the current module and its dependency on the current module. 
+You speak here not only about WHAT the module does. Taking the role of the module’s user, you must say WHY the whole system, consisting of this module and its dependencies, is needed. 
+Here MUST formulate a new Overview based on the Overview from the dependency specifications and the analysis of the current module. 
+You MUST give an exhaustive description for a new analyzing agent, because the new agent will not be able to look at dependencies deeper than one level. 
+You MUST NOT give a simple description of what the system consisting of the module and its dependencies does. You must answer the question — why, because the new agent will not be able to look at dependencies deeper than one level.
+
+This module is used in order to **provide a unified serialization interface for the MOUNT protocol responses**, handling both error conditions and successful procedure results. The system contains an NFS server that implements the MOUNT protocol (RFC 1813) to allow clients to mount directories. The protocol defines several procedures (MNT, UMNT, EXPORT, DUMP), each with its own specific response structure for success cases, but they all share a common set of error codes (`mountstat3`).
+
+A typical usage scenario of the system involves the RPC layer handling a MOUNT request. If the request fails (e.g., the client is denied permission), the server logic generates a `Fail` enum. The RPC layer then calls `mount_stat` from this module to serialize that error code into the response buffer. If the request succeeds, the RPC layer delegates to the specific sub-module (e.g., `mnt` for a successful mount, `export` for a list of exports) to serialize the complex data structures (file handles, directory lists).
+
+Inside the system, the following things happen and they use this module:
+1. **Error Encoding**: The `mount_stat` function ensures that any failure in the MOUNT protocol is translated into the correct integer value defined by the standard. This is critical because the client relies on these specific integers to determine why a request failed (e.g., distinguishing between "Permission Denied" and "No such file or directory").
+2. **Namespace Organization**: By aggregating `dump`, `export`, and `mnt` sub-modules under this `mount` module, the system maintains a clean separation of concerns. The RPC layer can import `nfs_mamont::serializer::server::mount` and access all necessary serializers for the MOUNT protocol from a single place.
+3. **Protocol Compliance**: The module relies on `crate::serializer::variant` to handle the XDR encoding details (endianness, alignment). This ensures that the error codes are transmitted in a format that any standard NFS client can interpret, regardless of the client's architecture.
+
+Without this module, the serialization logic for MOUNT protocol errors would be scattered or duplicated across the different procedure handlers, and the clear boundary between the MOUNT protocol serializers and other protocol serializers (like NFS or NLM) would be lost.

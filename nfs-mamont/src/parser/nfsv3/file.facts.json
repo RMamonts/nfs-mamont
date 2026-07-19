@@ -1,0 +1,17 @@
+{
+  "module_path": "nfs_mamont::parser::nfsv3::file",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nfsv3/file.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub handle (src: &mut impl Read) -> Result<file::Handle>",
+    "pub r#type (src: &mut impl Read) -> Result<file::Type>",
+    "pub attr (src: &mut impl Read) -> Result<file::Attr>",
+    "pub time (src: &mut impl Read) -> Result<file::Time>",
+    "pub device (src: &mut impl Read) -> Result<file::Device>",
+    "pub wcc_attr (src: &mut impl Read) -> Result<file::WccAttr>",
+    "pub file_name (src: &mut impl Read) -> Result<file::Name>",
+    "pub file_path (src: &mut impl Read) -> Result<file::Path>"
+  ]
+}

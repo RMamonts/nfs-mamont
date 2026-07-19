@@ -1,0 +1,13 @@
+{
+  "module_path": "nfs_mamont::serializer::server::nlm",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/server/nlm/mod.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub lock_res (dest: &mut impl Write, res: Nlm4LockRes) -> io::Result<()>",
+    "pub unlock_res (dest: &mut impl Write, res: Nlm4UnlockRes) -> io::Result<()>",
+    "pub cancel_res (dest: &mut impl Write, res: Nlm4CancelRes) -> io::Result<()>",
+    "pub test_res (dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()>"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::fs_stat",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/fs_stat.rs",
+  "public_structs": [
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// The attributes of the mount point.\n    pub root_attr: Option<file::Attr>",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// The attributes of the mount point.\n    pub root_attr: Option<file::Attr>, /// The total size, in bytes, of the file system.\n    pub total_bytes: u64, /// The amount of free space, in bytes, in the file system.\n    pub free_bytes: u64, /// The amount of free space, in bytes, available to the\n    /// user identified by the authentication information.\n    /// (This reflects space that is reserved by the\n    /// file system; it does not reflect any quota system\n    /// implemented by the server.)\n    pub available_bytes: u64, /// The total number of file slots in the file system. (On\n    /// a UNIX server, this often corresponds to the number of\n    /// inodes configured.)\n    pub total_files: u64, /// The number of free file slots in the file system.\n    pub free_files: u64, /// The number of free file slots that are available to the\n    /// user corresponding to the authentication information.\n    /// (This reflects slots that are reserved by the\n    /// file system; it does not reflect any quota system\n    /// implemented by the server.)\n    pub available_files: u64, /// A measure of file system volatility.\n    pub invarsec: u32",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// A file handle identifying a mount point in the file system.\n    pub root: file::Handle",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait FsStat {\n    /// Retrieves volatile file system state information.\n    async fn fs_stat(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

@@ -1,0 +1,8 @@
+{
+  "module_path": "nfs_mamont::service::mount::dump",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/service/mount/dump.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

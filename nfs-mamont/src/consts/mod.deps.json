@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::consts",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/mod.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::consts::mount",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/mount.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/mount.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::consts::nfsv3",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/nfsv3.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/nfsv3.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::consts::nlm",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/nlm.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/consts/nlm.rs.spec.md"
+    }
+  ]
+}

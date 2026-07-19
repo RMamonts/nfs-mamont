@@ -1,0 +1,22 @@
+{
+  "module_path": "nfs_mamont::task::global::mount",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/mount.rs",
+  "public_structs": [
+    {
+      "name": "MountTask",
+      "fields": "",
+      "methods": [
+        "pub new (mount_service: Arc<M>) -> (Self, Sender<MountCommand<B>>)",
+        "pub spawn (self)"
+      ]
+    },
+    {
+      "name": "MountCommand",
+      "fields": "/// Channel used to pass the result to write task.\n    pub result_tx: Sender<ProcReply<B>>, /// Client socket address from connection task.\n    pub client_addr: SocketAddr, /// Placeholder for mount procedure args.\n    pub args: MountArgWrapper",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

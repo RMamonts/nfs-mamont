@@ -1,0 +1,23 @@
+{
+  "module_path": "nfs_mamont::mount::mnt",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/mnt.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// The file handle for the mounted directory.\n    /// This file handle may be used in the NFS protocol.\n    pub file_handle: file::Handle, /// Vector of RPC authentication flavors that are supported with\n    /// the client's use of the file handle (or any file handles derived from it)\n    pub auth_flavors: Vec<AuthFlavor>",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// a server pathname of a directory\n    pub dirpath: file::Path",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "#[derive(Debug, ToPrimitive, FromPrimitive)]\n/// Possible MOUNT errors\npub enum Fail {\n    /// Not owner\n    Perm = 1,\n    /// No such file or directory\n    NoEnt = 2,\n    /// I/O error\n    Io = 5,\n    /// Permission denied\n    Access = 13,\n    /// Not a directory\n    NoDir = 20,\n    /// Invalid argument\n    Inval = 22,\n    /// Filename too long\n    NameTooLong = 63,\n    /// Operation not supported\n    NotSupp = 10004,\n    /// A failure on the server\n    ServerFault = 10006,\n}"
+  ],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Mnt {\n    /// Maps a pathname on the server to a NFS version 3 protocol file handle.\n    ///\n    /// # Parameters:\n    /// * `args` --- the arguments for the Mount operation.\n    ///\n    /// This procedure also results in the server adding a new entry\n    /// to its mount list recording that this client has mounted the directory.\n    async fn mnt(\n        &self,\n        args: Args,\n        client_addr: SocketAddr,\n        cred: OpaqueAuth,\n    ) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

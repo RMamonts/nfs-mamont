@@ -1,0 +1,25 @@
+{
+  "module_path": "nfs_mamont::task::global::vfs",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/global/vfs.rs",
+  "public_structs": [
+    {
+      "name": "VfsTask",
+      "fields": "",
+      "methods": [
+        "pub new (\n        backend: Arc<V>,\n        allocator: Arc<A>,\n        command_receiver: VfsCommandReceiver<B>,\n    ) -> Self",
+        "pub spawn (self)"
+      ]
+    },
+    {
+      "name": "VfsPool",
+      "fields": "",
+      "methods": [
+        "pub new <A, V> (num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self where\n        A: Allocator<Buffer = B> + Send + Sync + 'static,\n        V: Vfs<B> + Send + Sync + 'static,",
+        "pub sender (&self) -> VfsCommandSender<B>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::rename",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/rename.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// A [`vfs::DirOpArgs`] structure identifying the source (the file\n    /// system object to be re-named)\n    pub from: vfs::DirOpArgs, /// A [`vfs::DirOpArgs`] structure identifying the target (the new\n    /// name of the object):\n    pub to: vfs::DirOpArgs",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// Weak cache consistency data for the directory, `from_dir`.\n    pub from_dir_wcc: vfs::WccData, /// Weak cache consistency data for the directory, `to_dir`.\n    pub to_dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory, `from_dir`.\n    pub from_dir_wcc: vfs::WccData, /// Weak cache consistency data for the directory, `to_dir`.\n    pub to_dir_wcc: vfs::WccData",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Rename {\n    /// Renames the file in the directory.\n    ///\n    /// The operation is required to be atomic to the client.\n    ///\n    /// [`Args::to`] and [`Args::from`] must reside on the same file system and server,\n    /// means that the fsid fields in the attributes for the directories are the same. If they\n    /// reside on different file systems, the error, [`vfs::Error::XDev`], is returned.\n    ///\n    /// Even though the operation is atomic, the status, [`vfs::Error::TooManyLinks`], may be\n    /// returned if the server used a `\"unlink/link/unlink\"` sequence internally.\n    ///\n    /// A file handle may or may not become stale on a rename. However, server implementors are\n    /// strongly encouraged to attempt to keep file handles from becoming stale in this fashion.\n    ///\n    /// On some servers, the filenames, \".\" and \"..\", are illegal as either from.name or to.name.\n    /// In addition, neither [`Args::from`] nor [`Args::to`]  names can be an alias for\n    /// [`Args::from`] dir. These servers will return the error, [`vfs::Error::InvalidArgument`],\n    /// in these cases.\n    ///\n    /// If the directory, [`Args::to`] dir, already contains an entry with the name,\n    /// [`Args::to`] name, the source object must be compatible with the target: either both are\n    /// non-directories or both are directories and the target must be empty. If compatible, the\n    /// existing target is removed before the rename occurs. If they are not compatible or if the\n    /// target is a directory but not empty, the server should return the error,\n    /// [`vfs::Error::Exist`].\n    ///\n    /// If arguments pairs refer to the same file (they might be hard links of each other), then\n    /// [`Rename::rename`] should perform no action and return [`Success`].\n    async fn rename(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

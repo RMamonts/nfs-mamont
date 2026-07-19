@@ -1,0 +1,23 @@
+{
+  "module_path": "nfs_mamont::parser::primitive",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/primitive.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub padding (src: &mut impl Read, n: usize) -> Result<()>",
+    "pub u8 (src: &mut impl Read) -> Result<u8>",
+    "pub u32 (src: &mut impl Read) -> Result<u32>",
+    "pub u64 (src: &mut impl Read) -> Result<u64>",
+    "pub i32 (src: &mut impl Read) -> Result<i32>",
+    "pub bool (src: &mut impl Read) -> Result<bool>",
+    "pub option <T, S: Read> (\n    src: &mut S,\n    cont: impl FnOnce(&mut S) -> Result<T>,\n) -> Result<Option<T>>",
+    "pub array <const N: usize> (src: &mut impl Read) -> Result<[u8; N]>",
+    "pub vector (src: &mut impl Read) -> Result<Vec<u8>>",
+    "pub vec_max_size (src: &mut impl Read, max_size: usize) -> Result<Vec<u8>>",
+    "pub string_max_size (src: &mut impl Read, max_size: usize) -> Result<String>",
+    "pub string (src: &mut impl Read) -> Result<String>",
+    "pub variant <T: FromPrimitive> (src: &mut impl Read) -> Result<T>",
+    "pub u32_as_usize (src: &mut impl Read) -> Result<usize>"
+  ]
+}

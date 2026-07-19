@@ -1,0 +1,22 @@
+{
+  "module_path": "nfs_mamont::nlm",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/mod.rs",
+  "public_structs": [
+    {
+      "name": "OpaqueHandle",
+      "fields": "",
+      "methods": [
+        "pub new (oh: Vec<u8>) -> io::Result<Self>",
+        "pub as_bytes (&self) -> &[u8]"
+      ]
+    }
+  ],
+  "public_enums": [
+    "/// `Nlm4Stats` indicates the success or failure of a call.\n#[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]\npub enum Nlm4Stats {\n    /// The call was successfully completed, and the lock was set.\n    Granted = 0,\n    /// For attempts to set a lock.\n    /// If the client retries the call later, it may succeed.\n    Denied = 1,\n    /// The call failed because the server could not allocate the necessary resources.\n    DeniedNolocks = 2,\n    /// The request is queued.\n    /// The server will issue an [`NLMPROC4_GRANTED`](crate::consts::nlm::NLMPROC4_GRANTED) callback\n    /// to the client when the lock is granted.\n    Blocked = 3,\n    /// The call failed because the server is reestablishing old\n    /// locks after a reboot and is not yet ready to resume normal service.\n    DeniedGracePeriod = 4,\n    /// The request could not be granted and blocking would cause a deadlock.\n    Deadlock = 5,\n    /// The call failed because the remote file system is read-only.\n    Rofs = 6,\n    /// The call failed because it uses an invalid file handle.\n    /// This can happen if the file has been removed\n    /// or if access to the file has been revoked on the server.\n    StaleFh = 7,\n    /// The call failed because it specified a length or offset\n    /// that exceeds the range supported by the server.\n    Fbig = 8,\n    /// The call failed for some reason not already listed.\n    /// The client should take this status as a strong hint not to retry the request.\n    Failed = 9,\n}",
+    "/// Wrapper for all supported NLMv4 procedure result types.\npub enum NlmRes {\n    /// NLM NULL procedure — no data.\n    Null,\n    /// NLM LOCK procedure response.\n    Lock(Nlm4LockRes),\n    /// NLM UNLOCK procedure response.\n    Unlock(Nlm4UnlockRes),\n    /// NLM TEST procedure response.\n    Test(Box<Nlm4TestRes>),\n    /// NLM CANCEL procedure response.\n    Cancel(Nlm4CancelRes),\n}"
+  ],
+  "public_traits": [
+    "/// Composite trait for the complete NLM v4 service.\n///\n/// A type implementing [`Nlm`] must provide all four lock-management\n/// operations defined by the NLM v4 protocol:\n/// - [`Lock`](procedures::lock::Lock) — acquire a lock\n/// - [`Unlock`](procedures::unlock::Unlock) — release a lock\n/// - [`Test`](procedures::test::Test) — test whether a lock could be granted\n/// - [`Cancel`](procedures::cancel::Cancel) — cancel a pending lock request\npub trait Nlm:\n    procedures::lock::Lock\n    + procedures::unlock::Unlock\n    + procedures::test::Test\n    + procedures::cancel::Cancel\n{\n}"
+  ],
+  "public_functions": []
+}

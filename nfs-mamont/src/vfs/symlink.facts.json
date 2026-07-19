@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::symlink",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/symlink.rs",
+  "public_structs": [
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory from [`Args::object`].\n    pub dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The location of the symbolic link to be created.\n    pub object: vfs::DirOpArgs, /// The initial attributes for the symbolic link.\n    pub attr: super::set_attr::NewAttr, /// The symbolic link data.\n    pub path: file::Path",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// The file handle for the newly created symbolic link.\n    pub file: Option<file::Handle>, /// The attributes for the newly created symbolic link.\n    pub attr: Option<file::Attr>, /// Weak cache consistency data for the directory.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Symlink {\n    /// Creates a new symbolic link.\n    ///\n    /// Returns [`vfs::Error::Exist`] for \".\" or \"..\" `name`.\n    ///\n    /// For symbolic links, the actual file system node and its contents are expected to be\n    /// created in a single atomic operation. That is, once the symbolic link is visible,\n    /// there must not be a window where a [`super::read_link::ReadLink::read_link`] would fail or\n    /// return incorrect data.\n    async fn symlink(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

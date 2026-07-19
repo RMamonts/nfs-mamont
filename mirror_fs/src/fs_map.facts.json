@@ -1,0 +1,21 @@
+{
+  "module_path": "mirrorfs::fs_map",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/mirror_fs/src/fs_map.rs",
+  "public_structs": [
+    {
+      "name": "FsMap",
+      "fields": "",
+      "methods": [
+        "pub new (root: PathBuf) -> Self",
+        "pub root_handle (&self) -> file::Handle",
+        "pub path_for_handle (&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error>",
+        "pub ensure_handle_for_path (&mut self, path: &Path) -> Result<file::Handle, vfs::Error>",
+        "pub remove_path (&mut self, path: &Path)",
+        "pub rename_path (&mut self, from: &Path, to: &Path) -> Result<(), vfs::Error>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::nlm::procedures::lock",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/nlm/procedures/lock.rs",
+  "public_structs": [
+    {
+      "name": "Nlm4LockArgs",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// `True` if the client wishes the procedure call to block until the lock can be granted.\n    /// A `false` value will cause the procedure call to return immediately if the lock cannot be granted.\n    pub block: bool, /// `True` for exclusive lock, `false` for shared lock.\n    pub exclusive: bool, /// Lock details (caller name, file handle, offset, length).\n    pub lock: Nlm4Lock, /// `True` if the client is attempting to reclaim a lock held by an NLM which has been restarted (due to a server crash, and so on).\n    pub reclaim: bool, /// It is the state value supplied by the local Network Status Monitor Protocol.\n    pub state: u32",
+      "methods": []
+    },
+    {
+      "name": "Nlm4LockRes",
+      "fields": "/// Transaction identifier for matching request/response.\n    pub cookie: Cookie, /// Status code (Granted, Denied, etc.).\n    pub stat: Nlm4Stats",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "/// Trait for handling NLMv4 `LOCK` procedure calls.\n///\n/// Implementations should check for conflicting locks and either\n/// grant the lock (returning `Granted`) or deny it.\n#[trait_variant::make(Send)]\npub trait Lock {\n    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;\n}"
+  ],
+  "public_functions": []
+}

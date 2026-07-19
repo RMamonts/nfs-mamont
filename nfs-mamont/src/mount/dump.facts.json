@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::mount::dump",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/dump.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// List of remotely mounted file systems.\n    /// Contains one entry for each client host name and directory pair.\n    /// The list is derived from a list maintained on the server\n    /// of clients that have requested file handles with the MNT procedure.\n    pub mount_list: Vec<MountEntry>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Dump {\n    /// Retrieves the list of remotely mounted file systems.\n    ///\n    /// There are no MOUNT protocol errors which can be returned from this procedure.\n    async fn dump(&self) -> Success;\n}"
+  ],
+  "public_functions": []
+}

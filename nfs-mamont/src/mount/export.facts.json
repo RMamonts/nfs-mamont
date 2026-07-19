@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::mount::export",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/export.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// Vector of export entries, each containing an exported\n    /// directory and a vector of clients that are allowed\n    /// to mount the specified directory.\n    pub exports: Vec<ExportEntry>",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Export {\n    /// Retrieves a vector of all the exported file systems and which clients\n    /// are allowed to mount each one.\n    ///\n    /// There are no MOUNT protocol errors which can be returned from this procedure.\n    async fn export(&self) -> Success;\n}"
+  ],
+  "public_functions": []
+}

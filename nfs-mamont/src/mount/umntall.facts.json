@@ -1,0 +1,10 @@
+{
+  "module_path": "nfs_mamont::mount::umntall",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/mount/umntall.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Umntall {\n    /// Removes all of the mount entries for this client previously\n    /// recorded by calls to MNT.\n    ///\n    /// AUTH_UNIX authentication or better is required.\n    /// There are no MOUNT protocol errors which can be returned from this procedure.\n    async fn umntall(&self, client_addr: SocketAddr);\n}"
+  ],
+  "public_functions": []
+}

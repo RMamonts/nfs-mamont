@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/lib.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub init_tracing ()",
+    "pub handle_forever <A, B, M, N, V> (\n    listener: TcpListener,\n    context: ServerContext<A, V, B>,\n    mount_service: Arc<M>,\n    nlm_service: Arc<N>,\n) -> std::io::Result<()> where\n    A: Allocator<Buffer = B> + Send + Sync + 'static,\n    B: Buffer + 'static,\n    M: Mount + Send + Sync + 'static,\n    N: Nlm + Send + Sync + 'static,\n    V: Vfs<B> + Send + Sync + 'static,"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "module_path": "nfs_mamont::parser::read_buffer",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/read_buffer.rs",
+  "public_structs": [
+    {
+      "name": "CountBuffer",
+      "fields": "",
+      "methods": [
+        "pub new (capacity: usize, socket: S) -> CountBuffer<S>",
+        "pub parse_with_retry <T> (\n        &mut self,\n        caller: impl Fn(&mut Self) -> Result<T>,\n    ) -> Result<T>",
+        "pub read_from_async (&mut self, dest: &mut [u8]) -> io::Result<usize>",
+        "pub clean (&mut self)",
+        "pub read_from_inner (&mut self, dest: &mut [u8]) -> io::Result<usize>",
+        "pub total_bytes (&self) -> usize",
+        "pub discard_bytes (&mut self, n: usize) -> io::Result<()>"
+      ]
+    },
+    {
+      "name": "ReadBuffer",
+      "fields": "",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

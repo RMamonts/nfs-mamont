@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::mk_dir",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/mk_dir.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// The location of the subdirectory to be created.\n    pub object: vfs::DirOpArgs, /// The initial attributes for the subdirectory.\n    pub attr: super::set_attr::NewAttr",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory, [`Args::object`] dir.\n    pub dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// The file handle for the newly created directory.\n    pub file: Option<file::Handle>, /// The attributes for the newly created subdirectory.\n    pub attr: Option<file::Attr>, /// Weak cache consistency data for the [`Args::object`] dir.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait MkDir {\n    /// Creates a new subdirectory.\n    ///\n    /// Returns [`vfs::Error::Exist`] for \".\" or \"..\" `name`.\n    async fn mk_dir(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

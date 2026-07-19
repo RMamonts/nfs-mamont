@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::parser::nlm",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nlm/mod.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub opaque_handle (src: &mut impl Read) -> Result<OpaqueHandle>",
+    "pub parse_lock (src: &mut impl Read) -> Result<Nlm4Lock>"
+  ]
+}

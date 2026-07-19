@@ -1,0 +1,31 @@
+{
+  "module_path": "nfs_mamont::allocator::slice",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/allocator/slice.rs",
+  "public_structs": [
+    {
+      "name": "IterMut",
+      "fields": "",
+      "methods": []
+    },
+    {
+      "name": "Iter",
+      "fields": "",
+      "methods": []
+    },
+    {
+      "name": "Slice",
+      "fields": "",
+      "methods": [
+        "pub new (\n        buffers: Vec<super::UnownedBuffer>,\n        range: std::ops::Range<usize>,\n        state: Option<Arc<super::AllocatorState>>,\n    ) -> Self",
+        "pub empty () -> Self",
+        "pub len (&self) -> usize",
+        "pub is_empty (&self) -> bool",
+        "pub iter_mut (&mut self) -> IterMut<'_>",
+        "pub iter (&self) -> Iter<'_>"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

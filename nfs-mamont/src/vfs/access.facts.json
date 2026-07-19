@@ -1,0 +1,35 @@
+{
+  "module_path": "nfs_mamont::vfs::access",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/access.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// File handle for the file system object to which access is to be checked\n    pub file: file::Handle, /// Mask of access permissions to check\n    pub mask: Mask",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: Error, pub object_attr: Option<file::Attr>",
+      "methods": []
+    },
+    {
+      "name": "Mask",
+      "fields": "",
+      "methods": [
+        "pub from_wire (raw: u32) -> Self",
+        "pub bits (self) -> u32",
+        "pub contains (self, flag: u32) -> bool"
+      ]
+    },
+    {
+      "name": "Success",
+      "fields": "pub object_attr: Option<file::Attr>, pub access: Mask",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Access {\n    /// Determines the access rights that a user, as identified by the credentials\n    /// in the request, has with respect to a file system object.\n    ///\n    /// The results of this procedure are necessarily advisory in\n    /// nature.  That is, a return status of [`Ok`] and the\n    /// appropriate bit set in the bit mask does not imply that\n    /// such access will be allowed to the file system object in\n    /// the future, as access rights can be revoked by the server\n    /// at any time.\n    async fn access(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

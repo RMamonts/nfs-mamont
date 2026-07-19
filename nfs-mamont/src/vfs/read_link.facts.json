@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::read_link",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/read_link.rs",
+  "public_structs": [
+    {
+      "name": "Args",
+      "fields": "/// The file handle for a symbolic link (file system object of type [`file::Type::Symlink`]).\n    pub file: file::Handle",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// The post-operation attributes for the symbolic link.\n    pub symlink_attr: Option<file::Attr>, /// The data associated with the symbolic link.\n    pub data: file::Path",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// The post-operation attributes for the symbolic link.\n    pub symlink_attr: Option<file::Attr>, /// Error on failure.\n    pub error: vfs::Error",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait ReadLink {\n    /// Reads the data associated with a symbolic link.\n    ///\n    /// The [`ReadLink::read_link`] operation is only allowed on\n    /// objects of type [`file::Type::Symlink`]. The server should return the error,\n    /// [`vfs::Error::InvalidArgument`], if the object is not of type, [`file::Type::Symlink`].\n    async fn read_link(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

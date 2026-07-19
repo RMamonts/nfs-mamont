@@ -1,0 +1,26 @@
+{
+  "module_path": "nfs_mamont::vfs::remove",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/remove.rs",
+  "public_structs": [
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory, [`Args::object`] dir.\n    pub dir_wcc: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Success",
+      "fields": "/// Weak cache consistency data for the directory.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// A [`vfs::DirOpArgs`] structure identifying the entry to be removed.\n    pub object: vfs::DirOpArgs",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Remove {\n    /// Removes (deletes) an entry from a directory.\n    async fn remove(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

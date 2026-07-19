@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::parser::rpc",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/rpc.rs",
+  "public_structs": [
+    {
+      "name": "RpcMessage",
+      "fields": "pub program: u32, pub procedure: u32, pub version: u32, pub cred: OpaqueAuth, pub verf: OpaqueAuth",
+      "methods": []
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub auth (src: &mut impl Read) -> Result<OpaqueAuth>"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "module_path": "nfs_mamont::task::connection::write",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/task/connection/write.rs",
+  "public_structs": [
+    {
+      "name": "WriteTask",
+      "fields": "",
+      "methods": [
+        "pub new (\n        writehalf: OwnedWriteHalf,\n        result_receiver: async_channel::Receiver<ProcReply<B>>,\n    ) -> Self",
+        "pub spawn (self) where\n        B: 'static,"
+      ]
+    }
+  ],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": []
+}

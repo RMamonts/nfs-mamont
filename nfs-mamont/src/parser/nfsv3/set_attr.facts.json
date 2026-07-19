@@ -1,0 +1,11 @@
+{
+  "module_path": "nfs_mamont::parser::nfsv3::set_attr",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/nfsv3/set_attr.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub guard (src: &mut impl Read) -> Result<Option<set_attr::Guard>>",
+    "pub args (src: &mut impl Read) -> Result<set_attr::Args>"
+  ]
+}

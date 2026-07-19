@@ -1,0 +1,16 @@
+{
+  "module_path": "nfs_mamont::parser::mount",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mount/mod.rs",
+  "dependency": [
+    {
+      "module_path": "nfs_mamont::parser::mount::mnt",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mount/mnt.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mount/mnt.rs.spec.md"
+    },
+    {
+      "module_path": "nfs_mamont::parser::mount::umnt",
+      "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mount/umnt.rs",
+      "spec_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mount/umnt.rs.spec.md"
+    }
+  ]
+}

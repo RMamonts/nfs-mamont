@@ -1,0 +1,34 @@
+{
+  "module_path": "nfs_mamont::vfs::create",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/create.rs",
+  "public_structs": [
+    {
+      "name": "Success",
+      "fields": "/// The file handle of the newly created regular file.\n    pub file: Option<file::Handle>, /// The attributes of the regular file just created.\n    pub attr: Option<file::Attr>, /// Weak cache consistency data for the directory of creation.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Fail",
+      "fields": "/// Error on failure.\n    pub error: vfs::Error, /// Weak cache consistency data for the directory.\n    pub wcc_data: vfs::WccData",
+      "methods": []
+    },
+    {
+      "name": "Verifier",
+      "fields": "pub [u8; NFS3_CREATEVERFSIZE]",
+      "methods": []
+    },
+    {
+      "name": "Args",
+      "fields": "/// The location of the file to be created.\n    pub object: vfs::DirOpArgs, /// The file creation mode. See [`How`] documentation.\n    pub how: How",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Describes how the server is to handle the file creation.\npub enum How {\n    /// Means that the file should be created without checking\n    /// for the existence of a duplicate file in the same\n    /// directory with initial attributes for the file.\n    Unchecked(super::set_attr::NewAttr),\n    /// Specifies that the server should check for the presence\n    /// of a duplicate file before performing the create and\n    /// should fail the request with [`vfs::Error::Exist`] if a\n    /// duplicate file exists.\n    ///\n    /// If the file does not exist, the request is performed as\n    /// described for [`How::Unchecked`].\n    Guarded(super::set_attr::NewAttr),\n    /// Specifies that the server is to follow exclusive creation\n    /// semantics, using the verifier to ensure exclusive creation\n    /// of the target. No attributes provided in this case, since the\n    /// server may use the target file metadata to store the [`Verifier`].\n    Exclusive(Verifier),\n}",
+    "/// Describes codes of [`How`] branches as integers.\npub enum HowMode {\n    Unchecked = 0,\n    Guarded = 1,\n    Exclusive = 2,\n}"
+  ],
+  "public_traits": [
+    "#[trait_variant::make(Send)]\npub trait Create {\n    /// Creates a [`file::Type::Regular`] file.\n    async fn create(&self, args: Args) -> Result<Success, Fail>;\n}"
+  ],
+  "public_functions": []
+}

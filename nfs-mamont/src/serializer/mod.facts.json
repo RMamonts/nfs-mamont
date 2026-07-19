@@ -1,0 +1,21 @@
+{
+  "module_path": "nfs_mamont::serializer",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/serializer/mod.rs",
+  "public_structs": [],
+  "public_enums": [],
+  "public_traits": [],
+  "public_functions": [
+    "pub padding (dest: &mut impl Write, n: usize) -> io::Result<()>",
+    "pub u32 (dest: &mut impl Write, n: u32) -> io::Result<()>",
+    "pub u64 (dest: &mut impl Write, n: u64) -> io::Result<()>",
+    "pub bool (dest: &mut impl Write, b: bool) -> io::Result<()>",
+    "pub option <T, S: Write> (\n    dest: &mut S,\n    opt: Option<T>,\n    cont: impl FnOnce(T, &mut S) -> io::Result<()>,\n) -> io::Result<()>",
+    "pub array <const N: usize> (dest: &mut impl Write, slice: [u8; N]) -> io::Result<()>",
+    "pub vector (dest: &mut impl Write, vec: &[u8]) -> io::Result<()>",
+    "pub vec_max_size (dest: &mut impl Write, vec: &[u8], max_size: usize) -> io::Result<()>",
+    "pub string_max_size (dest: &mut impl Write, string: &str, max_size: usize) -> io::Result<()>",
+    "pub string (dest: &mut impl Write, string: &str) -> io::Result<()>",
+    "pub variant <T: ToPrimitive> (dest: &mut impl Write, val: T) -> io::Result<()>",
+    "pub usize_as_u32 (dest: &mut impl Write, n: usize) -> io::Result<()>"
+  ]
+}

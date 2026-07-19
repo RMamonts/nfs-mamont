@@ -1,0 +1,46 @@
+{
+  "module_path": "nfs_mamont::parser",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/parser/mod.rs",
+  "public_structs": [
+    {
+      "name": "NfsArgWrapper",
+      "fields": "pub header: RpcHeader, pub proc: Box<NfsArguments<B>>",
+      "methods": []
+    },
+    {
+      "name": "RpcHeader",
+      "fields": "pub xid: u32, pub cred: OpaqueAuth, #[allow(dead_code)]\n    // TODO: use when auth will be provided\n    pub verf: OpaqueAuth",
+      "methods": []
+    },
+    {
+      "name": "NlmArgWrapper",
+      "fields": "pub header: RpcHeader, pub proc: Box<NlmArguments>",
+      "methods": []
+    },
+    {
+      "name": "ErrorWrapper",
+      "fields": "pub xid: Option<u32>, pub error: Error",
+      "methods": []
+    },
+    {
+      "name": "MountArgWrapper",
+      "fields": "pub header: RpcHeader, pub proc: Box<MountArguments>",
+      "methods": []
+    },
+    {
+      "name": "ArgWrapper",
+      "fields": "pub header: RpcHeader, pub proc: ProcArguments<B>",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Parsed RPC message grouped by top-level RPC program.\n///\n/// This is used by generic message consumers (for example, read tasks) that\n/// accept both NFSv3 and MOUNT calls from the same connection.\npub enum ProcArguments<B: Buffer> {\n    Nfs3(Box<NfsArguments<B>>),\n    Mount(Box<MountArguments>),\n    Nlm4(Box<NlmArguments>),\n}",
+    "/// Enumerates supported NFS protocol procedure arguments.\npub enum NfsArguments<B: Buffer> {\n    /// Null operation arguments.\n    Null,\n    /// Arguments for the [`get_attr`] operation.\n    GetAttr(get_attr::Args),\n    /// Arguments for the [`set_attr`] operation.\n    SetAttr(set_attr::Args),\n    /// Arguments for the [`lookup`] operation.\n    LookUp(lookup::Args),\n    /// Arguments for the [`access`] operation.\n    Access(access::Args),\n    /// Arguments for the [`read_link`] operation.\n    ReadLink(read_link::Args),\n    /// Arguments for the [`read`] operation.\n    Read(read::Args),\n    /// Arguments for the [`mod@write`] operation.\n    Write(write::Args<B>),\n    /// Arguments for the [`create`] operation.\n    Create(create::Args),\n    /// Arguments for the [`mk_dir`] operation.\n    MkDir(mk_dir::Args),\n    /// Arguments for the [`symlink`] operation.\n    SymLink(symlink::Args),\n    /// Arguments for the [`mk_node`] operation.\n    MkNod(mk_node::Args),\n    /// Arguments for the [`remove`] operation.\n    Remove(remove::Args),\n    /// Arguments for the [`rm_dir`] operation.\n    RmDir(rm_dir::Args),\n    /// Arguments for the [`rename`] operation.\n    Rename(rename::Args),\n    /// Arguments for the [`link`] operation.\n    Link(link::Args),\n    /// Arguments for the [`read_dir`] operation.\n    ReadDir(read_dir::Args),\n    /// Arguments for the [`read_dir_plus`] operation.\n    ReadDirPlus(read_dir_plus::Args),\n    /// Arguments for the [`fs_stat`] operation.\n    FsStat(fs_stat::Args),\n    /// Arguments for the [`fs_info`] operation.\n    FsInfo(fs_info::Args),\n    /// Arguments for the [`path_conf`] operation.\n    PathConf(path_conf::Args),\n    /// Arguments for the [`commit`] operation.\n    Commit(commit::Args),\n}",
+    "/// Enumerates supported MOUNT protocol procedure arguments.\npub enum MountArguments {\n    /// Null operation arguments.\n    Null,\n    /// Arguments for the Mount operation.\n    Mount(mnt::Args),\n    /// Arguments for the Unmount operation.\n    Unmount(umnt::Args),\n    /// Arguments for the Export operation.\n    Export,\n    /// Arguments for the Dump operation.\n    Dump,\n    /// Arguments for the UnmountAll operation.\n    UnmountAll,\n}",
+    "/// Enumerates supported NLMv4 protocol procedure arguments.\npub enum NlmArguments {\n    /// Null operation arguments.\n    Null,\n    /// Arguments for the Lock operation.\n    Lock(Nlm4LockArgs),\n    /// Arguments for the Unlock operation.\n    Unlock(Nlm4UnlockArgs),\n    /// Arguments for the Test operation.\n    Test(Nlm4TestArgs),\n    /// Arguments for the Cancel operation.\n    Cancel(Nlm4CancelArgs),\n}"
+  ],
+  "public_traits": [],
+  "public_functions": [
+    "pub proc_nested_errors <T> (error: Error, future: impl Future<Output = Result<T>>) -> Error"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "module_path": "nfs_mamont::vfs::file",
+  "file_path": "/home/yarovoy/Documents/yadro/projects/oss/github/nfs-mamont/nfs-mamont/src/vfs/file.rs",
+  "public_structs": [
+    {
+      "name": "Handle",
+      "fields": "pub [u8; NFS3_FHSIZE]",
+      "methods": []
+    },
+    {
+      "name": "Name",
+      "fields": "",
+      "methods": [
+        "pub new (name: String) -> io::Result<Self>",
+        "pub into_inner (self) -> String",
+        "pub as_str (&self) -> &str"
+      ]
+    },
+    {
+      "name": "Attr",
+      "fields": "/// Type of the file, see [`Type`].\n    pub file_type: Type, /// Protection mode bits.\n    pub mode: u32, /// Number of hard links to the file.\n    pub nlink: u32, /// User ID of the owner of the file.\n    pub uid: u32, /// Group ID of the group of the file.\n    pub gid: u32, /// Size of the file of bytes.\n    pub size: u64, /// The number of bytes of disk space that the file actually uses.\n    pub used: u64, /// Describes the device file if the file type is [`Type::BlockDevice`]\n    /// or [`Type::CharacterDevice`].\n    ///\n    /// See [`Type`].\n    pub device: Device, /// The file system identifier for the file system.\n    pub fs_id: u64, /// The number which uniquely identifies the file within its file system.\n    pub file_id: u64, /// The time when the file data was last accessed.\n    pub atime: Time, /// The time when the file data was last modified.\n    pub mtime: Time, /// The time when the attributes of the file were last changed.\n    ///\n    /// Writing to the file changes the ctime in addition to the mtime.\n    pub ctime: Time",
+      "methods": []
+    },
+    {
+      "name": "Path",
+      "fields": "",
+      "methods": [
+        "pub new (path: String) -> io::Result<Self>",
+        "pub into_inner (self) -> PathBuf",
+        "pub as_path (&self) -> &std::path::Path"
+      ]
+    },
+    {
+      "name": "Time",
+      "fields": "pub seconds: u32, pub nanos: u32",
+      "methods": []
+    },
+    {
+      "name": "Device",
+      "fields": "pub major: u32, pub minor: u32",
+      "methods": []
+    },
+    {
+      "name": "WccAttr",
+      "fields": "/// The file size in bytes of the object before the operation.\n    pub size: u64, /// The time of last modification of the object before the operation.\n    pub mtime: Time, /// The time of last change to the attributes of the object before the operation.\n    pub ctime: Time",
+      "methods": []
+    }
+  ],
+  "public_enums": [
+    "/// Type of file.\n#[derive(Clone, Copy, FromPrimitive, ToPrimitive)]\npub enum Type {\n    /// Regular file.\n    Regular = 1,\n    /// Directory.\n    Directory = 2,\n    /// Block special device file.\n    BlockDevice = 3,\n    /// Character special device file.\n    CharacterDevice = 4,\n    /// Symbolic link.\n    Symlink = 5,\n    /// Socket file.\n    Socket = 6,\n    /// Named pipe.\n    Fifo = 7,\n}"
+  ],
+  "public_traits": [],
+  "public_functions": []
+}
