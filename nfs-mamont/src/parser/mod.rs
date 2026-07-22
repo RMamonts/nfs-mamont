@@ -106,8 +106,9 @@ pub enum NfsArguments<B: Buffer> {
     Access(access::Args),
     /// Arguments for the [`read_link`] operation.
     ReadLink(read_link::Args),
-    /// Arguments for the [`read`] operation.
-    Read(read::Args),
+    /// Arguments for the [`read`] operation, together with the server-side
+    /// output buffer allocated for the response data.
+    Read(read::Args, B),
     /// Arguments for the [`mod@write`] operation.
     Write(write::Args<B>),
     /// Arguments for the [`create`] operation.
