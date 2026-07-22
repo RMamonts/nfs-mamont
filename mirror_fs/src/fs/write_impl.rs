@@ -8,7 +8,11 @@ use nfs_mamont::Buffer;
 use super::MirrorFS;
 
 impl<B: Buffer> write::Write<B> for MirrorFS {
-    async fn write(&self, args: write::Args<B>) -> Result<write::Success, write::Fail> {
+    async fn write(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: write::Args<B>,
+    ) -> Result<write::Success, write::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {

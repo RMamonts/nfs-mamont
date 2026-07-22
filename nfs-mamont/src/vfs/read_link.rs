@@ -33,5 +33,5 @@ pub trait ReadLink {
     /// The [`ReadLink::read_link`] operation is only allowed on
     /// objects of type [`file::Type::Symlink`]. The server should return the error,
     /// [`vfs::Error::InvalidArgument`], if the object is not of type, [`file::Type::Symlink`].
-    async fn read_link(&self, args: Args) -> Result<Success, Fail>;
+    async fn read_link(&self, cred: &crate::rpc::Credential, args: Args) -> Result<Success, Fail>;
 }

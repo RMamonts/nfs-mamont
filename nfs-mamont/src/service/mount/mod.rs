@@ -35,8 +35,10 @@ mod mnt;
 mod umnt;
 mod umntall;
 
+/// Authentication flavors advertised to clients in the `MNT` reply, in order of
+/// preference. The server accepts `AUTH_SYS` (UNIX uid/gid) and `AUTH_NONE`.
 // TODO: should be taken from config
-const AUTH: [AuthFlavor; 1] = [AuthFlavor::None];
+const AUTH: [AuthFlavor; 2] = [AuthFlavor::Sys, AuthFlavor::None];
 
 #[derive(Clone)]
 pub struct ExportEntryWrapper {

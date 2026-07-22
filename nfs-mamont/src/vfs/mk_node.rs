@@ -52,5 +52,5 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
+    async fn mk_node(&self, cred: &crate::rpc::Credential, args: Args) -> Result<Success, Fail>;
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tracing::{error, warn};
 
-use crate::allocator::{Allocator, Buffer};
+use crate::allocator::Buffer;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{self, NfsRes, Vfs};
@@ -29,21 +29,19 @@ impl<B: Buffer + 'static> VfsPool<B> {
     ///
     /// - `num` --- number of workers to create
     /// - `backend` --- shared filesystem implementation
-    /// - `allocator` --- allocator used for read buffers
     ///
     /// # Returns
     ///
     /// A new [`VfsPool`] with the given number of workers.
-    pub fn new<A, V>(num: NonZeroUsize, backend: Arc<V>, allocator: Arc<A>) -> Self
+    pub fn new<V>(num: NonZeroUsize, backend: Arc<V>) -> Self
     where
-        A: Allocator<Buffer = B> + Send + Sync + 'static,
         V: Vfs<B> + Send + Sync + 'static,
     {
         let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
         (0..num.get()).for_each(|_| {
             let rx_clone = rx.clone();
-            VfsTask::new(Arc::clone(&backend), Arc::clone(&allocator), rx_clone).spawn();
+            VfsTask::new(Arc::clone(&backend), rx_clone).spawn();
         });
 
         Self { sender: tx }
@@ -63,23 +61,19 @@ impl<B: Buffer> Drop for VfsPool<B> {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask<A, V, B>
+pub struct VfsTask<V, B>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Shared filesystem implementation.
     backend: Arc<V>,
-    /// Allocator used for read buffers.
-    allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver<B>,
 }
 
-impl<A, V, B> VfsTask<A, V, B>
+impl<V, B> VfsTask<V, B>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
@@ -88,18 +82,13 @@ where
     /// # Parameters
     ///
     /// - `backend` --- shared filesystem implementation
-    /// - `allocator` --- allocator used for read buffers
     /// - `command_receiver` --- receiver from the pool
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(
-        backend: Arc<V>,
-        allocator: Arc<A>,
-        command_receiver: VfsCommandReceiver<B>,
-    ) -> Self {
-        Self { backend, allocator, command_receiver }
+    pub fn new(backend: Arc<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
+        Self { backend, command_receiver }
     }
 
     /// Spawns a [`VfsTask`].
@@ -121,49 +110,69 @@ where
 
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,
-                NfsArguments::GetAttr(args) => NfsRes::GetAttr(self.backend.get_attr(args).await),
-                NfsArguments::SetAttr(args) => NfsRes::SetAttr(self.backend.set_attr(args).await),
-                NfsArguments::LookUp(args) => NfsRes::LookUp(self.backend.lookup(args).await),
-                NfsArguments::Access(args) => NfsRes::Access(self.backend.access(args).await),
+                NfsArguments::GetAttr(args) => {
+                    NfsRes::GetAttr(self.backend.get_attr(&header.cred, args).await)
+                }
+                NfsArguments::SetAttr(args) => {
+                    NfsRes::SetAttr(self.backend.set_attr(&header.cred, args).await)
+                }
+                NfsArguments::LookUp(args) => {
+                    NfsRes::LookUp(self.backend.lookup(&header.cred, args).await)
+                }
+                NfsArguments::Access(args) => {
+                    NfsRes::Access(self.backend.access(&header.cred, args).await)
+                }
                 NfsArguments::ReadLink(args) => {
-                    NfsRes::ReadLink(self.backend.read_link(args).await)
+                    NfsRes::ReadLink(self.backend.read_link(&header.cred, args).await)
                 }
-                NfsArguments::Read(args) => {
-                    let data_result = if args.count == 0 {
-                        Ok(B::empty())
-                    } else {
-                        let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
-
-                        self.allocator
-                            .allocate(requested_size)
-                            .await
-                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
-                    };
-
-                    match data_result {
-                        Ok(data) => NfsRes::Read(self.backend.read(args, data).await),
-                        Err(err) => NfsRes::Read(Err(err)),
-                    }
+                NfsArguments::Read(args, data) => {
+                    NfsRes::Read(self.backend.read(&header.cred, args, data).await)
                 }
-                NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
-                NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),
-                NfsArguments::MkDir(args) => NfsRes::MkDir(self.backend.mk_dir(args).await),
-                NfsArguments::SymLink(args) => NfsRes::SymLink(self.backend.symlink(args).await),
-                NfsArguments::MkNod(args) => NfsRes::MkNod(self.backend.mk_node(args).await),
-                NfsArguments::Remove(args) => NfsRes::Remove(self.backend.remove(args).await),
-                NfsArguments::RmDir(args) => NfsRes::RmDir(self.backend.rm_dir(args).await),
-                NfsArguments::Rename(args) => NfsRes::Rename(self.backend.rename(args).await),
-                NfsArguments::Link(args) => NfsRes::Link(self.backend.link(args).await),
-                NfsArguments::ReadDir(args) => NfsRes::ReadDir(self.backend.read_dir(args).await),
+                NfsArguments::Write(args) => {
+                    NfsRes::Write(self.backend.write(&header.cred, args).await)
+                }
+                NfsArguments::Create(args) => {
+                    NfsRes::Create(self.backend.create(&header.cred, args).await)
+                }
+                NfsArguments::MkDir(args) => {
+                    NfsRes::MkDir(self.backend.mk_dir(&header.cred, args).await)
+                }
+                NfsArguments::SymLink(args) => {
+                    NfsRes::SymLink(self.backend.symlink(&header.cred, args).await)
+                }
+                NfsArguments::MkNod(args) => {
+                    NfsRes::MkNod(self.backend.mk_node(&header.cred, args).await)
+                }
+                NfsArguments::Remove(args) => {
+                    NfsRes::Remove(self.backend.remove(&header.cred, args).await)
+                }
+                NfsArguments::RmDir(args) => {
+                    NfsRes::RmDir(self.backend.rm_dir(&header.cred, args).await)
+                }
+                NfsArguments::Rename(args) => {
+                    NfsRes::Rename(self.backend.rename(&header.cred, args).await)
+                }
+                NfsArguments::Link(args) => {
+                    NfsRes::Link(self.backend.link(&header.cred, args).await)
+                }
+                NfsArguments::ReadDir(args) => {
+                    NfsRes::ReadDir(self.backend.read_dir(&header.cred, args).await)
+                }
                 NfsArguments::ReadDirPlus(args) => {
-                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(args).await)
+                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(&header.cred, args).await)
                 }
-                NfsArguments::FsStat(args) => NfsRes::FsStat(self.backend.fs_stat(args).await),
-                NfsArguments::FsInfo(args) => NfsRes::FsInfo(self.backend.fs_info(args).await),
+                NfsArguments::FsStat(args) => {
+                    NfsRes::FsStat(self.backend.fs_stat(&header.cred, args).await)
+                }
+                NfsArguments::FsInfo(args) => {
+                    NfsRes::FsInfo(self.backend.fs_info(&header.cred, args).await)
+                }
                 NfsArguments::PathConf(args) => {
-                    NfsRes::PathConf(self.backend.path_conf(args).await)
+                    NfsRes::PathConf(self.backend.path_conf(&header.cred, args).await)
                 }
-                NfsArguments::Commit(args) => NfsRes::Commit(self.backend.commit(args).await),
+                NfsArguments::Commit(args) => {
+                    NfsRes::Commit(self.backend.commit(&header.cred, args).await)
+                }
             };
 
             if let Some(error) = Self::error_from_response(&response) {
@@ -191,7 +200,7 @@ where
             NfsArguments::LookUp(_) => "LOOKUP",
             NfsArguments::Access(_) => "ACCESS",
             NfsArguments::ReadLink(_) => "READLINK",
-            NfsArguments::Read(_) => "READ",
+            NfsArguments::Read(..) => "READ",
             NfsArguments::Write(_) => "WRITE",
             NfsArguments::Create(_) => "CREATE",
             NfsArguments::MkDir(_) => "MKDIR",

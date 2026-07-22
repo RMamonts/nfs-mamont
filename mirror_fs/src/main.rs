@@ -7,7 +7,7 @@ use tracing::info;
 
 use nfs_mamont::mount::ExportEntry;
 use nfs_mamont::vfs::file::Path as VfsPath;
-use nfs_mamont::{handle_forever, service, Impl, ServerContext};
+use nfs_mamont::{handle_forever, service, PoolAllocator, ServerContext};
 
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
@@ -32,11 +32,7 @@ async fn main() -> std::io::Result<()> {
 
     let context = ServerContext::new(
         fs.clone(),
-        Arc::new(Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count)),
-        Arc::new(Impl::new(
-            config.allocator.write_buffer_size,
-            config.allocator.write_buffer_count,
-        )),
+        Arc::new(PoolAllocator::new(config.allocator.buffer_size, config.allocator.buffer_count)),
         config.vfs_pool_size,
     );
 

@@ -24,5 +24,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait GetAttr {
     /// Retrieves the attributes for a specified file system object.
-    async fn get_attr(&self, args: Args) -> Result<Success, Fail>;
+    async fn get_attr(&self, cred: &crate::rpc::Credential, args: Args) -> Result<Success, Fail>;
 }
