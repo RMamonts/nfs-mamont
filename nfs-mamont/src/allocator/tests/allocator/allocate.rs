@@ -5,10 +5,10 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::allocator::Allocator as _;
-use crate::allocator::Impl;
+use crate::allocator::PoolAllocator;
 
 async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_size: NonZeroUsize) {
-    let allocator = Impl::new(buffer_size, count);
+    let allocator = PoolAllocator::new(buffer_size, count);
     let mut slice = allocator.allocate(alloc_size).await.unwrap();
 
     let verify: Vec<u8> = (0..alloc_size.get()).map(|u| (u + 1) as u8).collect();
@@ -89,7 +89,7 @@ async fn reclaiming() {
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
     const ALLOC_SIZE: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
 
-    let allocator = Impl::new(SIZE, COUNT);
+    let allocator = PoolAllocator::new(SIZE, COUNT);
 
     for _ in 0..5 {
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
@@ -114,7 +114,7 @@ async fn allocate_more_than_capacity_returns_none() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
 
-    let allocator = Impl::new(SIZE, COUNT);
+    let allocator = PoolAllocator::new(SIZE, COUNT);
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
     assert!(allocator.allocate(requested).await.is_none());

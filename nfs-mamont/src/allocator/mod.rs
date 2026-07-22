@@ -82,13 +82,13 @@ pub trait Allocator {
     fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;
 }
 
-pub struct Impl {
+pub struct PoolAllocator {
     state: Arc<AllocatorState>,
     buffer_size: NonZeroUsize,
     buffer_count: NonZeroUsize,
 }
 
-impl Impl {
+impl PoolAllocator {
     /// Returns new [`Allocator`] IMPlementation.
     ///
     /// # Parameters
@@ -140,7 +140,7 @@ impl Impl {
     }
 }
 
-impl Allocator for Impl {
+impl Allocator for PoolAllocator {
     type Buffer = slice::Slice;
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {

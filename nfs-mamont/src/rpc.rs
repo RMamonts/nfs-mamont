@@ -7,6 +7,12 @@ pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
 
+/// Maximum length of the `machinename` field in `AUTH_SYS` credentials (RFC 5531, appendix A).
+pub const AUTH_SYS_MAX_MACHINE_NAME: usize = 255;
+
+/// Maximum number of auxiliary GIDs in `AUTH_SYS` credentials (RFC 5531, appendix A).
+pub const AUTH_SYS_MAX_GIDS: usize = 16;
+
 #[derive(ToPrimitive, FromPrimitive)]
 pub enum AcceptStat {
     Success = 0,
@@ -63,6 +69,36 @@ pub enum AuthFlavor {
 pub struct OpaqueAuth {
     pub flavor: AuthFlavor,
     pub body: Vec<u8>,
+}
+
+/// Parsed `AUTH_SYS` credential body (`authsys_parms`, RFC 5531 appendix A).
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct AuthSysParams {
+    /// Arbitrary ID the caller stamps on the credential; meaningful only to the caller.
+    pub stamp: u32,
+    /// Name of the caller's machine (at most [`AUTH_SYS_MAX_MACHINE_NAME`] bytes).
+    pub machine_name: String,
+    /// Effective user ID of the caller.
+    pub uid: u32,
+    /// Effective group ID of the caller.
+    pub gid: u32,
+    /// Auxiliary group IDs of the caller (at most [`AUTH_SYS_MAX_GIDS`] entries).
+    pub gids: Vec<u32>,
+}
+
+/// Authenticated caller identity extracted from an RPC credential.
+///
+/// Only the flavors the server accepts are represented: `AUTH_NONE` (anonymous)
+/// and `AUTH_SYS` (UNIX-style uid/gid). Any other flavor is rejected during
+/// parsing with [`AuthStat::BadCred`].
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum Credential {
+    /// `AUTH_NONE`: anonymous caller, no identity provided.
+    None,
+    /// `AUTH_SYS`: UNIX-style caller identity.
+    Sys(AuthSysParams),
 }
 
 pub enum RejectedReply {

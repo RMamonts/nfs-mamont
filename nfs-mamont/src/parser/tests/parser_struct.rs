@@ -10,7 +10,9 @@ use crate::parser::tests::socket::MockSocket;
 use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
 };
-use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, RPC_VERSION};
+use crate::rpc::{
+    AuthFlavor, AuthStat, AuthSysParams, Credential, OpaqueAuth, RpcBody, RPC_VERSION,
+};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
@@ -75,6 +77,60 @@ fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
     pad_to_alignment(buf, bytes.len());
 }
 
+/// Writes a wire `opaque_auth`: the flavor discriminant followed by an opaque body.
+fn push_auth(buf: &mut Vec<u8>, flavor: AuthFlavor, body: &[u8]) {
+    push_u32(buf, flavor.to_u32().unwrap());
+    push_opaque(buf, body);
+}
+
+/// Serializes a [`Credential`] into its wire `opaque_auth` form.
+fn push_credential(buf: &mut Vec<u8>, cred: &Credential) {
+    match cred {
+        Credential::None => push_auth(buf, AuthFlavor::None, &[]),
+        Credential::Sys(params) => {
+            let mut body = Vec::new();
+            push_u32(&mut body, params.stamp);
+            push_opaque(&mut body, params.machine_name.as_bytes());
+            push_u32(&mut body, params.uid);
+            push_u32(&mut body, params.gid);
+            push_u32(&mut body, params.gids.len().try_into().unwrap());
+            for gid in &params.gids {
+                push_u32(&mut body, *gid);
+            }
+            push_auth(buf, AuthFlavor::Sys, &body);
+        }
+    }
+}
+
+/// Constructs an NFS RPC call frame with explicit wire credential and verifier.
+/// Used by tests that need to inject malformed authentication.
+fn nfs_call_frame_wire(
+    msg_type: u32,
+    rpc_version: u32,
+    xid: u32,
+    cred: &OpaqueAuth,
+    verf: &OpaqueAuth,
+    procedure: u32,
+    args_builder: impl FnOnce(&mut Vec<u8>),
+) -> Vec<u8> {
+    let mut payload = Vec::new();
+    push_u32(&mut payload, xid);
+    push_u32(&mut payload, msg_type);
+    push_u32(&mut payload, rpc_version);
+    push_u32(&mut payload, NFS_PROGRAM);
+    push_u32(&mut payload, NFS_VERSION);
+    push_u32(&mut payload, procedure);
+    push_auth(&mut payload, cred.flavor.clone(), &cred.body);
+    push_auth(&mut payload, verf.flavor.clone(), &verf.body);
+    args_builder(&mut payload);
+
+    let mut frame = Vec::with_capacity(payload.len());
+    let payload_len: u32 = payload.len().try_into().unwrap();
+    push_u32(&mut frame, FRAGMENT_HEADER_MASK | payload_len);
+    frame.extend_from_slice(&payload);
+    frame
+}
+
 /// Constructs a complete NFS RPC call frame for the given procedure and arguments.
 /// Returns the serialized byte buffer suitable for testing the parser.
 fn nfs_call_frame(
@@ -93,13 +149,9 @@ fn nfs_call_frame(
     push_u32(&mut payload, NFS_VERSION);
     push_u32(&mut payload, procedure);
     // cred
-    // Auth body length (0 for AUTH_NONE/SYS in tests)
-    push_u32(&mut payload, header.cred.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &header.cred.body);
-
-    // verf
-    push_u32(&mut payload, header.verf.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &header.verf.body);
+    push_credential(&mut payload, &header.cred);
+    // verf: always AUTH_NONE with an empty body
+    push_auth(&mut payload, AuthFlavor::None, &[]);
     // Append procedure-specific arguments
     args_builder(&mut payload);
 
@@ -131,12 +183,9 @@ fn mount_call_frame(
     push_u32(&mut payload, MOUNT_VERSION);
     push_u32(&mut payload, procedure);
     // cred
-    push_u32(&mut payload, header.cred.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &header.cred.body);
-
-    // verf
-    push_u32(&mut payload, header.verf.flavor.to_u32().unwrap());
-    push_opaque(&mut payload, &header.verf.body);
+    push_credential(&mut payload, &header.cred);
+    // verf: always AUTH_NONE with an empty body
+    push_auth(&mut payload, AuthFlavor::None, &[]);
 
     // Append procedure-specific arguments
     args_builder(&mut payload);
@@ -225,8 +274,7 @@ fn assert_arg_wrapper<B: Buffer, F, T: Fn(&ProcArguments<B>, F)>(
 /// Test: Parses a valid MOUNT call and returns mount-specific arguments.
 #[tokio::test]
 async fn parse_mount_call() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     let frame = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 1, |buf| {
         push_opaque(buf, b"/mnt/vol");
@@ -246,8 +294,7 @@ async fn parse_mount_call() {
 /// Test: After a MOUNT procedure mismatch, parser can parse the next valid MOUNT call.
 #[tokio::test]
 async fn parse_mount_after_error() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     let first = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 99, |_| {});
     let second = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 1, |buf| {
@@ -278,8 +325,7 @@ async fn parse_mount_after_error() {
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
 #[tokio::test]
 async fn parse_two_correct() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
@@ -314,8 +360,7 @@ async fn parse_two_correct() {
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
 #[tokio::test]
 async fn parse_after_error() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     let first = nfs_call_frame(RpcBody::Call as u32, 3, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
@@ -345,8 +390,7 @@ async fn parse_after_error() {
 /// Test: Parses two correct NFS WRITE frames with data.
 #[tokio::test]
 async fn parse_write() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     #[rustfmt::skip]
     let data = [
@@ -390,8 +434,7 @@ async fn parse_write() {
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.
 #[tokio::test]
 async fn parse_write_after_error() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     #[rustfmt::skip]
     let data = [
@@ -518,8 +561,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 /// Verifies parser handles WRITE with zero opaque payload.
 #[tokio::test]
 async fn parse_write_with_empty_payload() {
-    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+    let header = RpcHeader { xid: XID, cred: Credential::None };
 
     let write = WriteWrapper {
         part: write::ArgsPartial {
@@ -545,12 +587,12 @@ async fn parse_write_with_empty_payload() {
 
 #[tokio::test]
 async fn parse_rejects_non_none_cred_auth() {
-    let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let cred = OpaqueAuth { flavor: AuthFlavor::Short, body: vec![] };
-    let header = RpcHeader { xid: XID, cred, verf };
-    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
-        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-    });
+    let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let frame =
+        nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
+            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+        });
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
@@ -566,10 +608,10 @@ async fn parse_rejects_non_none_cred_auth() {
 async fn parse_rejects_non_none_verf_auth() {
     let cred = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![0, 1, 3] };
-    let header = RpcHeader { xid: XID, cred, verf };
-    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
-        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
-    });
+    let frame =
+        nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
+            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+        });
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
@@ -578,5 +620,55 @@ async fn parse_rejects_non_none_verf_auth() {
     assert!(matches!(
         result,
         Err(ErrorWrapper { error: Error::Auth(AuthStat::BadVerf), xid: Some(XID) })
+    ));
+}
+
+/// Parses a FSSTAT call carrying an AUTH_SYS credential and checks that the
+/// UNIX identity is decoded into the parsed header.
+#[tokio::test]
+async fn parse_accepts_auth_sys_credentials() {
+    let params = AuthSysParams {
+        stamp: 0xDEAD_BEEF,
+        machine_name: "client-host".to_string(),
+        uid: 1000,
+        gid: 1000,
+        gids: vec![4, 27, 1000],
+    };
+    let header = RpcHeader { xid: XID, cred: Credential::Sys(params) };
+
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+
+    let result = parser.next_message().await.unwrap();
+    assert_eq!(result.header, header);
+}
+
+/// Rejects an AUTH_SYS credential whose body is truncated (missing the gids array).
+#[tokio::test]
+async fn parse_rejects_truncated_auth_sys() {
+    let mut body = Vec::new();
+    push_u32(&mut body, 0); // stamp
+    push_opaque(&mut body, b"host"); // machinename
+    push_u32(&mut body, 1000); // uid
+                               // gid and gids omitted -> truncated
+    let cred = OpaqueAuth { flavor: AuthFlavor::Sys, body };
+    let verf = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+
+    let frame =
+        nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
+            buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+        });
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadCred), xid: Some(XID) })
     ));
 }

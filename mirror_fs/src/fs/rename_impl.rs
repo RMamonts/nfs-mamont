@@ -5,7 +5,11 @@ use nfs_mamont::vfs::{self, rename};
 use super::MirrorFS;
 
 impl rename::Rename for MirrorFS {
-    async fn rename(&self, args: rename::Args) -> Result<rename::Success, rename::Fail> {
+    async fn rename(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: rename::Args,
+    ) -> Result<rename::Success, rename::Fail> {
         if matches!(args.from.name.as_str(), "." | "..")
             || matches!(args.to.name.as_str(), "." | "..")
         {

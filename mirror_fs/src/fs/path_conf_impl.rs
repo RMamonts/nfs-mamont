@@ -5,6 +5,7 @@ use super::MirrorFS;
 impl path_conf::PathConf for MirrorFS {
     async fn path_conf(
         &self,
+        _cred: &nfs_mamont::Credential,
         args: path_conf::Args,
     ) -> Result<path_conf::Success, path_conf::Fail> {
         let path = match self.path_for_handle(&args.file).await {

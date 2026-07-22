@@ -3,7 +3,11 @@ use nfs_mamont::vfs::{self, read_dir};
 use super::MirrorFS;
 
 impl read_dir::ReadDir for MirrorFS {
-    async fn read_dir(&self, args: read_dir::Args) -> Result<read_dir::Success, read_dir::Fail> {
+    async fn read_dir(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: read_dir::Args,
+    ) -> Result<read_dir::Success, read_dir::Fail> {
         let dir_path = match self.path_for_handle(&args.dir).await {
             Ok(path) => path,
             Err(error) => return Err(read_dir::Fail { error, dir_attr: None }),

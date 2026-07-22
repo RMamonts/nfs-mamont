@@ -54,8 +54,10 @@ impl<B: Buffer> WriteTask<B> {
             // Stage the received reply plus any replies already waiting in the
             // channel, then flush them all with a single socket write.
             while let Some(reply) = next.take() {
-                // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-                // Use proper authentication verifier instead of None
+                // For the accepted credential flavors (AUTH_NONE and AUTH_SYS) the
+                // server's reply verifier is always AUTH_NONE with an empty body
+                // (RFC 5531 §8.2). A non-trivial reply verifier is only required by
+                // RPCSEC_GSS, which is not supported (issue #143).
                 let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
                 let staged = serializer.buffered_len();

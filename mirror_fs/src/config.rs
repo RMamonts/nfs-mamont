@@ -5,10 +5,8 @@ use serde::Deserialize;
 
 const DEFAULT_VFS_POOL_SIZE: usize = 10;
 const MAX_EXPORTS_COUNT: usize = 256;
-const DEFAULT_READ_BUFFER_SIZE: usize = 64 * 1024;
-const DEFAULT_READ_BUFFER_COUNT: usize = 2048;
-const DEFAULT_WRITE_BUFFER_SIZE: usize = 64 * 1024;
-const DEFAULT_WRITE_BUFFER_COUNT: usize = 2048;
+const DEFAULT_BUFFER_SIZE: usize = 64 * 1024;
+const DEFAULT_BUFFER_COUNT: usize = 2048;
 
 #[derive(Debug)]
 pub struct Config {
@@ -20,10 +18,8 @@ pub struct Config {
 
 #[derive(Debug)]
 pub struct AllocatorConfig {
-    pub read_buffer_size: NonZeroUsize,
-    pub read_buffer_count: NonZeroUsize,
-    pub write_buffer_size: NonZeroUsize,
-    pub write_buffer_count: NonZeroUsize,
+    pub buffer_size: NonZeroUsize,
+    pub buffer_count: NonZeroUsize,
 }
 
 #[derive(Debug)]
@@ -46,10 +42,8 @@ impl Default for Config {
 impl Default for AllocatorConfig {
     fn default() -> Self {
         Self {
-            read_buffer_size: NonZeroUsize::new(DEFAULT_READ_BUFFER_SIZE).unwrap(),
-            read_buffer_count: NonZeroUsize::new(DEFAULT_READ_BUFFER_COUNT).unwrap(),
-            write_buffer_size: NonZeroUsize::new(DEFAULT_WRITE_BUFFER_SIZE).unwrap(),
-            write_buffer_count: NonZeroUsize::new(DEFAULT_WRITE_BUFFER_COUNT).unwrap(),
+            buffer_size: NonZeroUsize::new(DEFAULT_BUFFER_SIZE).unwrap(),
+            buffer_count: NonZeroUsize::new(DEFAULT_BUFFER_COUNT).unwrap(),
         }
     }
 }
@@ -65,21 +59,13 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
 
     let allocator = match raw_config.allocator {
         Some(raw_alloc) => AllocatorConfig {
-            read_buffer_size: non_zero(
-                raw_alloc.read_buffer_size.unwrap_or(DEFAULT_READ_BUFFER_SIZE),
-                "read_buffer_size",
+            buffer_size: non_zero(
+                raw_alloc.buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE),
+                "buffer_size",
             )?,
-            read_buffer_count: non_zero(
-                raw_alloc.read_buffer_count.unwrap_or(DEFAULT_READ_BUFFER_COUNT),
-                "read_buffer_count",
-            )?,
-            write_buffer_size: non_zero(
-                raw_alloc.write_buffer_size.unwrap_or(DEFAULT_WRITE_BUFFER_SIZE),
-                "write_buffer_size",
-            )?,
-            write_buffer_count: non_zero(
-                raw_alloc.write_buffer_count.unwrap_or(DEFAULT_WRITE_BUFFER_COUNT),
-                "write_buffer_count",
+            buffer_count: non_zero(
+                raw_alloc.buffer_count.unwrap_or(DEFAULT_BUFFER_COUNT),
+                "buffer_count",
             )?,
         },
         None => AllocatorConfig::default(),
@@ -125,10 +111,8 @@ struct RawConfig {
 
 #[derive(Deserialize)]
 struct RawAllocatorConfig {
-    read_buffer_size: Option<usize>,
-    read_buffer_count: Option<usize>,
-    write_buffer_size: Option<usize>,
-    write_buffer_count: Option<usize>,
+    buffer_size: Option<usize>,
+    buffer_count: Option<usize>,
 }
 
 #[derive(Deserialize)]

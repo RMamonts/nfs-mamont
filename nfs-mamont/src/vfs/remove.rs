@@ -25,5 +25,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
-    async fn remove(&self, args: Args) -> Result<Success, Fail>;
+    async fn remove(&self, cred: &crate::rpc::Credential, args: Args) -> Result<Success, Fail>;
 }

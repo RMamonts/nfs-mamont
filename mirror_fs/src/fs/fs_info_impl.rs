@@ -4,7 +4,11 @@ use nfs_mamont::vfs::fs_info;
 use super::{MirrorFS, READ_DIR_PREF, READ_WRITE_MAX};
 
 impl fs_info::FsInfo for MirrorFS {
-    async fn fs_info(&self, args: fs_info::Args) -> Result<fs_info::Success, fs_info::Fail> {
+    async fn fs_info(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: fs_info::Args,
+    ) -> Result<fs_info::Success, fs_info::Fail> {
         let path = match self.path_for_handle(&args.root).await {
             Ok(path) => path,
             Err(error) => return Err(fs_info::Fail { error, root_attr: None }),

@@ -5,7 +5,11 @@ use nfs_mamont::vfs::{self, remove};
 use super::MirrorFS;
 
 impl remove::Remove for MirrorFS {
-    async fn remove(&self, args: remove::Args) -> Result<remove::Success, remove::Fail> {
+    async fn remove(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: remove::Args,
+    ) -> Result<remove::Success, remove::Fail> {
         if let Err(error) = Self::ensure_name_allowed(&args.object.name) {
             return Err(remove::Fail {
                 error,

@@ -9,6 +9,7 @@ use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::lookup;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::Buffer;
+use nfs_mamont::Credential;
 use nfs_mamont::Slice;
 
 use crate::fs::MirrorFS;
@@ -51,7 +52,12 @@ impl TestContext {
 
     pub async fn lookup_handle(&self, parent: file::Handle, child_name: &str) -> file::Handle {
         expect_ok(
-            lookup::Lookup::lookup(&self.fs, lookup::Args { parent, name: name(child_name) }).await,
+            lookup::Lookup::lookup(
+                &self.fs,
+                &Credential::None,
+                lookup::Args { parent, name: name(child_name) },
+            )
+            .await,
             "lookup should succeed",
         )
         .file

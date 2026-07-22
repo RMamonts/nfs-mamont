@@ -56,7 +56,7 @@ pub async fn new<A, V, B>(
         mount_sender,
         nlm_sender,
         result_sender.clone(),
-        context.get_write_allocator(),
+        context.get_allocator(),
         context.get_vfs_pool().sender(),
     )
     .spawn();

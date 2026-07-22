@@ -96,5 +96,5 @@ pub trait Write<B: Buffer> {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args<B>) -> Result<Success, Fail>;
+    async fn write(&self, cred: &crate::rpc::Credential, args: Args<B>) -> Result<Success, Fail>;
 }

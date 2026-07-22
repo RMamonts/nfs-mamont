@@ -5,6 +5,7 @@ use super::MirrorFS;
 impl read_link::ReadLink for MirrorFS {
     async fn read_link(
         &self,
+        _cred: &nfs_mamont::Credential,
         args: read_link::Args,
     ) -> Result<read_link::Success, read_link::Fail> {
         let path = match self.path_for_handle(&args.file).await {
