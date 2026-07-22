@@ -8,6 +8,7 @@ use nfs_mamont::vfs::remove;
 use nfs_mamont::vfs::rename;
 use nfs_mamont::vfs::rm_dir;
 use nfs_mamont::vfs::symlink;
+use nfs_mamont::Credential;
 
 use super::helpers::{
     assert_wcc_present, create_dir, dir_op, expect_err, expect_ok, file_path, name, write_file,
@@ -23,22 +24,35 @@ async fn lookup_resolves_child_and_rejects_non_directory_parent() {
     let root = ctx.root_handle().await;
 
     let dir = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name("dir") })
-            .await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: root.clone(), name: name("dir") },
+        )
+        .await,
         "lookup dir should succeed",
     );
     assert!(matches!(dir.file_attr.unwrap().file_type, file::Type::Directory));
 
     let child = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.file, name: name("child.txt") })
-            .await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: dir.file, name: name("child.txt") },
+        )
+        .await,
         "lookup child should succeed",
     );
     assert!(matches!(child.file_attr.unwrap().file_type, file::Type::Regular));
 
     let plain = ctx.lookup_handle(root, "plain.txt").await;
     let fail = expect_err(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: plain, name: name("nope") }).await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: plain, name: name("nope") },
+        )
+        .await,
         "lookup through non-directory should fail",
     );
     assert_eq!(fail.error, vfs::Error::NotDir);
@@ -53,41 +67,75 @@ async fn lookup_resolves_dot_and_dotdot() {
     let nested = ctx.lookup_handle(dir.clone(), "nested").await;
 
     let dot = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: dir.clone(), name: name(".") })
-            .await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: dir.clone(), name: name(".") },
+        )
+        .await,
         "lookup '.' should resolve to the same directory",
     );
     let dir_attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dir.clone() }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: dir.clone() },
+        )
+        .await,
         "get_attr for directory should succeed",
     );
     let dot_attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dot.file }).await,
+        get_attr::GetAttr::get_attr(&ctx.fs, &Credential::None, get_attr::Args { file: dot.file })
+            .await,
         "get_attr for '.' result should succeed",
     );
     assert_eq!(dot_attr.object.file_id, dir_attr.object.file_id);
 
     let dotdot = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: nested, name: name("..") }).await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: nested, name: name("..") },
+        )
+        .await,
         "lookup '..' should resolve to the parent directory",
     );
     let dotdot_attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: dotdot.file }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: dotdot.file },
+        )
+        .await,
         "get_attr for '..' result should succeed",
     );
     assert_eq!(dotdot_attr.object.file_id, dir_attr.object.file_id);
 
     let root_parent = expect_ok(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root.clone(), name: name("..") })
-            .await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: root.clone(), name: name("..") },
+        )
+        .await,
         "lookup '..' at export root should stay on export root",
     );
     let root_attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: root.clone() }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: root.clone() },
+        )
+        .await,
         "get_attr for root should succeed",
     );
     let root_parent_attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: root_parent.file }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: root_parent.file },
+        )
+        .await,
         "get_attr for root '..' should succeed",
     );
     assert_eq!(root_parent_attr.object.file_id, root_attr.object.file_id);
@@ -99,13 +147,23 @@ async fn remove_rejects_dot_and_dotdot() {
     let root = ctx.root_handle().await;
 
     let dot_fail = expect_err(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root.clone(), ".") }).await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root.clone(), ".") },
+        )
+        .await,
         "remove '.' should be rejected",
     );
     assert_eq!(dot_fail.error, vfs::Error::InvalidArgument);
 
     let dotdot_fail = expect_err(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "..") }).await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root, "..") },
+        )
+        .await,
         "remove '..' should be rejected",
     );
     assert_eq!(dotdot_fail.error, vfs::Error::Exist);
@@ -119,14 +177,24 @@ async fn remove_deletes_file_and_invalidates_cached_handle() {
     let file_handle = ctx.lookup_handle(root.clone(), "file.txt").await;
 
     let success = expect_ok(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "file.txt") }).await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root, "file.txt") },
+        )
+        .await,
         "remove should succeed",
     );
     assert_wcc_present(&success.wcc_data);
     assert!(!ctx.root_path().join("file.txt").exists());
 
     let fail = expect_err(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: file_handle }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: file_handle },
+        )
+        .await,
         "removed handle should be stale",
     );
     assert_eq!(fail.error, vfs::Error::StaleFile);
@@ -145,6 +213,7 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
     let success = expect_ok(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args { from: dir_op(root.clone(), "dir"), to: dir_op(root.clone(), "moved") },
         )
         .await,
@@ -156,7 +225,12 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
     assert!(ctx.root_path().join("moved/nested/file.txt").exists());
 
     let attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: file_handle }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: file_handle },
+        )
+        .await,
         "cached descendant handle should remain valid after rename",
     );
     assert!(matches!(attr.object.file_type, file::Type::Regular));
@@ -164,6 +238,7 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
     let moved = expect_ok(
         lookup::Lookup::lookup(
             &ctx.fs,
+            &Credential::None,
             lookup::Args { parent: root.clone(), name: super::helpers::name("moved") },
         )
         .await,
@@ -172,7 +247,12 @@ async fn rename_moves_subtree_and_updates_cached_descendants() {
     assert!(matches!(moved.file_attr.unwrap().file_type, file::Type::Directory));
 
     let missing = expect_err(
-        lookup::Lookup::lookup(&ctx.fs, lookup::Args { parent: root, name: name("dir") }).await,
+        lookup::Lookup::lookup(
+            &ctx.fs,
+            &Credential::None,
+            lookup::Args { parent: root, name: name("dir") },
+        )
+        .await,
         "old name should be gone after rename",
     );
     assert_eq!(missing.error, vfs::Error::NoEntry);
@@ -191,13 +271,19 @@ async fn removing_one_hard_link_keeps_shared_handle_valid() {
     assert!(original == alias);
 
     let success = expect_ok(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "alias.txt") }).await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root, "alias.txt") },
+        )
+        .await,
         "remove hard-link alias should succeed",
     );
     assert_wcc_present(&success.wcc_data);
 
     let attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: original }).await,
+        get_attr::GetAttr::get_attr(&ctx.fs, &Credential::None, get_attr::Args { file: original })
+            .await,
         "shared handle should remain valid through surviving link",
     );
     assert!(matches!(attr.object.file_type, file::Type::Regular));
@@ -213,6 +299,7 @@ async fn rename_replaces_existing_file_atomically() {
     let success = expect_ok(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args {
                 from: dir_op(root.clone(), "src.txt"),
                 to: dir_op(root.clone(), "dst.txt"),
@@ -237,6 +324,7 @@ async fn rename_replaces_empty_directory() {
     let success = expect_ok(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args {
                 from: dir_op(root.clone(), "src_dir"),
                 to: dir_op(root.clone(), "dst_dir"),
@@ -259,6 +347,7 @@ async fn rename_rejects_type_mismatch() {
     let file_to_dir = expect_err(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args {
                 from: dir_op(root.clone(), "file.txt"),
                 to: dir_op(root.clone(), "dir"),
@@ -272,6 +361,7 @@ async fn rename_rejects_type_mismatch() {
     let dir_to_file = expect_err(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args { from: dir_op(root.clone(), "dir"), to: dir_op(root, "file.txt") },
         )
         .await,
@@ -289,6 +379,7 @@ async fn rename_self_is_noop() {
     let success = expect_ok(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args { from: dir_op(root.clone(), "file.txt"), to: dir_op(root, "file.txt") },
         )
         .await,
@@ -307,15 +398,24 @@ async fn rm_dir_removes_empty_directory_and_rejects_non_empty_one() {
     let root = ctx.root_handle().await;
 
     let success = expect_ok(
-        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root.clone(), "empty") })
-            .await,
+        rm_dir::RmDir::rm_dir(
+            &ctx.fs,
+            &Credential::None,
+            rm_dir::Args { object: dir_op(root.clone(), "empty") },
+        )
+        .await,
         "rm_dir should remove empty directories",
     );
     assert_wcc_present(&success.wcc_data);
     assert!(!ctx.root_path().join("empty").exists());
 
     let fail = expect_err(
-        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root, "non-empty") }).await,
+        rm_dir::RmDir::rm_dir(
+            &ctx.fs,
+            &Credential::None,
+            rm_dir::Args { object: dir_op(root, "non-empty") },
+        )
+        .await,
         "rm_dir should fail for non-empty directories",
     );
     assert_eq!(fail.error, vfs::Error::NotEmpty);
@@ -329,6 +429,7 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let created = expect_ok(
         mk_dir::MkDir::mk_dir(
             &ctx.fs,
+            &Credential::None,
             mk_dir::Args {
                 object: dir_op(root.clone(), "docs"),
                 attr: super::helpers::default_new_attr(),
@@ -343,6 +444,7 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let link = expect_ok(
         symlink::Symlink::symlink(
             &ctx.fs,
+            &Credential::None,
             symlink::Args {
                 object: dir_op(root.clone(), "docs-link"),
                 attr: super::helpers::default_new_attr(),
@@ -355,7 +457,12 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let link_handle = link.file.expect("symlink must return a handle");
 
     let target = expect_ok(
-        read_link::ReadLink::read_link(&ctx.fs, read_link::Args { file: link_handle }).await,
+        read_link::ReadLink::read_link(
+            &ctx.fs,
+            &Credential::None,
+            read_link::Args { file: link_handle },
+        )
+        .await,
         "read_link for directory symlink should succeed",
     );
     assert_eq!(target.data.as_path(), std::path::Path::new("docs"));
@@ -363,6 +470,7 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let renamed = expect_ok(
         rename::Rename::rename(
             &ctx.fs,
+            &Credential::None,
             rename::Args {
                 from: dir_op(root.clone(), "docs"),
                 to: dir_op(root.clone(), "docs-renamed"),
@@ -376,14 +484,23 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
 
     write_file(ctx.root_path(), "docs-renamed/note.txt", b"data");
     let attr = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: docs_handle.clone() }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: docs_handle.clone() },
+        )
+        .await,
         "renamed directory handle should remain valid",
     );
     assert!(matches!(attr.object.file_type, file::Type::Directory));
 
     let removed_link = expect_ok(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root.clone(), "docs-link") })
-            .await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root.clone(), "docs-link") },
+        )
+        .await,
         "symlink removal should succeed",
     );
     assert_wcc_present(&removed_link.wcc_data);
@@ -391,6 +508,7 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     let removed_file = expect_ok(
         remove::Remove::remove(
             &ctx.fs,
+            &Credential::None,
             remove::Args { object: dir_op(docs_handle.clone(), "note.txt") },
         )
         .await,
@@ -399,7 +517,12 @@ async fn directory_lifecycle_create_symlink_rename_and_remove() {
     assert_wcc_present(&removed_file.wcc_data);
 
     let removed_dir = expect_ok(
-        rm_dir::RmDir::rm_dir(&ctx.fs, rm_dir::Args { object: dir_op(root, "docs-renamed") }).await,
+        rm_dir::RmDir::rm_dir(
+            &ctx.fs,
+            &Credential::None,
+            rm_dir::Args { object: dir_op(root, "docs-renamed") },
+        )
+        .await,
         "empty renamed directory should be removable",
     );
     assert_wcc_present(&removed_dir.wcc_data);

@@ -16,6 +16,7 @@ use nfs_mamont::vfs::remove;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::symlink;
 use nfs_mamont::vfs::write;
+use nfs_mamont::Credential;
 
 use super::helpers::{
     alloc_slice, assert_wcc_present, create_dir, default_new_attr, dir_op, expect_err, expect_ok,
@@ -30,6 +31,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let unchecked = expect_ok(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "alpha.txt"),
                 how: create::How::Unchecked(sized_attr(Some(0o640), Some(5))),
@@ -48,6 +50,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let unchecked_existing = expect_ok(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "alpha.txt"),
                 how: create::How::Unchecked(sized_attr(Some(0o600), Some(2))),
@@ -64,6 +67,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let guarded_fail = expect_err(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "alpha.txt"),
                 how: create::How::Guarded(default_new_attr()),
@@ -78,6 +82,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let exclusive = expect_ok(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "beta.txt"),
                 how: create::How::Exclusive(create::Verifier([7u8; NFS3_CREATEVERFSIZE])),
@@ -93,6 +98,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let retry = expect_ok(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "beta.txt"),
                 how: create::How::Exclusive(create::Verifier([7u8; NFS3_CREATEVERFSIZE])),
@@ -107,6 +113,7 @@ async fn create_supports_unchecked_guarded_and_exclusive() {
     let different = expect_err(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root, "beta.txt"),
                 how: create::How::Exclusive(create::Verifier([99u8; NFS3_CREATEVERFSIZE])),
@@ -130,6 +137,7 @@ async fn link_creates_hard_link_and_rejects_directory() {
     let success = expect_ok(
         link::Link::link(
             &ctx.fs,
+            &Credential::None,
             link::Args { file: original, link: dir_op(root.clone(), "alias.txt") },
         )
         .await,
@@ -144,7 +152,12 @@ async fn link_creates_hard_link_and_rejects_directory() {
     assert_eq!(original_meta.nlink(), 2);
 
     let fail = expect_err(
-        link::Link::link(&ctx.fs, link::Args { file: dir, link: dir_op(root, "dir-link") }).await,
+        link::Link::link(
+            &ctx.fs,
+            &Credential::None,
+            link::Args { file: dir, link: dir_op(root, "dir-link") },
+        )
+        .await,
         "linking directories should fail",
     );
     assert_eq!(fail.error, vfs::Error::InvalidArgument);
@@ -158,6 +171,7 @@ async fn mk_dir_creates_directory_and_applies_mode() {
     let success = expect_ok(
         mk_dir::MkDir::mk_dir(
             &ctx.fs,
+            &Credential::None,
             mk_dir::Args {
                 object: dir_op(root.clone(), "child"),
                 attr: sized_attr(Some(0o750), None),
@@ -191,6 +205,7 @@ async fn mk_node_handles_all_types_as_unsupported() {
         let err = expect_err(
             mk_node::MkNode::mk_node(
                 &ctx.fs,
+                &Credential::None,
                 mk_node::Args { object: dir_op(root.clone(), name), what },
             )
             .await,
@@ -207,13 +222,19 @@ async fn set_attr_updates_size_and_honors_guard() {
     let root = ctx.root_handle().await;
     let handle = ctx.lookup_handle(root, "file.txt").await;
     let current = expect_ok(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: handle.clone() }).await,
+        get_attr::GetAttr::get_attr(
+            &ctx.fs,
+            &Credential::None,
+            get_attr::Args { file: handle.clone() },
+        )
+        .await,
         "get_attr should succeed before set_attr",
     );
 
     let success = expect_ok(
         set_attr::SetAttr::set_attr(
             &ctx.fs,
+            &Credential::None,
             set_attr::Args {
                 file: handle.clone(),
                 new_attr: sized_attr(Some(0o600), Some(2)),
@@ -235,6 +256,7 @@ async fn set_attr_updates_size_and_honors_guard() {
     let fail = expect_err(
         set_attr::SetAttr::set_attr(
             &ctx.fs,
+            &Credential::None,
             set_attr::Args {
                 file: handle,
                 new_attr: sized_attr(None, Some(1)),
@@ -256,6 +278,7 @@ async fn symlink_creates_symbolic_link() {
     let success = expect_ok(
         symlink::Symlink::symlink(
             &ctx.fs,
+            &Credential::None,
             symlink::Args {
                 object: dir_op(root, "link.txt"),
                 attr: sized_attr(Some(0o700), None),
@@ -284,6 +307,7 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
     let write_result = expect_ok(
         write::Write::write(
             &ctx.fs,
+            &Credential::None,
             write::Args {
                 file: handle.clone(),
                 offset: 2,
@@ -304,7 +328,12 @@ async fn write_writes_data_with_offset_and_commit_matches_verifier() {
     );
 
     let commit_result = expect_ok(
-        commit::Commit::commit(&ctx.fs, commit::Args { file: handle, offset: 0, count: 0 }).await,
+        commit::Commit::commit(
+            &ctx.fs,
+            &Credential::None,
+            commit::Args { file: handle, offset: 0, count: 0 },
+        )
+        .await,
         "commit after write should succeed",
     );
     assert_eq!(commit_result.verifier.0, write_result.verifier.0);
@@ -318,6 +347,7 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     let created = expect_ok(
         create::Create::create(
             &ctx.fs,
+            &Credential::None,
             create::Args {
                 object: dir_op(root.clone(), "lifecycle.txt"),
                 how: create::How::Guarded(default_new_attr()),
@@ -331,6 +361,7 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     let write_result = expect_ok(
         write::Write::write(
             &ctx.fs,
+            &Credential::None,
             write::Args {
                 file: handle.clone(),
                 offset: 0,
@@ -347,6 +378,7 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     let read_result = expect_ok(
         read::Read::read(
             &ctx.fs,
+            &Credential::None,
             read::Args { file: handle.clone(), offset: 0, count: 11 },
             alloc_slice(11).await,
         )
@@ -358,15 +390,20 @@ async fn file_lifecycle_create_edit_read_and_remove() {
     assert_eq!(slice_to_vec(&read_result.data), b"hello world");
 
     let removed = expect_ok(
-        remove::Remove::remove(&ctx.fs, remove::Args { object: dir_op(root, "lifecycle.txt") })
-            .await,
+        remove::Remove::remove(
+            &ctx.fs,
+            &Credential::None,
+            remove::Args { object: dir_op(root, "lifecycle.txt") },
+        )
+        .await,
         "file delete should succeed",
     );
     assert_wcc_present(&removed.wcc_data);
     assert!(!ctx.root_path().join("lifecycle.txt").exists());
 
     let stale = expect_err(
-        get_attr::GetAttr::get_attr(&ctx.fs, get_attr::Args { file: handle }).await,
+        get_attr::GetAttr::get_attr(&ctx.fs, &Credential::None, get_attr::Args { file: handle })
+            .await,
         "removed file handle should become stale",
     );
     assert_eq!(stale.error, vfs::Error::StaleFile);

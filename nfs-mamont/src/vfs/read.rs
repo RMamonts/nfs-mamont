@@ -53,5 +53,10 @@ pub trait Read<B: Buffer> {
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: B) -> Result<Success<B>, Fail>;
+    async fn read(
+        &self,
+        cred: &crate::rpc::Credential,
+        args: Args,
+        data: B,
+    ) -> Result<Success<B>, Fail>;
 }

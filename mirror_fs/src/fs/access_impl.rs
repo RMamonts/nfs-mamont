@@ -4,7 +4,11 @@ use nfs_mamont::vfs::file;
 use super::MirrorFS;
 
 impl access::Access for MirrorFS {
-    async fn access(&self, args: access::Args) -> Result<access::Success, access::Fail> {
+    async fn access(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: access::Args,
+    ) -> Result<access::Success, access::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => return Err(access::Fail { error, object_attr: None }),

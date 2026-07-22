@@ -26,6 +26,7 @@ use crate::{mount::Mount, task::connection};
 use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, PoolAllocator, Slice, UnownedBuffer};
 pub use context::ServerContext;
+pub use rpc::{AuthSysParams, Credential};
 
 /// Initializes tracing logs.
 ///

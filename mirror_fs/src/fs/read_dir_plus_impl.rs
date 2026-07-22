@@ -6,6 +6,7 @@ use super::MirrorFS;
 impl read_dir_plus::ReadDirPlus for MirrorFS {
     async fn read_dir_plus(
         &self,
+        _cred: &nfs_mamont::Credential,
         args: read_dir_plus::Args,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
         let dir_path = match self.path_for_handle(&args.dir).await {

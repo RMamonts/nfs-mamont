@@ -3,7 +3,11 @@ use nfs_mamont::vfs::{self, set_attr};
 use super::MirrorFS;
 
 impl set_attr::SetAttr for MirrorFS {
-    async fn set_attr(&self, args: set_attr::Args) -> Result<set_attr::Success, set_attr::Fail> {
+    async fn set_attr(
+        &self,
+        _cred: &nfs_mamont::Credential,
+        args: set_attr::Args,
+    ) -> Result<set_attr::Success, set_attr::Fail> {
         let path = match self.path_for_handle(&args.file).await {
             Ok(path) => path,
             Err(error) => {
