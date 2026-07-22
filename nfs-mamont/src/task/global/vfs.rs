@@ -117,9 +117,7 @@ where
                 NfsArguments::ReadLink(args) => {
                     NfsRes::ReadLink(self.backend.read_link(args).await)
                 }
-                NfsArguments::Read(args, data) => {
-                    NfsRes::Read(self.backend.read(args, data).await)
-                }
+                NfsArguments::Read(args, data) => NfsRes::Read(self.backend.read(args, data).await),
                 NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
                 NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),
                 NfsArguments::MkDir(args) => NfsRes::MkDir(self.backend.mk_dir(args).await),
