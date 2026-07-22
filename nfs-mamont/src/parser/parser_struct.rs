@@ -4,7 +4,7 @@
 //! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
 //!
 //! - RPC message framing and headers
-//! - Authentication (currently only AUTH_NONE)
+//! - Authentication (AUTH_NONE and AUTH_SYS)
 //! - NFSv3 procedure parsing (all 22 procedures)
 //! - MOUNT protocol procedure parsing
 //! - NLM procedure parsing
@@ -47,12 +47,12 @@ use crate::parser::nfsv3::{
 use crate::parser::nlm::{cancel::cancel, lock::lock, test::test, unlock::unlock};
 use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::FrameReader;
-use crate::parser::rpc::{auth, RpcMessage};
+use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
     NfsArgWrapper, NfsArguments, NlmArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, AuthStat, Credential, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 /// Minimum buffer size, that could hold complete RPC message
@@ -220,37 +220,56 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let procedure = u32(&mut self.reader)?;
         debug!(program, version, procedure, "rpc header parsed");
 
-        //TODO(https://github.com/RMamonts/nfs-mamont/issues/156)
-        let (cred, verf) = self.parse_authentication()?;
+        let cred = self.parse_authentication()?;
 
-        Ok(RpcMessage { program, procedure, version, cred, verf })
+        Ok(RpcMessage { program, procedure, version, cred })
     }
 
-    /// Parses and validates RPC authentication.
+    /// Parses and validates RPC authentication, returning the caller identity.
     ///
-    /// NFS clients commonly send AUTH_SYS credentials, so both AUTH_NONE and
-    /// AUTH_SYS are accepted for credentials. Verifier must remain AUTH_NONE.
+    /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials are
+    /// accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`]. Any
+    /// other credential flavor is rejected with [`AuthStat::BadCred`]. For both
+    /// accepted flavors the verifier must be `AUTH_NONE` with an empty body
+    /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
+    ///
+    /// [`AuthSysParams`]: crate::rpc::AuthSysParams
     ///
     /// # Returns
     ///
-    /// Returns a pair of [`OpaqueAuth`] if authentication succeeds, or an error
+    /// Returns the parsed [`Credential`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
-    fn parse_authentication(&mut self) -> Result<(OpaqueAuth, OpaqueAuth)> {
+    fn parse_authentication(&mut self) -> Result<Credential> {
         let cred = auth(&mut self.reader)?;
         let verf = auth(&mut self.reader)?;
-        let cred_ok = match cred.flavor {
-            AuthFlavor::None => cred.body.is_empty(),
-            AuthFlavor::Sys => true,
-            _ => false,
+
+        let credential = match cred.flavor {
+            AuthFlavor::None if cred.body.is_empty() => Credential::None,
+            AuthFlavor::Sys => {
+                // The AUTH_SYS parameters live inside the already-extracted
+                // opaque body, so parse over that slice and never past it.
+                match authsys_parms(&mut cred.body.as_slice()) {
+                    Ok(params) => Credential::Sys(params),
+                    Err(err) => {
+                        error!(
+                            cred_len=%cred.body.len(),
+                            error=?err,
+                            "rpc auth reject: malformed AUTH_SYS credential",
+                        );
+                        return Err(Error::Auth(AuthStat::BadCred));
+                    }
+                }
+            }
+            _ => {
+                error!(
+                    cred_flavor=?cred.flavor,
+                    cred_len=%cred.body.len(),
+                    "rpc auth reject: unsupported credential flavor",
+                );
+                return Err(Error::Auth(AuthStat::BadCred));
+            }
         };
-        if !cred_ok {
-            error!(
-                cred_flavor=?cred.flavor,
-                cred_len=%cred.body.len(),
-                "rpc auth reject: unsupported credential flavor",
-            );
-            return Err(Error::Auth(AuthStat::BadCred));
-        }
+
         if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
             error!(
                 verf_flavor=?verf.flavor,
@@ -259,14 +278,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             );
             return Err(Error::Auth(AuthStat::BadVerf));
         }
+
         debug!(
             cred_flavor=?cred.flavor,
             cred_len=%cred.body.len(),
-            verf_flavor=?verf.flavor,
-            verf_len=%verf.body.len(),
             "rpc auth accepted",
         );
-        Ok((cred, verf))
+        Ok(credential)
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
@@ -367,10 +385,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
-        Ok(NfsArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
+        Ok(NfsArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc })
     }
 
     /// Parses the next RPC message and returns typed arguments for its program.
@@ -399,10 +414,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
-            Ok(_) => Ok(ArgWrapper {
-                header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-                proc,
-            }),
+            Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
             Err(error) => Err(ErrorWrapper { xid: Some(xid), error }),
         }
     }
@@ -422,10 +434,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         self.finalize_parsing()?;
-        Ok(MountArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
+        Ok(MountArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc })
     }
 
     async fn parse_next_message_with_header(

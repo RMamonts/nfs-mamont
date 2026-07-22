@@ -18,7 +18,7 @@ use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
-use crate::rpc::{Error, OpaqueAuth};
+use crate::rpc::{Credential, Error};
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -42,10 +42,12 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 #[cfg_attr(test, derive(PartialEq, Debug, Clone))]
 pub struct RpcHeader {
     pub xid: u32,
-    pub cred: OpaqueAuth,
-    #[allow(dead_code)]
-    // TODO: use when auth will be provided
-    pub verf: OpaqueAuth,
+    /// Authenticated caller identity extracted from the RPC credential.
+    ///
+    /// The reply verifier is always `AUTH_NONE` for the accepted flavors
+    /// (`AUTH_NONE`/`AUTH_SYS`), so the request verifier is validated during
+    /// parsing and then dropped rather than stored here.
+    pub cred: Credential,
 }
 
 /// Wrapper for NFS procedure arguments along with the parsed RPC header.
