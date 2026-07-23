@@ -15,10 +15,13 @@ use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
+use crate::nlm::cookie::Cookie;
 
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
     pub result_tx: Sender<ProcReply<B>>,
+    /// The channel for sending the callback.
+    pub granted_tx: Sender<Cookie>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 }
@@ -68,7 +71,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_tx, args } = command;
+            let NlmCommand { result_tx, granted_tx, args } = command;
             let NlmArgWrapper { header, proc } = args;
             debug!(xid = header.xid, "nlm task: command received");
 
@@ -76,7 +79,7 @@ where
                 NlmArguments::Null => NlmRes::Null,
                 NlmArguments::Lock(nlm4_lock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-                    let res = nlm_service.lock(nlm4_lock_args).await;
+                    let res = nlm_service.lock(Some(granted_tx), nlm4_lock_args).await;
                     NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {

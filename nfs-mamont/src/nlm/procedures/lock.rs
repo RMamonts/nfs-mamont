@@ -3,6 +3,7 @@
 //! Defines argument and result structures for the `NLMPROC4_LOCK`
 //! operation as specified in RFC 1813.
 
+use async_channel::Sender;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -40,5 +41,5 @@ pub struct Nlm4LockRes {
 /// grant the lock (returning `Granted`) or deny it.
 #[trait_variant::make(Send)]
 pub trait Lock {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;
+    async fn lock(&self, granted_tx: Option<Sender<Cookie>>, args: Nlm4LockArgs) -> Nlm4LockRes;
 }

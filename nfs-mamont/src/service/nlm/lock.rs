@@ -1,10 +1,12 @@
+use async_channel::Sender;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
 
 use super::{ActiveLock, NlmService, PendingLock};
 
 impl Lock for NlmService {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
+    async fn lock(&self, granted_tx: Option<Sender<Cookie>>, args: Nlm4LockArgs) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
         let new_lock = match PendingLock::new(
@@ -15,6 +17,7 @@ impl Lock for NlmService {
             args.lock.lock_length,
             args.lock.opaque_handle,
             args.cookie,
+            granted_tx,
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },

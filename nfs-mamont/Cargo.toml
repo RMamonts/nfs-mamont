@@ -26,3 +26,4 @@ async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
 libc = { version = "0.2.186", optional = true }
+rand = "0.10.2"

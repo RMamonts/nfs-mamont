@@ -5,17 +5,19 @@
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
 
+use crate::serializer::variant;
+use crate::nlm::cookie::Cookie;
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
-
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
 use crate::mount::MountRes;
-use crate::nlm::NlmRes;
+use crate::nlm::{Nlm4Stats, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::serializer::{u32, u64, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
@@ -44,6 +46,9 @@ const HEADER_MASK: usize = 0x8000_0000;
 /// Size of RMS header
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 const HEADER_SIZE: usize = 4;
+
+/// Remote Procedure Call Protocol Version 2
+const RPC_VERSION: u32 = 2;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -217,6 +222,32 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                 self.buffer.send_inner_buffer().await
             }
         }
+    }
+
+    /// Serializes a [`Cookie`] into a complete XDR RPC call and writes it to the underlying writer.
+    ///
+    /// ## Arguments:
+    /// *   `cookie` - the cookie from the original blocking LOCK request
+    /// *   `cred` - an authentication credential of [`OpaqueAuth`] type that identifies the caller to the server
+    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
+    ///     in order to validate itself to the client
+    pub async fn form_call(
+        &mut self,
+        cookie: Cookie,
+        cred: OpaqueAuth,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
+        u32(&mut self.buffer, rand::random::<u32>())?;
+        u32(&mut self.buffer, RpcBody::Call as u32)?;
+        u32(&mut self.buffer, RPC_VERSION)?;
+        u32(&mut self.buffer, NLM_PROGRAM)?;
+        u32(&mut self.buffer, NLM_VERSION)?;
+        u32(&mut self.buffer, NLMPROC4_GRANTED)?;
+        auth(&mut self.buffer, cred)?;
+        auth(&mut self.buffer, verifier)?;
+        u64(&mut self.buffer, cookie.raw())?;
+        variant(&mut self.buffer, Nlm4Stats::Granted)?;
+        Ok(self.buffer.send_inner_buffer().await?)
     }
 
     /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.
@@ -426,5 +457,48 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
 
         self.clean();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::allocator::Slice;
+    use crate::nlm::cookie::Cookie;
+    use crate::rpc::{AuthFlavor, OpaqueAuth};
+    use std::io::Cursor;
+
+    #[tokio::test]
+    async fn form_call_serializes_rpc_call_frame() {
+        let mut buf = Cursor::new(vec![0u8; 256]);
+        let mut serializer = Serializer::<Slice, _>::new(&mut buf);
+
+        let cookie = Cookie::new(0x0A0B0C0D0E0F1011);
+        let cred = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+        let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+
+        serializer.form_call(cookie, cred, verifier).await.unwrap();
+
+        let data = buf.into_inner();
+        let body = &data[4..]; // skip RMS header
+
+        // msg_type = 0 (Call)
+        assert_eq!(body[4..8], [0, 0, 0, 0]);
+        // rpc_version = 2
+        assert_eq!(body[8..12], [0, 0, 0, 2]);
+        // program = 100021 (0x000186B5)
+        assert_eq!(body[12..16], [0, 1, 0x86, 0xB5]);
+        // version = 4
+        assert_eq!(body[16..20], [0, 0, 0, 4]);
+        // procedure = 5
+        assert_eq!(body[20..24], [0, 0, 0, 5]);
+        // cred (flavor=0, len=0)
+        assert_eq!(body[24..32], [0, 0, 0, 0, 0, 0, 0, 0]);
+        // verifier (flavor=0, len=0)
+        assert_eq!(body[32..40], [0, 0, 0, 0, 0, 0, 0, 0]);
+        // cookie = 0x0A0B0C0D0E0F1011
+        assert_eq!(body[40..48], [0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11]);
+        // stat = Granted = 0
+        assert_eq!(body[48..52], [0, 0, 0, 0]);
     }
 }
