@@ -247,7 +247,8 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         auth(&mut self.buffer, verifier)?;
         u64(&mut self.buffer, cookie.raw())?;
         variant(&mut self.buffer, Nlm4Stats::Granted)?;
-        Ok(self.buffer.send_inner_buffer().await?)
+        self.buffer.send_inner_buffer().await?;
+        Ok(())
     }
 
     /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.

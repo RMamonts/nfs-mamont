@@ -51,6 +51,7 @@ where
     B: Buffer + 'static,
 {
     /// Creates new instance of [`ReadTask`]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,

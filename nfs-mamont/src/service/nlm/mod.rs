@@ -123,6 +123,7 @@ impl PendingLock {
     /// Returns [`Error`] if:
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         caller_name: String,
         system_identifier: i32,
