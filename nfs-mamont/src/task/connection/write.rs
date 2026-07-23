@@ -4,6 +4,7 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
+use crate::nlm::cookie::Cookie;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::ProcReply;
@@ -12,6 +13,8 @@ use crate::task::ProcReply;
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<ProcReply<B>>,
+    // The channel for sending the callback
+    granted_rx: async_channel::Receiver<Cookie>,
     _phantom: PhantomData<B>,
 }
 
@@ -20,8 +23,9 @@ impl<B: Buffer> WriteTask<B> {
     pub fn new(
         writehalf: OwnedWriteHalf,
         result_receiver: async_channel::Receiver<ProcReply<B>>,
+        granted_rx: async_channel::Receiver<Cookie>,
     ) -> Self {
-        Self { writehalf, result_receiver, _phantom: PhantomData }
+        Self { writehalf, result_receiver, granted_rx, _phantom: PhantomData }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.
@@ -38,24 +42,42 @@ impl<B: Buffer> WriteTask<B> {
 
     async fn run(self) {
         let result_receiver = self.result_receiver;
+        let granted_rx = self.granted_rx;
         let mut serializer =
             serializer::server::serialize_struct::Serializer::<B, _>::new(self.writehalf);
 
-        while let Ok(reply) = result_receiver.recv().await {
-            // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-            // Use proper authentication verifier instead of None
-            let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+        loop {
+            tokio::select! {
+                Ok(reply) = result_receiver.recv() => {
+                    // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
+                    // Use proper authentication verifier instead of None
+                    let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-            match serializer.form_reply(reply, verifier).await {
-                Ok(_) => {
-                    // Reply successfully written to socket
+                    match serializer.form_reply(reply, verifier).await {
+                        Ok(_) => {
+                            // Reply successfully written to socket
+                        }
+                        Err(e) => {
+                            error!(error=%e, "write task: failed to serialize/send reply");
+                            // TODO: Consider closing connection or continuing based on error type
+                            // For now, continue processing other replies
+                        }
+                    };
                 }
-                Err(e) => {
-                    error!(error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
+                Ok(cookie) = granted_rx.recv() => {
+                    let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+                    let credential = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+
+                    match serializer.form_call(cookie, credential, verifier).await {
+                        Ok(_) => {
+                            // Call successfully written to socket
+                        }
+                        Err(e) => {
+                            error!(error=%e, "write task: failed to serialize/send reply");
+                        }
+                    };
                 }
-            };
+            }
         }
     }
 }

@@ -24,9 +24,18 @@ impl Unlock for NlmService {
         {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
-        // TODO: Add client notification logic (#267).
-        if registry.grant_pending(&fh).is_err() {
-            return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
+
+        let granted = match registry.grant_pending(&fh) {
+            Ok(granted) => granted,
+            Err(_) => return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
+        };
+
+        for lock in granted {
+            if let Some(tx) = lock.granted_tx {
+                if let Err(e) = tx.send(lock.cookie).await {
+                    tracing::warn!("failed to send grant callback: {}", e);
+                }
+            }
         }
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Granted }

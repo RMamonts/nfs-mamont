@@ -13,6 +13,7 @@ impl Cancel for NlmService {
             args.lock.lock_length,
             args.lock.opaque_handle,
             args.cookie,
+            None,
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Failed },

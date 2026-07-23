@@ -10,6 +10,7 @@ use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::mount::MountRes;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
@@ -31,6 +32,8 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allo
     mount_sender: Sender<MountCommand<B>>,
     // to send messages into nlm task
     nlm_sender: Sender<NlmCommand<B>>,
+    // to send cookie into nlm task
+    granted_tx: Sender<Cookie>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
@@ -53,6 +56,7 @@ where
         client_addr: SocketAddr,
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
+        granted_tx: Sender<Cookie>,
         result_sender: Sender<ProcReply<B>>,
         allocator: Arc<A>,
         pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
@@ -62,6 +66,7 @@ where
             client_addr,
             mount_sender,
             nlm_sender,
+            granted_tx,
             result_sender,
             allocator,
             pool_sender,
@@ -160,6 +165,7 @@ where
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {
                         result_tx: self.result_sender.clone(),
+                        granted_tx: self.granted_tx.clone(),
                         args: NlmArgWrapper { header, proc },
                     };
 

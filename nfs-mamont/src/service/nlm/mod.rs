@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::io::Error;
-
+use async_channel::Sender;
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
@@ -110,9 +110,9 @@ struct PendingLock {
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
     /// The cookie from the original blocking LOCK request.
-    /// TODO: Needed for NLMPROC4_GRANTED callback (#267).
-    #[allow(dead_code)]
     cookie: Cookie,
+    /// The channel for sending the callback.
+    granted_tx: Option<Sender<Cookie>>,
 }
 
 impl PendingLock {
@@ -131,6 +131,7 @@ impl PendingLock {
         length: u64,
         opaque_handle: OpaqueHandle,
         cookie: Cookie,
+        granted_tx: Option<Sender<Cookie>>,
     ) -> Result<Self, Error> {
         check_caller_name(&caller_name)?;
         Ok(PendingLock {
@@ -141,6 +142,7 @@ impl PendingLock {
             length,
             opaque_handle,
             cookie,
+            granted_tx,
         })
     }
 }

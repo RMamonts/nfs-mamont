@@ -13,6 +13,7 @@ use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
+use crate::nlm::cookie::Cookie;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::NlmCommand;
 use crate::task::ProcReply;
@@ -44,16 +45,19 @@ pub async fn new<A, V, B>(
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
 
+    let (granted_tx, granted_rx) = async_channel::unbounded::<Cookie>();
+
     read::ReadTask::<A, B>::new(
         readhalf,
         peer_addr,
         mount_sender,
         nlm_sender,
+        granted_tx,
         result_sender.clone(),
         context.get_write_allocator(),
         context.get_vfs_pool().sender(),
     )
     .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, result_receiver, granted_rx).spawn();
 }
