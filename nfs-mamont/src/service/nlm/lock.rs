@@ -1,7 +1,7 @@
-use async_channel::Sender;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
+use async_channel::Sender;
 
 use super::{ActiveLock, NlmService, PendingLock};
 

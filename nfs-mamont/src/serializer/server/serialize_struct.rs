@@ -5,8 +5,8 @@
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
 
-use crate::serializer::variant;
 use crate::nlm::cookie::Cookie;
+use crate::serializer::variant;
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};

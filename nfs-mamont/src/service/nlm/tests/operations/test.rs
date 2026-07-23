@@ -39,8 +39,11 @@ async fn test_reports_granted_when_free() {
 #[tokio::test]
 async fn test_reports_denied_when_conflict() {
     let svc = NlmService::new();
-    svc.lock(None, make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0))
-        .await;
+    svc.lock(
+        None,
+        make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+    )
+    .await;
     let res = svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Denied);
 }
@@ -48,8 +51,11 @@ async fn test_reports_denied_when_conflict() {
 #[tokio::test]
 async fn test_denied_holder_matches_conflicting_lock() {
     let svc = NlmService::new();
-    svc.lock(None, make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0))
-        .await;
+    svc.lock(
+        None,
+        make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0),
+    )
+    .await;
     let res = svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
     let holder = res.test_stat.holder.expect("Denied response must have a holder");
     assert!(holder.exclusive);

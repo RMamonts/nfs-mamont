@@ -7,14 +7,14 @@
 //! The service implements `Lock`, `Unlock`, `Test` and `Cancel`
 //! procedure traits from `crate::nlm::procedures`.
 
-use std::collections::HashMap;
-use std::io::Error;
-use async_channel::Sender;
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
 use crate::vfs::file::Handle;
+use async_channel::Sender;
+use std::collections::HashMap;
+use std::io::Error;
 
 mod cancel;
 mod lock;

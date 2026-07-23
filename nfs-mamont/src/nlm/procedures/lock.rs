@@ -3,10 +3,10 @@
 //! Defines argument and result structures for the `NLMPROC4_LOCK`
 //! operation as specified in RFC 1813.
 
-use async_channel::Sender;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use async_channel::Sender;
 
 /// Defines the information needed to request a lock on a server.
 pub struct Nlm4LockArgs {
