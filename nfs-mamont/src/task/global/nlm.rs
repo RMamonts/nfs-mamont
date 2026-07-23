@@ -9,13 +9,13 @@ use std::sync::Arc;
 use tracing::debug;
 
 use crate::allocator::Buffer;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
-use crate::nlm::cookie::Cookie;
 
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
