@@ -23,6 +23,26 @@ use crate::task::global::nlm::NlmCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
+pub struct MainSenders<B: Buffer + 'static> {
+    mount_sender: Sender<MountCommand<B>>,
+    nlm_sender: Sender<NlmCommand<B>>,
+    pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+    result_sender: Sender<ProcReply<B>>,
+    granted_tx: Sender<Cookie>,
+}
+
+impl<B: Buffer + 'static> MainSenders<B> {
+    pub fn new(
+        mount_sender: Sender<MountCommand<B>>,
+        nlm_sender: Sender<NlmCommand<B>>,
+        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        result_sender: Sender<ProcReply<B>>,
+        granted_tx: Sender<Cookie>,
+    ) -> Self {
+        Self { mount_sender, nlm_sender, pool_sender, result_sender, granted_tx }
+    }
+}
+
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
 pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
@@ -51,26 +71,21 @@ where
     B: Buffer + 'static,
 {
     /// Creates new instance of [`ReadTask`]
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        mount_sender: Sender<MountCommand<B>>,
-        nlm_sender: Sender<NlmCommand<B>>,
-        granted_tx: Sender<Cookie>,
-        result_sender: Sender<ProcReply<B>>,
         allocator: Arc<A>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        main_senders: MainSenders<B>,
     ) -> Self {
         Self {
             readhalf,
             client_addr,
-            mount_sender,
-            nlm_sender,
-            granted_tx,
-            result_sender,
+            mount_sender: main_senders.mount_sender,
+            nlm_sender: main_senders.nlm_sender,
+            granted_tx: main_senders.granted_tx,
+            result_sender: main_senders.result_sender,
             allocator,
-            pool_sender,
+            pool_sender: main_senders.pool_sender,
             _phantom: PhantomData,
         }
     }
