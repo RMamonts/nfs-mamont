@@ -24,6 +24,21 @@ mod unlock;
 #[cfg(test)]
 mod tests;
 
+/// The wrapper needed to notify the client.
+struct GrantNotification {
+    /// Identifies a point in the directory.
+    pub cookie: Cookie,
+    /// The channel for sending the callback.
+    pub granted_tx: Option<Sender<Cookie>>,
+}
+
+impl GrantNotification {
+    /// Creates a new GrantNotification.
+    fn new(granted_tx: Option<Sender<Cookie>>, cookie: Cookie) -> Self {
+        Self { granted_tx, cookie }
+    }
+}
+
 /// A held lock with full owner identity and state.
 #[derive(Clone)]
 struct ActiveLock {
@@ -109,10 +124,8 @@ struct PendingLock {
     length: u64,
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
-    /// The cookie from the original blocking LOCK request.
-    cookie: Cookie,
-    /// The channel for sending the callback.
-    granted_tx: Option<Sender<Cookie>>,
+    /// A wrapper for the cookie and a channel for sending it to the client.
+    grant_notification: GrantNotification,
 }
 
 impl PendingLock {
@@ -123,7 +136,6 @@ impl PendingLock {
     /// Returns [`Error`] if:
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         caller_name: String,
         system_identifier: i32,
@@ -131,8 +143,7 @@ impl PendingLock {
         offset: u64,
         length: u64,
         opaque_handle: OpaqueHandle,
-        cookie: Cookie,
-        granted_tx: Option<Sender<Cookie>>,
+        grant_notification: GrantNotification,
     ) -> Result<Self, Error> {
         check_caller_name(&caller_name)?;
         Ok(PendingLock {
@@ -142,8 +153,7 @@ impl PendingLock {
             offset,
             length,
             opaque_handle,
-            cookie,
-            granted_tx,
+            grant_notification,
         })
     }
 }

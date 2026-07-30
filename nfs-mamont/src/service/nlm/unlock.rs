@@ -31,8 +31,8 @@ impl Unlock for NlmService {
         };
 
         for lock in granted {
-            if let Some(tx) = lock.granted_tx {
-                if let Err(e) = tx.send(lock.cookie).await {
+            if let Some(tx) = lock.grant_notification.granted_tx {
+                if let Err(e) = tx.send(lock.grant_notification.cookie).await {
                     tracing::warn!("failed to send grant callback: {}", e);
                 }
             }
