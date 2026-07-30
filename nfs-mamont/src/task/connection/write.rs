@@ -48,7 +48,8 @@ impl<B: Buffer> WriteTask<B> {
 
         loop {
             tokio::select! {
-                Ok(reply) = result_receiver.recv() => {
+                reply = result_receiver.recv() => {
+                    let Ok(reply) = reply else { break }; // client gone
                     // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
                     // Use proper authentication verifier instead of None
                     let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
@@ -64,7 +65,8 @@ impl<B: Buffer> WriteTask<B> {
                         }
                     };
                 }
-                Ok(cookie) = granted_rx.recv() => {
+                cookie = granted_rx.recv() => {
+                    let Ok(cookie) = cookie else { continue }; // callbacks done; keep serving replies
                     let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
                     let credential = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
