@@ -1,11 +1,9 @@
-use std::io::ErrorKind;
 use std::sync::Arc;
 
 use clap::Parser;
 use tokio::net::TcpListener;
 use tracing::info;
 
-use nfs_mamont::mount::ExportEntry;
 use nfs_mamont::vfs::file::Path as VfsPath;
 use nfs_mamont::{handle_forever, service, Impl, ServerContext};
 
@@ -44,11 +42,16 @@ async fn main() -> std::io::Result<()> {
 
     let listener = TcpListener::bind(&args.addr).await?;
 
-    let mut exports = Vec::with_capacity(config.exports.len());
+    let mount_service = Arc::new(service::mount::MountService::with_exports(vec![]));
+    let nlm_service = Arc::new(service::nlm::NlmService::new());
+
+    let server_handle =
+        tokio::spawn(handle_forever(listener, context, mount_service.clone(), nlm_service));
+
     for export in &config.exports {
         let root_handle = fs.handle_for_path(&export.local_path).await.map_err(|error| {
             std::io::Error::new(
-                ErrorKind::InvalidInput,
+                std::io::ErrorKind::InvalidInput,
                 format!(
                     "failed to resolve export handle for {}: {error:?}",
                     export.local_path.display()
@@ -56,16 +59,10 @@ async fn main() -> std::io::Result<()> {
             )
         })?;
 
-        exports.push(service::mount::ExportEntryWrapper {
-            export: ExportEntry {
-                directory: VfsPath::new(export.mount_path.clone())?,
-                names: Vec::new(),
-            },
-            root_handle,
-        });
+        let directory = VfsPath::new(export.mount_path.clone())?;
+        mount_service.add_export(directory, root_handle).await;
+        info!(export = %export.mount_path, "export added");
     }
 
-    let mount_service = Arc::new(service::mount::MountService::with_exports(exports));
-    let nlm_service = Arc::new(service::nlm::NlmService::new());
-    handle_forever(listener, context, mount_service, nlm_service).await
+    server_handle.await.map_err(|_| std::io::Error::other("server task failed"))?
 }
