@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 use tracing::info;
 
 use nfs_mamont::vfs::file::Path as VfsPath;
-use nfs_mamont::{handle_forever, service, Impl, ServerContext};
+use nfs_mamont::{handle_forever, service, BackendHandle, Impl, ServerContext};
 
 #[cfg(debug_assertions)]
 use nfs_mamont::init_tracing;
@@ -26,10 +26,8 @@ async fn main() -> std::io::Result<()> {
     let args = args::Args::parse();
 
     let config = config::load_config(&args.config_path)?;
-    let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
 
     let context = ServerContext::new(
-        fs.clone(),
         Arc::new(Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count)),
         Arc::new(Impl::new(
             config.allocator.write_buffer_size,
@@ -38,7 +36,9 @@ async fn main() -> std::io::Result<()> {
         config.vfs_pool_size,
     );
 
-    info!(export_root = %config.export_root.display(), bind = %args.addr, "mirrorfs startup");
+    let backend_handle: BackendHandle<_> = context.backend_handle();
+
+    info!(bind = %args.addr, "mirrorfs startup");
 
     let listener = TcpListener::bind(&args.addr).await?;
 
@@ -47,6 +47,11 @@ async fn main() -> std::io::Result<()> {
 
     let server_handle =
         tokio::spawn(handle_forever(listener, context, mount_service.clone(), nlm_service));
+
+    let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
+    backend_handle.attach(fs.clone());
+
+    info!(export_root = %config.export_root.display(), "mirrorfs backend attached");
 
     for export in &config.exports {
         let root_handle = fs.handle_for_path(&export.local_path).await.map_err(|error| {
