@@ -543,6 +543,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// this method discards the remaining message data to maintain stream alignment
     /// for subsequent messages. For other errors, it returns them as-is.
     ///
+    /// Allocation failures are discarded as well: the frame itself is well-formed,
+    /// so leaving it half-consumed would desync [`CountBuffer::total_bytes`] and
+    /// make every later [`Self::finalize_parsing`] fail with "Unparsed data
+    /// remaining in frame".
+    ///
     /// # Arguments
     ///
     /// * `error` - The error that occurred during parsing
@@ -551,13 +556,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns the error, potentially after attempting to discard the message.
     async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
+        let recoverable = match &error {
+            Error::RpcVersionMismatch(_)
+            | Error::ProgramMismatch
+            | Error::ProcedureMismatch
+            | Error::Auth(_)
+            | Error::MessageTypeMismatch
+            | Error::ProgramVersionMismatch(_) => true,
+            Error::IO(err) => err.kind() == ErrorKind::OutOfMemory,
+            _ => false,
+        };
+
+        if recoverable {
             proc_nested_errors(error, self.discard_current_message()).await
         } else {
             error
@@ -622,11 +632,13 @@ where
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
 
-    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
-    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut buffer_data = alloc.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
+    // A zero-length write needs no buffer at all, so it never takes a pool slot.
+    let mut buffer_data = match NonZeroUsize::new(size) {
+        None => A::Buffer::empty(),
+        Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
+            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+        })?,
+    };
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
@@ -657,6 +669,12 @@ where
 /// allocator serving both READ and WRITE and removes the allocator from the
 /// VFS worker pool.
 ///
+/// A `count` larger than the allocator can ever serve is clamped instead of
+/// rejected: RFC 1813 allows the server to answer with fewer bytes than
+/// requested, so an oversized request becomes a short read rather than an
+/// error. The clamped value is written back into the returned arguments so the
+/// backend never sees a `count` larger than the buffer it is handed.
+///
 /// # Arguments
 ///
 /// * `alloc` - The allocator to use for allocating the read output buffer
@@ -675,15 +693,16 @@ where
     A: Allocator,
     S: AsyncRead + Unpin,
 {
-    let args = buffer.parse_with_retry(read::args).await?;
+    let mut args = buffer.parse_with_retry(read::args).await?;
 
-    let data = if args.count == 0 {
-        A::Buffer::empty()
-    } else {
-        let size = NonZeroUsize::new(args.count as usize).unwrap();
-        alloc.allocate(size).await.ok_or_else(|| {
+    let count = min(args.count as usize, alloc.capacity().get());
+    args.count = count as u32;
+
+    let data = match NonZeroUsize::new(count) {
+        None => A::Buffer::empty(),
+        Some(size) => alloc.allocate(size).await.ok_or_else(|| {
             Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-        })?
+        })?,
     };
 
     Ok((args, data))

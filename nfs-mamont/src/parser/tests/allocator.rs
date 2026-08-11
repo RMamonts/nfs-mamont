@@ -29,4 +29,11 @@ impl Allocator for MockAllocator {
             None
         }
     }
+
+    /// `max_size == 0` means "every allocation fails"; it cannot be expressed as
+    /// a [`NonZeroUsize`], so such a mock reports a capacity of one byte that
+    /// [`Self::allocate`] still refuses.
+    fn capacity(&self) -> NonZeroUsize {
+        NonZeroUsize::new(self.max_size).unwrap_or(NonZeroUsize::MIN)
+    }
 }

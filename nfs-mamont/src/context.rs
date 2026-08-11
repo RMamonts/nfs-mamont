@@ -16,8 +16,8 @@ where
 {
     /// Pool of async workers that execute NFS procedures against [`crate::vfs::Vfs`].
     vfs_pool: VfsPool<B>,
-    /// Single allocator serving both READ output buffers and WRITE data buffers,
-    /// used on the read side of each connection.
+    /// Allocator backing all user-data buffers: READ output buffers and WRITE
+    /// payload buffers are served from this single pool.
     allocator: Arc<A>,
     /// Filesystem implementation backing all NFS operations.
     backend: Arc<V>,

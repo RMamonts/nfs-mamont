@@ -102,7 +102,11 @@ pub fn load_config(path: &Path) -> std::io::Result<Config> {
     Ok(Config { allocator, vfs_pool_size, export_root: root, exports })
 }
 
+// Unknown keys are rejected so that a config written for an older layout
+// (`read_buffer_size` / `write_buffer_size`) fails loudly instead of silently
+// falling back to the defaults below.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawConfig {
     allocator: Option<RawAllocatorConfig>,
     vfs_pool_size: Option<usize>,
@@ -110,12 +114,14 @@ struct RawConfig {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawAllocatorConfig {
     buffer_size: Option<usize>,
     buffer_count: Option<usize>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawExportsConfig {
     root: PathBuf,
     paths: Vec<PathBuf>,
@@ -209,4 +215,43 @@ fn invalid_input(message: impl Into<String>) -> std::io::Error {
 fn non_zero(value: usize, field: &str) -> std::io::Result<NonZeroUsize> {
     NonZeroUsize::new(value)
         .ok_or_else(|| invalid_input(format!("{field} must be greater than zero")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RawAllocatorConfig, RawConfig};
+
+    /// The example config must keep parsing after any key rename.
+    #[test]
+    fn parses_current_allocator_keys() {
+        let raw: RawAllocatorConfig =
+            toml::from_str("buffer_size = 1024\nbuffer_count = 8\n").unwrap();
+
+        assert_eq!(raw.buffer_size, Some(1024));
+        assert_eq!(raw.buffer_count, Some(8));
+    }
+
+    /// A config written for the old split read/write pools must fail loudly
+    /// instead of silently falling back to the built-in defaults.
+    #[test]
+    fn rejects_legacy_allocator_keys() {
+        let legacy = "[allocator]\n\
+             read_buffer_size = 1048576\n\
+             read_buffer_count = 2048\n\
+             write_buffer_size = 1048576\n\
+             write_buffer_count = 2048\n";
+
+        let Err(error) = toml::from_str::<RawConfig>(legacy) else {
+            panic!("legacy allocator keys must be rejected");
+        };
+        assert!(
+            error.to_string().contains("unknown field"),
+            "error should point at the stale key, got: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_top_level_keys() {
+        assert!(toml::from_str::<RawConfig>("vfs_poll_size = 4\n").is_err());
+    }
 }
