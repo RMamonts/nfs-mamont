@@ -257,7 +257,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             READLINK => {
                 NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
             }
-            READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
+            READ => {
+                let (args, data) = adapter_for_read(&self.allocator, &mut self.buffer).await?;
+                NfsArguments::Read(args, data)
+            }
             WRITE => {
                 NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
             }
@@ -644,6 +647,46 @@ where
         stable: part_arg.stable,
         data: buffer_data,
     })
+}
+
+/// Special adapter for parsing READ procedure arguments.
+///
+/// Unlike WRITE, the READ request carries no opaque data on the wire; the
+/// buffer allocated here is the server-side *output* buffer that the backend
+/// fills with the read result. Allocating it on the read side keeps a single
+/// allocator serving both READ and WRITE and removes the allocator from the
+/// VFS worker pool.
+///
+/// # Arguments
+///
+/// * `alloc` - The allocator to use for allocating the read output buffer
+/// * `buffer` - The buffer to read the fixed arguments from
+///
+/// # Returns
+///
+/// Returns the parsed [`vfs::read::Args`] together with the allocated output
+/// buffer, or an error if parsing fails or memory allocation fails. A zero-byte
+/// read yields an empty buffer without touching the allocator.
+async fn adapter_for_read<A, S>(
+    alloc: &Arc<A>,
+    buffer: &mut CountBuffer<S>,
+) -> Result<(vfs::read::Args, A::Buffer)>
+where
+    A: Allocator,
+    S: AsyncRead + Unpin,
+{
+    let args = buffer.parse_with_retry(read::args).await?;
+
+    let data = if args.count == 0 {
+        A::Buffer::empty()
+    } else {
+        let size = NonZeroUsize::new(args.count as usize).unwrap();
+        alloc.allocate(size).await.ok_or_else(|| {
+            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+        })?
+    };
+
+    Ok((args, data))
 }
 
 /// Reads data into a slice asynchronously from the `CountBuffer`.
