@@ -25,7 +25,7 @@ use crate::{mount::Mount, task::connection};
 
 use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
-pub use context::{BackendHandle, ServerContext};
+pub use context::ServerContext;
 
 /// Initializes tracing logs.
 ///
