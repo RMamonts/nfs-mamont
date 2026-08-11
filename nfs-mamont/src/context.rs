@@ -29,12 +29,6 @@ impl<V> BackendHandle<V> {
     pub fn attach(&self, backend: Arc<V>) {
         *self.inner.write().unwrap() = Some(backend);
     }
-
-    /// Removes the VFS backend. NFS procedures will return [`vfs::Error::IO`]
-    /// until a new backend is attached.
-    pub fn detach(&self) {
-        *self.inner.write().unwrap() = None;
-    }
 }
 
 /// Shared server resources: VFS worker pool, buffer allocators, and backend.
@@ -87,12 +81,6 @@ where
     /// immediately.
     pub fn add_backend(&self, backend: Arc<V>) {
         *self.shared_backend.write().unwrap() = Some(backend);
-    }
-
-    /// Removes the VFS backend. NFS procedures will return [`vfs::Error::IO`]
-    /// until a new backend is attached via [`add_backend`].
-    pub fn remove_backend(&self) {
-        *self.shared_backend.write().unwrap() = None;
     }
 
     /// Returns a [`BackendHandle`] that survives the move of this context
