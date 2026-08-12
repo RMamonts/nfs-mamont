@@ -3,6 +3,7 @@
 
 mod buffer;
 mod slice;
+mod sync_impl;
 
 #[cfg(test)]
 mod tests;
@@ -19,20 +20,23 @@ use tokio::sync::Semaphore;
 
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
+pub use sync_impl::{SliceNoDrop, SyncImpl, UnownedDroppableBuffer};
+
+use crate::allocator::buffer::RawBuffer;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
-pub struct AllocatorState {
-    pub pool: ArrayQueue<UnownedBuffer>,
+pub struct AllocatorState<B: RawBuffer> {
+    pub pool: ArrayQueue<B>,
     pub semaphore: Semaphore,
     base_ptr: *mut u8,
     layout: Layout,
 }
 
-unsafe impl Send for AllocatorState {}
-unsafe impl Sync for AllocatorState {}
+unsafe impl<R: RawBuffer> Send for AllocatorState<R> {}
+unsafe impl<R: RawBuffer> Sync for AllocatorState<R> {}
 
-impl Drop for AllocatorState {
+impl<R: RawBuffer> Drop for AllocatorState<R> {
     fn drop(&mut self) {
         while self.pool.pop().is_some() {}
         #[cfg(feature = "mlock")]
@@ -83,7 +87,7 @@ pub trait Allocator {
 }
 
 pub struct Impl {
-    state: Arc<AllocatorState>,
+    state: Arc<AllocatorState<super::UnownedBuffer>>,
     buffer_size: NonZeroUsize,
     buffer_count: NonZeroUsize,
 }

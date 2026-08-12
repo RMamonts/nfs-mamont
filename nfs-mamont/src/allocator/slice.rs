@@ -9,7 +9,7 @@ use super::Buffer;
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,
-    state: Option<Arc<super::AllocatorState>>,
+    state: Option<Arc<super::AllocatorState<super::UnownedBuffer>>>,
 }
 
 impl Slice {
@@ -27,7 +27,7 @@ impl Slice {
     pub fn new(
         buffers: Vec<super::UnownedBuffer>,
         range: std::ops::Range<usize>,
-        state: Option<Arc<super::AllocatorState>>,
+        state: Option<Arc<super::AllocatorState<super::UnownedBuffer>>>,
     ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 

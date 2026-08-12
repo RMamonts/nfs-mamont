@@ -1,5 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
+pub trait RawBuffer: Deref + DerefMut {}
+
+impl RawBuffer for UnownedBuffer {}
+
 #[derive(Debug)]
 pub struct UnownedBuffer {
     ptr: *mut u8,
