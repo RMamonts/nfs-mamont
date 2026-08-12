@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::allocator::AllocatorState;
+use crate::allocator::dealloc::Deallocator;
 
 impl super::RawBuffer for UnownedDroppableBuffer {
     fn len(&self) -> usize {
@@ -11,11 +11,11 @@ impl super::RawBuffer for UnownedDroppableBuffer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct UnownedDroppableBuffer {
     ptr: *mut u8,
     len: usize,
-    state: Arc<AllocatorState<Self>>,
+    dealloc: Arc<dyn Deallocator<Self>>,
 }
 
 unsafe impl Send for UnownedDroppableBuffer {}
@@ -33,9 +33,9 @@ impl UnownedDroppableBuffer {
     pub unsafe fn from_raw_parts(
         ptr: *mut u8,
         len: usize,
-        state: Arc<AllocatorState<Self>>,
+        dealloc: Arc<dyn Deallocator<Self>>,
     ) -> Self {
-        Self { ptr, len, state }
+        Self { ptr, len, dealloc }
     }
 
     pub fn len(&self) -> usize {
@@ -45,19 +45,11 @@ impl UnownedDroppableBuffer {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
-
-    fn deallocate(&mut self) {
-        let new_buf = unsafe {
-            UnownedDroppableBuffer::from_raw_parts(self.ptr, self.len, self.state.clone())
-        };
-        let _ = self.state.pool.push(new_buf);
-        self.state.semaphore.add_permits(1);
-    }
 }
 
 impl Drop for UnownedDroppableBuffer {
     fn drop(&mut self) {
-        self.deallocate();
+        self.dealloc.deallocate(self.clone());
     }
 }
 

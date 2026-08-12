@@ -2,6 +2,7 @@
 //! for user data transmission inside NFS-Mamont implementation.
 
 mod buffer;
+mod dealloc;
 mod slice;
 mod sync_impl;
 
