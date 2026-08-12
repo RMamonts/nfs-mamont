@@ -75,20 +75,31 @@ pub trait Allocator {
 
     /// Returns a buffer of at least `size` bytes.
     ///
+    /// Waits until enough memory is available, so the returned future may stay
+    /// pending while the pool is exhausted.
+    ///
     /// # Parameters
     ///
     /// - `size` --- minimum size of the returned buffer in bytes.
     ///
-    /// # Panic
+    /// # Returns
     ///
-    /// This method returns [`None`] if size is greater then allocator capacity.
+    /// Returns [`None`] if `size` is greater than [`Allocator::capacity`],
+    /// since such a request can never be satisfied.
     fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;
+
+    /// Returns the largest size [`Allocator::allocate`] can ever satisfy.
+    ///
+    /// Callers that are free to shorten their request (for example NFSv3 `READ`,
+    /// where a short read is legal) should clamp to this value instead of
+    /// failing on an oversized request.
+    fn capacity(&self) -> NonZeroUsize;
 }
 
 pub struct Impl {
     state: Arc<AllocatorState<crate::allocator::buffer::UnownedBuffer>>,
     buffer_size: NonZeroUsize,
-    buffer_count: NonZeroUsize,
+    capacity: NonZeroUsize,
 }
 
 impl Impl {
@@ -134,12 +145,9 @@ impl Impl {
         Self {
             state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
             buffer_size: size,
-            buffer_count: count,
+            // `total_size` is a product of two non-zero values, checked above.
+            capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
         }
-    }
-
-    fn capacity(&self) -> usize {
-        self.buffer_size.get() * self.buffer_count.get()
     }
 }
 
@@ -147,7 +155,7 @@ impl Allocator for Impl {
     type Buffer = slice::Slice;
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
-        if size.get() > self.capacity() {
+        if size > self.capacity {
             return None;
         }
 
@@ -171,5 +179,9 @@ impl Allocator for Impl {
         permit.forget();
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
+    }
+
+    fn capacity(&self) -> NonZeroUsize {
+        self.capacity
     }
 }
