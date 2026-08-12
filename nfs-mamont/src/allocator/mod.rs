@@ -18,11 +18,10 @@ use std::sync::Arc;
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+use crate::allocator::buffer::RawBuffer;
+
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
-pub use sync_impl::{SliceNoDrop, SyncImpl, UnownedDroppableBuffer};
-
-use crate::allocator::buffer::RawBuffer;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
