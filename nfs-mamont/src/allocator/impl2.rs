@@ -93,4 +93,8 @@ impl Allocator for Impl2 {
 
         Some(SliceNoDrop::new(buffers, 0..size.get()))
     }
+
+    fn capacity(&self) -> NonZeroUsize {
+        NonZeroUsize::new(self.capacity()).unwrap()
+    }
 }
