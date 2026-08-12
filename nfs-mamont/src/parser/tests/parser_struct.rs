@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::allocator::Buffer;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
-use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
+use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, READ, WRITE};
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
@@ -157,6 +157,29 @@ fn fsstat_args(root: [u8; 8]) -> Vec<u8> {
     let mut args = Vec::new();
     push_opaque(&mut args, &root);
     args
+}
+
+/// Serializes read (NFS procedure 6) arguments: file handle, offset and count.
+fn read_args(file: [u8; 8], offset: u64, count: u32) -> Vec<u8> {
+    let mut args = Vec::new();
+    push_opaque(&mut args, &file);
+    push_u64(&mut args, offset);
+    push_u32(&mut args, count);
+    args
+}
+
+/// Helper to assert parsed READ arguments and the size of the attached output buffer.
+fn assert_read_proc_result<B: Buffer>(result: &ProcArguments<B>, expected: (u64, u32, usize)) {
+    let (expected_offset, expected_count, expected_len) = expected;
+    let ProcArguments::Nfs3(args) = result else {
+        panic!("Wrong program argument type");
+    };
+    let NfsArguments::Read(args, data) = args.as_ref() else {
+        panic!("Wrong NFS argument type");
+    };
+    assert_eq!(args.offset, expected_offset);
+    assert_eq!(args.count, expected_count);
+    assert_eq!(data.len(), expected_len);
 }
 
 /// Serializes write (NFS procedure 7) arguments, including count, offset, stable, and data.
@@ -333,6 +356,115 @@ async fn parse_after_error() {
 
     let result = parser.next_message().await;
     assert!(result.is_err());
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    );
+}
+
+/// Test: READ parsing allocates an output buffer of the requested size.
+#[tokio::test]
+async fn parse_read() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, READ, |buf| {
+        buf.extend_from_slice(&read_args([1, 2, 3, 4, 5, 6, 7, 8], 0x8000, 512));
+    });
+
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(4096));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(result, &header, assert_read_proc_result, (0x8000, 512, 512));
+}
+
+/// Test: READ with `count == 0` yields an empty buffer without touching the allocator.
+#[tokio::test]
+async fn parse_read_with_zero_count() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, READ, |buf| {
+        buf.extend_from_slice(&read_args([1, 2, 3, 4, 5, 6, 7, 8], 0, 0));
+    });
+
+    let socket = MockSocket::new(frame.as_slice());
+    // An allocator that fails every request: a zero-count READ must not consult it.
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 0, 0));
+}
+
+/// Test: a `count` the allocator can never serve is clamped into a short read
+/// instead of failing the request.
+#[tokio::test]
+async fn parse_read_clamps_oversized_count() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, READ, |buf| {
+        buf.extend_from_slice(&read_args([1, 2, 3, 4, 5, 6, 7, 8], 0, u32::MAX));
+    });
+
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(1024));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    let result = parser.next_message().await.unwrap();
+    // `count` is rewritten so the backend never sees more than the buffer holds.
+    assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 1024, 1024));
+}
+
+/// Test: an allocation failure leaves the stream aligned, so the next frame still parses.
+///
+/// Regression test: the failing frame used to be left half-consumed, which
+/// desynced the byte counter and made every subsequent frame fail with
+/// "Unparsed data remaining in frame".
+#[tokio::test]
+async fn parse_after_allocation_failure() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let data = [0x01_u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+    let write = WriteWrapper {
+        part: write::ArgsPartial {
+            file: Handle([1, 2, 3, 4, 5, 6, 7, 8]),
+            offset: 0x8000,
+            size: 0xFF,
+            stable: StableHow::Unstable,
+        },
+        data: &data,
+    };
+
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(&write));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&first);
+    buf.extend_from_slice(&second);
+
+    let socket = MockSocket::new(buf.as_slice());
+    // Too small for the 8-byte WRITE payload, so allocation fails.
+    let alloc = Arc::new(MockAllocator::new(4));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 80);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::IO(ref err), xid: Some(XID) })
+            if err.kind() == std::io::ErrorKind::OutOfMemory
+    ));
+
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
