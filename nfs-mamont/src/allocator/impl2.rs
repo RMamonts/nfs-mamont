@@ -1,4 +1,6 @@
 use std::alloc::{self, Layout};
+#[cfg(feature = "mlock")]
+use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
