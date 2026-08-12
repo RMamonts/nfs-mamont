@@ -7,6 +7,12 @@ pub struct SliceNoDrop {
     range: std::ops::Range<usize>,
 }
 
+impl SliceNoDrop {
+    pub fn new(buffers: Vec<UnownedDroppableBuffer>, range: std::ops::Range<usize>) -> Self {
+        Self { buffers, range }
+    }
+}
+
 impl<'a> IntoIterator for &'a SliceNoDrop {
     type IntoIter = Iter<'a, UnownedDroppableBuffer>;
     type Item = &'a [u8];

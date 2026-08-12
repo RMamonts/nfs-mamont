@@ -90,6 +90,6 @@ impl Allocator for SyncImpl {
 
         let len = vec.iter().map(|s| s.len()).sum();
         let range = 0..min(len, size.get());
-        Some(SliceNoDrop { buffers: vec, range })
+        Some(SliceNoDrop::new(vec, range))
     }
 }
