@@ -1,5 +1,4 @@
 use std::alloc::{self, Layout};
-use std::cmp::min;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -11,12 +10,15 @@ use crate::allocator::slice::nodropslice::SliceNoDrop;
 use crate::allocator::AllocatorState;
 use crate::Allocator;
 
-pub struct SyncImpl {
+#[allow(dead_code)]
+pub struct Impl2 {
     state: Arc<AllocatorState<UnownedDroppableBuffer>>,
     buffer_size: NonZeroUsize,
+    buffer_count: NonZeroUsize,
 }
 
-impl SyncImpl {
+#[allow(dead_code)]
+impl Impl2 {
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());
@@ -53,43 +55,40 @@ impl SyncImpl {
             current_ptr = unsafe { current_ptr.add(buffer_size) };
         }
 
-        Self { state, buffer_size: size }
+        Self { state, buffer_size: size, buffer_count: count }
+    }
+
+    fn capacity(&self) -> usize {
+        self.buffer_size.get() * self.buffer_count.get()
     }
 }
 
-impl Allocator for SyncImpl {
+impl Allocator for Impl2 {
     type Buffer = SliceNoDrop;
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
-        // there will defenitely be at least one block
-        let block_amount = size.get().div_ceil(self.buffer_size.get());
-        let mut counter = 0;
-        let mut vec = Vec::with_capacity(block_amount);
-        while let Ok(p) = self.state.semaphore.try_acquire() {
-            let buf = match self.state.pool.pop() {
-                Some(buf) => buf,
-                None => unreachable!(),
-            };
-            vec.push(buf);
-            p.forget();
-            counter += 1;
+        if size.get() > self.capacity() {
+            return None;
         }
 
-        if counter == 0 {
-            match self.state.semaphore.acquire().await {
-                Ok(p) => {
-                    let buf = match self.state.pool.pop() {
-                        Some(buf) => buf,
-                        None => unreachable!(),
-                    };
-                    vec.push(buf);
-                    p.forget();
-                }
-                Err(_) => return None,
+        let remain_size = size.get();
+        let count_needed = remain_size.div_ceil(self.buffer_size.get());
+
+        let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+
+        let mut buffers = Vec::with_capacity(count_needed);
+        for _ in 0..count_needed {
+            if let Some(buf) = self.state.pool.pop() {
+                buffers.push(buf);
+            } else {
+                unreachable!("Semaphore permitted allocation but pool was empty");
             }
         }
 
-        let len = vec.iter().map(|s| s.len()).sum();
-        let range = 0..min(len, size.get());
-        Some(SliceNoDrop::new(vec, range))
+        permit.forget();
+
+        Some(SliceNoDrop::new(buffers, 0..size.get()))
     }
 }

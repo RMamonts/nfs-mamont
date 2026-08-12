@@ -8,7 +8,7 @@ pub trait RawBuffer: Deref + DerefMut + AsRef<[u8]> + AsMut<[u8]> {
 
 impl RawBuffer for UnownedBuffer {
     fn len(&self) -> usize {
-        Self::len(&self)
+        Self::len(self)
     }
 }
 

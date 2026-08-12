@@ -4,7 +4,7 @@ pub mod nodropslice;
 
 use std::sync::Arc;
 
-use crate::{allocator::buffer::RawBuffer, UnownedBuffer};
+use crate::allocator::buffer::{RawBuffer, UnownedBuffer};
 
 use super::Buffer;
 

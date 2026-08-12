@@ -7,7 +7,7 @@ use crate::allocator::AllocatorState;
 
 impl super::RawBuffer for UnownedDroppableBuffer {
     fn len(&self) -> usize {
-        Self::len(&self)
+        Self::len(self)
     }
 }
 

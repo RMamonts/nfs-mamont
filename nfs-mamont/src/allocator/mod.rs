@@ -2,8 +2,8 @@
 //! for user data transmission inside NFS-Mamont implementation.
 
 mod buffer;
+mod impl2;
 mod slice;
-mod sync_impl;
 
 #[cfg(test)]
 mod tests;
@@ -86,7 +86,7 @@ pub trait Allocator {
 }
 
 pub struct Impl {
-    state: Arc<AllocatorState<super::UnownedBuffer>>,
+    state: Arc<AllocatorState<crate::allocator::buffer::UnownedBuffer>>,
     buffer_size: NonZeroUsize,
     buffer_count: NonZeroUsize,
 }
