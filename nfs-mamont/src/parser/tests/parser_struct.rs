@@ -422,13 +422,14 @@ async fn parse_read_clamps_oversized_count() {
     assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 1024, 1024));
 }
 
-/// Test: an allocation failure leaves the stream aligned, so the next frame still parses.
+/// Test: a WRITE payload larger than the allocator's pool is read as far as the
+/// available buffer allows, the rest is discarded and the stream stays aligned.
 ///
-/// Regression test: the failing frame used to be left half-consumed, which
-/// desynced the byte counter and made every subsequent frame fail with
-/// "Unparsed data remaining in frame".
+/// The allocator only ever hands out 4-byte blocks, so only the first 4 bytes
+/// of the 8-byte payload are read and the remainder of the frame is discarded;
+/// the following FSSTAT frame must still parse.
 #[tokio::test]
-async fn parse_after_allocation_failure() {
+async fn parse_write_with_small_pool_keeps_stream_aligned() {
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
     let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
 
@@ -454,16 +455,25 @@ async fn parse_after_allocation_failure() {
     buf.extend_from_slice(&second);
 
     let socket = MockSocket::new(buf.as_slice());
-    // Too small for the 8-byte WRITE payload, so allocation fails.
+    // Blocks of at most 4 bytes, so allocation falls back to a single block.
     let alloc = Arc::new(MockAllocator::new(4));
     let mut parser = RpcParser::with_capacity(socket, alloc, 80);
 
-    let result = parser.next_message().await;
-    assert!(matches!(
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
         result,
-        Err(ErrorWrapper { error: Error::IO(ref err), xid: Some(XID) })
-            if err.kind() == std::io::ErrorKind::OutOfMemory
-    ));
+        &header,
+        |proc, _opaque| {
+            let ProcArguments::Nfs3(args) = proc else {
+                panic!("Wrong program argument type");
+            };
+            let NfsArguments::Write(args) = args.as_ref() else {
+                panic!("Wrong NFS argument type");
+            };
+            assert_eq!(args.data, data[..4]);
+        },
+        &write,
+    );
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -517,6 +527,63 @@ async fn parse_write() {
     let result = parser.next_message().await.unwrap();
 
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
+}
+
+/// Test: WRITE with a partial write buffer — only the buffered prefix is read,
+/// the rest of the frame payload is discarded and the stream stays aligned.
+#[tokio::test]
+async fn parse_write_with_partial_buffer() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let write = WriteWrapper {
+        part: write::ArgsPartial {
+            file: Handle([1, 2, 3, 4, 5, 6, 7, 8]),
+            offset: 0x8000,
+            size: 0xFF,
+            stable: StableHow::Unstable,
+        },
+        data: &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C],
+    };
+
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(&write));
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(&write));
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&first);
+    buf.extend_from_slice(&second);
+
+    let socket = MockSocket::new(buf.as_slice());
+    // The allocator only hands out 8-byte buffers, so only the first 8 bytes
+    // of the 12-byte payload are read and the rest is discarded.
+    let alloc = Arc::new(MockAllocator::partial(0x24, 8));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 72);
+
+    for _ in 0..2 {
+        let result = parser.next_message().await.unwrap();
+
+        assert_arg_wrapper(
+            result,
+            &header,
+            |proc, _opaque| {
+                let ProcArguments::Nfs3(args) = proc else {
+                    panic!("Wrong program argument type");
+                };
+                let NfsArguments::Write(args) = args.as_ref() else {
+                    panic!("Wrong NFS argument type");
+                };
+                assert_eq!(args.file, write.part.file);
+                assert_eq!(args.offset, write.part.offset);
+                assert_eq!(args.size, write.part.size);
+                assert_eq!(args.stable, write.part.stable);
+                assert_eq!(args.data, write.data[..8]);
+            },
+            &write,
+        );
+    }
 }
 
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.

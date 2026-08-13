@@ -609,6 +609,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// 3. Reads the data from the buffer (handling both sync and async portions)
 /// 4. Discards any padding bytes
 ///
+/// The allocation is best-effort: a `try_allocate` that cannot be satisfied is
+/// followed by a blocking fallback for a single block, so a partial buffer that
+/// is smaller than the requested `size` may be returned. Only the bytes the
+/// buffer can actually hold are read from the frame; the remainder of the
+/// payload is discarded to keep the stream aligned.
+///
 /// # Arguments
 ///
 /// * `alloc` - The allocator to use for allocating the write data buffer
@@ -618,7 +624,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 ///
 /// Returns the parsed [`vfs::write::Args`] with allocated data, or an error if:
 /// - Parsing fails
-/// - Memory allocation fails
 /// - Reading the data fails
 async fn adapter_for_write<A, S>(
     alloc: &Arc<A>,
@@ -633,25 +638,32 @@ where
     let size = buffer.parse_with_retry(u32_as_usize).await?;
 
     // A zero-length write needs no buffer at all, so it never takes a pool slot.
+    // Otherwise attempt a non-blocking allocation and fall back to a single
+    // blocking block when the pool cannot satisfy the request right now.
     let mut buffer_data = match NonZeroUsize::new(size) {
         None => A::Buffer::empty(),
-        Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-        })?,
+        Some(non_zero_size) => match alloc.try_allocate(non_zero_size) {
+            Some(buf) => buf,
+            None => alloc.allocate_block().await,
+        },
     };
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
 
+    // The allocated buffer may be partial, so read only what it can hold and
+    // discard the rest of the frame payload to keep the stream aligned.
+    let to_read = size.min(buffer_data.len());
+
     // Read synchronously what is available, then finish asynchronously if needed.
-    let bytes_read_sync = read_in_slice_sync(buffer, &mut buffer_data, size)?;
-    if bytes_read_sync < size {
-        read_in_slice_async(buffer, &mut buffer_data, bytes_read_sync, size - bytes_read_sync)
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut buffer_data, to_read)?;
+    if bytes_read_sync < to_read {
+        read_in_slice_async(buffer, &mut buffer_data, bytes_read_sync, to_read - bytes_read_sync)
             .await?;
     }
 
-    // Discard any trailing padding bytes after the data.
-    buffer.discard_bytes(padding).await.map_err(Error::IO)?;
+    // Discard the unread data remainder and any trailing padding bytes.
+    buffer.discard_bytes(size - to_read + padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
@@ -683,8 +695,11 @@ where
 /// # Returns
 ///
 /// Returns the parsed [`vfs::read::Args`] together with the allocated output
-/// buffer, or an error if parsing fails or memory allocation fails. A zero-byte
-/// read yields an empty buffer without touching the allocator.
+/// buffer, or an error if parsing fails. A zero-byte read yields an empty
+/// buffer without touching the allocator. The allocation is best-effort: when
+/// the pool cannot satisfy the request right now a single block is allocated
+/// with a blocking fallback, which results in a short read — allowed by
+/// RFC 1813; the backend reports the actual number of bytes read.
 async fn adapter_for_read<A, S>(
     alloc: &Arc<A>,
     buffer: &mut CountBuffer<S>,
@@ -700,9 +715,10 @@ where
 
     let data = match NonZeroUsize::new(count) {
         None => A::Buffer::empty(),
-        Some(size) => alloc.allocate(size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-        })?,
+        Some(size) => match alloc.try_allocate(size) {
+            Some(buf) => buf,
+            None => alloc.allocate_block().await,
+        },
     };
 
     Ok((args, data))

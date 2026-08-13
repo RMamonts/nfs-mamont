@@ -110,12 +110,86 @@ async fn reclaiming() {
 }
 
 #[tokio::test]
-async fn allocate_more_than_capacity_returns_none() {
+async fn try_allocate_more_than_capacity_returns_none() {
     const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
     const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
 
     let allocator = Impl::new(SIZE, COUNT);
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
-    assert!(allocator.allocate(requested).await.is_none());
+    assert!(allocator.try_allocate(requested).is_none());
+
+    // The convenience `allocate` falls back to a single block instead of `None`.
+    let slice = allocator.allocate(requested).await.unwrap();
+    assert_eq!(slice.len(), SIZE.get());
+    assert_eq!(slice.iter().count(), 1);
+}
+
+#[tokio::test]
+async fn try_allocate_returns_none_when_pool_is_exhausted() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(3).unwrap();
+
+    let allocator = Impl::new(SIZE, COUNT);
+
+    // Occupy the entire pool.
+    let pool =
+        allocator.allocate(NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap()).await.unwrap();
+
+    assert!(allocator.try_allocate(NonZeroUsize::MIN).is_none());
+
+    drop(pool);
+
+    // After the buffer is released the pool is available again.
+    assert!(allocator.try_allocate(NonZeroUsize::MIN).is_some());
+}
+
+#[tokio::test]
+async fn allocate_block_returns_single_block() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+
+    let allocator = Impl::new(SIZE, COUNT);
+
+    let slice = allocator.allocate_block().await;
+    assert_eq!(slice.len(), SIZE.get());
+    assert_eq!(slice.iter().count(), 1);
+
+    drop(slice);
+
+    // The permit is restored after drop, so the pool can be fully saturated again.
+    let slice =
+        allocator.allocate(NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap()).await.unwrap();
+    assert_eq!(slice.iter().count(), COUNT.get());
+}
+
+#[tokio::test]
+async fn allocate_block_blocks_until_a_block_is_released() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(15).unwrap();
+
+    let allocator = Impl::new(SIZE, COUNT);
+
+    // Occupy the entire pool.
+    let pool =
+        allocator.allocate(NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap()).await.unwrap();
+
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        let slice = allocator.allocate_block().await;
+        let _ = tx.send(slice);
+    });
+
+    // The task cannot complete while the pool is fully held.
+    assert!(tokio::time::timeout(Duration::from_millis(120), &mut rx).await.is_err());
+
+    drop(pool);
+
+    let slice = tokio::time::timeout(Duration::from_secs(5), rx)
+        .await
+        .expect("timed out waiting for block")
+        .unwrap();
+    assert_eq!(slice.len(), SIZE.get());
+    assert_eq!(slice.iter().count(), 1);
+    assert!(handle.await.is_ok());
 }
