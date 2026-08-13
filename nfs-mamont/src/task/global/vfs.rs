@@ -129,21 +129,18 @@ where
                     NfsRes::ReadLink(self.backend.read_link(args).await)
                 }
                 NfsArguments::Read(args) => {
-                    let data_result = if args.count == 0 {
-                        Ok(B::empty())
+                    let data = if args.count == 0 {
+                        B::empty()
                     } else {
                         let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
-                        self.allocator
-                            .allocate(requested_size)
-                            .await
-                            .ok_or(vfs::read::Fail { error: vfs::Error::TooSmall, file_attr: None })
+                        match self.allocator.try_allocate(requested_size) {
+                            Some(buf) => buf,
+                            None => self.allocator.allocate_block().await,
+                        }
                     };
 
-                    match data_result {
-                        Ok(data) => NfsRes::Read(self.backend.read(args, data).await),
-                        Err(err) => NfsRes::Read(Err(err)),
-                    }
+                    NfsRes::Read(self.backend.read(args, data).await)
                 }
                 NfsArguments::Write(args) => NfsRes::Write(self.backend.write(args).await),
                 NfsArguments::Create(args) => NfsRes::Create(self.backend.create(args).await),

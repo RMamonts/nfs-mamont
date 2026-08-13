@@ -619,24 +619,30 @@ where
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
 
-    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
+    // Attempt allocation with the given size. If the pool cannot satisfy the
+    // request right now, fall back to a single blocking allocation.
     let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut buffer_data = alloc.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
+    let mut buffer_data = match alloc.try_allocate(non_zero_size) {
+        Some(buf) => buf,
+        None => alloc.allocate_block().await,
+    };
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
 
+    // The allocated buffer may be partial, so read only what it can hold and
+    // discard the rest of the frame payload to keep the stream aligned.
+    let to_read = size.min(buffer_data.len());
+
     // Read synchronously what is available, then finish asynchronously if needed.
-    let bytes_read_sync = read_in_slice_sync(buffer, &mut buffer_data, size)?;
-    if bytes_read_sync < size {
-        read_in_slice_async(buffer, &mut buffer_data, bytes_read_sync, size - bytes_read_sync)
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut buffer_data, to_read)?;
+    if bytes_read_sync < to_read {
+        read_in_slice_async(buffer, &mut buffer_data, bytes_read_sync, to_read - bytes_read_sync)
             .await?;
     }
 
-    // Discard any trailing padding bytes after the data.
-    buffer.discard_bytes(padding).await.map_err(Error::IO)?;
+    // Discard the unread data remainder and any trailing padding bytes.
+    buffer.discard_bytes(size - to_read + padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,

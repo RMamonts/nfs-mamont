@@ -70,16 +70,46 @@ pub trait Allocator {
     /// Type of buffer returned by this allocator.
     type Buffer: Buffer;
 
-    /// Returns a buffer of at least `size` bytes.
+    /// Attempts to allocate a buffer of (at most) `size` bytes without blocking.
+    ///
+    /// This is a "best-effort" operation: the returned buffer may be smaller
+    /// than `size` (partial allocation). If no memory can be granted right now,
+    /// [`None`] is returned — the caller should either retry later or fall back
+    /// to the blocking [`Self::allocate_block`].
     ///
     /// # Parameters
     ///
-    /// - `size` --- minimum size of the returned buffer in bytes.
+    /// - `size` --- maximum size of the returned buffer in bytes.
+    fn try_allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer>;
+
+    /// Allocates a single minimal buffer, blocking until one is available.
     ///
-    /// # Panic
+    /// The returned buffer is exactly one allocation unit of the allocator and
+    /// is not guaranteed to satisfy the originally requested `size`.
+    fn allocate_block(&self) -> impl Future<Output = Self::Buffer> + Send;
+
+    /// Returns a buffer of at most `size` bytes.
     ///
-    /// This method returns [`None`] if size is greater then allocator capacity.
-    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;
+    /// This is a convenience combination of [`Self::try_allocate`] and
+    /// [`Self::allocate_block`]: it first attempts a non-blocking allocation,
+    /// and if the pool is exhausted, falls back to blocking for a single block.
+    /// The returned buffer is best-effort: it may be partial (`len() < size`)
+    /// when the allocator cannot provide the full size without waiting.
+    ///
+    /// # Parameters
+    ///
+    /// - `size` --- requested size of the returned buffer in bytes.
+    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            match self.try_allocate(size) {
+                Some(buffer) => Some(buffer),
+                None => Some(self.allocate_block().await),
+            }
+        }
+    }
 }
 
 pub struct Impl {
@@ -143,18 +173,14 @@ impl Impl {
 impl Allocator for Impl {
     type Buffer = slice::Slice;
 
-    async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
+    fn try_allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
         if size.get() > self.capacity() {
             return None;
         }
 
-        let remain_size = size.get();
-        let count_needed = remain_size.div_ceil(self.buffer_size.get());
+        let count_needed = size.get().div_ceil(self.buffer_size.get());
 
-        let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
-            Ok(p) => p,
-            Err(_) => return None,
-        };
+        let permit = self.state.semaphore.try_acquire_many(count_needed as u32).ok()?;
 
         let mut buffers = Vec::with_capacity(count_needed);
         for _ in 0..count_needed {
@@ -168,5 +194,16 @@ impl Allocator for Impl {
         permit.forget();
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
+    }
+
+    async fn allocate_block(&self) -> Self::Buffer {
+        let permit =
+            self.state.semaphore.acquire().await.expect("allocator semaphore is never closed");
+
+        let buf = self.state.pool.pop().expect("Semaphore permitted allocation but pool was empty");
+
+        permit.forget();
+
+        Slice::new(vec![buf], 0..self.buffer_size.get(), Some(Arc::clone(&self.state)))
     }
 }
