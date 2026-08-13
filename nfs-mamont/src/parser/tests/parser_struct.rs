@@ -218,7 +218,10 @@ fn assert_write_result<B: Buffer + PartialEq<[u8]> + std::fmt::Debug>(
     let NfsArguments::Write(args) = result else {
         panic!("Wrong NFS argument type");
     };
-    assert_eq!(expected_write.part.size, args.size);
+    // The parser never promises the backend more bytes than the buffer carries,
+    // so an announced `size` above the payload length is clamped down to it.
+    let expected_size = expected_write.part.size.min(expected_write.data.len() as u32);
+    assert_eq!(expected_size, args.size);
     assert_eq!(expected_write.part.file, args.file);
     assert_eq!(expected_write.part.stable, args.stable);
     assert_eq!(expected_write.part.offset, args.offset);
@@ -394,7 +397,8 @@ async fn parse_read_with_zero_count() {
     });
 
     let socket = MockSocket::new(frame.as_slice());
-    // An allocator that fails every request: a zero-count READ must not consult it.
+    // An allocator whose `try_allocate` fails every request: a zero-count READ
+    // must not consult it at all.
     let alloc = Arc::new(MockAllocator::new(0));
     let mut parser = RpcParser::with_capacity(socket, alloc, 96);
 
@@ -420,6 +424,39 @@ async fn parse_read_clamps_oversized_count() {
     let result = parser.next_message().await.unwrap();
     // `count` is rewritten so the backend never sees more than the buffer holds.
     assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 1024, 1024));
+}
+
+/// Test: when the pool is exhausted and READ falls back to a single block, the
+/// reported `count` always matches the length of the buffer handed to the
+/// backend --- whether the block is shorter or longer than the request.
+#[tokio::test]
+async fn parse_read_count_matches_fallback_block() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let short = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, READ, |buf| {
+        buf.extend_from_slice(&read_args([1, 2, 3, 4, 5, 6, 7, 8], 0, 512));
+    });
+    let long = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, READ, |buf| {
+        buf.extend_from_slice(&read_args([1, 2, 3, 4, 5, 6, 7, 8], 0, 4));
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&short);
+    buf.extend_from_slice(&long);
+
+    let socket = MockSocket::new(buf.as_slice());
+    // Capacity is large enough that `count` is not clamped, but `try_allocate`
+    // never succeeds, so every request falls back to a 16-byte block.
+    let alloc = Arc::new(MockAllocator::stale_blocks(0x400, 16, 0xAA));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    // Block shorter than the request: a short read.
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 16, 16));
+
+    // Block longer than the request: the tail is cut off.
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(result, &header, assert_read_proc_result, (0, 4, 4));
 }
 
 /// Test: a WRITE payload larger than the allocator's pool is read as far as the
@@ -577,13 +614,111 @@ async fn parse_write_with_partial_buffer() {
                 };
                 assert_eq!(args.file, write.part.file);
                 assert_eq!(args.offset, write.part.offset);
-                assert_eq!(args.size, write.part.size);
+                // Only 8 of the 12 payload bytes made it into the buffer, so
+                // the backend is told to write exactly those 8.
+                assert_eq!(args.size, 8);
                 assert_eq!(args.stable, write.part.stable);
                 assert_eq!(args.data, write.data[..8]);
             },
             &write,
         );
     }
+}
+
+/// Test: a fallback block larger than the payload is truncated, so none of the
+/// bytes the block still holds from a previous request reach the backend.
+#[tokio::test]
+async fn parse_write_truncates_oversized_fallback_block() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let data = [0x01_u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+    let write = WriteWrapper {
+        part: write::ArgsPartial {
+            file: Handle([1, 2, 3, 4, 5, 6, 7, 8]),
+            offset: 0x8000,
+            // The client announces far more than it actually sends.
+            size: 0xFF,
+            stable: StableHow::Unstable,
+        },
+        data: &data,
+    };
+
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(&write));
+    });
+
+    let socket = MockSocket::new(frame.as_slice());
+    // `try_allocate` always fails, and the fallback block is 64 bytes of
+    // leftovers from whoever held the block before.
+    let alloc = Arc::new(MockAllocator::stale_blocks(0x400, 64, 0xAA));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, _opaque| {
+            let ProcArguments::Nfs3(args) = proc else {
+                panic!("Wrong program argument type");
+            };
+            let NfsArguments::Write(args) = args.as_ref() else {
+                panic!("Wrong NFS argument type");
+            };
+            // Neither the buffer nor the announced size may expose the 56
+            // stale bytes left in the tail of the block.
+            assert_eq!(args.data.len(), data.len());
+            assert_eq!(args.size, data.len() as u32);
+            assert_eq!(args.data, data[..]);
+        },
+        &write,
+    );
+}
+
+/// Test: a WRITE announcing more opaque data than the frame can hold is
+/// rejected instead of making the parser pull that many bytes off the socket,
+/// and the rejection stays confined to that frame --- the rest of it is
+/// discarded, so the next request on the same connection still parses.
+#[tokio::test]
+async fn parse_write_rejects_size_beyond_frame() {
+    let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+    let header = RpcHeader { xid: XID, cred: auth.clone(), verf: auth };
+
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        push_opaque(buf, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        push_u64(buf, 0x8000);
+        push_u32(buf, 0xFF);
+        push_u32(buf, StableHow::Unstable.to_u32().unwrap());
+        // Opaque length of ~4 GiB in a frame of less than a hundred bytes.
+        push_u32(buf, u32::MAX);
+        // Trailing payload that recovery has to discard before the next frame.
+        push_bytes(buf, &[0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF]);
+    });
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&first);
+    buf.extend_from_slice(&second);
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0x400));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 96);
+
+    let result = parser.next_message().await;
+    assert!(
+        matches!(result, Err(ErrorWrapper { error: Error::MaxElemLimit, xid: Some(XID) })),
+        "expected the frame to be rejected as garbage arguments"
+    );
+
+    // The stream is still aligned: the following frame parses normally.
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+    );
 }
 
 /// Test: Parser recovers from an error on first WRITE frame and parses the next valid WRITE frame.
