@@ -229,8 +229,14 @@ impl<S: AsyncRead + Unpin> CountBuffer<S> {
 
         let mut actual = 0;
 
+        // Discarded bytes go nowhere, so they are read into the write buffer
+        // used as scratch space --- `write_slice` would not do: once the write
+        // position reaches the end of the buffer it yields an empty slice, and
+        // `read` would report `Ok(0)` as if the connection had closed. Both
+        // internal buffers are fully consumed whenever there is anything left
+        // to take from the socket, so overwriting this one loses nothing.
         loop {
-            let n = src.read(self.bufs[self.write].write_slice()).await?;
+            let n = src.read(self.bufs[self.write].scratch_slice()).await?;
             if n == 0 {
                 break;
             }
@@ -308,6 +314,15 @@ impl ReadBuffer {
     #[inline]
     fn write_slice(&mut self) -> &mut [u8] {
         &mut self.data[self.write_pos..]
+    }
+
+    /// Returns the whole backing storage, ignoring both positions.
+    ///
+    /// Only for data that is being thrown away: the contents are not tracked by
+    /// the read/write positions, so anything still unread would be lost.
+    #[inline]
+    fn scratch_slice(&mut self) -> &mut [u8] {
+        &mut self.data
     }
 
     /// Advances the read position by `n` bytes, consuming that many bytes.

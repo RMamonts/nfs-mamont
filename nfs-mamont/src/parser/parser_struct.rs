@@ -262,7 +262,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 NfsArguments::Read(args, data)
             }
             WRITE => {
-                NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
+                // CountBuffer counts every byte of the frame except the RMS
+                // header, so the frame ends at that many consumed bytes.
+                let frame_end = self.current_frame_size + RMS_HEADER_SIZE;
+                NfsArguments::Write(
+                    adapter_for_write(&self.allocator, &mut self.buffer, frame_end).await?,
+                )
             }
             CREATE => NfsArguments::Create(self.buffer.parse_with_retry(create::args).await?),
             MKDIR => NfsArguments::MkDir(self.buffer.parse_with_retry(mk_dir::args).await?),
@@ -543,10 +548,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// this method discards the remaining message data to maintain stream alignment
     /// for subsequent messages. For other errors, it returns them as-is.
     ///
-    /// Allocation failures are discarded as well: the frame itself is well-formed,
-    /// so leaving it half-consumed would desync [`CountBuffer::total_bytes`] and
-    /// make every later [`Self::finalize_parsing`] fail with "Unparsed data
-    /// remaining in frame".
+    /// Rejected arguments ([`Error::MaxElemLimit`]) are discarded as well: the
+    /// frame itself is well-formed, so leaving it half-consumed would desync
+    /// [`CountBuffer::total_bytes`] and make every later [`Self::finalize_parsing`]
+    /// fail with "Unparsed data remaining in frame".
     ///
     /// # Arguments
     ///
@@ -556,16 +561,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns the error, potentially after attempting to discard the message.
     async fn match_errors(&mut self, error: Error) -> Error {
-        let recoverable = match &error {
+        let recoverable = matches!(
+            &error,
             Error::RpcVersionMismatch(_)
-            | Error::ProgramMismatch
-            | Error::ProcedureMismatch
-            | Error::Auth(_)
-            | Error::MessageTypeMismatch
-            | Error::ProgramVersionMismatch(_) => true,
-            Error::IO(err) => err.kind() == ErrorKind::OutOfMemory,
-            _ => false,
-        };
+                | Error::ProgramMismatch
+                | Error::ProcedureMismatch
+                | Error::Auth(_)
+                | Error::MessageTypeMismatch
+                | Error::ProgramVersionMismatch(_)
+                | Error::MaxElemLimit
+        );
 
         if recoverable {
             proc_nested_errors(error, self.discard_current_message()).await
@@ -610,24 +615,28 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// 4. Discards any padding bytes
 ///
 /// The allocation is best-effort: a `try_allocate` that cannot be satisfied is
-/// followed by a blocking fallback for a single block, so a partial buffer that
-/// is smaller than the requested `size` may be returned. Only the bytes the
-/// buffer can actually hold are read from the frame; the remainder of the
-/// payload is discarded to keep the stream aligned.
+/// followed by a blocking fallback for a single block, so the buffer may be
+/// smaller than the requested `size`. Only the bytes the buffer can actually
+/// hold are read from the frame; the remainder of the payload is discarded to
+/// keep the stream aligned, and the buffer is truncated to what was read so
+/// that the untouched tail of a pooled block never reaches the backend.
 ///
 /// # Arguments
 ///
 /// * `alloc` - The allocator to use for allocating the write data buffer
 /// * `buffer` - The buffer to read from
+/// * `frame_end` - Number of consumed bytes at which the current RMS frame ends
 ///
 /// # Returns
 ///
 /// Returns the parsed [`vfs::write::Args`] with allocated data, or an error if:
 /// - Parsing fails
+/// - The announced data length does not fit into the current frame
 /// - Reading the data fails
 async fn adapter_for_write<A, S>(
     alloc: &Arc<A>,
     buffer: &mut CountBuffer<S>,
+    frame_end: usize,
 ) -> Result<vfs::write::Args<A::Buffer>>
 where
     A: Allocator,
@@ -636,6 +645,23 @@ where
     // Parse arguments for WRITE procedure.
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
+
+    // Calculate necessary padding to maintain ALIGNMENT
+    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
+
+    // The announced length is attacker-controlled and the payload is no longer
+    // bounded by what the allocator can serve, so check it against the frame
+    // before touching the pool: otherwise a tiny frame claiming a 4 GiB write
+    // would make the discard below pull that many bytes off the socket.
+    // `size` spans the whole `u32` range, which is the whole `usize` range on a
+    // 32-bit target, so the padding is added saturating.
+    let frame_left = frame_end.saturating_sub(buffer.total_bytes());
+    if size.saturating_add(padding) > frame_left {
+        // A well-formed frame carrying an impossible length: recoverable, so
+        // `match_errors` discards the rest of the frame and the connection
+        // survives a single malformed request.
+        return Err(Error::MaxElemLimit);
+    }
 
     // A zero-length write needs no buffer at all, so it never takes a pool slot.
     // Otherwise attempt a non-blocking allocation and fall back to a single
@@ -648,9 +674,6 @@ where
         },
     };
 
-    // Calculate necessary padding to maintain ALIGNMENT
-    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
-
     // The allocated buffer may be partial, so read only what it can hold and
     // discard the rest of the frame payload to keep the stream aligned.
     let to_read = size.min(buffer_data.len());
@@ -662,12 +685,19 @@ where
             .await?;
     }
 
+    // A fallback block can be larger than the payload; its tail still holds the
+    // bytes of whatever request owned the block before. Cut it off so nothing
+    // downstream can write those bytes to a file.
+    buffer_data.truncate(to_read);
+
     // Discard the unread data remainder and any trailing padding bytes.
     buffer.discard_bytes(size - to_read + padding).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
-        size: part_arg.size,
+        // `size` is the count the client asked to write; it must never promise
+        // the backend more bytes than the buffer actually carries.
+        size: part_arg.size.min(to_read as u32),
         stable: part_arg.stable,
         data: buffer_data,
     })
@@ -711,15 +741,21 @@ where
     let mut args = buffer.parse_with_retry(read::args).await?;
 
     let count = min(args.count as usize, alloc.capacity().get());
-    args.count = count as u32;
 
-    let data = match NonZeroUsize::new(count) {
+    let mut data = match NonZeroUsize::new(count) {
         None => A::Buffer::empty(),
         Some(size) => match alloc.try_allocate(size) {
             Some(buf) => buf,
             None => alloc.allocate_block().await,
         },
     };
+
+    // A fallback block may be either shorter than `count` (short read) or
+    // longer than it (the tail still holds another request's bytes). Cut the
+    // buffer down and report the same number back, so `count` and the buffer
+    // handed to the backend always agree.
+    data.truncate(count);
+    args.count = data.len() as u32;
 
     Ok((args, data))
 }

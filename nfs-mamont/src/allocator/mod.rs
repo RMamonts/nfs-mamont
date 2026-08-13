@@ -59,6 +59,18 @@ pub trait Buffer: Send + Sync {
     /// Returns `true` if the buffer is empty.
     fn is_empty(&self) -> bool;
 
+    /// Shrinks the buffer to at most `len` bytes.
+    ///
+    /// Buffers handed out by an allocator may be larger than the payload that
+    /// was actually written into them (see [`Allocator::allocate_block`]).
+    /// Truncating hides the untouched tail --- which still holds bytes of
+    /// whatever request used the memory before --- from every later consumer.
+    ///
+    /// Does nothing when `len` is not smaller than the current length. The
+    /// backing memory is kept and released as a whole when the buffer is
+    /// dropped.
+    fn truncate(&mut self, len: usize);
+
     /// Creates an empty, zero-length buffer with no backing memory.
     fn empty() -> Self
     where
@@ -73,9 +85,11 @@ pub trait Allocator {
     /// Attempts to allocate a buffer of (at most) `size` bytes without blocking.
     ///
     /// This is a "best-effort" operation: the returned buffer may be smaller
-    /// than `size` (partial allocation). If no memory can be granted right now,
-    /// [`None`] is returned — the caller should either retry later or fall back
-    /// to the blocking [`Self::allocate_block`].
+    /// than `size` (partial allocation), both when `size` exceeds
+    /// [`Self::capacity`] and when part of the pool is currently held by
+    /// someone else. If no memory at all can be granted right now, [`None`] is
+    /// returned — the caller should either retry later or fall back to the
+    /// blocking [`Self::allocate_block`].
     ///
     /// # Parameters
     ///
@@ -85,7 +99,10 @@ pub trait Allocator {
     /// Allocates a single minimal buffer, blocking until one is available.
     ///
     /// The returned buffer is exactly one allocation unit of the allocator and
-    /// is not guaranteed to satisfy the originally requested `size`.
+    /// is not guaranteed to satisfy the originally requested `size`. It may
+    /// therefore be *larger* than what the caller intends to fill, so a caller
+    /// that hands the buffer on must [`Buffer::truncate`] it to the number of
+    /// bytes it actually wrote.
     fn allocate_block(&self) -> impl Future<Output = Self::Buffer> + Send;
 
     /// Returns a buffer of at most `size` bytes.
@@ -94,19 +111,20 @@ pub trait Allocator {
     /// [`Self::allocate_block`]: it first attempts a non-blocking allocation,
     /// and if the pool is exhausted, falls back to blocking for a single block.
     /// The returned buffer is best-effort: it may be partial (`len() < size`)
-    /// when the allocator cannot provide the full size without waiting.
+    /// when the allocator cannot provide the full size without waiting, and it
+    /// may exceed `size` when the fallback block is bigger than the request.
     ///
     /// # Parameters
     ///
     /// - `size` --- requested size of the returned buffer in bytes.
-    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send
+    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Self::Buffer> + Send
     where
         Self: Sync,
     {
         async move {
             match self.try_allocate(size) {
-                Some(buffer) => Some(buffer),
-                None => Some(self.allocate_block().await),
+                Some(buffer) => buffer,
+                None => self.allocate_block().await,
             }
         }
     }
@@ -179,16 +197,31 @@ impl Allocator for Impl {
     type Buffer = slice::Slice;
 
     fn try_allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
-        if size > self.capacity {
-            return None;
-        }
+        // A request beyond the pool size can never be satisfied in full, so it
+        // is clamped instead of rejected: a capacity-sized buffer serves the
+        // caller far better than the single block it would fall back to.
+        let wanted = size.get().min(self.capacity.get());
 
-        let count_needed = size.get().div_ceil(self.buffer_size.get());
+        // Grant as many blocks as the pool can spare right now. Each failed
+        // attempt lowers the request by at least one block, so the loop always
+        // terminates, and it drops straight to the observed permit count
+        // instead of walking down one block at a time.
+        let mut count = wanted.div_ceil(self.buffer_size.get());
+        let permit = loop {
+            if count == 0 {
+                return None;
+            }
+            match self.state.semaphore.try_acquire_many(count as u32) {
+                Ok(permit) => break permit,
+                Err(_) => {
+                    let available = self.state.semaphore.available_permits();
+                    count = count.saturating_sub(1).min(available);
+                }
+            }
+        };
 
-        let permit = self.state.semaphore.try_acquire_many(count_needed as u32).ok()?;
-
-        let mut buffers = Vec::with_capacity(count_needed);
-        for _ in 0..count_needed {
+        let mut buffers = Vec::with_capacity(count);
+        for _ in 0..count {
             if let Some(buf) = self.state.pool.pop() {
                 buffers.push(buf);
             } else {
@@ -198,7 +231,9 @@ impl Allocator for Impl {
 
         permit.forget();
 
-        Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
+        let granted = wanted.min(count * self.buffer_size.get());
+
+        Some(Slice::new(buffers, 0..granted, Some(Arc::clone(&self.state))))
     }
 
     async fn allocate_block(&self) -> Self::Buffer {

@@ -59,6 +59,15 @@ impl Slice {
         self.range.len() == 0
     }
 
+    /// Shrinks the accessible range to at most `len` bytes.
+    ///
+    /// Does nothing when `len` is not smaller than the current length. The
+    /// buffers themselves are kept, so the whole allocation is still returned
+    /// to the pool on drop.
+    pub fn truncate(&mut self, len: usize) {
+        self.range.end = self.range.end.min(self.range.start.saturating_add(len));
+    }
+
     pub fn iter_mut(&mut self) -> IterMut<'_> {
         self.into_iter()
     }
@@ -237,6 +246,10 @@ impl Buffer for Slice {
 
     fn is_empty(&self) -> bool {
         self.range.len() == 0
+    }
+
+    fn truncate(&mut self, len: usize) {
+        Self::truncate(self, len);
     }
 
     fn empty() -> Self {
