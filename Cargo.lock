@@ -389,7 +389,6 @@ version = "0.0.0"
 dependencies = [
  "async-channel",
  "byteorder",
- "crossbeam-queue",
  "libc",
  "num-derive",
  "num-traits",

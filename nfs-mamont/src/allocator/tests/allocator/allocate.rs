@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::allocator::Allocator as _;
@@ -203,8 +204,119 @@ async fn allocate_block_returns_single_block() {
 
     drop(slice);
 
-    // The permit is restored after drop, so the pool can be fully saturated again.
+    // The block is back in the pool after drop, so it can be fully saturated again.
     let slice = allocator.allocate(NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap()).await;
+    assert_eq!(slice.iter().count(), COUNT.get());
+}
+
+/// `try_allocate` shares the pool with `allocate_block`, and its non-blocking
+/// take bypasses the wake-up queue, so it has to leave a block behind for every
+/// caller already parked --- otherwise a busy caller starves a blocked one.
+#[tokio::test]
+async fn try_allocate_leaves_a_block_for_a_parked_caller() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(2).unwrap();
+
+    let allocator = Arc::new(Impl::new(SIZE, COUNT));
+
+    // Occupy both blocks with separate slices, so one can be released alone.
+    let first = allocator.try_allocate(SIZE).unwrap();
+    let second = allocator.try_allocate(SIZE).unwrap();
+
+    // Park a caller on the drained pool.
+    let parked = tokio::spawn({
+        let allocator = Arc::clone(&allocator);
+        async move { allocator.allocate_block().await }
+    });
+    // One scheduler turn is enough for the spawned task to reach its `await`
+    // and register; the rest are slack.
+    for _ in 0..32 {
+        tokio::task::yield_now().await;
+    }
+
+    // Hand back a single block. It belongs to the parked caller, and this task
+    // does not await in between, so nothing else could have taken it yet.
+    drop(first);
+
+    assert!(
+        allocator.try_allocate(SIZE).is_none(),
+        "try_allocate took the block reserved for the parked caller"
+    );
+
+    let slice = tokio::time::timeout(Duration::from_secs(5), parked)
+        .await
+        .expect("the parked caller was starved")
+        .unwrap();
+    assert_eq!(slice.len(), SIZE.get());
+
+    // With nobody parked any more, the remaining block is grantable again.
+    drop(second);
+    assert!(allocator.try_allocate(SIZE).is_some());
+}
+
+/// Dropping an `allocate_block` future mid-wait --- what a cancelled connection
+/// task does --- must release the block it had reserved.
+#[tokio::test]
+async fn cancelled_allocate_block_releases_its_reservation() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(13).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+    const WHOLE_POOL: NonZeroUsize = NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap();
+
+    let allocator = Impl::new(SIZE, COUNT);
+
+    let pool = allocator.allocate(WHOLE_POOL).await;
+
+    {
+        let mut parked = Box::pin(allocator.allocate_block());
+        // Poll once so the caller registers as waiting, then drop it unfinished.
+        assert!(tokio::time::timeout(Duration::from_millis(120), &mut parked).await.is_err());
+    }
+
+    drop(pool);
+
+    // With the reservation gone the whole pool is grantable again.
+    let slice = allocator.try_allocate(WHOLE_POOL).expect("the pool is free");
+    assert_eq!(slice.iter().count(), COUNT.get());
+}
+
+/// Many callers contending for a pool far smaller than the demand: every one of
+/// them must eventually be served, whichever entry point they use.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn every_caller_is_eventually_served_under_contention() {
+    const SIZE: NonZeroUsize = NonZeroUsize::new(64).unwrap();
+    const COUNT: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+    const TASKS: usize = 64;
+
+    let allocator = Arc::new(Impl::new(SIZE, COUNT));
+
+    let tasks: Vec<_> = (0..TASKS)
+        .map(|n| {
+            let allocator = Arc::clone(&allocator);
+            tokio::spawn(async move {
+                for _ in 0..16 {
+                    // Half the tasks ask for more than the pool holds, half for
+                    // a single block; both must make progress.
+                    let want = if n % 2 == 0 { SIZE.get() * COUNT.get() } else { SIZE.get() };
+                    let slice = allocator.allocate(NonZeroUsize::new(want).unwrap()).await;
+                    assert!(!slice.is_empty());
+                    tokio::task::yield_now().await;
+                    drop(slice);
+                }
+            })
+        })
+        .collect();
+
+    for task in tasks {
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .expect("a caller was starved")
+            .expect("a caller panicked");
+    }
+
+    // Nothing leaked: the pool is whole again.
+    let slice = allocator
+        .try_allocate(NonZeroUsize::new(SIZE.get() * COUNT.get()).unwrap())
+        .expect("every block came back");
     assert_eq!(slice.iter().count(), COUNT.get());
 }
 
