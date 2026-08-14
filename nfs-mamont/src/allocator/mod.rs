@@ -12,19 +12,28 @@ use std::future::Future;
 #[cfg(feature = "mlock")]
 use std::io;
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crossbeam_queue::ArrayQueue;
-use tokio::sync::Semaphore;
+use async_channel::{Receiver, Sender};
 
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
 
-/// Shared state of the allocator to allow return of buffers and permit restoration.
+/// Shared state of the allocator, letting buffers find their way back to the pool.
+///
+/// The channel is both the list of free blocks and the queue of callers waiting
+/// for one, so there is no second counter to keep in sync with it.
 #[derive(Debug)]
 pub struct AllocatorState {
-    pub pool: ArrayQueue<UnownedBuffer>,
-    pub semaphore: Semaphore,
+    /// Blocks that are currently free.
+    free: Receiver<UnownedBuffer>,
+    /// Returns blocks to [`Self::free`]. Never blocks: the channel capacity
+    /// equals the number of blocks in circulation, and a slice only ever gives
+    /// back the blocks it took.
+    ret: Sender<UnownedBuffer>,
+    /// How many callers are parked in [`Allocator::allocate_block`] right now.
+    waiting: AtomicUsize,
     base_ptr: *mut u8,
     layout: Layout,
 }
@@ -32,14 +41,45 @@ pub struct AllocatorState {
 unsafe impl Send for AllocatorState {}
 unsafe impl Sync for AllocatorState {}
 
+impl AllocatorState {
+    /// Puts a block back into the pool, waking one parked caller.
+    ///
+    /// Returns `false` if the pool refused the block, which cannot happen for a
+    /// block that came from this allocator.
+    fn return_buffer(&self, buffer: UnownedBuffer) -> bool {
+        self.ret.try_send(buffer).is_ok()
+    }
+}
+
 impl Drop for AllocatorState {
     fn drop(&mut self) {
-        while self.pool.pop().is_some() {}
+        while self.free.try_recv().is_ok() {}
         #[cfg(feature = "mlock")]
         unsafe {
             libc::munlock(self.base_ptr as *mut libc::c_void, self.layout.size());
         }
         unsafe { alloc::dealloc(self.base_ptr, self.layout) };
+    }
+}
+
+/// Marks its owner as parked in [`Allocator::allocate_block`] for as long as it lives.
+///
+/// The count has to be restored when the future is dropped mid-wait --- a
+/// cancelled connection task does exactly that --- otherwise
+/// [`Allocator::try_allocate`] would keep a block reserved for a caller that no
+/// longer exists.
+struct Parked<'a>(&'a AllocatorState);
+
+impl<'a> Parked<'a> {
+    fn enter(state: &'a AllocatorState) -> Self {
+        state.waiting.fetch_add(1, Ordering::AcqRel);
+        Self(state)
+    }
+}
+
+impl Drop for Parked<'_> {
+    fn drop(&mut self) {
+        self.0.waiting.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -152,8 +192,8 @@ impl Impl {
     /// - `size` --- size of each buffer to allocate
     /// - `count` --- number of buffers to allocate
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
-        let pool = ArrayQueue::new(count.get());
-        let semaphore = Semaphore::new(count.get());
+        // Capacity matches the block count, so returning a block never blocks.
+        let (ret, free) = async_channel::bounded(count.get());
 
         let buffer_size = size.get();
         let buffer_count = count.get();
@@ -180,12 +220,18 @@ impl Impl {
         let mut current_ptr = base_ptr;
         for _ in 0..buffer_count {
             let buffer = unsafe { UnownedBuffer::from_raw_parts(current_ptr, buffer_size) };
-            pool.push(buffer).expect("can't initialize allocator");
+            ret.try_send(buffer).expect("can't initialize allocator");
             current_ptr = unsafe { current_ptr.add(buffer_size) };
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
+            state: Arc::new(AllocatorState {
+                free,
+                ret,
+                waiting: AtomicUsize::new(0),
+                base_ptr,
+                layout,
+            }),
             buffer_size: size,
             // `total_size` is a product of two non-zero values, checked above.
             capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
@@ -201,50 +247,44 @@ impl Allocator for Impl {
         // is clamped instead of rejected: a capacity-sized buffer serves the
         // caller far better than the single block it would fall back to.
         let wanted = size.get().min(self.capacity.get());
+        let needed = wanted.div_ceil(self.buffer_size.get());
 
-        // Grant as many blocks as the pool can spare right now. Each failed
-        // attempt lowers the request by at least one block, so the loop always
-        // terminates, and it drops straight to the observed permit count
-        // instead of walking down one block at a time.
-        let mut count = wanted.div_ceil(self.buffer_size.get());
-        let permit = loop {
-            if count == 0 {
-                return None;
-            }
-            match self.state.semaphore.try_acquire_many(count as u32) {
-                Ok(permit) => break permit,
-                Err(_) => {
-                    let available = self.state.semaphore.available_permits();
-                    count = count.saturating_sub(1).min(available);
-                }
-            }
-        };
+        // Leave one block behind for every parked caller. `allocate_block`
+        // waits on this same channel, but `try_recv` bypasses its FIFO wake-up
+        // queue, so without the reservation a steady stream of `try_allocate`
+        // calls could starve a blocked one indefinitely. One block each is
+        // enough --- that is all a parked caller needs to make progress.
+        let state = &self.state;
+        let spare = state.free.len().saturating_sub(state.waiting.load(Ordering::Acquire));
+        let take = needed.min(spare);
 
-        let mut buffers = Vec::with_capacity(count);
-        for _ in 0..count {
-            if let Some(buf) = self.state.pool.pop() {
-                buffers.push(buf);
-            } else {
-                unreachable!("Semaphore permitted allocation but pool was empty");
+        let mut buffers = Vec::with_capacity(take);
+        while buffers.len() < take {
+            match state.free.try_recv() {
+                Ok(buffer) => buffers.push(buffer),
+                // Both counts above are snapshots, so the pool may have been
+                // drained in the meantime. Whatever was collected still stands.
+                Err(_) => break,
             }
         }
 
-        permit.forget();
+        if buffers.is_empty() {
+            return None;
+        }
 
-        let granted = wanted.min(count * self.buffer_size.get());
+        let granted = wanted.min(buffers.len() * self.buffer_size.get());
 
-        Some(Slice::new(buffers, 0..granted, Some(Arc::clone(&self.state))))
+        Some(Slice::new(buffers, 0..granted, Some(Arc::clone(state))))
     }
 
     async fn allocate_block(&self) -> Self::Buffer {
-        let permit =
-            self.state.semaphore.acquire().await.expect("allocator semaphore is never closed");
+        let _parked = Parked::enter(&self.state);
 
-        let buf = self.state.pool.pop().expect("Semaphore permitted allocation but pool was empty");
+        // The state owns both ends of the channel and outlives every slice, so
+        // the channel cannot be closed while this call can be made.
+        let buffer = self.state.free.recv().await.expect("allocator channel is never closed");
 
-        permit.forget();
-
-        Slice::new(vec![buf], 0..self.buffer_size.get(), Some(Arc::clone(&self.state)))
+        Slice::new(vec![buffer], 0..self.buffer_size.get(), Some(Arc::clone(&self.state)))
     }
 
     fn capacity(&self) -> NonZeroUsize {

@@ -76,19 +76,20 @@ impl Slice {
         self.into_iter()
     }
 
-    /// Deallocates all buffers by returning them to the allocator state (pool)
-    /// and restoring the corresponding permits on its semaphore.
+    /// Deallocates all buffers by returning them to the allocator's pool.
     ///
     /// The allocator state is provided when constructing the slice via [`Self::new`].
     fn deallocate(&mut self) {
         if let Some(state) = &self.state {
-            let count = self.buffers.len();
             for buffer in self.buffers.drain(..) {
-                // Ignore allocator drop
-                let _ = state.pool.push(buffer);
-            }
-            if count > 0 {
-                state.semaphore.add_permits(count);
+                // The channel capacity equals the number of blocks in
+                // circulation and this slice only gives back blocks it took, so
+                // it cannot be full; it cannot be closed either while `state`
+                // is alive. Keep the send outside the assertion --- a release
+                // build drops the argument of `debug_assert!` and would leak
+                // every block.
+                let returned = state.return_buffer(buffer);
+                debug_assert!(returned, "allocator pool rejected a returned block");
             }
         }
     }
