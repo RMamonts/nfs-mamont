@@ -25,10 +25,17 @@ use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
 pub struct CommandSenders<B: Buffer + 'static> {
+    /// To send messages into mount task.
     mount_sender: Sender<MountCommand<B>>,
+    /// To send messages into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
+    /// To pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task.
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+    /// To pass into mount task as part of message,
+    /// so mount task can send result back to write task
+    /// and to bypass vfs with null procedure.
     result_sender: Sender<ProcReply<B>>,
+    /// To send cookie into nlm task.
     granted_tx: Sender<Cookie>,
 }
 
@@ -76,17 +83,17 @@ where
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
         allocator: Arc<A>,
-        main_senders: CommandSenders<B>,
+        command_senders: CommandSenders<B>,
     ) -> Self {
         Self {
             readhalf,
             client_addr,
-            mount_sender: main_senders.mount_sender,
-            nlm_sender: main_senders.nlm_sender,
-            granted_tx: main_senders.granted_tx,
-            result_sender: main_senders.result_sender,
+            mount_sender: command_senders.mount_sender,
+            nlm_sender: command_senders.nlm_sender,
+            granted_tx: command_senders.granted_tx,
+            result_sender: command_senders.result_sender,
             allocator,
-            pool_sender: main_senders.pool_sender,
+            pool_sender: command_senders.pool_sender,
             _phantom: PhantomData,
         }
     }
