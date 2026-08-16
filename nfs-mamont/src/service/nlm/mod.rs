@@ -25,14 +25,15 @@ mod unlock;
 mod tests;
 
 /// The wrapper needed to notify the client.
-struct GrantNotification {
-    /// Identifies a point in the directory.
+struct PendingGrant {
+    /// Transaction identifier from the original blocking LOCK request;
+    /// echoed back to the client in the GRANTED callback.
     pub cookie: Cookie,
     /// The channel for sending the callback.
     pub granted_tx: Option<Sender<Cookie>>,
 }
 
-impl GrantNotification {
+impl PendingGrant {
     /// Creates a new GrantNotification.
     fn new(granted_tx: Option<Sender<Cookie>>, cookie: Cookie) -> Self {
         Self { granted_tx, cookie }
@@ -125,7 +126,7 @@ struct PendingLock {
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
     /// A wrapper for the cookie and a channel for sending it to the client.
-    grant_notification: GrantNotification,
+    grant_notification: PendingGrant,
 }
 
 impl PendingLock {
@@ -143,7 +144,7 @@ impl PendingLock {
         offset: u64,
         length: u64,
         opaque_handle: OpaqueHandle,
-        grant_notification: GrantNotification,
+        grant_notification: PendingGrant,
     ) -> Result<Self, Error> {
         check_caller_name(&caller_name)?;
         Ok(PendingLock {

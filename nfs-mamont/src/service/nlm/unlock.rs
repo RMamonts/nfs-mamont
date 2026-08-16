@@ -9,28 +9,31 @@ impl Unlock for NlmService {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
 
-        let mut registry = self.locks.write().await;
-
         let fh = args.lock.file_handle;
-        if registry
-            .remove_by_owner(
-                &fh,
-                &args.lock.caller_name,
-                args.lock.system_identifier,
-                args.lock.lock_offset,
-                args.lock.lock_length,
-            )
-            .is_err()
-        {
-            return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
-        }
 
-        let granted = match registry.grant_pending(&fh) {
-            Ok(granted) => granted,
-            Err(_) => return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
+        let granted_locks = {
+            let mut registry = self.locks.write().await;
+
+            if registry
+                .remove_by_owner(
+                    &fh,
+                    &args.lock.caller_name,
+                    args.lock.system_identifier,
+                    args.lock.lock_offset,
+                    args.lock.lock_length,
+                )
+                .is_err()
+            {
+                return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
+            }
+
+            match registry.grant_pending(&fh) {
+                Ok(granted_locks) => granted_locks,
+                Err(_) => return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
+            }
         };
 
-        for lock in granted {
+        for lock in granted_locks {
             if let Some(tx) = lock.grant_notification.granted_tx {
                 if let Err(e) = tx.send(lock.grant_notification.cookie).await {
                     tracing::warn!("failed to send grant callback: {}", e);

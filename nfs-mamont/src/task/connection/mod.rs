@@ -14,7 +14,7 @@ use tracing::error;
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
 use crate::nlm::cookie::Cookie;
-use crate::task::connection::read::MainSenders;
+use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::NlmCommand;
 use crate::task::ProcReply;
@@ -48,7 +48,7 @@ pub async fn new<A, V, B>(
 
     let (granted_tx, granted_rx) = async_channel::unbounded::<Cookie>();
 
-    let main_senders = MainSenders::<B>::new(
+    let main_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
         context.get_vfs_pool().sender(),
