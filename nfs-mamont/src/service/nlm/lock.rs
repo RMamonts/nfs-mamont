@@ -3,7 +3,7 @@ use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
 use async_channel::Sender;
 
-use super::{ActiveLock, PendingGrant, NlmService, PendingLock};
+use super::{ActiveLock, NlmService, PendingGrant, PendingLock};
 
 impl Lock for NlmService {
     async fn lock(&self, granted_tx: Option<Sender<Cookie>>, args: Nlm4LockArgs) -> Nlm4LockRes {
