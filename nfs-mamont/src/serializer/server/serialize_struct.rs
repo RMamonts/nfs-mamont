@@ -7,11 +7,11 @@
 
 use crate::nlm::cookie::Cookie;
 use crate::serializer::variant;
+use num_traits::ToPrimitive;
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use num_traits::ToPrimitive;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
