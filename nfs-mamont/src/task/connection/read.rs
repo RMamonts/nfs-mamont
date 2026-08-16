@@ -23,7 +23,8 @@ use crate::task::global::nlm::NlmCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
-pub struct MainSenders<B: Buffer + 'static> {
+/// Wrapper for NLM, NFS, mount command senders.
+pub struct CommandSenders<B: Buffer + 'static> {
     mount_sender: Sender<MountCommand<B>>,
     nlm_sender: Sender<NlmCommand<B>>,
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
@@ -31,7 +32,7 @@ pub struct MainSenders<B: Buffer + 'static> {
     granted_tx: Sender<Cookie>,
 }
 
-impl<B: Buffer + 'static> MainSenders<B> {
+impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
@@ -75,7 +76,7 @@ where
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
         allocator: Arc<A>,
-        main_senders: MainSenders<B>,
+        main_senders: CommandSenders<B>,
     ) -> Self {
         Self {
             readhalf,

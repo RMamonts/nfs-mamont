@@ -13,7 +13,7 @@ use crate::task::ProcReply;
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<ProcReply<B>>,
-    // The channel for sending the callback
+    /// The channel for sending the callback.
     granted_rx: async_channel::Receiver<Cookie>,
     _phantom: PhantomData<B>,
 }
@@ -54,30 +54,22 @@ impl<B: Buffer> WriteTask<B> {
                     // Use proper authentication verifier instead of None
                     let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-                    match serializer.form_reply(reply, verifier).await {
-                        Ok(_) => {
-                            // Reply successfully written to socket
-                        }
-                        Err(e) => {
-                            error!(error=%e, "write task: failed to serialize/send reply");
-                            // TODO: Consider closing connection or continuing based on error type
-                            // For now, continue processing other replies
-                        }
-                    };
+                    if let Err(e) = serializer.form_reply(reply, verifier).await {
+                        error!(error=%e, "write task: failed to serialize/send reply");
+                        // TODO: Consider closing connection or continuing based on error type
+                        // For now, continue processing other replies
+                    }
                 }
                 cookie = granted_rx.recv() => {
                     let Ok(cookie) = cookie else { continue }; // callbacks done; keep serving replies
                     let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
                     let credential = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-                    match serializer.form_call(cookie, credential, verifier).await {
-                        Ok(_) => {
-                            // Call successfully written to socket
-                        }
-                        Err(e) => {
-                            error!(error=%e, "write task: failed to serialize/send reply");
-                        }
-                    };
+                    if let Err(e) = serializer.form_call(cookie, credential, verifier).await {
+                        error!(error=%e, "write task: failed to serialize/send reply");
+                        // TODO: Consider closing connection or continuing based on error type
+                        // For now, continue processing other replies
+                    }
                 }
             }
         }
