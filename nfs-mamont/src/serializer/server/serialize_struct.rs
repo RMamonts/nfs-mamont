@@ -237,7 +237,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         cred: OpaqueAuth,
         verifier: OpaqueAuth,
     ) -> io::Result<()> {
-        u32(&mut self.buffer, rand::random::<u32>())?;
+        u32(&mut self.buffer, SystemTime::now().duration_since(UNIX_EPOCH))?;
         u32(&mut self.buffer, RpcBody::Call as u32)?;
         u32(&mut self.buffer, RPC_VERSION)?;
         u32(&mut self.buffer, NLM_PROGRAM)?;
