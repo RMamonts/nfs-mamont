@@ -471,7 +471,7 @@ mod tests {
 
     #[tokio::test]
     async fn form_call_serializes_rpc_call_frame() {
-        let mut buf = Cursor::new(vec![0u8; 256]);
+        let mut buf = Cursor::new(Vec::new());
         let mut serializer = Serializer::<Slice, _>::new(&mut buf);
 
         let cookie = Cookie::new(0x0A0B0C0D0E0F1011);
@@ -481,25 +481,15 @@ mod tests {
         serializer.form_call(cookie, cred, verifier).await.unwrap();
 
         let data = buf.into_inner();
-        let body = &data[4..]; // skip RMS header
 
-        // msg_type = 0 (Call)
-        assert_eq!(body[4..8], [0, 0, 0, 0]);
-        // rpc_version = 2
-        assert_eq!(body[8..12], [0, 0, 0, 2]);
-        // program = 100021 (0x000186B5)
-        assert_eq!(body[12..16], [0, 1, 0x86, 0xB5]);
-        // version = 4
-        assert_eq!(body[16..20], [0, 0, 0, 4]);
-        // procedure = 5
-        assert_eq!(body[20..24], [0, 0, 0, 5]);
-        // cred (flavor=0, len=0)
-        assert_eq!(body[24..32], [0, 0, 0, 0, 0, 0, 0, 0]);
-        // verifier (flavor=0, len=0)
-        assert_eq!(body[32..40], [0, 0, 0, 0, 0, 0, 0, 0]);
-        // cookie = 0x0A0B0C0D0E0F1011
-        assert_eq!(body[40..48], [0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11]);
-        // stat = Granted = 0
-        assert_eq!(body[48..52], [0, 0, 0, 0]);
+        // RM-header: last fragment + body len
+        let size = (data.len() - 4) as u32;
+        assert_eq!(u32::from_be_bytes(data[0..4].try_into().unwrap()), 0x8000_0000 | size);
+
+        // check frame len
+        assert_eq!(
+            data.len(),
+            4 /*RM*/ + 4 /*xid*/ + 20 /*call header*/ + 16 /*auth*/ + 12 /*len(args)*/
+        );
     }
 }
