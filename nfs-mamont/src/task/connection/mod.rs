@@ -48,16 +48,14 @@ pub async fn new<A, V, B>(
 
     let (granted_tx, granted_rx) = async_channel::unbounded::<Cookie>();
 
-    let main_senders = CommandSenders::<B>::new(
+    let command_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
-        result_sender.clone(),
-        context.get_allocator(),
         context.get_vfs_pool().sender(),
         result_sender.clone(),
         granted_tx,
     );
-    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_write_allocator(), main_senders)
+    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
         .spawn();
 
     write::WriteTask::<B>::new(writehalf, result_receiver, granted_rx).spawn();
