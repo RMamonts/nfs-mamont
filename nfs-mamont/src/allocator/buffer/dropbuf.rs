@@ -38,22 +38,22 @@ impl UnownedDroppableBuffer {
         Self { ptr, len, state }
     }
 
+    /// Strips buffers into it's inner parts
+    ///
+    /// # Safety
+    ///
+    /// - there should be no attempts to deallocate received `ptr`, because buffer does not own that part of memory;
+    /// - deallocation of memory should happen by constructing new instance of `UnownedDroppableBuffer` and sending it with `AllocatorState``
+    pub unsafe fn into_raw_parts(self) -> (*mut u8, usize, Arc<AllocatorState<Self>>) {
+        (self.ptr, self.len, self.state)
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
-    }
-}
-
-impl Drop for UnownedDroppableBuffer {
-    fn drop(&mut self) {
-        let clone = unsafe {
-            UnownedDroppableBuffer::from_raw_parts(self.ptr, self.len, self.state.clone())
-        };
-        let _ = self.state.pool.push(clone);
-        self.state.semaphore.add_permits(1);
     }
 }
 
