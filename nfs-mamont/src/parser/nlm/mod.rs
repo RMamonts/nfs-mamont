@@ -53,6 +53,7 @@ pub(crate) mod xdr {
         let mut buf = Vec::new();
         serializer::u32(&mut buf, NFS3_FHSIZE as u32).unwrap();
         buf.write_all(bytes).unwrap();
+        serializer::padding(&mut buf, bytes.len()).unwrap();
         buf
     }
 
@@ -92,6 +93,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
+    use crate::consts::nfsv3::NFS3_FHSIZE;
 
     fn make_lock_bytes(
         caller_name: &str,
@@ -113,7 +115,7 @@ mod tests {
 
     #[test]
     fn parse_lock_success() {
-        let data = make_lock_bytes("host", &[0xAB; 8], &[0xCD; 4], 12345, 0, 100);
+        let data = make_lock_bytes("host", &[0xAB; NFS3_FHSIZE], &[0xCD; 4], 12345, 0, 100);
         let lock = parse_lock(&mut Cursor::new(data)).unwrap();
 
         assert_eq!(lock.caller_name, "host");
@@ -123,7 +125,7 @@ mod tests {
 
     #[test]
     fn parse_lock_empty_caller_name() {
-        let data = make_lock_bytes("", &[0; 8], &[0; 4], 0, 0, 0);
+        let data = make_lock_bytes("", &[0; NFS3_FHSIZE], &[0; 4], 0, 0, 0);
         assert!(parse_lock(&mut Cursor::new(data)).is_err());
     }
 

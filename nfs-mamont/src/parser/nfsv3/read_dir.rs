@@ -29,10 +29,12 @@ mod tests {
     fn test_readdir() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
-            // dir file handle length = 8
-            0x00, 0x00, 0x00, 0x08,
-            // dir file handle bytes
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            // dir file handle length = 9
+            0x00, 0x00, 0x00, 0x09,
+            // dir file handle bytes: backend index + object payload
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            // xdr padding of the file handle
+            0x00, 0x00, 0x00,
             // cookie = 4096 (u64, BE)
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
             // cookie_verifier = 8192 bytes marker
@@ -43,7 +45,7 @@ mod tests {
 
         let result = super::args(&mut Cursor::new(DATA)).unwrap();
 
-        assert_eq!(result.dir.0, [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(result.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         assert_eq!(result.cookie, read_dir::Cookie::new(4096));
         assert_eq!(
             result.cookie_verifier,
@@ -56,12 +58,10 @@ mod tests {
     fn test_readdir_unaligned_after_fh() {
         #[rustfmt::skip]
         const DATA: &[u8] = &[
-            // dir file handle length = 7
-            0x00, 0x00, 0x00, 0x07,
+            // dir file handle length = 8, which does not match NFS3_FHSIZE
+            0x00, 0x00, 0x00, 0x08,
             // dir file handle bytes
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-            // bad/unexpected padding tail to provoke parser error
-            0x00,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
             // cookie = 4096 (u64, BE)
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
             // cookie_verifier = 8192 bytes marker

@@ -23,6 +23,7 @@ pub fn lock(src: &mut impl Read) -> Result<Nlm4LockArgs> {
 mod tests {
     use std::io::Cursor;
 
+    use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::parser::nlm::xdr;
 
     #[test]
@@ -32,7 +33,7 @@ mod tests {
         data.extend(xdr::bool_val(true));
         data.extend(xdr::bool_val(false));
         data.extend(xdr::string("client"));
-        data.extend(xdr::handle(&[0x11; 8]));
+        data.extend(xdr::handle(&[0x11; NFS3_FHSIZE]));
         data.extend(xdr::opaque(&[0xAA; 4]));
         data.extend(xdr::i32_val(99));
         data.extend(xdr::u64_val(0));
