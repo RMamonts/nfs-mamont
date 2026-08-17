@@ -12,6 +12,7 @@ use nfs_mamont::vfs::file;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::set_attr;
 use nfs_mamont::vfs::write;
+use nfs_mamont::BackendId;
 
 use crate::fs_map::FsMap;
 
@@ -63,6 +64,14 @@ impl MirrorFS {
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos()
                 as u64;
         Self { fsmap: RwLock::new(FsMap::new(root)), generation }
+    }
+
+    /// Stamps `backend_id` into every handle this file system hands out.
+    ///
+    /// Call it with the index returned when the file system is registered in the
+    /// server, before any handle leaves the file system.
+    pub async fn set_backend_id(&self, backend_id: BackendId) {
+        self.fsmap.write().await.set_backend_id(backend_id);
     }
 
     /// Returns the root handle.
