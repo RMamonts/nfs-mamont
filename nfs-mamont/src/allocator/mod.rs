@@ -21,6 +21,7 @@ use tokio::sync::Semaphore;
 use crate::allocator::buffer::RawBuffer;
 
 pub use buffer::UnownedBuffer;
+pub use impl2::Impl2;
 pub use slice::Slice;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
