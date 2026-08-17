@@ -26,10 +26,8 @@ async fn main() -> std::io::Result<()> {
     let args = args::Args::parse();
 
     let config = config::load_config(&args.config_path)?;
-    let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
 
-    let context = ServerContext::new(
-        fs.clone(),
+    let context = ServerContext::<_, fs::MirrorFS, _>::new(
         Arc::new(Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count)),
         Arc::new(Impl::new(
             config.allocator.write_buffer_size,
@@ -38,7 +36,11 @@ async fn main() -> std::io::Result<()> {
         config.vfs_pool_size,
     );
 
-    info!(export_root = %config.export_root.display(), bind = %args.addr, "mirrorfs startup");
+    // Keep a registry handle: the context itself is moved into the server task, while
+    // backends are attached (and may be detached) after the server has started.
+    let backends = context.backends();
+
+    info!(bind = %args.addr, "mirrorfs startup");
 
     let listener = TcpListener::bind(&args.addr).await?;
 
@@ -47,6 +49,18 @@ async fn main() -> std::io::Result<()> {
 
     let server_handle =
         tokio::spawn(handle_forever(listener, context, mount_service.clone(), nlm_service));
+
+    let fs = Arc::new(fs::MirrorFS::new(config.export_root.clone()));
+    let backend_id = backends
+        .add(fs.clone())
+        .ok_or_else(|| std::io::Error::other("no free backend slot left"))?;
+    fs.set_backend_id(backend_id).await;
+
+    info!(
+        export_root = %config.export_root.display(),
+        backend = backend_id,
+        "mirrorfs backend attached"
+    );
 
     for export in &config.exports {
         let root_handle = fs.handle_for_path(&export.local_path).await.map_err(|error| {

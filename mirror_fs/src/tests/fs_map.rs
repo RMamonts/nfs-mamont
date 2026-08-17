@@ -72,8 +72,37 @@ fn decode_handle_zero_returns_bad_file_handle() {
     let tempdir = tempfile::tempdir().unwrap();
     let fs_map = FsMap::new(tempdir.path().to_path_buf());
 
-    let zero_handle = file::Handle([0u8; 8]);
+    let zero_handle = file::Handle::new(0, [0u8; file::PAYLOAD_SIZE]);
     assert_eq!(fs_map.path_for_handle(&zero_handle).unwrap_err(), vfs::Error::BadFileHandle);
+}
+
+#[test]
+fn handles_carry_the_backend_id() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let mut fs_map = FsMap::new(tempdir.path().to_path_buf());
+    fs_map.set_backend_id(7);
+
+    let child = tempdir.path().join("file.txt");
+    std::fs::write(&child, b"hello").unwrap();
+    let handle = fs_map.ensure_handle_for_path(&child).unwrap();
+
+    assert_eq!(fs_map.root_handle().backend_id(), 7);
+    assert_eq!(handle.backend_id(), 7);
+    assert_eq!(fs_map.path_for_handle(&handle).unwrap(), child);
+}
+
+#[test]
+fn handle_of_another_backend_is_rejected() {
+    let tempdir = tempfile::tempdir().unwrap();
+    let mut fs_map = FsMap::new(tempdir.path().to_path_buf());
+    fs_map.set_backend_id(1);
+
+    let child = tempdir.path().join("file.txt");
+    std::fs::write(&child, b"hello").unwrap();
+    let handle = fs_map.ensure_handle_for_path(&child).unwrap();
+
+    let foreign = file::Handle::new(2, handle.payload());
+    assert_eq!(fs_map.path_for_handle(&foreign).unwrap_err(), vfs::Error::BadFileHandle);
 }
 
 #[test]

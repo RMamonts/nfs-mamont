@@ -1,6 +1,7 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
 mod allocator;
+mod backend;
 pub mod consts;
 mod context;
 pub mod mount;
@@ -25,7 +26,9 @@ use crate::{mount::Mount, task::connection};
 
 use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use vfs::file::BackendId;
 
 /// Initializes tracing logs.
 ///

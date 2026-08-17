@@ -4,11 +4,15 @@ use std::path::{Path, PathBuf};
 
 use nfs_mamont::vfs;
 use nfs_mamont::vfs::file;
+use nfs_mamont::BackendId;
 
 /// Maps mirror paths to opaque VFS handles.
 #[derive(Debug)]
 pub struct FsMap {
     root: PathBuf,
+    /// Index this file system is registered under in the server, stamped into every
+    /// handle it hands out so the server can route requests back to it.
+    backend_id: BackendId,
     next_id: u64,
     id_to_key: HashMap<u64, ObjectKey>,
     key_to_id: HashMap<ObjectKey, u64>,
@@ -26,6 +30,7 @@ impl FsMap {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
+            backend_id: 0,
             next_id: 2,
             id_to_key: HashMap::new(),
             key_to_id: HashMap::new(),
@@ -34,12 +39,21 @@ impl FsMap {
         }
     }
 
+    /// Sets the backend index handed out in file handles.
+    ///
+    /// Must be called right after the file system is registered in the server and
+    /// before any handle is given out, otherwise the server routes requests for those
+    /// handles to a different backend.
+    pub fn set_backend_id(&mut self, backend_id: BackendId) {
+        self.backend_id = backend_id;
+    }
+
     pub fn root_handle(&self) -> file::Handle {
-        Self::encode_handle(1)
+        self.encode_handle(1)
     }
 
     pub fn path_for_handle(&self, handle: &file::Handle) -> Result<PathBuf, vfs::Error> {
-        let id = Self::decode_handle(handle)?;
+        let id = self.decode_handle(handle)?;
         if id == 1 {
             return Ok(self.root.clone());
         }
@@ -72,7 +86,7 @@ impl FsMap {
         if let Some(id) = self.key_to_id.get(&key).copied() {
             self.key_to_paths.entry(key).or_default().insert(relative.clone());
             self.relative_to_key.insert(relative, key);
-            return Ok(Self::encode_handle(id));
+            return Ok(self.encode_handle(id));
         }
 
         let id = self.next_id;
@@ -87,7 +101,7 @@ impl FsMap {
         self.key_to_id.insert(key, id);
         self.key_to_paths.insert(key, paths);
         self.relative_to_key.insert(relative, key);
-        Ok(Self::encode_handle(id))
+        Ok(self.encode_handle(id))
     }
 
     pub fn remove_path(&mut self, path: &Path) {
@@ -165,8 +179,8 @@ impl FsMap {
         }
     }
 
-    fn encode_handle(id: u64) -> file::Handle {
-        file::Handle(id.to_be_bytes())
+    fn encode_handle(&self, id: u64) -> file::Handle {
+        file::Handle::new(self.backend_id, id.to_be_bytes())
     }
 
     fn object_key_for_path(path: &Path) -> Result<ObjectKey, vfs::Error> {
@@ -174,8 +188,12 @@ impl FsMap {
         Ok(ObjectKey { dev: metadata.dev(), ino: metadata.ino() })
     }
 
-    fn decode_handle(handle: &file::Handle) -> Result<u64, vfs::Error> {
-        let id = u64::from_be_bytes(handle.0);
+    fn decode_handle(&self, handle: &file::Handle) -> Result<u64, vfs::Error> {
+        if handle.backend_id() != self.backend_id {
+            return Err(vfs::Error::BadFileHandle);
+        }
+
+        let id = u64::from_be_bytes(handle.payload());
         if id == 0 {
             Err(vfs::Error::BadFileHandle)
         } else {
