@@ -116,14 +116,20 @@ impl MirrorFS {
     }
 
     fn io_error_to_vfs(error: &std::io::Error) -> vfs::Error {
+        // ErrorKind::{DirectoryNotEmpty, IsADirectory, NotADirectory} are stable only since
+        // Rust 1.83, so these cases are matched by errno instead.
+        match error.raw_os_error() {
+            Some(libc::ENOTEMPTY) => return vfs::Error::NotEmpty,
+            Some(libc::EISDIR) => return vfs::Error::IsDir,
+            Some(libc::ENOTDIR) => return vfs::Error::NotDir,
+            _ => {}
+        }
+
         match error.kind() {
             ErrorKind::NotFound => vfs::Error::NoEntry,
             ErrorKind::PermissionDenied => vfs::Error::Access,
             ErrorKind::AlreadyExists => vfs::Error::Exist,
             ErrorKind::InvalidInput | ErrorKind::InvalidData => vfs::Error::InvalidArgument,
-            ErrorKind::DirectoryNotEmpty => vfs::Error::NotEmpty,
-            ErrorKind::IsADirectory => vfs::Error::IsDir,
-            ErrorKind::NotADirectory => vfs::Error::NotDir,
             ErrorKind::WriteZero => vfs::Error::NoSpace,
             _ => vfs::Error::IO,
         }

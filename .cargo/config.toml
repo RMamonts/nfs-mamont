@@ -1,0 +1,4 @@
+# Keep dependency resolution within the MSRV declared in Cargo.toml (rust-version).
+# Honoured by Cargo 1.84+; older Cargo ignores this key.
+[resolver]
+incompatible-rust-versions = "fallback"

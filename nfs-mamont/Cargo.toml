@@ -25,4 +25,4 @@ tracing-subscriber.workspace = true
 async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
-libc = { version = "0.2.186", optional = true }
+libc = { version = "0.2", optional = true }
