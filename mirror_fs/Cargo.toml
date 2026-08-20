@@ -19,12 +19,13 @@ async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
 
-clap = { version = "4.5.61", features = ["derive"] }
-serde = { version = "1.0.228", features = ["derive"] }
-toml = "0.9.6"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+libc = "0.2"
 
 # Internal dependencies
 nfs-mamont.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile = "3"

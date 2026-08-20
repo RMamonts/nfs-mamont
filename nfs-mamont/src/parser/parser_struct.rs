@@ -15,6 +15,7 @@
 
 use std::cmp::min;
 use std::io::{self, ErrorKind};
+use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
