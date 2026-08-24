@@ -69,11 +69,10 @@ pub struct Serializer<B: Buffer, T: AsyncWrite + Unpin> {
 impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
-        Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
+        Self::with_capacity(writer, DEFAULT_SIZE)
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    #[allow(dead_code)]
     fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
