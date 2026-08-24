@@ -371,7 +371,7 @@ dependencies = [
  "byteorder",
  "clap",
  "crossbeam-queue",
- "nfs-mamont",
+ "nfs-mamont 0.0.0 (git+https://github.com/RMamonts/nfs-mamont.git?rev=bd67fa28155e182dd5b369a772eb1be541790ebf)",
  "num-derive",
  "num-traits",
  "serde",
@@ -391,6 +391,22 @@ dependencies = [
  "byteorder",
  "crossbeam-queue",
  "libc",
+ "num-derive",
+ "num-traits",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "trait-variant",
+]
+
+[[package]]
+name = "nfs-mamont"
+version = "0.0.0"
+source = "git+https://github.com/RMamonts/nfs-mamont.git?rev=bd67fa28155e182dd5b369a772eb1be541790ebf#bd67fa28155e182dd5b369a772eb1be541790ebf"
+dependencies = [
+ "async-channel",
+ "byteorder",
+ "crossbeam-queue",
  "num-derive",
  "num-traits",
  "tokio",
