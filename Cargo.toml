@@ -21,4 +21,6 @@ crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
 
 # Internal dependencies
-nfs-mamont.path = "nfs-mamont"
+# Bump `rev` when mirrorfs is ready to move to a newer library revision.
+# for local tests can be used nfs-mamont.path = "nfs-mamont"
+nfs-mamont = { git = "https://github.com/RMamonts/nfs-mamont.git", rev = "bd67fa28155e182dd5b369a772eb1be541790ebf" }
