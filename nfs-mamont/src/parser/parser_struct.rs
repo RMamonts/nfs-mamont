@@ -639,14 +639,18 @@ where
         )));
     }
 
-    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
-    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut buffer_data = alloc.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
-
     // Fill the allocated buffer chunk by chunk; `read_body_exact` consumes the
     // buffered window first and reads the rest directly from the socket.
+    let mut buffer_data = match NonZeroUsize::new(size) {
+        Some(non_zero_size) => {
+            alloc.allocate(non_zero_size).await.ok_or_else(|| {
+                Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+            })?
+        },
+        None => A::Buffer::empty()
+    };
+
+
     let mut left = size;
     for chunk in buffer_data.chunks_mut() {
         if left == 0 {
