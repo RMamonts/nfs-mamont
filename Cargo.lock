@@ -63,11 +63,22 @@ dependencies = [
 
 [[package]]
 name = "async-channel"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2114d64672151c0c5eaa5e131ec84a74f06e1e559830dabba01ca30605d66319"
+dependencies = [
+ "concurrent-queue 1.2.4",
+ "event-listener 2.5.3",
+ "futures-core",
+]
+
+[[package]]
+name = "async-channel"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "924ed96dd52d1b75e9c1a3e6275715fd320f5f9439fb5a4a11fa51f4221158d2"
 dependencies = [
- "concurrent-queue",
+ "concurrent-queue 2.5.0",
  "event-listener-strategy",
  "futures-core",
  "pin-project-lite",
@@ -96,6 +107,12 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+
+[[package]]
+name = "cache-padded"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "981520c98f422fcc584dc1a95c334e6953900b9106bc47a9839b81790009eb21"
 
 [[package]]
 name = "cfg-if"
@@ -151,6 +168,15 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "concurrent-queue"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af4780a44ab5696ea9e28294517f1fffb421a83a25af521333c838635509db9c"
+dependencies = [
+ "cache-padded",
+]
+
+[[package]]
+name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
@@ -191,6 +217,12 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
+version = "2.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
+
+[[package]]
+name = "event-listener"
 version = "5.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
@@ -205,7 +237,7 @@ version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
- "event-listener",
+ "event-listener 5.4.2",
  "pin-project-lite",
 ]
 
@@ -324,7 +356,7 @@ dependencies = [
 name = "mirrorfs"
 version = "0.0.0"
 dependencies = [
- "async-channel",
+ "async-channel 1.6.1",
  "byteorder",
  "clap",
  "crossbeam-queue",
@@ -345,7 +377,7 @@ dependencies = [
 name = "nfs-mamont"
 version = "0.0.0"
 dependencies = [
- "async-channel",
+ "async-channel 1.6.1",
  "byteorder",
  "crossbeam-queue",
  "libc",
@@ -362,7 +394,7 @@ name = "nfs-mamont"
 version = "0.0.0"
 source = "git+https://github.com/RMamonts/nfs-mamont.git?rev=e7d4d39ed59cc344f356685f34299e5e6b469529#e7d4d39ed59cc344f356685f34299e5e6b469529"
 dependencies = [
- "async-channel",
+ "async-channel 2.5.0",
  "byteorder",
  "crossbeam-queue",
  "num-derive",
