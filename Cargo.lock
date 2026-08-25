@@ -329,7 +329,7 @@ dependencies = [
  "clap",
  "crossbeam-queue",
  "libc",
- "nfs-mamont 0.0.0 (git+https://github.com/RMamonts/nfs-mamont.git?rev=bd67fa28155e182dd5b369a772eb1be541790ebf)",
+ "nfs-mamont 0.0.0 (git+https://github.com/RMamonts/nfs-mamont.git?rev=e7d4d39ed59cc344f356685f34299e5e6b469529)",
  "num-derive",
  "num-traits",
  "serde",
@@ -360,7 +360,7 @@ dependencies = [
 [[package]]
 name = "nfs-mamont"
 version = "0.0.0"
-source = "git+https://github.com/RMamonts/nfs-mamont.git?rev=bd67fa28155e182dd5b369a772eb1be541790ebf#bd67fa28155e182dd5b369a772eb1be541790ebf"
+source = "git+https://github.com/RMamonts/nfs-mamont.git?rev=e7d4d39ed59cc344f356685f34299e5e6b469529#e7d4d39ed59cc344f356685f34299e5e6b469529"
 dependencies = [
  "async-channel",
  "byteorder",
