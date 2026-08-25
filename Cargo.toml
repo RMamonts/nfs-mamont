@@ -23,4 +23,4 @@ trait-variant = "0.1.2"
 # Internal dependencies
 # Bump `rev` when mirrorfs is ready to move to a newer library revision.
 # for local tests can be used nfs-mamont.path = "nfs-mamont"
-nfs-mamont = { git = "https://github.com/RMamonts/nfs-mamont.git", rev = "bd67fa28155e182dd5b369a772eb1be541790ebf" }
+nfs-mamont = { git = "https://github.com/RMamonts/nfs-mamont.git", rev = "e7d4d39ed59cc344f356685f34299e5e6b469529" }
