@@ -150,14 +150,14 @@ pub struct DirOpArgs {
     pub name: file::Name,
 }
 
-pub trait Vfs<B: Buffer>:
+pub trait Vfs<BR: Buffer, BW: Buffer>:
     get_attr::GetAttr
     + set_attr::SetAttr
     + lookup::Lookup
     + access::Access
     + read_link::ReadLink
-    + read::Read<B>
-    + write::Write<B>
+    + read::Read<BR>
+    + write::Write<BW>
     + create::Create
     + mk_dir::MkDir
     + symlink::Symlink
@@ -175,16 +175,17 @@ pub trait Vfs<B: Buffer>:
 {
 }
 
-impl<T, B> Vfs<B> for T
+impl<T, BR, BW> Vfs<BR, BW> for T
 where
-    B: Buffer,
+    BR: Buffer,
+    BW: Buffer,
     T: get_attr::GetAttr
         + set_attr::SetAttr
         + lookup::Lookup
         + access::Access
         + read_link::ReadLink
-        + read::Read<B>
-        + write::Write<B>
+        + read::Read<BR>
+        + write::Write<BW>
         + create::Create
         + mk_dir::MkDir
         + symlink::Symlink

@@ -27,7 +27,7 @@ async fn main() -> std::io::Result<()> {
 
     let config = config::load_config(&args.config_path)?;
 
-    let context = ServerContext::<_, fs::MirrorFS, _>::new(
+    let context = ServerContext::<_, _, fs::MirrorFS, _, _>::new(
         Arc::new(Impl::new(config.allocator.read_buffer_size, config.allocator.read_buffer_count)),
         Arc::new(Impl::new(
             config.allocator.write_buffer_size,

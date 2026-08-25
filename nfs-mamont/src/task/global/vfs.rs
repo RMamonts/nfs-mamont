@@ -12,11 +12,11 @@ use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
+pub type VfsCommand<BR, BW> = (NfsArgWrapper<BW>, Sender<ProcReply<BR>>);
 /// Sender to enqueue work in the pool.
-pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
+pub type VfsCommandSender<BR, BW> = Sender<VfsCommand<BR, BW>>;
 /// Receiver from the pool, each worker competes for the same command stream.
-type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
+type VfsCommandReceiver<BR, BW> = Receiver<VfsCommand<BR, BW>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -69,7 +69,10 @@ fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
 ///
 /// Used when the procedure cannot reach a backend at all, so no backend-provided
 /// attributes are available.
-fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
+fn failed_response<BR: Buffer, BW: Buffer>(
+    proc: &NfsArguments<BW>,
+    error: vfs::Error,
+) -> NfsRes<BR> {
     let wcc_data = || vfs::WccData { before: None, after: None };
 
     match proc {
@@ -137,12 +140,12 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 }
 
 /// Fixed-size pool of [`VfsTask`] workers fed from a single unbounded command channel.
-pub struct VfsPool<B: Buffer> {
+pub struct VfsPool<BR: Buffer, BW: Buffer> {
     /// Sender to enqueue work in the pool for execution.
-    sender: VfsCommandSender<B>,
+    sender: VfsCommandSender<BR, BW>,
 }
 
-impl<B: Buffer + 'static> VfsPool<B> {
+impl<BR: Buffer + 'static, BW: Buffer + 'static> VfsPool<BR, BW> {
     /// Creates a new [`VfsPool`] with the given number of workers.
     ///
     /// # Parameters
@@ -156,10 +159,10 @@ impl<B: Buffer + 'static> VfsPool<B> {
     /// A new [`VfsPool`] with the given number of workers.
     pub fn new<A, V>(num: NonZeroUsize, backends: BackendRegistry<V>, allocator: Arc<A>) -> Self
     where
-        A: Allocator<Buffer = B> + Send + Sync + 'static,
-        V: Vfs<B> + Send + Sync + 'static,
+        A: Allocator<Buffer = BR> + Send + Sync + 'static,
+        V: Vfs<BR, BW> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let (tx, rx) = async_channel::unbounded::<VfsCommand<BR, BW>>();
 
         (0..num.get()).for_each(|_| {
             let rx_clone = rx.clone();
@@ -170,12 +173,12 @@ impl<B: Buffer + 'static> VfsPool<B> {
     }
 
     /// Returns a clone of the command sender for enqueueing work in the pool.
-    pub fn sender(&self) -> VfsCommandSender<B> {
+    pub fn sender(&self) -> VfsCommandSender<BR, BW> {
         self.sender.clone()
     }
 }
 
-impl<B: Buffer> Drop for VfsPool<B> {
+impl<BR: Buffer, BW: Buffer> Drop for VfsPool<BR, BW> {
     /// Closes the pool's sender so workers stop after channel is empty.
     fn drop(&mut self) {
         self.sender.close();
@@ -183,25 +186,27 @@ impl<B: Buffer> Drop for VfsPool<B> {
 }
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-pub struct VfsTask<A, V, B>
+pub struct VfsTask<A, V, BR, BW>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    A: Allocator<Buffer = BR> + Send + Sync + 'static,
+    BR: Buffer,
+    BW: Buffer,
+    V: vfs::Vfs<BR, BW> + Send + Sync + 'static,
 {
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
     /// Allocator used for read buffers.
     allocator: Arc<A>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
-    command_receiver: VfsCommandReceiver<B>,
+    command_receiver: VfsCommandReceiver<BR, BW>,
 }
 
-impl<A, V, B> VfsTask<A, V, B>
+impl<A, V, BR, BW> VfsTask<A, V, BR, BW>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    A: Allocator<Buffer = BR> + Send + Sync + 'static,
+    BR: Buffer + 'static,
+    BW: Buffer + 'static,
+    V: vfs::Vfs<BR, BW> + Send + Sync + 'static,
 {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
@@ -217,7 +222,7 @@ where
     pub fn new(
         backends: BackendRegistry<V>,
         allocator: Arc<A>,
-        command_receiver: VfsCommandReceiver<B>,
+        command_receiver: VfsCommandReceiver<BR, BW>,
     ) -> Self {
         Self { backends, allocator, command_receiver }
     }
@@ -274,7 +279,7 @@ where
     }
 
     /// Runs the procedure against `backend` and wraps its result.
-    async fn execute(&self, proc: NfsArguments<B>, backend: Arc<V>) -> NfsRes<B> {
+    async fn execute(&self, proc: NfsArguments<BW>, backend: Arc<V>) -> NfsRes<BR> {
         match proc {
             NfsArguments::Null => NfsRes::Null,
             NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
@@ -284,7 +289,7 @@ where
             NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args).await),
             NfsArguments::Read(args) => {
                 let data_result = if args.count == 0 {
-                    Ok(B::empty())
+                    Ok(BR::empty())
                 } else {
                     let requested_size = NonZeroUsize::new(args.count as usize).unwrap();
 
@@ -320,7 +325,7 @@ where
     }
 
     /// Static label for logging/tracing for the given procedure variant.
-    fn proc_name(proc: &NfsArguments<B>) -> &'static str {
+    fn proc_name(proc: &NfsArguments<BW>) -> &'static str {
         match proc {
             NfsArguments::Null => "NULL",
             NfsArguments::GetAttr(_) => "GETATTR",
@@ -348,7 +353,7 @@ where
     }
 
     /// Returns the domain error when the NFS result variant is `Err`, if present.
-    fn error_from_response(response: &NfsRes<B>) -> Option<vfs::Error> {
+    fn error_from_response(response: &NfsRes<BR>) -> Option<vfs::Error> {
         match response {
             NfsRes::Null => None,
             NfsRes::GetAttr(Err(err)) => Some(err.error),
@@ -441,7 +446,9 @@ mod tests {
     fn failed_response_keeps_the_procedure_variant() {
         let proc = NfsArguments::<Slice>::GetAttr(get_attr::Args { file: handle(0) });
 
-        let NfsRes::GetAttr(Err(fail)) = failed_response(&proc, vfs::Error::StaleFile) else {
+        let NfsRes::GetAttr(Err(fail)): NfsRes<Slice> =
+            failed_response(&proc, vfs::Error::StaleFile)
+        else {
             panic!("expected a failed GETATTR response");
         };
         assert_eq!(fail.error, vfs::Error::StaleFile);

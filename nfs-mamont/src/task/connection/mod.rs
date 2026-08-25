@@ -22,15 +22,17 @@ mod read;
 mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new<A, V, B>(
+pub async fn new<AR, AW, V, BR, BW>(
     socket: TcpStream,
-    mount_sender: async_channel::Sender<MountCommand<B>>,
-    nlm_sender: async_channel::Sender<NlmCommand<B>>,
-    context: &ServerContext<A, V, B>,
+    mount_sender: async_channel::Sender<MountCommand<BR>>,
+    nlm_sender: async_channel::Sender<NlmCommand<BR>>,
+    context: &ServerContext<AR, AW, V, BR, BW>,
 ) where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer + 'static,
-    V: Vfs<B> + Send + Sync + 'static,
+    AR: Allocator<Buffer = BR> + Send + Sync + 'static,
+    BR: Buffer + 'static,
+    AW: Allocator<Buffer = BW> + Send + Sync + 'static,
+    BW: Buffer + 'static,
+    V: Vfs<BR, BW> + Send + Sync + 'static,
 {
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
@@ -41,10 +43,10 @@ pub async fn new<A, V, B>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<BR>>();
     // channel for request
 
-    read::ReadTask::<A, B>::new(
+    read::ReadTask::<AW, BR, BW>::new(
         readhalf,
         peer_addr,
         mount_sender,
@@ -55,5 +57,5 @@ pub async fn new<A, V, B>(
     )
     .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<BR>::new(writehalf, result_receiver).spawn();
 }
