@@ -1,5 +1,4 @@
 use std::io;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -24,38 +23,42 @@ use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
-pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
+pub struct ReadTask<
+    AW: Allocator + Send + Sync + 'static,
+    BR: Buffer,
+    BW: Buffer = <AW as Allocator>::Buffer,
+> {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     // to send messages into mount task
-    mount_sender: Sender<MountCommand<B>>,
+    mount_sender: Sender<MountCommand<BR>>,
     // to send messages into nlm task
-    nlm_sender: Sender<NlmCommand<B>>,
+    nlm_sender: Sender<NlmCommand<BR>>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
     // to bypass vfs with null procedure
-    result_sender: Sender<ProcReply<B>>,
-    allocator: Arc<A>,
+    result_sender: Sender<ProcReply<BR>>,
+    allocator: Arc<AW>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
-    pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
-    _phantom: PhantomData<B>,
+    pool_sender: Sender<(NfsArgWrapper<BW>, Sender<ProcReply<BR>>)>,
 }
 
-impl<A, B> ReadTask<A, B>
+impl<A, BR, BW> ReadTask<A, BR, BW>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer + 'static,
+    A: Allocator<Buffer = BW> + Send + Sync + 'static,
+    BW: Buffer + 'static,
+    BR: Buffer + 'static,
 {
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        mount_sender: Sender<MountCommand<B>>,
-        nlm_sender: Sender<NlmCommand<B>>,
-        result_sender: Sender<ProcReply<B>>,
+        mount_sender: Sender<MountCommand<BR>>,
+        nlm_sender: Sender<NlmCommand<BR>>,
+        result_sender: Sender<ProcReply<BR>>,
         allocator: Arc<A>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        pool_sender: Sender<(NfsArgWrapper<BW>, Sender<ProcReply<BR>>)>,
     ) -> Self {
         Self {
             readhalf,
@@ -65,7 +68,6 @@ where
             result_sender,
             allocator,
             pool_sender,
-            _phantom: PhantomData,
         }
     }
 
@@ -76,7 +78,7 @@ where
     /// If called outside of tokio runtime context.
     pub fn spawn(self)
     where
-        B: 'static,
+        BW: 'static,
     {
         tokio::spawn(async move { self.run().await });
     }

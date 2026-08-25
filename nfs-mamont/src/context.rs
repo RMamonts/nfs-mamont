@@ -25,32 +25,36 @@ use crate::vfs::file::BackendId;
 /// let id = backends.add(Arc::new(MyFs::new())).expect("no free backend slot");
 /// backends.remove(id);
 /// ```
-pub struct ServerContext<A, V, B>
+pub struct ServerContext<AR, AW, V, BR, BW>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    AR: Allocator<Buffer = BR> + Send + Sync + 'static,
+    BR: Buffer + 'static,
+    AW: Allocator<Buffer = BW> + Send + Sync + 'static,
+    BW: Buffer + 'static,
+    V: vfs::Vfs<BR, BW> + Send + Sync + 'static,
 {
     /// Pool of async workers that execute NFS procedures against [`crate::vfs::Vfs`].
-    vfs_pool: VfsPool<B>,
+    vfs_pool: VfsPool<BR, BW>,
     /// Allocator for read buffers (sliced from a pre-sized pool).
-    read_allocator: Arc<A>,
+    read_allocator: Arc<AR>,
     /// Allocator for write-side buffers when needed by the stack.
-    write_allocator: Arc<A>,
+    write_allocator: Arc<AW>,
     /// Filesystem implementations backing NFS operations, keyed by backend index.
     backends: BackendRegistry<V>,
 }
 
-impl<A, V, B> ServerContext<A, V, B>
+impl<AR, AW, V, BR, BW> ServerContext<AR, AW, V, BR, BW>
 where
-    A: Allocator<Buffer = B> + Send + Sync + 'static,
-    B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    AR: Allocator<Buffer = BR> + Send + Sync + 'static,
+    BR: Buffer + 'static,
+    AW: Allocator<Buffer = BW> + Send + Sync + 'static,
+    BW: Buffer + 'static,
+    V: vfs::Vfs<BR, BW> + Send + Sync + 'static,
 {
     /// Creates a context with the given buffer pool sizes and no backends attached.
     pub fn new(
-        read_allocator: Arc<A>,
-        write_allocator: Arc<A>,
+        read_allocator: Arc<AR>,
+        write_allocator: Arc<AW>,
         vfs_pool_size: NonZeroUsize,
     ) -> Self {
         let backends = BackendRegistry::new();
@@ -80,7 +84,7 @@ where
 
     /// Returns the shared VFS worker pool used to dispatch NFS procedure work.
     #[inline]
-    pub fn get_vfs_pool(&self) -> &VfsPool<B> {
+    pub fn get_vfs_pool(&self) -> &VfsPool<BR, BW> {
         &self.vfs_pool
     }
 
@@ -101,13 +105,13 @@ where
 
     /// Returns a clone of the read buffer allocator.
     #[inline]
-    pub fn get_read_allocator(&self) -> Arc<A> {
+    pub fn get_read_allocator(&self) -> Arc<AR> {
         Arc::clone(&self.read_allocator)
     }
 
     /// Returns a clone of the write buffer allocator.
     #[inline]
-    pub fn get_write_allocator(&self) -> Arc<A> {
+    pub fn get_write_allocator(&self) -> Arc<AW> {
         Arc::clone(&self.write_allocator)
     }
 }
