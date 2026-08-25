@@ -16,7 +16,7 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-async-channel = "2.5.0"
+async-channel = "1.6.*"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
 
