@@ -17,3 +17,4 @@
 
 # local configs
 rust-toolchain.toml
+Cargo.lock
