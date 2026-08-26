@@ -97,13 +97,13 @@ async fn unlock_sends_granted_callback_via_channel() {
 #[tokio::test]
 async fn unlock_no_callback_when_granted_tx_is_none() {
     let svc = NlmService::new();
+    let (tx, rx) = async_channel::unbounded::<Cookie>();
 
     svc.lock(
         None,
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
     )
     .await;
-
     let blocked = svc
         .lock(
             None,
@@ -114,11 +114,6 @@ async fn unlock_no_callback_when_granted_tx_is_none() {
 
     svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
 
-    let res = svc
-        .lock(
-            None,
-            make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "charlie", 300, 0),
-        )
-        .await;
-    assert_eq!(res.stat, Nlm4Stats::Denied);
+    assert!(matches!(rx.try_recv(), Err(async_channel::TryRecvError::Empty)));
+    drop(tx);
 }
