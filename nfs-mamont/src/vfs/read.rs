@@ -8,12 +8,12 @@ use super::file;
 /// Success result.
 pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
-    pub head: SuccessPartial,
+    pub head: SuccessHeader,
     /// The counted data read from the file.
     pub data: B,
 }
 
-pub struct SuccessPartial {
+pub struct SuccessHeader {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
     /// The number of bytes of data returned by the read.
