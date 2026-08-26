@@ -1,6 +1,6 @@
 # NFS Mamont
 
-An asynchronous **Network File System (NFS) server** written in Rust.
+An asynchronous **Network File System (NFS) server** build-in.
 
 NFS Mamont is a from-scratch, user-space implementation of the NFS protocol
 family. It is built on `tokio` and uses its own RPC/XDR encoder and decoder,
@@ -19,10 +19,10 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 
 ## Architecture
 
-Described here - https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture
+Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture)
 ### Quick start
 
-As an example we provide our demo implementaion - https://github.com/RMamonts/mirror-fs
+As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementaion
 
 ## Safety & Requirements
 
