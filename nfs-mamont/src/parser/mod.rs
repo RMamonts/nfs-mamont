@@ -43,7 +43,6 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 pub struct RpcHeader {
     pub xid: u32,
     pub cred: OpaqueAuth,
-    #[allow(dead_code)]
     // TODO: use when auth will be provided
     pub verf: OpaqueAuth,
 }

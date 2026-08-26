@@ -14,3 +14,6 @@
 *secrets*.csv
 .env.local
 .env.production
+
+# local configs
+rust-toolchain.toml
