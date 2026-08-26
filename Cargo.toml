@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont", "mirror_fs"]
+members = ["nfs-mamont"]
 resolver = "2"
 
 [workspace.package]
@@ -19,8 +19,3 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
-
-# Internal dependencies
-# Bump `rev` when mirrorfs is ready to move to a newer library revision.
-# for local tests can be used nfs-mamont.path = "nfs-mamont"
-nfs-mamont = { git = "https://github.com/RMamonts/nfs-mamont.git", rev = "e7d4d39ed59cc344f356685f34299e5e6b469529" }
