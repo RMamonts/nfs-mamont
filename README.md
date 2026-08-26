@@ -1,6 +1,6 @@
 # NFS Mamont
 
-An asynchronous **Network File System (NFS) server** build-in.
+An asynchronous library to provide access to NFS protocol.
 
 NFS Mamont is a from-scratch, user-space implementation of the NFS protocol
 family. It is built on `tokio` and uses its own RPC/XDR encoder and decoder,
