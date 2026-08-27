@@ -114,7 +114,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// A new `RpcParser` instance ready to parse messages.
     pub fn new(socket: S, allocator: Arc<A>) -> Self {
-        Self { allocator, reader: FrameReader::new(DEFAULT_SIZE, socket) }
+        Self::with_capacity(socket, allocator, DEFAULT_SIZE)
     }
 
     /// Creates a new `RpcParser` with the specified buffer size.
@@ -129,7 +129,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    #[allow(dead_code)]
     pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
         Self { allocator, reader: FrameReader::new(size, socket) }
     }
