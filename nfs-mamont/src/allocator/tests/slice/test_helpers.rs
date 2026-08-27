@@ -10,7 +10,8 @@ pub struct SliceGuard {
 impl SliceGuard {
     pub fn new<Buffers>(buffers: Buffers, range: std::ops::Range<usize>) -> Self
     where
-        Buffers: IntoIterator<IntoIter: ExactSizeIterator<Item = &'static [u8]>>,
+        Buffers: IntoIterator<Item = &'static [u8]>,
+        Buffers::IntoIter: ExactSizeIterator,
     {
         let mut backing = Vec::new();
         let mut unowned = Vec::new();

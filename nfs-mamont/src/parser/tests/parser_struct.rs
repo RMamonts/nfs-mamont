@@ -55,7 +55,7 @@ pub fn push_bytes(buf: &mut Vec<u8>, bytes: &[u8]) {
 /// * `content_len` - Length of the newly appended content that may require padding.
 fn pad_to_alignment(buf: &mut Vec<u8>, content_len: usize) {
     let padding_needed = (4 - (content_len & 3)) & 3;
-    buf.extend(std::iter::repeat_n(0, padding_needed));
+    buf.extend(std::iter::repeat(0).take(padding_needed));
 }
 
 /// Appends an XDR opaque field: 4-byte length prefix, data, then padding for 4-byte alignment.
