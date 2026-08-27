@@ -18,7 +18,6 @@
 
 use std::cmp::min;
 use std::io::{self, ErrorKind};
-use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -383,7 +382,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
             Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
-            Err(error) => Err(ErrorWrapper { xid: Some(xid), error }),
+            Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
         }
     }
 
@@ -592,14 +591,11 @@ where
     // Fill the allocated buffer chunk by chunk; `read_body_exact` consumes the
     // buffered window first and reads the rest directly from the socket.
     let mut buffer_data = match NonZeroUsize::new(size) {
-        Some(non_zero_size) => {
-            alloc.allocate(non_zero_size).await.ok_or_else(|| {
-                Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-            })?
-        },
-        None => A::Buffer::empty()
+        Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
+            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+        })?,
+        None => A::Buffer::empty(),
     };
-
 
     let mut left = size;
     for chunk in buffer_data.chunks_mut() {
