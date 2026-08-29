@@ -11,6 +11,7 @@ use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
+use crate::task::ProcCall;
 use crate::vfs::file::Handle;
 use async_channel::Sender;
 use std::collections::HashMap;
@@ -30,13 +31,13 @@ struct PendingGrant {
     /// echoed back to the client in the GRANTED callback.
     pub cookie: Cookie,
     /// The channel for sending the callback.
-    pub granted_tx: Option<Sender<Cookie>>,
+    pub message_sender: Option<Sender<ProcCall>>,
 }
 
 impl PendingGrant {
     /// Creates a new GrantNotification.
-    fn new(granted_tx: Option<Sender<Cookie>>, cookie: Cookie) -> Self {
-        Self { granted_tx, cookie }
+    fn new(message_sender: Option<Sender<ProcCall>>, cookie: Cookie) -> Self {
+        Self { message_sender, cookie }
     }
 }
 
@@ -494,12 +495,14 @@ fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
 pub struct NlmService {
     /// Active locks grouped by file handle.
     locks: tokio::sync::RwLock<LockRegistry>,
+    /// Channel for RPC calls.
+    message_sender: Option<Sender<ProcCall>>,
 }
 
 impl Default for NlmService {
     /// Creates an empty [`NlmService`] with no locks registered.
     fn default() -> Self {
-        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
+        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()), message_sender: None }
     }
 }
 

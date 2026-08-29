@@ -13,8 +13,10 @@ use std::io;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::{
-    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
+    cancel::Nlm4CancelRes, granted::Nlm4GrantedRes, lock::Nlm4LockRes, test::Nlm4TestRes,
+    unlock::Nlm4UnlockRes,
 };
 
 /// `Nlm4Stats` indicates the success or failure of a call.
@@ -54,14 +56,20 @@ pub enum Nlm4Stats {
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,
-    /// NLM LOCK procedure response.
+    /// Server response to the NLM LOCK procedure.
     Lock(Nlm4LockRes),
-    /// NLM UNLOCK procedure response.
+    /// Server response to the NLM UNLOCK procedure.
     Unlock(Nlm4UnlockRes),
-    /// NLM TEST procedure response.
+    /// Server response to the NLM TEST procedure.
     Test(Box<Nlm4TestRes>),
-    /// NLM CANCEL procedure response.
+    /// Server response to the NLM CANCEL procedure.
     Cancel(Nlm4CancelRes),
+}
+
+/// Wrapper for all supported types of procedures that call the client.
+pub enum NlmCall {
+    /// Client response to the NLM GRANTED procedure.
+    GRANTED(Nlm4TestArgs),
 }
 
 /// The unique identifier of the lock owner.

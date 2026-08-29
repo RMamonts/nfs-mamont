@@ -11,6 +11,7 @@ use tracing::debug;
 use crate::allocator::Buffer;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::Nlm;
+use crate::task::ProcCall;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
@@ -19,9 +20,9 @@ use crate::{
 
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: Sender<ProcReply<B>>,
+    pub result_sender: Sender<ProcReply<B>>,
     /// The channel for sending the callback.
-    pub granted_tx: Sender<Cookie>,
+    pub message_sender: Sender<ProcCall>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 }
@@ -71,7 +72,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_tx, granted_tx, args } = command;
+            let NlmCommand { result_sender, message_sender, args } = command;
             let NlmArgWrapper { header, proc } = args;
             debug!(xid = header.xid, "nlm task: command received");
 
@@ -79,7 +80,7 @@ where
                 NlmArguments::Null => NlmRes::Null,
                 NlmArguments::Lock(nlm4_lock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-                    let res = nlm_service.lock(Some(granted_tx), nlm4_lock_args).await;
+                    let res = nlm_service.lock(nlm4_lock_args).await;
                     NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {
@@ -103,7 +104,7 @@ where
             // - some logs when occurred error
             // - or retry with fail
             // * but don't stop task
-            let _ = result_tx
+            let _ = result_sender
                 .send(ProcReply {
                     xid: header.xid,
                     proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),

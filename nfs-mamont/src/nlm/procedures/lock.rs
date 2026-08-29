@@ -41,5 +41,5 @@ pub struct Nlm4LockRes {
 /// grant the lock (returning `Granted`) or deny it.
 #[trait_variant::make(Send)]
 pub trait Lock {
-    async fn lock(&self, granted_tx: Option<Sender<Cookie>>, args: Nlm4LockArgs) -> Nlm4LockRes;
+    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;
 }
