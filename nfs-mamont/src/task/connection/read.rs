@@ -20,14 +20,14 @@ use crate::parser::{
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::NlmCommand;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ProcCall, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
 pub struct CommandSenders<B: Buffer + 'static> {
     /// To send messages into mount task.
     mount_sender: Sender<MountCommand<B>>,
-    /// To send messages into nlm task.
+    /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
     /// To pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task.
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
@@ -35,8 +35,9 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
     result_sender: Sender<ProcReply<B>>,
-    /// To send cookie into nlm task.
-    granted_tx: Sender<Cookie>,
+    /// To pass into nlm task as part of message,
+    /// so nlm task can send result back to write task.
+    message_sender: Sender<ProcCall>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
@@ -45,31 +46,22 @@ impl<B: Buffer + 'static> CommandSenders<B> {
         nlm_sender: Sender<NlmCommand<B>>,
         pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
         result_sender: Sender<ProcReply<B>>,
-        granted_tx: Sender<Cookie>,
+        message_sender: Sender<ProcCall>,
     ) -> Self {
-        Self { mount_sender, nlm_sender, pool_sender, result_sender, granted_tx }
+        Self { mount_sender, nlm_sender, pool_sender, result_sender, message_sender }
     }
 }
 
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
-pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
+pub struct ReadTask<
+    A: Allocator + Send + Sync + 'static,
+    B: Buffer + 'static = <A as Allocator>::Buffer,
+> {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
-    // to send messages into mount task
-    mount_sender: Sender<MountCommand<B>>,
-    // to send messages into nlm task
-    nlm_sender: Sender<NlmCommand<B>>,
-    // to send cookie into nlm task
-    granted_tx: Sender<Cookie>,
-    // to pass into mount task as part of message,
-    // so mount task can send result back to write task
-    // and
-    // to bypass vfs with null procedure
-    result_sender: Sender<ProcReply<B>>,
+    command_senders: CommandSenders<B>,
     allocator: Arc<A>,
-    // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
-    pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
     _phantom: PhantomData<B>,
 }
 
@@ -85,17 +77,7 @@ where
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self {
-            readhalf,
-            client_addr,
-            mount_sender: command_senders.mount_sender,
-            nlm_sender: command_senders.nlm_sender,
-            granted_tx: command_senders.granted_tx,
-            result_sender: command_senders.result_sender,
-            allocator,
-            pool_sender: command_senders.pool_sender,
-            _phantom: PhantomData,
-        }
+        Self { readhalf, client_addr, command_senders, allocator, _phantom: PhantomData }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -124,8 +106,13 @@ where
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, header.xid, err).await;
+                    if let Err(err) = self.command_senders.result_sender.send(result).await {
+                        return send_broken_pipe(
+                            &self.command_senders.result_sender,
+                            header.xid,
+                            err,
+                        )
+                        .await;
                     }
                 }
 
@@ -138,8 +125,13 @@ where
                         proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, header.xid, err).await;
+                    if let Err(err) = self.command_senders.result_sender.send(result).await {
+                        return send_broken_pipe(
+                            &self.command_senders.result_sender,
+                            header.xid,
+                            err,
+                        )
+                        .await;
                     }
                 }
 
@@ -148,10 +140,14 @@ where
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
-                    if let Err(err) =
-                        self.pool_sender.send((command, self.result_sender.clone())).await
+                    if let Err(err) = self
+                        .command_senders
+                        .pool_sender
+                        .send((command, self.command_senders.result_sender.clone()))
+                        .await
                     {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
+                            .await;
                     }
                 }
 
@@ -166,8 +162,9 @@ where
                         proc_result: Ok(ProcResult::Mount(Box::new(MountRes::Null))),
                     };
 
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.command_senders.result_sender.send(result).await {
+                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
+                            .await;
                     }
                 }
 
@@ -175,12 +172,13 @@ where
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
                     let command = MountCommand {
-                        result_tx: self.result_sender.clone(),
+                        result_tx: self.command_senders.result_sender.clone(),
                         args: MountArgWrapper { header, proc },
                         client_addr: self.client_addr,
                     };
-                    if let Err(err) = self.mount_sender.send(command).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.command_senders.mount_sender.send(command).await {
+                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
+                            .await;
                     }
                 }
 
@@ -188,21 +186,23 @@ where
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {
-                        result_tx: self.result_sender.clone(),
-                        granted_tx: self.granted_tx.clone(),
+                        result_sender: self.command_senders.result_sender.clone(),
+                        message_sender: self.command_senders.message_sender.clone(),
                         args: NlmArgWrapper { header, proc },
                     };
 
-                    if let Err(err) = self.nlm_sender.send(command).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.command_senders.nlm_sender.send(command).await {
+                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
+                            .await;
                     }
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
                     error!(client=%self.client_addr, xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
-                    if let Err(err) = self.result_sender.send(result).await {
-                        return send_broken_pipe(&self.result_sender, xid, err).await;
+                    if let Err(err) = self.command_senders.result_sender.send(result).await {
+                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
+                            .await;
                     }
                 }
 

@@ -5,8 +5,6 @@
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
 
-use crate::nlm::cookie::Cookie;
-use crate::serializer::variant;
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
 use std::time::SystemTime;
@@ -16,11 +14,11 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::allocator::Buffer;
 use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
 use crate::mount::MountRes;
-use crate::nlm::{Nlm4Stats, NlmRes};
+use crate::nlm::{NlmCall, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, u64, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcReply, ProcResult};
+use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::task::{ProcCall, ProcMessage, ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
@@ -225,16 +223,16 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         }
     }
 
-    /// Serializes a [`Cookie`] into a complete XDR RPC call and writes it to the underlying writer.
+    /// Serializes [`ProcCall`] into a complete XDR RPC reply and writes it to the underlying writer.
     ///
     /// ## Arguments:
-    /// *   `cookie` - the cookie from the original blocking LOCK request
+    /// *   `call` - a client call of [`ProcCall`] type
     /// *   `cred` - an authentication credential of [`OpaqueAuth`] type that identifies the caller to the server
     /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
     ///     in order to validate itself to the client
     pub async fn form_call(
         &mut self,
-        cookie: Cookie,
+        call: ProcCall,
         cred: OpaqueAuth,
         verifier: OpaqueAuth,
     ) -> io::Result<()> {
@@ -243,7 +241,9 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
             Err(_) => Err(io::Error::other("SystemTime before UNIX EPOCH"))?,
         };
 
-        u32(&mut self.buffer, (random_number_u64 >> 32) as u32)?;
+        let xid = (random_number_u64 >> 32) as u32;
+
+        u32(&mut self.buffer, xid)?;
         u32(&mut self.buffer, RpcBody::Call as u32)?;
         u32(&mut self.buffer, RPC_VERSION)?;
         u32(&mut self.buffer, NLM_PROGRAM)?;
@@ -251,8 +251,13 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         u32(&mut self.buffer, NLMPROC4_GRANTED)?;
         auth(&mut self.buffer, cred)?;
         auth(&mut self.buffer, verifier)?;
-        u64(&mut self.buffer, cookie.raw())?;
-        variant(&mut self.buffer, Nlm4Stats::Granted)?;
+        match call.proc_message {
+            ProcMessage::Nlm4(call) => match call {
+                NlmCall::GRANTED(test_args) => {
+                    nlm::test_args(&mut self.buffer, test_args)?;
+                }
+            },
+        }
         self.buffer.send_inner_buffer().await?;
         Ok(())
     }
@@ -468,38 +473,5 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
 
         self.clean();
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::allocator::Slice;
-    use crate::nlm::cookie::Cookie;
-    use crate::rpc::{AuthFlavor, OpaqueAuth};
-    use std::io::Cursor;
-
-    #[tokio::test]
-    async fn form_call_serializes_rpc_call_frame() {
-        let mut buf = Cursor::new(Vec::new());
-        let mut serializer = Serializer::<Slice, _>::new(&mut buf);
-
-        let cookie = Cookie::new(0x0A0B0C0D0E0F1011);
-        let cred = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-        let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-
-        serializer.form_call(cookie, cred, verifier).await.unwrap();
-
-        let data = buf.into_inner();
-
-        // RM-header: last fragment + body len
-        let size = (data.len() - 4) as u32;
-        assert_eq!(u32::from_be_bytes(data[0..4].try_into().unwrap()), 0x8000_0000 | size);
-
-        // check frame len
-        assert_eq!(
-            data.len(),
-            4 /*RM*/ + 4 /*xid*/ + 20 /*call header*/ + 16 /*auth*/ + 12 /*len(args)*/
-        );
     }
 }

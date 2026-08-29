@@ -6,7 +6,7 @@ use async_channel::Sender;
 use super::{ActiveLock, NlmService, PendingGrant, PendingLock};
 
 impl Lock for NlmService {
-    async fn lock(&self, granted_tx: Option<Sender<Cookie>>, args: Nlm4LockArgs) -> Nlm4LockRes {
+    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
         let new_lock = match PendingLock::new(
@@ -16,7 +16,7 @@ impl Lock for NlmService {
             args.lock.lock_offset,
             args.lock.lock_length,
             args.lock.opaque_handle,
-            PendingGrant::new(granted_tx, args.cookie),
+            PendingGrant::new(self.message_sender.clone(), args.cookie),
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },

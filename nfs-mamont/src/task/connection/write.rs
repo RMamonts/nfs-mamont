@@ -7,14 +7,14 @@ use crate::allocator::Buffer;
 use crate::nlm::cookie::Cookie;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::ProcReply;
+use crate::task::{ProcCall, ProcReply};
 
 /// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<ProcReply<B>>,
     /// The channel for sending the callback.
-    granted_rx: async_channel::Receiver<Cookie>,
+    message_receiver: async_channel::Receiver<ProcCall>,
     _phantom: PhantomData<B>,
 }
 
@@ -23,9 +23,9 @@ impl<B: Buffer> WriteTask<B> {
     pub fn new(
         writehalf: OwnedWriteHalf,
         result_receiver: async_channel::Receiver<ProcReply<B>>,
-        granted_rx: async_channel::Receiver<Cookie>,
+        message_receiver: async_channel::Receiver<ProcCall>,
     ) -> Self {
-        Self { writehalf, result_receiver, granted_rx, _phantom: PhantomData }
+        Self { writehalf, result_receiver, message_receiver, _phantom: PhantomData }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.
@@ -42,7 +42,7 @@ impl<B: Buffer> WriteTask<B> {
 
     async fn run(self) {
         let result_receiver = self.result_receiver;
-        let granted_rx = self.granted_rx;
+        let message_receiver = self.message_receiver;
         let mut serializer =
             serializer::server::serialize_struct::Serializer::<B, _>::new(self.writehalf);
 
@@ -60,12 +60,12 @@ impl<B: Buffer> WriteTask<B> {
                         // For now, continue processing other replies
                     }
                 }
-                cookie = granted_rx.recv() => {
-                    let Ok(cookie) = cookie else { continue }; // callbacks done; keep serving replies
+                call = message_receiver.recv() => {
+                    let Ok(call) = call else { continue }; // callbacks done; keep serving replies
                     let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-                    let credential = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+                    let credential = verifier.clone();
 
-                    if let Err(e) = serializer.form_call(cookie, credential, verifier).await {
+                    if let Err(e) = serializer.form_call(call, credential, verifier).await {
                         error!(error=%e, "write task: failed to serialize/send reply");
                         // TODO: Consider closing connection or continuing based on error type
                         // For now, continue processing other replies
