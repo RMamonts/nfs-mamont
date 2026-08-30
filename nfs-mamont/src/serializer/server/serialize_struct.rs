@@ -253,7 +253,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
         auth(&mut self.buffer, verifier)?;
         match call.proc_message {
             ProcMessage::Nlm4(call) => match call {
-                NlmCall::GRANTED(test_args) => {
+                NlmCall::Granted(test_args) => {
                     nlm::test_args(&mut self.buffer, test_args)?;
                 }
             },

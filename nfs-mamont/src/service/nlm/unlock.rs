@@ -52,7 +52,7 @@ impl Unlock for NlmService {
                     lock: alock,
                 };
 
-                let call = crate::nlm::NlmCall::GRANTED(test_args);
+                let call = crate::nlm::NlmCall::Granted(test_args);
                 let proc_message = ProcMessage::Nlm4(call);
                 let proc_call = ProcCall { proc_message };
                 if let Err(e) = message_sender.send(proc_call).await {
