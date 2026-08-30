@@ -68,7 +68,7 @@ pub enum NlmRes {
 /// Wrapper for all supported types of procedures that call the client.
 pub enum NlmCall {
     /// Client response to the NLM GRANTED procedure.
-    GRANTED(Nlm4TestArgs),
+    Granted(Nlm4TestArgs),
 }
 
 /// The unique identifier of the lock owner.
