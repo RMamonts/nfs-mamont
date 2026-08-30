@@ -4,7 +4,6 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::nlm::cookie::Cookie;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcCall, ProcReply};
