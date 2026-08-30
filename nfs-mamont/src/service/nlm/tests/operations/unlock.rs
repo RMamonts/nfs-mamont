@@ -1,12 +1,13 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::unlock::Unlock;
-use crate::nlm::Nlm4Stats;
+use crate::nlm::{Nlm4Stats, NlmCall};
 use crate::service::nlm::tests::{
     make_lock_args_with_block, make_lock_args_without_block, make_unlock_args, FH_DEFAULT,
     LOCK_WHOLE_LENGTH,
 };
 use crate::service::nlm::NlmService;
+use crate::task::{ProcCall, ProcMessage};
 
 #[tokio::test]
 async fn unlock_removes_lock_and_allows_new_lock() {
@@ -72,17 +73,17 @@ async fn unlock_auto_grants_pending_exclusive() {
 #[tokio::test]
 async fn unlock_sends_granted_callback_via_channel() {
     let svc = NlmService::new();
-    let (_, rx) = async_channel::unbounded::<Cookie>();
+    let (tx, rx) = async_channel::unbounded::<ProcCall>();
 
     svc.lock(
-        None,
+        Some(tx.clone()),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
     )
     .await;
 
     let blocked = svc
         .lock(
-            None,
+            Some(tx),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
         )
         .await;
@@ -91,7 +92,13 @@ async fn unlock_sends_granted_callback_via_channel() {
     svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
 
     let received = rx.recv().await.expect("channel should not be closed");
-    assert_eq!(received.raw(), 99);
+    match received.proc_message {
+        ProcMessage::Nlm4(nlm_call) => match nlm_call {
+            NlmCall::Granted(test_args) => {
+                assert_eq!(test_args.cookie.raw(), 99);
+            }
+        },
+    }
 }
 
 #[tokio::test]
