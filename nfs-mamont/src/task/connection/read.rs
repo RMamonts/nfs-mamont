@@ -10,7 +10,6 @@ use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::mount::MountRes;
-use crate::nlm::cookie::Cookie;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{

@@ -15,8 +15,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::{
-    cancel::Nlm4CancelRes, granted::Nlm4GrantedRes, lock::Nlm4LockRes, test::Nlm4TestRes,
-    unlock::Nlm4UnlockRes,
+    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
 
 /// `Nlm4Stats` indicates the success or failure of a call.

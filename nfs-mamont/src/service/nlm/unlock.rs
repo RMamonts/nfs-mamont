@@ -1,4 +1,5 @@
 use super::{check_caller_name, NlmService};
+use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Nlm4UnlockRes, Unlock};
 use crate::nlm::Nlm4Stats;
@@ -37,10 +38,18 @@ impl Unlock for NlmService {
 
         for lock in granted_locks {
             if let Some(message_sender) = lock.grant_notification.message_sender {
+                let alock = Nlm4Lock {
+                    caller_name: lock.caller_name,
+                    file_handle: fh.clone(),
+                    lock_length: lock.length,
+                    lock_offset: lock.offset,
+                    opaque_handle: lock.opaque_handle,
+                    system_identifier: lock.system_identifier,
+                };
                 let test_args = Nlm4TestArgs {
-                    cookie: args.cookie,
+                    cookie: lock.grant_notification.cookie,
                     exclusive: lock.exclusive,
-                    lock: args.lock.clone(),
+                    lock: alock,
                 };
 
                 let call = crate::nlm::NlmCall::GRANTED(test_args);

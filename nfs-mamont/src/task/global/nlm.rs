@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tracing::debug;
 
 use crate::allocator::Buffer;
-use crate::nlm::cookie::Cookie;
 use crate::nlm::Nlm;
 use crate::task::ProcCall;
 use crate::task::{ProcReply, ProcResult};
@@ -80,7 +79,7 @@ where
                 NlmArguments::Null => NlmRes::Null,
                 NlmArguments::Lock(nlm4_lock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-                    let res = nlm_service.lock(nlm4_lock_args).await;
+                    let res = nlm_service.lock(Some(message_sender), nlm4_lock_args).await;
                     NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {
