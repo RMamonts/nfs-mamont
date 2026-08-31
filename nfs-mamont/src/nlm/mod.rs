@@ -9,13 +9,17 @@ pub mod procedures;
 pub mod share;
 
 use std::io;
+use std::net::SocketAddr;
 
+use async_channel::{Receiver, Sender};
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
+use crate::vfs::file::Handle;
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
@@ -107,6 +111,43 @@ impl<T> Nlm for T where
         + procedures::test::Test
         + procedures::cancel::Cancel
 {
+}
+
+/// Handles the NLM v4 GRANTED callback flow.
+///
+/// After an `UNLOCK` frees up a range, pending block locks that no longer
+/// conflict must be granted and the corresponding clients notified with an
+/// `NLMPROC4_GRANTED` callback. This processing lives in a separate task (the
+/// NLM subtask) instead of inside the `UNLOCK` procedure itself.
+///
+/// A [`GrantedNotifier`] keeps a mapping from client address (`ip:port`) to the
+/// granted-callback channel of the write task serving that connection. The
+/// client address is carried inside `Nlm4Lock::caller_name`, so for a given
+/// free lock the notifier can locate the right [`WriteTask`] to send the
+/// callback to.
+///
+/// [`WriteTask`]: crate::task::connection::write::WriteTask
+#[trait_variant::make(GrantedNotifier: Send)]
+#[allow(async_fn_in_trait)]
+pub trait LocalGrantedNotifier: Send + Sync {
+    /// Registers (or replaces) the granted-callback channel for a client connection.
+    ///
+    /// Called when a new connection is created, so that write tasks can be found
+    /// by the client's address.
+    async fn add_client(&self, addr: SocketAddr, granted_tx: Sender<Cookie>);
+
+    /// Processes a freed `file_handle`: promotes no-longer-conflicting pending
+    /// locks into active locks and sends a GRANTED callback for each of them.
+    ///
+    /// This is the counterpart of the `UNLOCK` procedure, which only enqueues
+    /// the freed file handle into the async freed-locks queue.
+    async fn process(&self, file_handle: Handle);
+
+    /// Returns the receiving end of the freed-locks queue.
+    ///
+    /// Used by the NLM subtask to drain freed file handles and hand them to
+    /// [`process`](Self::process).
+    fn freed_locks_rx(&self) -> Receiver<Handle>;
 }
 
 #[cfg(test)]
