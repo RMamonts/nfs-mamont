@@ -9,8 +9,10 @@ use std::sync::Arc;
 use tracing::debug;
 
 use crate::allocator::Buffer;
+use crate::nlm::GrantedNotifier;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
+use crate::vfs::file::Handle;
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
@@ -26,7 +28,7 @@ pub struct NlmCommand<B: Buffer> {
 pub struct NlmTask<B, N>
 where
     B: Buffer + 'static,
-    N: Nlm + Send + Sync + 'static,
+    N: Nlm + GrantedNotifier + Send + Sync + 'static,
 {
     /// Shared NLM service implementation.
     nlm_service: Arc<N>,
@@ -38,10 +40,10 @@ where
 impl<B, N> NlmTask<B, N>
 where
     B: Buffer + 'static,
-    N: Nlm + Send + Sync + 'static,
+    N: Nlm + GrantedNotifier + Send + Sync + 'static,
 {
     /// Creates new instance of [`NlmTask`]
-    pub fn new(nlm_service: Arc<N>) -> (Self, Sender<NlmCommand<B>>) {
+    pub fn new(nlm_service: Arc<N>) -> (Self, async_channel::Sender<NlmCommand<B>>) {
         let (sender, receiver) = async_channel::unbounded::<NlmCommand<B>>();
 
         let task = Self { nlm_service, receiver };
@@ -52,13 +54,17 @@ where
     /// Spawns the [`NlmTask`] on the current Tokio runtime.
     ///
     /// The task processes NLM commands received from read tasks and
-    /// returns results to write tasks.
+    /// returns results to write tasks. A dedicated subtask drains the
+    /// freed-locks queue and sends GRANTED callbacks.
     ///
     /// # Panics
     ///
     /// If called outside a Tokio runtime context.
     pub fn spawn(self) {
+        let freed_locks_rx = self.nlm_service.freed_locks_rx();
+        let callback_service = Arc::clone(&self.nlm_service);
         tokio::spawn(async move { self.run().await });
+        tokio::spawn(async move { run_callback_loop(freed_locks_rx, callback_service).await });
     }
 
     /// Main event loop: waits for commands, dispatches to the NLM service,
@@ -108,5 +114,17 @@ where
                 .await;
             debug!(xid = header.xid, "nlm task: reply queued");
         }
+    }
+}
+
+/// NLM subtask: drains freed file handles from the service queue and hands them
+/// to [`GrantedNotifier::process`], which promotes pending locks and sends
+/// GRANTED callbacks.
+async fn run_callback_loop<N>(freed_locks_rx: Receiver<Handle>, nlm_service: Arc<N>)
+where
+    N: GrantedNotifier + Send + Sync + 'static,
+{
+    while let Ok(fh) = freed_locks_rx.recv().await {
+        nlm_service.process(fh).await;
     }
 }
