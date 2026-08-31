@@ -24,8 +24,10 @@ impl Unlock for NlmService {
         {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
-        // TODO: Add client notification logic (#267).
-        if registry.grant_pending(&fh).is_err() {
+
+        // Enqueue the freed file handle so the NLM subtask can promote pending
+        // locks and send GRANTED callbacks.
+        if self.freed_locks.send(fh).await.is_err() {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
 

@@ -158,9 +158,14 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    // NLM routing relies on `Nlm4Lock::caller_name` carrying the client
+                    // address (ip:port) so the granted-callback subtask can find the
+                    // right write task. Replace the client-provided name with the
+                    // address of the connection the request arrived on.
+                    let proc = enrich_nlm_caller_name(*proc, self.client_addr);
                     let command = NlmCommand {
                         result_tx: self.result_sender.clone(),
-                        args: NlmArgWrapper { header, proc },
+                        args: NlmArgWrapper { header, proc: Box::new(proc) },
                     };
 
                     if let Err(err) = self.nlm_sender.send(command).await {
@@ -198,4 +203,22 @@ async fn send_broken_pipe<B: Buffer + 'static>(
         })
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e))
+}
+
+/// Overwrites `Nlm4Lock::caller_name` with the client address string for LOCK and
+/// UNLOCK arguments, so that the lock registry and the GRANTED callback subtask
+/// can route by address (`ip:port`).
+fn enrich_nlm_caller_name(proc: NlmArguments, addr: SocketAddr) -> NlmArguments {
+    let addr = addr.to_string();
+    match proc {
+        NlmArguments::Lock(mut args) => {
+            args.lock.caller_name = addr;
+            NlmArguments::Lock(args)
+        }
+        NlmArguments::Unlock(mut args) => {
+            args.lock.caller_name = addr;
+            NlmArguments::Unlock(args)
+        }
+        other => other,
+    }
 }

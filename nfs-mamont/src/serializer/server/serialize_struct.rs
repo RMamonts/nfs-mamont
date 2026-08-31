@@ -7,15 +7,18 @@
 
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
 use crate::mount::MountRes;
-use crate::nlm::NlmRes;
+use crate::nlm::cookie::Cookie;
+use crate::nlm::{Nlm4Stats, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::serializer::{u32, u64, usize_as_u32, variant, ALIGNMENT};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
@@ -32,6 +35,9 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
+
+/// RPC version number used for outgoing GRANTED callbacks.
+const RPC_VERSION: u32 = 2;
 
 /// Max size of RMS fragment data
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
@@ -296,6 +302,40 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
                 }
             }
         }
+    }
+
+    /// Serializes an `NLMPROC4_GRANTED` RPC call and writes it to the underlying writer.
+    ///
+    /// The callback echoes the [`Cookie`] of the original blocking `LOCK` request to
+    /// notify the client that its lock has been granted.
+    ///
+    /// ## Arguments
+    /// * `cookie` - the cookie from the original blocking LOCK request
+    /// * `cred` - an authentication credential of [`OpaqueAuth`] type that identifies the caller to the server
+    /// * `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
+    ///   order to validate itself to the client
+    pub async fn form_granted_call(
+        &mut self,
+        cookie: Cookie,
+        cred: OpaqueAuth,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
+        let random_number_u64 = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(current_time) => current_time.as_secs(),
+            Err(_) => Err(io::Error::other("SystemTime before UNIX EPOCH"))?,
+        };
+
+        u32(&mut self.buffer, (random_number_u64 >> 32) as u32)?;
+        u32(&mut self.buffer, RpcBody::Call as u32)?;
+        u32(&mut self.buffer, RPC_VERSION)?;
+        u32(&mut self.buffer, NLM_PROGRAM)?;
+        u32(&mut self.buffer, NLM_VERSION)?;
+        u32(&mut self.buffer, NLMPROC4_GRANTED)?;
+        auth(&mut self.buffer, cred)?;
+        auth(&mut self.buffer, verifier)?;
+        u64(&mut self.buffer, cookie.raw())?;
+        variant(&mut self.buffer, Nlm4Stats::Granted)?;
+        self.buffer.send_inner_buffer().await
     }
 }
 

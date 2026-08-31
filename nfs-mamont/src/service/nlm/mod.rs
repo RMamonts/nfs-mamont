@@ -9,11 +9,14 @@
 
 use std::collections::HashMap;
 use std::io::Error;
+use std::net::SocketAddr;
+
+use async_channel::{Receiver, Sender};
 
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
-use crate::nlm::OpaqueHandle;
+use crate::nlm::{GrantedNotifier, OpaqueHandle};
 use crate::vfs::file::Handle;
 
 mod cancel;
@@ -110,12 +113,22 @@ struct PendingLock {
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
     /// The cookie from the original blocking LOCK request.
-    /// TODO: Needed for NLMPROC4_GRANTED callback (#267).
-    #[allow(dead_code)]
+    /// Echoed back to the client in the `NLMPROC4_GRANTED` callback.
     cookie: Cookie,
 }
 
 impl PendingLock {
+    /// Returns the cookie from the original blocking LOCK request.
+    pub fn cookie(&self) -> Cookie {
+        self.cookie
+    }
+
+    /// Returns the client address carried in `caller_name` (used to route
+    /// the GRANTED callback to the appropriate write task).
+    pub fn caller_addr(&self) -> Option<SocketAddr> {
+        self.caller_name.parse().ok()
+    }
+
     /// Creates a new [`PendingLock`] with validation.
     ///
     /// # Errors
@@ -480,12 +493,25 @@ fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
 pub struct NlmService {
     /// Active locks grouped by file handle.
     locks: tokio::sync::RwLock<LockRegistry>,
+    /// Granted-callback channels keyed by client address (`ip:port`).
+    senders: tokio::sync::RwLock<HashMap<SocketAddr, Sender<Cookie>>>,
+    /// Queue of freed file handles awaiting pending-lock promotion.
+    /// `UNLOCK` puts handles here; the NLM subtask drains it and grants locks.
+    freed_locks: Sender<Handle>,
+    /// Receiving end of the freed-locks queue, drained by the NLM subtask.
+    freed_locks_rx: Receiver<Handle>,
 }
 
 impl Default for NlmService {
     /// Creates an empty [`NlmService`] with no locks registered.
     fn default() -> Self {
-        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
+        let (freed_locks, freed_locks_rx) = async_channel::unbounded();
+        NlmService {
+            locks: tokio::sync::RwLock::new(LockRegistry::new()),
+            senders: tokio::sync::RwLock::new(HashMap::new()),
+            freed_locks,
+            freed_locks_rx,
+        }
     }
 }
 
@@ -493,5 +519,35 @@ impl NlmService {
     /// Creates an empty [`NlmService`].
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+impl GrantedNotifier for NlmService {
+    async fn add_client(&self, addr: SocketAddr, granted_tx: Sender<Cookie>) {
+        self.senders.write().await.insert(addr, granted_tx);
+    }
+
+    async fn process(&self, file_handle: Handle) {
+        let granted_locks = {
+            let mut registry = self.locks.write().await;
+            match registry.grant_pending(&file_handle) {
+                Ok(granted) => granted,
+                Err(_) => return,
+            }
+        };
+
+        for lock in granted_locks {
+            let Some(addr) = lock.caller_addr() else { continue };
+            let sender = { self.senders.read().await.get(&addr).cloned() };
+            if let Some(tx) = sender {
+                if tx.send(lock.cookie()).await.is_err() {
+                    tracing::warn!(%addr, "nlm: failed to send GRANTED callback");
+                }
+            }
+        }
+    }
+
+    fn freed_locks_rx(&self) -> Receiver<Handle> {
+        self.freed_locks_rx.clone()
     }
 }
