@@ -1,3 +1,8 @@
+//! NLMv4 CANCEL procedure types.
+//!
+//! Defines argument and result structures for the `NLMPROC4_CANCEL`
+//! operation as specified in RFC 1813.
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -24,4 +29,13 @@ pub struct Nlm4CancelRes {
     pub cookie: Cookie,
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,
+}
+
+/// Trait for handling NLMv4 `CANCEL` procedure calls.
+///
+/// Implementations should cancel a pending (blocked) lock request
+/// that matches the given parameters.
+#[trait_variant::make(Send)]
+pub trait Cancel {
+    async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes;
 }

@@ -1,3 +1,8 @@
+//! NLMv4 LOCK procedure types.
+//!
+//! Defines argument and result structures for the `NLMPROC4_LOCK`
+//! operation as specified in RFC 1813.
+
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -27,4 +32,13 @@ pub struct Nlm4LockRes {
     pub cookie: Cookie,
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,
+}
+
+/// Trait for handling NLMv4 `LOCK` procedure calls.
+///
+/// Implementations should check for conflicting locks and either
+/// grant the lock (returning `Granted`) or deny it.
+#[trait_variant::make(Send)]
+pub trait Lock {
+    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;
 }

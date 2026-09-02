@@ -10,6 +10,10 @@ rust-version.workspace = true
 [lib]
 doctest = true
 
+[features]
+default = []
+mlock = ["dep:libc"]
+
 [dependencies]
 # External dependencies
 tokio.workspace = true
@@ -21,3 +25,4 @@ tracing-subscriber.workspace = true
 async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
+libc = { version = "0.2.186", optional = true }

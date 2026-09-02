@@ -2,10 +2,12 @@
 
 use std::sync::Arc;
 
+use super::Buffer;
+
 /// Represents bounded by custome range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
-    buffers: Vec<Box<[u8]>>,
+    buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,
     state: Option<Arc<super::AllocatorState>>,
 }
@@ -23,7 +25,7 @@ impl Slice {
     ///
     /// This function will panics if called if length range bound greater then length of `buffers`.
     pub fn new(
-        buffers: Vec<Box<[u8]>>,
+        buffers: Vec<super::UnownedBuffer>,
         range: std::ops::Range<usize>,
         state: Option<Arc<super::AllocatorState>>,
     ) -> Self {
@@ -43,9 +45,18 @@ impl Slice {
         Self { buffers, range, state }
     }
 
-    // /// Returns an empty slice that owns no buffers.
+    /// Returns an empty slice that owns no buffers.
     pub fn empty() -> Self {
         Self { buffers: Vec::new(), range: 0..0, state: None }
+    }
+
+    /// Returns the total number of bytes available in this slice.
+    pub fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.range.len() == 0
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
@@ -84,7 +95,7 @@ impl Drop for Slice {
 ///
 /// Return shared slices accordingly to [`Slice`] bounds.
 pub struct Iter<'a> {
-    slice_iter: std::slice::Iter<'a, Box<[u8]>>,
+    slice_iter: std::slice::Iter<'a, super::UnownedBuffer>,
     range: std::ops::Range<usize>,
 }
 
@@ -128,7 +139,7 @@ impl<'a> IntoIterator for &'a Slice {
 ///
 /// Return mutable slices accordingly to [`Slice`] bounds.
 pub struct IterMut<'a> {
-    slice_iter: std::slice::IterMut<'a, Box<[u8]>>,
+    slice_iter: std::slice::IterMut<'a, super::UnownedBuffer>,
     range: std::ops::Range<usize>,
 }
 
@@ -210,6 +221,29 @@ impl PartialEq<[u8]> for Slice {
         }
     }
 }
+
+impl Buffer for Slice {
+    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.range.len() == 0
+    }
+
+    fn empty() -> Self {
+        Self::empty()
+    }
+}
+
 #[cfg(test)]
 impl PartialEq<Slice> for [u8] {
     fn eq(&self, other: &Slice) -> bool {

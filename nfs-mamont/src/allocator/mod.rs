@@ -1,47 +1,102 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
 //! for user data transmission inside NFS-Mamont implementation.
 
+mod buffer;
 mod slice;
 
 #[cfg(test)]
 mod tests;
 
+use std::alloc::{self, Layout};
 use std::future::Future;
+#[cfg(feature = "mlock")]
+use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+pub use buffer::UnownedBuffer;
 pub use slice::Slice;
-
-type Buffer = Box<[u8]>;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
 pub struct AllocatorState {
-    pub pool: ArrayQueue<Buffer>,
+    pub pool: ArrayQueue<UnownedBuffer>,
     pub semaphore: Semaphore,
+    base_ptr: *mut u8,
+    layout: Layout,
 }
 
-/// Allocates [`Slice`]'s.
+unsafe impl Send for AllocatorState {}
+unsafe impl Sync for AllocatorState {}
+
+impl Drop for AllocatorState {
+    fn drop(&mut self) {
+        while self.pool.pop().is_some() {}
+        #[cfg(feature = "mlock")]
+        unsafe {
+            libc::munlock(self.base_ptr as *mut libc::c_void, self.layout.size());
+        }
+        unsafe { alloc::dealloc(self.base_ptr, self.layout) };
+    }
+}
+
+/// Abstract buffer type returned by [`Allocator`].
+///
+/// Implementations provide chunked read/write access to the allocated memory.
+pub trait Buffer: Send + Sync {
+    /// Returns an iterator over read-only byte chunks of this buffer.
+    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_;
+
+    /// Returns an iterator over mutable byte chunks of this buffer.
+    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_;
+
+    /// Returns the total number of bytes in the buffer.
+    fn len(&self) -> usize;
+
+    /// Returns `true` if the buffer is empty.
+    fn is_empty(&self) -> bool;
+
+    /// Creates an empty, zero-length buffer with no backing memory.
+    fn empty() -> Self
+    where
+        Self: Sized;
+}
+
+/// Allocates buffers for user data transmission inside NFS-Mamont implementation.
 pub trait Allocator {
-    /// Returns [`Slice`] of specified size.
+    /// Type of buffer returned by this allocator.
+    type Buffer: Buffer;
+
+    /// Returns a buffer of at least `size` bytes.
+    ///
+    /// Waits until enough memory is available, so the returned future may stay
+    /// pending while the pool is exhausted.
     ///
     /// # Parameters
     ///
-    /// - `size` --- size of returned slice.
+    /// - `size` --- minimum size of the returned buffer in bytes.
     ///
-    /// # Panic
+    /// # Returns
     ///
-    /// This method returns [`None`] if size is greater then allocator capacity.
-    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<slice::Slice>> + Send;
+    /// Returns [`None`] if `size` is greater than [`Allocator::capacity`],
+    /// since such a request can never be satisfied.
+    fn allocate(&self, size: NonZeroUsize) -> impl Future<Output = Option<Self::Buffer>> + Send;
+
+    /// Returns the largest size [`Allocator::allocate`] can ever satisfy.
+    ///
+    /// Callers that are free to shorten their request (for example NFSv3 `READ`,
+    /// where a short read is legal) should clamp to this value instead of
+    /// failing on an oversized request.
+    fn capacity(&self) -> NonZeroUsize;
 }
 
 pub struct Impl {
     state: Arc<AllocatorState>,
     buffer_size: NonZeroUsize,
-    buffer_count: NonZeroUsize,
+    capacity: NonZeroUsize,
 }
 
 impl Impl {
@@ -55,25 +110,49 @@ impl Impl {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());
 
-        for _ in 0..count.get() {
-            pool.push(vec![0; size.get()].into_boxed_slice()).expect("can't initialize allocator");
+        let buffer_size = size.get();
+        let buffer_count = count.get();
+
+        let total_size = buffer_size.checked_mul(buffer_count).expect("size overflow");
+        let layout = Layout::from_size_align(total_size, std::mem::align_of::<u8>())
+            .expect("invalid layout");
+
+        let base_ptr = unsafe { alloc::alloc_zeroed(layout) };
+
+        if base_ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+
+        #[cfg(feature = "mlock")]
+        {
+            let ptr = base_ptr as *mut libc::c_void;
+            if unsafe { libc::mlock(ptr, total_size) } != 0 {
+                let err = io::Error::last_os_error();
+                panic!("mlock failed (size={}): {err}", size.get());
+            }
+        }
+
+        let mut current_ptr = base_ptr;
+        for _ in 0..buffer_count {
+            let buffer = unsafe { UnownedBuffer::from_raw_parts(current_ptr, buffer_size) };
+            pool.push(buffer).expect("can't initialize allocator");
+            current_ptr = unsafe { current_ptr.add(buffer_size) };
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore }),
+            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
             buffer_size: size,
-            buffer_count: count,
+            // `total_size` is a product of two non-zero values, checked above.
+            capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
         }
-    }
-
-    fn capacity(&self) -> usize {
-        self.buffer_size.get() * self.buffer_count.get()
     }
 }
 
 impl Allocator for Impl {
-    async fn allocate(&self, size: NonZeroUsize) -> Option<slice::Slice> {
-        if size.get() > self.capacity() {
+    type Buffer = slice::Slice;
+
+    async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
+        if size > self.capacity {
             return None;
         }
 
@@ -97,5 +176,9 @@ impl Allocator for Impl {
         permit.forget();
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
+    }
+
+    fn capacity(&self) -> NonZeroUsize {
+        self.capacity
     }
 }
