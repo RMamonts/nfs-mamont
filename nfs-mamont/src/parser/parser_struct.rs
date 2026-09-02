@@ -15,13 +15,14 @@
 
 use std::cmp::min;
 use std::io::{self, ErrorKind};
+use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
-use crate::allocator::{Allocator, Slice};
+use crate::allocator::{Allocator, Buffer};
 use crate::consts::mount::{
     MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
     MOUNT_VERSION,
@@ -46,8 +47,8 @@ use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
 use crate::parser::read_buffer::CountBuffer;
 use crate::parser::rpc::{auth, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArgWrapper, MountArguments,
-    NfsArgWrapper, NfsArguments, NlmArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments,
+    NlmArguments, ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, OpaqueAuth, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -56,7 +57,7 @@ const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`vfs::write::Args`])
+/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`vfs::write::Args`])
 pub const DEFAULT_SIZE: usize = 2500;
 
 /// Parser for RPC messages over async streams.
@@ -247,7 +248,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
-    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments> {
+    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments<A::Buffer>> {
         let args = match procedure {
             NULL => NfsArguments::Null,
             GETATTR => NfsArguments::GetAttr(self.buffer.parse_with_retry(get_attr::args).await?),
@@ -257,7 +258,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             READLINK => {
                 NfsArguments::ReadLink(self.buffer.parse_with_retry(read_link::args).await?)
             }
-            READ => NfsArguments::Read(self.buffer.parse_with_retry(read::args).await?),
+            READ => {
+                let (args, data) = adapter_for_read(&self.allocator, &mut self.buffer).await?;
+                NfsArguments::Read(args, data)
+            }
             WRITE => {
                 NfsArguments::Write(adapter_for_write(&self.allocator, &mut self.buffer).await?)
             }
@@ -311,47 +315,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(args)
     }
 
-    /// Parses a complete NFSv3 RPC message from the stream.
-    ///
-    /// This is the main entry point for parsing. It performs the following steps:
-    /// 1. Reads the message header (framing)
-    /// 2. Parses the RPC call header
-    /// 3. Parses NFSv3 procedure-specific arguments
-    /// 4. Validates that all data in the frame was consumed
-    /// 5. Cleans up internal state for the next message
-    ///
-    /// If a protocol error occurs (version mismatch, auth error, etc.), the parser
-    /// will attempt to discard the remaining message data to maintain stream alignment.
-    ///
-    /// # Returns
-    ///
-    /// Returns parsed NFSv3 procedure arguments,
-    /// or an error if parsing fails at any stage.
-    #[allow(dead_code)]
-    pub async fn parse_nfs_message(&mut self) -> Result<NfsArgWrapper> {
-        let xid = self.read_message_header().await?;
-        let rpc_header = match self.parse_rpc_header().await {
-            Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-        let proc = match self.parse_nfs_message_with_header(&rpc_header).await {
-            Ok(arg) => Box::new(arg),
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-
-        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
-        self.finalize_parsing()?;
-        Ok(NfsArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
-    }
-
     /// Parses the next RPC message and returns typed arguments for its program.
     ///
     /// This is the generic entry point for call sites that do not know in advance
     /// whether the next frame contains NFSv3 or MOUNT data.
-    pub async fn next_message(&mut self) -> core::result::Result<ArgWrapper, ErrorWrapper> {
+    pub async fn next_message(
+        &mut self,
+    ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
         let xid = match self.read_message_header().await {
             Ok(xid) => xid,
             Err(error) => return Err(ErrorWrapper { xid: None, error }),
@@ -379,28 +349,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    /// Parses a complete MOUNT RPC message from the stream.
-    #[allow(dead_code)]
-    pub async fn parse_mount_message(&mut self) -> Result<MountArgWrapper> {
-        let xid = self.read_message_header().await?;
-        let rpc_header = match self.parse_rpc_header().await {
-            Ok(arg) => arg,
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-        let proc = match self.parse_mount_message_with_header(&rpc_header).await {
-            Ok(arg) => Box::new(arg),
-            Err(err) => return Err(self.match_errors(err).await),
-        };
-
-        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
-        self.finalize_parsing()?;
-        Ok(MountArgWrapper {
-            header: RpcHeader { xid, cred: rpc_header.cred, verf: rpc_header.verf },
-            proc,
-        })
-    }
-
-    async fn parse_next_message_with_header(&mut self, head: &RpcMessage) -> Result<ProcArguments> {
+    async fn parse_next_message_with_header(
+        &mut self,
+        head: &RpcMessage,
+    ) -> Result<ProcArguments<A::Buffer>> {
         match head.program {
             NFS_PROGRAM => {
                 let args = self.parse_nfs_message_with_header(head).await?;
@@ -421,7 +373,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         }
     }
 
-    async fn parse_nfs_message_with_header(&mut self, head: &RpcMessage) -> Result<NfsArguments> {
+    async fn parse_nfs_message_with_header(
+        &mut self,
+        head: &RpcMessage,
+    ) -> Result<NfsArguments<A::Buffer>> {
         if head.program != NFS_PROGRAM {
             error!(
                 got = head.program,
@@ -532,6 +487,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// this method discards the remaining message data to maintain stream alignment
     /// for subsequent messages. For other errors, it returns them as-is.
     ///
+    /// Allocation failures are discarded as well: the frame itself is well-formed,
+    /// so leaving it half-consumed would desync [`CountBuffer::total_bytes`] and
+    /// make every later [`Self::finalize_parsing`] fail with "Unparsed data
+    /// remaining in frame".
+    ///
     /// # Arguments
     ///
     /// * `error` - The error that occurred during parsing
@@ -540,13 +500,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns the error, potentially after attempting to discard the message.
     async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
+        let recoverable = match &error {
+            Error::RpcVersionMismatch(_)
+            | Error::ProgramMismatch
+            | Error::ProcedureMismatch
+            | Error::Auth(_)
+            | Error::MessageTypeMismatch
+            | Error::ProgramVersionMismatch(_) => true,
+            Error::IO(err) => err.kind() == ErrorKind::OutOfMemory,
+            _ => false,
+        };
+
+        if recoverable {
             proc_nested_errors(error, self.discard_current_message()).await
         } else {
             error
@@ -599,27 +564,34 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - Parsing fails
 /// - Memory allocation fails
 /// - Reading the data fails
-async fn adapter_for_write<S: AsyncRead + Unpin>(
-    alloc: &Arc<impl Allocator>,
+async fn adapter_for_write<A, S>(
+    alloc: &Arc<A>,
     buffer: &mut CountBuffer<S>,
-) -> Result<vfs::write::Args> {
+) -> Result<vfs::write::Args<A::Buffer>>
+where
+    A: Allocator,
+    S: AsyncRead + Unpin,
+{
     // Parse arguments for WRITE procedure.
     let part_arg = buffer.parse_with_retry(write::args).await?;
     let size = buffer.parse_with_retry(u32_as_usize).await?;
 
-    // Attempt allocation with the given size, or fallback to NonZeroUsize::MIN.
-    let non_zero_size = NonZeroUsize::new(size).unwrap_or(NonZeroUsize::MIN);
-    let mut slice = alloc.allocate(non_zero_size).await.ok_or_else(|| {
-        Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
-    })?;
+    // A zero-length write needs no buffer at all, so it never takes a pool slot.
+    let mut buffer_data = match NonZeroUsize::new(size) {
+        None => A::Buffer::empty(),
+        Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
+            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+        })?,
+    };
 
     // Calculate necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
 
     // Read synchronously what is available, then finish asynchronously if needed.
-    let bytes_read_sync = read_in_slice_sync(buffer, &mut slice, size)?;
+    let bytes_read_sync = read_in_slice_sync(buffer, &mut buffer_data, size)?;
     if bytes_read_sync < size {
-        read_in_slice_async(buffer, &mut slice, bytes_read_sync, size - bytes_read_sync).await?;
+        read_in_slice_async(buffer, &mut buffer_data, bytes_read_sync, size - bytes_read_sync)
+            .await?;
     }
 
     // Discard any trailing padding bytes after the data.
@@ -629,37 +601,86 @@ async fn adapter_for_write<S: AsyncRead + Unpin>(
         offset: part_arg.offset,
         size: part_arg.size,
         stable: part_arg.stable,
-        data: slice,
+        data: buffer_data,
     })
+}
+
+/// Special adapter for parsing READ procedure arguments.
+///
+/// Unlike WRITE, the READ request carries no opaque data on the wire; the
+/// buffer allocated here is the server-side *output* buffer that the backend
+/// fills with the read result. Allocating it on the read side keeps a single
+/// allocator serving both READ and WRITE and removes the allocator from the
+/// VFS worker pool.
+///
+/// A `count` larger than the allocator can ever serve is clamped instead of
+/// rejected: RFC 1813 allows the server to answer with fewer bytes than
+/// requested, so an oversized request becomes a short read rather than an
+/// error. The clamped value is written back into the returned arguments so the
+/// backend never sees a `count` larger than the buffer it is handed.
+///
+/// # Arguments
+///
+/// * `alloc` - The allocator to use for allocating the read output buffer
+/// * `buffer` - The buffer to read the fixed arguments from
+///
+/// # Returns
+///
+/// Returns the parsed [`vfs::read::Args`] together with the allocated output
+/// buffer, or an error if parsing fails or memory allocation fails. A zero-byte
+/// read yields an empty buffer without touching the allocator.
+async fn adapter_for_read<A, S>(
+    alloc: &Arc<A>,
+    buffer: &mut CountBuffer<S>,
+) -> Result<(vfs::read::Args, A::Buffer)>
+where
+    A: Allocator,
+    S: AsyncRead + Unpin,
+{
+    let mut args = buffer.parse_with_retry(read::args).await?;
+
+    let count = min(args.count as usize, alloc.capacity().get());
+    args.count = count as u32;
+
+    let data = match NonZeroUsize::new(count) {
+        None => A::Buffer::empty(),
+        Some(size) => alloc.allocate(size).await.ok_or_else(|| {
+            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+        })?,
+    };
+
+    Ok((args, data))
 }
 
 /// Reads data into a slice asynchronously from the `CountBuffer`.
 ///
 /// This function attempts to fill the provided `slice` with `to_write` bytes
 /// from the `src` buffer, skipping `to_skip` bytes at the beginning of the slice.
-/// It handles situations where data might be split across multiple internal buffers
-/// of the `CountBuffer`.
 ///
 /// # Arguments
 ///
 /// * `src` - The `CountBuffer` to read data from.
-/// * `slice` - The [`Slice`] to write the read data into.
-/// * `to_skip` - The number of bytes to skip in the `slice` before writing.
-/// * `to_write` - The number of bytes to write into the `slice`.
+/// * `slice` - The buffer to write the read data into.
+/// * `to_skip` - The number of bytes to skip in the buffer before writing.
+/// * `to_write` - The number of bytes to write into the buffer.
 ///
 /// # Returns
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully written,
 /// or an error if an I/O error occurs or buffer sizes are invalid.
-pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
+pub async fn read_in_slice_async<S, B>(
     src: &mut CountBuffer<S>,
-    slice: &mut Slice,
+    buffer: &mut B,
     to_skip: usize,
     to_write: usize,
-) -> Result<usize> {
+) -> Result<usize>
+where
+    S: AsyncRead + Unpin,
+    B: Buffer,
+{
     let mut left_skip = to_skip;
     let mut left_write = to_write;
-    for buf in slice.iter_mut() {
+    for buf in buffer.chunks_mut() {
         let in_cur = min(left_skip, buf.len());
         if left_skip > 0 && in_cur == buf.len() {
             left_skip = left_skip
@@ -690,20 +711,24 @@ pub async fn read_in_slice_async<S: AsyncRead + Unpin>(
 /// # Arguments
 ///
 /// * `src` - The `CountBuffer` to read data from.
-/// * `slice` - The [`Slice`] to write the read data into.
+/// * `slice` - The [`Buffer`] to write the read data into.
 /// * `left_size` - The number of bytes expected to be read into the slice.
 ///
 /// # Returns
 ///
 /// Returns `Ok(usize)` indicating the number of bytes successfully read,
 /// or an error if an I/O error occurs or the amount of data read is not as expected.
-pub fn read_in_slice_sync<S: AsyncRead + Unpin>(
+pub fn read_in_slice_sync<S, B>(
     src: &mut CountBuffer<S>,
-    slice: &mut Slice,
+    buffer: &mut B,
     left_size: usize,
-) -> Result<usize> {
+) -> Result<usize>
+where
+    S: AsyncRead + Unpin,
+    B: Buffer,
+{
     let mut real_size = 0;
-    for buf in slice.iter_mut() {
+    for buf in buffer.chunks_mut() {
         let block_size = min(buf.len(), left_size - real_size);
         let mut read_count = 0;
         // for my further notice:

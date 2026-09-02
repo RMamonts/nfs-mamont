@@ -6,11 +6,11 @@
 //! RPC reply to an async writer.
 
 use std::io;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, IoSlice, Write};
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::allocator::Slice;
+use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
@@ -25,11 +25,12 @@ use super::nfs::{
     path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
     write,
 };
+use super::nlm;
 use super::rpc::auth;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Slice`] in [`crate::vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 /// Max size of RMS fragment data
@@ -61,24 +62,23 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<T: AsyncWrite + Unpin> {
-    buffer: WriteBuffer<T>,
+pub struct Serializer<B: Buffer, T: AsyncWrite + Unpin> {
+    buffer: WriteBuffer<B, T>,
 }
 
-impl<T: AsyncWrite + Unpin> Serializer<T> {
+impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
-        Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
+        Self::with_capacity(writer, DEFAULT_SIZE)
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    #[allow(dead_code)]
     fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
     /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_result(&mut self, result: ProcResult) -> io::Result<()> {
+    async fn process_result(&mut self, result: ProcResult<B>) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
@@ -87,7 +87,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: Box<NfsRes>) -> io::Result<()> {
+    async fn process_nfs3(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
         match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
@@ -105,13 +105,12 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             NfsRes::ReadLink(res) => {
                 nfs_result!(self, res, read_link::result_ok, read_link::result_fail)
             }
-            //special case because of Slice
             NfsRes::Read(res) => match res {
                 Ok(ok) => {
                     let count = ok.head.count as usize;
                     usize_as_u32(&mut self.buffer, STATUS_OK)?;
                     read::result_ok_part(&mut self.buffer, ok.head)?;
-                    self.buffer.send_inner_with_slice(ok.data, count).await
+                    self.buffer.send_inner_with_buffer(ok.data, count).await
                 }
                 Err(err) => {
                     error(&mut self.buffer, err.error)?;
@@ -167,10 +166,26 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         }
     }
 
+    /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body and writes it to the underlying writer.
     async fn process_nlm(&mut self, data: Box<NlmRes>) -> io::Result<()> {
         match *data {
             NlmRes::Null => self.buffer.send_inner_buffer().await,
-            _ => todo!(),
+            NlmRes::Lock(res) => {
+                nlm::lock_res(&mut self.buffer, res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Unlock(res) => {
+                nlm::unlock_res(&mut self.buffer, res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Test(res) => {
+                nlm::test_res(&mut self.buffer, *res)?;
+                self.buffer.send_inner_buffer().await
+            }
+            NlmRes::Cancel(res) => {
+                nlm::cancel_res(&mut self.buffer, res)?;
+                self.buffer.send_inner_buffer().await
+            }
         }
     }
 
@@ -211,7 +226,11 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(&mut self, reply: ProcReply, verifier: OpaqueAuth) -> io::Result<()> {
+    pub async fn form_reply(
+        &mut self,
+        reply: ProcReply<B>,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
         u32(&mut self.buffer, reply.xid)?;
         u32(&mut self.buffer, RpcBody::Reply as u32)?;
         match reply.proc_result {
@@ -281,12 +300,13 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<T: AsyncWrite + Unpin> {
+struct WriteBuffer<B: Buffer, T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
+    _phantom: std::marker::PhantomData<B>,
 }
 
-impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
+impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -299,10 +319,14 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     }
 }
 
-impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
+impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
-        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
+    fn new(socket: T, capacity: usize) -> WriteBuffer<B, T> {
+        let mut buffer = WriteBuffer {
+            socket,
+            buf: Vec::with_capacity(capacity),
+            _phantom: std::marker::PhantomData,
+        };
         buffer.clean();
         buffer
     }
@@ -339,36 +363,70 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload [`Slice`] (used for READ data).
-    async fn send_inner_with_slice(&mut self, slice: Slice, count: usize) -> io::Result<()> {
+    /// Flushes the staged XDR bytes followed by a streamed payload [`Buffer`] (used for READ data).
+    ///
+    /// Uses vectored I/O to coalesce all data chunks and padding into a single
+    /// `writev`-style syscall, reducing kernel transitions.
+    async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
-        // (which is represented with Slice in vfs::read::Success) from XDR
+        // (which is represented with Buffer in vfs::read::Success) from XDR
         // (https://datatracker.ietf.org/doc/html/rfc4506#autoid-17) is used, which mean (quote):
         //    The array is encoded as the element count n
         //    (an unsigned integer) followed by the encoding of each of the array's
         //    elements, starting with element 0 and progressing through element n-1.
-        // so we need to pass size of Slice before actual opaque data
+        // so we need to pass size of buffer before actual opaque data
         u32(&mut self.buf, count as u32)?;
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
-        self.socket.write_all(&self.buf).await?;
 
-        // later change to explicit cursor (when one implemented)
-        let mut remaining = count;
-        for buf in slice.iter() {
-            if remaining == 0 {
+const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
+
+        let mut written: usize = 0;
+        let total: usize = self.buf.len() + buffer.len() + padding;
+
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
+        while written < total {
+            iov.clear();
+            let mut to_skip = written;
+
+            if to_skip < self.buf.len() {
+                iov.push(IoSlice::new(&self.buf[to_skip..]));
+                to_skip = 0;
+            } else {
+                to_skip -= self.buf.len();
+            }
+
+            for chunk in buffer.chunks() {
+                if to_skip == 0 {
+                    iov.push(IoSlice::new(chunk));
+                } else if to_skip < chunk.len() {
+                    iov.push(IoSlice::new(&chunk[to_skip..]));
+                    to_skip = 0;
+                } else {
+                    to_skip -= chunk.len();
+                }
+            }
+
+            if to_skip < padding {
+                iov.push(IoSlice::new(&PADDING_BYTES[to_skip..padding]));
+            }
+
+            if !iov.is_empty() {
+                let n = self.socket.write_vectored(&iov).await?;
+                if n == 0 {
+                    return Err(io::Error::new(
+                        ErrorKind::WriteZero,
+                        "failed to write data to socket",
+                    ));
+                }
+                written += n;
+            } else {
                 break;
             }
-            let n = buf.len().min(remaining);
-            self.socket.write_all(&buf[..n]).await?;
-            remaining -= n;
         }
 
-        // write padding directly to socket
-        let slice = [0u8; ALIGNMENT];
-        self.socket.write_all(&slice[..padding]).await?;
         self.clean();
         Ok(())
     }

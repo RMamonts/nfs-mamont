@@ -5,3 +5,6 @@
 
 /// MOUNT v3 service implementation.
 pub mod mount;
+
+/// NLM v4 service implementation.
+pub mod nlm;
