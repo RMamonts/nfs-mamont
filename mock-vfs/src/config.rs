@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use nfs_mamont::vfs::file;
 
 pub const FILE_ATTR: file::Attr = file::Attr {
@@ -38,6 +40,7 @@ pub struct MockVfsConfig {
     pub dir_entry_count: usize,
     pub default_attr: file::Attr,
     pub dir_attr: file::Attr,
+    pub latency: Duration,
 }
 
 impl Default for MockVfsConfig {
@@ -47,6 +50,7 @@ impl Default for MockVfsConfig {
             dir_entry_count: 128,
             default_attr: FILE_ATTR,
             dir_attr: DIR_ATTR,
+            latency: Duration::ZERO,
         }
     }
 }

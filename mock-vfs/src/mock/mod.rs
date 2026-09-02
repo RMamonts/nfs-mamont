@@ -105,7 +105,10 @@ impl mnt::Mnt for MockMount {
         _client_addr: SocketAddr,
         _cred: OpaqueAuth,
     ) -> Result<mnt::Success, mnt::Fail> {
-        Err(mnt::Fail::Access)
+        Ok(mnt::Success {
+            file_handle: ROOT_HANDLE,
+            auth_flavors: vec![nfs_mamont::AuthFlavor::None],
+        })
     }
 }
 

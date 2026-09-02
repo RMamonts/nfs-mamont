@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 
+use nfs_mamont::service::nlm::NlmService;
 use nfs_mamont::{handle_forever, Impl, ServerContext};
 
 use mock_vfs::config::MockVfsConfig;
@@ -156,13 +157,20 @@ fn build_write_req(fh: &[u8; 8], offset: u64, data: &[u8], xid: u32) -> Vec<u8> 
 // ── Response reader ─────────────────────────────────────────────────────
 
 async fn read_response(stream: &mut TcpStream, buf: &mut Vec<u8>) {
+    const LAST_FRAGMENT: u32 = 0x8000_0000;
+    let mut total = 0usize;
     let mut header = [0u8; 4];
-    stream.read_exact(&mut header).await.unwrap();
-    let frag = u32::from_be_bytes(header);
-    let len = (frag & 0x7FFF_FFFF) as usize;
-
-    buf.resize(len, 0);
-    stream.read_exact(buf).await.unwrap();
+    loop {
+        stream.read_exact(&mut header).await.unwrap();
+        let frag = u32::from_be_bytes(header);
+        let len = (frag & 0x7FFF_FFFF) as usize;
+        buf.resize(total + len, 0);
+        stream.read_exact(&mut buf[total..total + len]).await.unwrap();
+        total += len;
+        if frag & LAST_FRAGMENT != 0 {
+            break;
+        }
+    }
 }
 
 // ── Live stats reporter ─────────────────────────────────────────────────
@@ -247,7 +255,9 @@ async fn worker(
 
     let mut rng = fastrand::Rng::new();
     let block_size_u32 = cfg.block_size as u32;
-    let max_offset = 1024u64 * 1024 * 1024;
+    let file_size = 1024u64 * 1024 * 1024;
+    // Bound offsets so full reads never hit EOF, keeping byte accounting exact.
+    let max_offset = file_size - block_size_u32 as u64;
 
     let mut xid = XID_BASE + conn_id * 10000;
     let mut resp_buf = Vec::with_capacity(1024);
@@ -286,17 +296,17 @@ async fn start_local_server() -> std::net::SocketAddr {
     let backend = Arc::new(MockVfs::new(config));
     let buf_size = NonZeroUsize::new(65536).unwrap();
     let buf_count = NonZeroUsize::new(1024).unwrap();
-    let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
-    let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
+    let allocator = Arc::new(Impl::new(buf_size, buf_count));
     let pool_size = NonZeroUsize::new(4).unwrap();
-    let context = ServerContext::new(backend, read_alloc, write_alloc, pool_size);
+    let context = ServerContext::new(backend, allocator, pool_size);
     let mount_service = Arc::new(MockMount);
+    let nlm_service = Arc::new(NlmService::new());
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
-        handle_forever(listener, context, mount_service).await.unwrap();
+        handle_forever(listener, context, mount_service, nlm_service).await.unwrap();
     });
 
     for _ in 0..100 {

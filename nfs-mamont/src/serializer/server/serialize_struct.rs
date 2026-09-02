@@ -381,7 +381,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
 
-const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
+        const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
         let total: usize = self.buf.len() + buffer.len() + padding;

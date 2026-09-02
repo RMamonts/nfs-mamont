@@ -6,6 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
+use nfs_mamont::service::nlm::NlmService;
 use nfs_mamont::{handle_forever, Impl, ServerContext};
 
 use mock_vfs::config::MockVfsConfig;
@@ -70,14 +71,21 @@ fn commit_req() -> Vec<u8> {
 
 // ── Response reader ────────────────────────────────────────────────────
 
-async fn read_response(stream: &mut TcpStream) -> Vec<u8> {
+async fn read_response(stream: &mut TcpStream, resp: &mut Vec<u8>) {
+    const LAST_FRAGMENT: u32 = 0x8000_0000;
+    resp.clear();
     let mut header = [0u8; 4];
-    stream.read_exact(&mut header).await.unwrap();
-    let frag = u32::from_be_bytes(header);
-    let len = (frag & 0x7FFF_FFFF) as usize;
-    let mut resp = vec![0u8; len];
-    stream.read_exact(&mut resp).await.unwrap();
-    resp
+    loop {
+        stream.read_exact(&mut header).await.unwrap();
+        let frag = u32::from_be_bytes(header);
+        let len = (frag & 0x7FFF_FFFF) as usize;
+        resp.resize(resp.len() + len, 0);
+        let start = resp.len() - len;
+        stream.read_exact(&mut resp[start..]).await.unwrap();
+        if frag & LAST_FRAGMENT != 0 {
+            break;
+        }
+    }
 }
 
 // ── Benchmark helper ───────────────────────────────────────────────────
@@ -90,18 +98,24 @@ fn bench_procedure(
     req: Vec<u8>,
 ) {
     let stream = rt.block_on(TcpStream::connect(addr)).unwrap();
+    let _ = stream.set_nodelay(true);
     let shared = Arc::new(Mutex::new(stream));
 
     c.bench_function(name, |b| {
-        b.to_async(rt).iter(|| {
-            let stream = Arc::clone(&shared);
-            let req = req.clone();
-            async move {
-                let mut guard = stream.lock().await;
-                guard.write_all(&req).await.unwrap();
-                let _resp = read_response(&mut guard).await;
-            }
-        });
+        b.to_async(rt).iter_batched(
+            || (req.clone(), Vec::with_capacity(4096)),
+            |(mut req_buf, mut resp_buf)| {
+                let stream = Arc::clone(&shared);
+                async move {
+                    let mut guard = stream.lock().await;
+                    guard.write_all(&req_buf).await.unwrap();
+                    req_buf.clear();
+                    let _ = read_response(&mut guard, &mut resp_buf).await;
+                    (req_buf, resp_buf)
+                }
+            },
+            criterion::BatchSize::LargeInput,
+        );
     });
 }
 
@@ -122,17 +136,17 @@ fn bench_nfs_pipeline(c: &mut Criterion) {
         let backend = Arc::new(MockVfs::new(config));
         let buf_size = NonZeroUsize::new(1048576).unwrap();
         let buf_count = NonZeroUsize::new(64).unwrap();
-        let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
-        let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
+        let allocator = Arc::new(Impl::new(buf_size, buf_count));
         let pool_size = NonZeroUsize::new(4).unwrap();
-        let context = ServerContext::new(backend, read_alloc, write_alloc, pool_size);
+        let context = ServerContext::new(backend, allocator, pool_size);
         let mount_service = Arc::new(MockMount);
+        let nlm_service = Arc::new(NlmService::new());
 
         let listener = rt.block_on(TcpListener::bind("127.0.0.1:0")).unwrap();
         let addr = rt.block_on(async { listener.local_addr() }).unwrap();
 
         rt.spawn(async move {
-            handle_forever(listener, context, mount_service).await.unwrap();
+            handle_forever(listener, context, mount_service, nlm_service).await.unwrap();
         });
 
         for _ in 0..100 {

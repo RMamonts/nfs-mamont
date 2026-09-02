@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tokio::net::TcpListener;
 
+use nfs_mamont::service::nlm::NlmService;
 use nfs_mamont::{handle_forever, Impl, ServerContext};
 
 use mock_vfs::config::MockVfsConfig;
@@ -45,15 +46,15 @@ async fn main() -> std::io::Result<()> {
     let backend = Arc::new(MockVfs::new(config));
     let buf_size = NonZeroUsize::new(1048576).unwrap();
     let buf_count = NonZeroUsize::new(64).unwrap();
-    let read_alloc = Arc::new(Impl::new(buf_size, buf_count));
-    let write_alloc = Arc::new(Impl::new(buf_size, buf_count));
+    let allocator = Arc::new(Impl::new(buf_size, buf_count));
     let pool_size = NonZeroUsize::new(4).unwrap();
-    let context = ServerContext::new(backend, read_alloc, write_alloc, pool_size);
+    let context = ServerContext::new(backend, allocator, pool_size);
     let mount_service = Arc::new(MockMount);
+    let nlm_service = Arc::new(NlmService::new());
 
     let listener = TcpListener::bind(&bind_addr).await?;
     let actual_addr = listener.local_addr()?;
     eprintln!("mock-nfs-server listening on {actual_addr}");
 
-    handle_forever(listener, context, mount_service).await
+    handle_forever(listener, context, mount_service, nlm_service).await
 }
