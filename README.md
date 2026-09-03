@@ -42,6 +42,9 @@ with the following jobs:
 - **security** — `cargo audit` for known vulnerabilities in dependencies.
 - **docs** — build documentation with warnings-as-errors.
 - **udeps** — detect unused dependencies via `cargo-udeps`.
+- **kani** — formal verification of the parser, allocator and serializer
+  cores with [Kani](https://model-checking.github.io/kani/) (separate
+  workflow, runs on PRs that touch those paths).
 
 ### Local commands
 
@@ -64,6 +67,30 @@ cargo fmt --all --check          # formatting check
 ```bash
 cargo doc --no-deps              # build docs
 ```
+
+```bash
+cargo install --locked kani-verifier && cargo kani setup   # one-time
+cargo kani -p nfs-mamont         # run proof harnesses
+```
+
+### Formal verification
+
+The synchronous cores that parse untrusted network input are model-checked
+with Kani. Proof harnesses live next to the code they prove, in
+`#[cfg(kani)] mod verification` blocks, and are invisible to a normal build.
+They currently cover:
+
+- XDR alignment padding on both the parser and serializer side;
+- the `ReadBuffer` position invariant `read_pos <= write_pos <= data.len()`,
+  whose violation would be a panic reachable from the network --- proved for
+  any operation sequence that respects the preconditions its setters do not
+  check themselves; that `CountBuffer` respects them is not yet proved;
+- the `Slice` iterators, which index buffers with a caller-supplied range.
+
+Kani complements `cargo-fuzz` rather than replacing it: fuzzing explores the
+real async stack in depth, Kani proves the synchronous cores exhaustively up
+to a small bound. The async layers (`tokio`) are out of scope for these
+harnesses and stay covered by tests and fuzzing.
 
 ### Optional feature
 

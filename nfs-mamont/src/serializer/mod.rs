@@ -126,3 +126,30 @@ pub fn usize_as_u32(dest: &mut impl Write, n: usize) -> io::Result<()> {
         n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Mirror of the parser-side proof: [`padding`] emits fewer than [`ALIGNMENT`]
+    /// bytes for every `n`, keeping its `slice[..padding]` index in bounds, and the
+    /// emitted count restores XDR alignment.
+    ///
+    /// The formula is duplicated in [`crate::parser::primitive::padding`]; proving
+    /// both independently is what keeps the two copies honest.
+    #[kani::proof]
+    fn padding_is_bounded_and_aligns() {
+        let n: usize = kani::any();
+
+        // `Write for &mut [u8]` advances the slice by what was written, so this
+        // measures the real function without dragging an allocator into the proof.
+        let mut sink = [0u8; ALIGNMENT];
+        let mut dest: &mut [u8] = &mut sink;
+        assert!(padding(&mut dest, n).is_ok());
+
+        let written = ALIGNMENT - dest.len();
+        assert!(written < ALIGNMENT);
+        // Stated on the residues so the check itself cannot overflow at `usize::MAX`.
+        assert_eq!((n % ALIGNMENT + written) % ALIGNMENT, 0);
+    }
+}

@@ -360,3 +360,71 @@ impl Read for ReadBuffer {
         Ok(len)
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    const MAX_CAP: usize = 4;
+    const MAX_OPS: usize = 3;
+
+    /// The invariant every [`ReadBuffer`] method assumes but none of them enforces.
+    ///
+    /// Breaking it is not a silent corruption: `write_slice` and [`Read::read`]
+    /// index `data` with these positions, so a violation is a panic reachable from
+    /// network input.
+    fn invariant(buf: &ReadBuffer) -> bool {
+        buf.read_pos <= buf.write_pos && buf.write_pos <= buf.data.len()
+    }
+
+    /// Proves that a [`ReadBuffer`] driven by any sequence of up to [`MAX_OPS`]
+    /// operations keeps its position invariant and never panics --- provided each
+    /// operation is called within the contract [`CountBuffer`] is expected to
+    /// honour. Those contracts are the `kani::assume` lines below; they are exactly
+    /// the preconditions the setters do not check themselves.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn read_buffer_upholds_invariant() {
+        let cap: usize = kani::any();
+        kani::assume(cap <= MAX_CAP);
+
+        let mut buf = ReadBuffer::new(cap);
+        assert!(invariant(&buf));
+
+        for _ in 0..MAX_OPS {
+            match kani::any::<u8>() % 5 {
+                // `extend(n)` --- the caller has just written `n` bytes into `write_slice()`.
+                0 => {
+                    let n: usize = kani::any();
+                    kani::assume(n <= buf.available_write());
+                    buf.extend(n);
+                }
+                // `consume(n)` --- the caller never discards more than is readable.
+                1 => {
+                    let n: usize = kani::any();
+                    kani::assume(n <= buf.available_read());
+                    buf.consume(n);
+                }
+                // `reset_read(n)` --- a retry rewinds to a position recorded earlier,
+                // which is therefore never ahead of the write cursor.
+                2 => {
+                    let n: usize = kani::any();
+                    kani::assume(n <= buf.write_pos);
+                    buf.reset_read(n);
+                }
+                3 => buf.clean(),
+                _ => {
+                    let mut dest = [0u8; MAX_CAP];
+                    let len: usize = kani::any();
+                    kani::assume(len <= MAX_CAP);
+                    let read = Read::read(&mut buf, &mut dest[..len]).unwrap();
+                    assert!(read <= len);
+                }
+            }
+            assert!(invariant(&buf));
+        }
+
+        // `write_slice` is the operation a violated invariant actually panics on.
+        assert!(buf.write_slice().len() == cap - buf.write_pos);
+    }
+}

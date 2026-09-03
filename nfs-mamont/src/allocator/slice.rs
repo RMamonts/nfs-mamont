@@ -250,3 +250,84 @@ impl PartialEq<Slice> for [u8] {
         other == self
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::allocator::UnownedBuffer;
+
+    const MAX_BUFFERS: usize = 3;
+    const MAX_BUFFER_LEN: usize = 4;
+
+    /// A [`Slice`] over nondeterministic buffer lengths and a nondeterministic
+    /// range, together with the heap storage the [`UnownedBuffer`]s point into.
+    ///
+    /// The storage must outlive the slice, so it is returned alongside it.
+    fn any_slice() -> (Slice, Vec<Box<[u8]>>, usize, usize) {
+        let count: usize = kani::any();
+        kani::assume(count >= 1 && count <= MAX_BUFFERS);
+
+        let mut storage: Vec<Box<[u8]>> = Vec::with_capacity(count);
+        let mut buffers: Vec<UnownedBuffer> = Vec::with_capacity(count);
+        let mut total = 0usize;
+
+        for _ in 0..count {
+            let len: usize = kani::any();
+            // `Slice::new` asserts buffers are non-empty.
+            kani::assume(len >= 1 && len <= MAX_BUFFER_LEN);
+
+            let mut boxed: Box<[u8]> = vec![0u8; len].into_boxed_slice();
+            let ptr = boxed.as_mut_ptr();
+            // SAFETY: `boxed` is moved into `storage`, which the caller keeps alive
+            // for as long as the returned `Slice`; the heap block does not move.
+            buffers.push(unsafe { UnownedBuffer::from_raw_parts(ptr, len) });
+            storage.push(boxed);
+            total += len;
+        }
+
+        let start: usize = kani::any();
+        let end: usize = kani::any();
+        kani::assume(start <= end && end <= total);
+
+        (Slice::new(buffers, start..end, None), storage, start, end)
+    }
+
+    /// Proves [`Iter::next`] never panics on `&result[start..end.min(len)]` and
+    /// that iteration yields exactly `range.len()` bytes, for every buffer layout
+    /// and range within the bounds above.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn iter_covers_range_without_panicking() {
+        let (slice, storage, start, end) = any_slice();
+        assert_eq!(slice.len(), end - start);
+
+        let mut yielded = 0usize;
+        for chunk in slice.iter() {
+            yielded += chunk.len();
+        }
+        assert_eq!(yielded, end - start);
+
+        drop(slice);
+        drop(storage);
+    }
+
+    /// The [`IterMut::next`] counterpart. The two `next` implementations are
+    /// duplicated line for line, so both are proved rather than one.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn iter_mut_covers_range_without_panicking() {
+        let (mut slice, storage, start, end) = any_slice();
+        assert_eq!(slice.len(), end - start);
+
+        let mut yielded = 0usize;
+        for chunk in slice.iter_mut() {
+            // Writing through the chunk is what a bad range would corrupt.
+            chunk.fill(0xAB);
+            yielded += chunk.len();
+        }
+        assert_eq!(yielded, end - start);
+
+        drop(slice);
+        drop(storage);
+    }
+}
