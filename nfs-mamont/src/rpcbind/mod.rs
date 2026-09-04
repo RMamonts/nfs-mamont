@@ -272,7 +272,7 @@ async fn send_rpc_call_to(addr: SocketAddr, mapping: Mapping, proc: u32) -> io::
         Ok(result) => result,
         Err(_) => Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            format!("reply from rpcbind at {addr} timed out"),
+            format!("reply from rpcbind: {proc} at {addr} timed out"),
         )),
     }
 }
