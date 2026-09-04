@@ -259,29 +259,43 @@ mod verification {
     const MAX_BUFFERS: usize = 3;
     const MAX_BUFFER_LEN: usize = 4;
 
-    /// A [`Slice`] over nondeterministic buffer lengths and a nondeterministic
-    /// range, together with the heap storage the [`UnownedBuffer`]s point into.
+    /// Backing storage for [`any_slice`], owned by the harness.
     ///
-    /// The storage must outlive the slice, so it is returned alongside it.
-    fn any_slice() -> (Slice, Vec<Box<[u8]>>, usize, usize) {
+    /// It is a stack array rather than a `Vec<Box<[u8]>>` on purpose. Every
+    /// symbolically sized heap allocation inside a harness costs CBMC a dynamic
+    /// object of unknown extent plus the whole `RawVec` allocate/shrink/drop path,
+    /// and one per buffer is what blew this proof's formula past the memory of a
+    /// GitHub runner. The buffers carve disjoint sub-ranges out of one concrete
+    /// block instead, which is the same input as far as `Iter`/`IterMut` are
+    /// concerned: they only ever index within a single buffer.
+    type Storage = [[u8; MAX_BUFFER_LEN]; MAX_BUFFERS];
+
+    const EMPTY_STORAGE: Storage = [[0u8; MAX_BUFFER_LEN]; MAX_BUFFERS];
+
+    /// A [`Slice`] over a nondeterministic number of buffers of nondeterministic
+    /// lengths, bounded by a nondeterministic range.
+    ///
+    /// `storage` must outlive the returned slice; the harness keeps it on its own
+    /// stack frame.
+    fn any_slice(storage: &mut Storage) -> (Slice, usize, usize) {
         let count: usize = kani::any();
         kani::assume(count >= 1 && count <= MAX_BUFFERS);
 
-        let mut storage: Vec<Box<[u8]>> = Vec::with_capacity(count);
-        let mut buffers: Vec<UnownedBuffer> = Vec::with_capacity(count);
+        // Concrete capacity: a single fixed-size allocation that is never grown.
+        let mut buffers: Vec<UnownedBuffer> = Vec::with_capacity(MAX_BUFFERS);
         let mut total = 0usize;
 
-        for _ in 0..count {
+        // Indexed rather than iterator-driven: a slice iterator makes CBMC reason
+        // about a moving pointer where an index only costs a bounds check.
+        for i in 0..count {
             let len: usize = kani::any();
             // `Slice::new` asserts buffers are non-empty.
             kani::assume(len >= 1 && len <= MAX_BUFFER_LEN);
 
-            let mut boxed: Box<[u8]> = vec![0u8; len].into_boxed_slice();
-            let ptr = boxed.as_mut_ptr();
-            // SAFETY: `boxed` is moved into `storage`, which the caller keeps alive
-            // for as long as the returned `Slice`; the heap block does not move.
+            let ptr = storage[i].as_mut_ptr();
+            // SAFETY: `len` is at most the length of `storage[i]`, the blocks are
+            // disjoint, and `storage` outlives the returned `Slice`.
             buffers.push(unsafe { UnownedBuffer::from_raw_parts(ptr, len) });
-            storage.push(boxed);
             total += len;
         }
 
@@ -289,7 +303,7 @@ mod verification {
         let end: usize = kani::any();
         kani::assume(start <= end && end <= total);
 
-        (Slice::new(buffers, start..end, None), storage, start, end)
+        (Slice::new(buffers, start..end, None), start, end)
     }
 
     /// Proves [`Iter::next`] never panics on `&result[start..end.min(len)]` and
@@ -298,7 +312,8 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn iter_covers_range_without_panicking() {
-        let (slice, storage, start, end) = any_slice();
+        let mut storage = EMPTY_STORAGE;
+        let (slice, start, end) = any_slice(&mut storage);
         assert_eq!(slice.len(), end - start);
 
         let mut yielded = 0usize;
@@ -306,9 +321,6 @@ mod verification {
             yielded += chunk.len();
         }
         assert_eq!(yielded, end - start);
-
-        drop(slice);
-        drop(storage);
     }
 
     /// The [`IterMut::next`] counterpart. The two `next` implementations are
@@ -316,7 +328,8 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn iter_mut_covers_range_without_panicking() {
-        let (mut slice, storage, start, end) = any_slice();
+        let mut storage = EMPTY_STORAGE;
+        let (mut slice, start, end) = any_slice(&mut storage);
         assert_eq!(slice.len(), end - start);
 
         let mut yielded = 0usize;
@@ -326,8 +339,5 @@ mod verification {
             yielded += chunk.len();
         }
         assert_eq!(yielded, end - start);
-
-        drop(slice);
-        drop(storage);
     }
 }
