@@ -46,7 +46,7 @@ const MOUNT_REG_VERSION: u32 = 3;
 const NLM_REG_VERSION: u32 = 4;
 
 /// RPC `reply_stat` for an accepted, matched message.
-const MSG_ACCEPTED: u32 = 0;
+const MSG_ACCEPTED: u32 = 1;
 
 /// MSB of the TCP record marker flags the last (and only) fragment of a
 /// record. Per RFC 5531 section 11 every record must set it; without it the
