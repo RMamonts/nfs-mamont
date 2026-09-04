@@ -259,6 +259,10 @@ mod verification {
     const MAX_BUFFERS: usize = 3;
     const MAX_BUFFER_LEN: usize = 4;
 
+    /// Byte written through [`IterMut`]; distinct from the zeroed storage so an
+    /// out-of-range write is visible.
+    const FILL: u8 = 0xAB;
+
     /// Backing storage for [`any_slice`], owned by the harness.
     ///
     /// It is a stack array rather than a `Vec<Box<[u8]>>` on purpose. Every
@@ -272,17 +276,30 @@ mod verification {
 
     const EMPTY_STORAGE: Storage = [[0u8; MAX_BUFFER_LEN]; MAX_BUFFERS];
 
+    /// A nondeterministic [`Slice`] together with the shape it was built from.
+    struct AnySlice {
+        slice: Slice,
+        /// Number of buffers; entries of `lens` past it are unused.
+        count: usize,
+        /// Length of each buffer, i.e. how much of `storage[i]` it covers.
+        lens: [usize; MAX_BUFFERS],
+        /// The range the slice was built with.
+        start: usize,
+        end: usize,
+    }
+
     /// A [`Slice`] over a nondeterministic number of buffers of nondeterministic
     /// lengths, bounded by a nondeterministic range.
     ///
     /// `storage` must outlive the returned slice; the harness keeps it on its own
     /// stack frame.
-    fn any_slice(storage: &mut Storage) -> (Slice, usize, usize) {
+    fn any_slice(storage: &mut Storage) -> AnySlice {
         let count: usize = kani::any();
         kani::assume(count >= 1 && count <= MAX_BUFFERS);
 
         // Concrete capacity: a single fixed-size allocation that is never grown.
         let mut buffers: Vec<UnownedBuffer> = Vec::with_capacity(MAX_BUFFERS);
+        let mut lens = [0usize; MAX_BUFFERS];
         let mut total = 0usize;
 
         // Indexed rather than iterator-driven: a slice iterator makes CBMC reason
@@ -296,6 +313,7 @@ mod verification {
             // SAFETY: `len` is at most the length of `storage[i]`, the blocks are
             // disjoint, and `storage` outlives the returned `Slice`.
             buffers.push(unsafe { UnownedBuffer::from_raw_parts(ptr, len) });
+            lens[i] = len;
             total += len;
         }
 
@@ -303,24 +321,32 @@ mod verification {
         let end: usize = kani::any();
         kani::assume(start <= end && end <= total);
 
-        (Slice::new(buffers, start..end, None), start, end)
+        AnySlice { slice: Slice::new(buffers, start..end, None), count, lens, start, end }
     }
 
     /// Proves [`Iter::next`] never panics on `&result[start..end.min(len)]` and
     /// that iteration yields exactly `range.len()` bytes, for every buffer layout
     /// and range within the bounds above.
+    ///
+    /// The chunks are also non-empty: callers such as
+    /// [`crate::parser::parser_struct::read_in_slice_async`] subtract a chunk
+    /// length from a remaining counter and would stall on an empty one.
     #[kani::proof]
     #[kani::unwind(5)]
     fn iter_covers_range_without_panicking() {
         let mut storage = EMPTY_STORAGE;
-        let (slice, start, end) = any_slice(&mut storage);
-        assert_eq!(slice.len(), end - start);
+        let any = any_slice(&mut storage);
+        assert_eq!(any.slice.len(), any.end - any.start);
 
         let mut yielded = 0usize;
-        for chunk in slice.iter() {
+        let mut chunks = 0usize;
+        for chunk in any.slice.iter() {
+            assert!(!chunk.is_empty());
             yielded += chunk.len();
+            chunks += 1;
         }
-        assert_eq!(yielded, end - start);
+        assert_eq!(yielded, any.end - any.start);
+        assert!(chunks <= any.count);
     }
 
     /// The [`IterMut::next`] counterpart. The two `next` implementations are
@@ -329,15 +355,55 @@ mod verification {
     #[kani::unwind(5)]
     fn iter_mut_covers_range_without_panicking() {
         let mut storage = EMPTY_STORAGE;
-        let (mut slice, start, end) = any_slice(&mut storage);
-        assert_eq!(slice.len(), end - start);
+        let mut any = any_slice(&mut storage);
+        assert_eq!(any.slice.len(), any.end - any.start);
 
         let mut yielded = 0usize;
-        for chunk in slice.iter_mut() {
+        let mut chunks = 0usize;
+        for chunk in any.slice.iter_mut() {
+            assert!(!chunk.is_empty());
             // Writing through the chunk is what a bad range would corrupt.
-            chunk.fill(0xAB);
+            chunk.fill(FILL);
             yielded += chunk.len();
+            chunks += 1;
         }
-        assert_eq!(yielded, end - start);
+        assert_eq!(yielded, any.end - any.start);
+        assert!(chunks <= any.count);
+    }
+
+    /// Writing through [`IterMut`] touches the bytes the range names and nothing
+    /// else.
+    ///
+    /// A slice hands out memory the allocator pool also lends to other requests,
+    /// so a chunk that reached one byte past its range would corrupt another
+    /// connection's payload --- silently, and only for particular buffer layouts.
+    /// The byte counter in [`Self::iter_mut_covers_range_without_panicking`]
+    /// cannot see that: a chunk shifted by one still has the right length.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn iter_mut_writes_stay_inside_range() {
+        let mut storage = EMPTY_STORAGE;
+        let mut any = any_slice(&mut storage);
+
+        for chunk in any.slice.iter_mut() {
+            chunk.fill(FILL);
+        }
+        // Ends the slice's borrow of `storage` before the bytes are read back.
+        drop(any.slice);
+
+        // Every byte of the storage, not just the ones the buffers cover: a write
+        // that ran one byte past a buffer, or into a block no buffer was built
+        // from, lands here too. `lens[i]` is zero for the blocks past `count`.
+        let mut offset = 0usize;
+        for i in 0..MAX_BUFFERS {
+            for j in 0..MAX_BUFFER_LEN {
+                let in_range = i < any.count
+                    && j < any.lens[i]
+                    && offset + j >= any.start
+                    && offset + j < any.end;
+                assert_eq!(storage[i][j] == FILL, in_range);
+            }
+            offset += any.lens[i];
+        }
     }
 }

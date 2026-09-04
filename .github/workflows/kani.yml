@@ -1,8 +1,9 @@
 name: Formal Verification
 
-# Kani model-checks the synchronous parsing, allocation and serialization cores.
-# It is scoped to those paths because a full run installs CBMC and takes several
-# minutes, and nothing outside them is reachable from a proof harness.
+# Kani model-checks the synchronous parsing, allocation, serialization and NLM
+# range cores. It is scoped to those paths because a full run installs CBMC and
+# takes several minutes, and nothing outside them is reachable from a proof
+# harness. Add a path here whenever a `#[cfg(kani)]` module lands outside them.
 on:
   pull_request:
     branches: ["main"]
@@ -10,6 +11,7 @@ on:
       - "nfs-mamont/src/parser/**"
       - "nfs-mamont/src/allocator/**"
       - "nfs-mamont/src/serializer/**"
+      - "nfs-mamont/src/service/**"
       - "nfs-mamont/Cargo.toml"
       - "Cargo.toml"
       - "Cargo.lock"

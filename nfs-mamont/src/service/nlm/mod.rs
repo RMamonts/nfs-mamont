@@ -352,10 +352,30 @@ fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
 }
 
 /// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
+///
+/// The end is inclusive and is clamped at the last addressable byte for a range
+/// that would run past the end of the 64-bit space. It is computed as
+/// `start + (len - 1)` rather than `(start + len) - 1` so that the clamp can never
+/// produce an end *before* `start`: with the latter, `start = u64::MAX` saturated
+/// the sum and then subtracted one, yielding a backwards interval that overlapped
+/// nothing --- not even itself.
 fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
     match len {
         LEN_REMAINING => u64::MAX,
-        _ => start.saturating_add(len).saturating_sub(1),
+        _ => start.saturating_add(len - 1),
+    }
+}
+
+/// The inverse of [`calculate_end_of_interval`]: the length that covers the
+/// inclusive range `[start, end]`.
+///
+/// A range ending at the last addressable byte has no representable length
+/// (`end - start + 1` overflows), and that is precisely what [`LEN_REMAINING`]
+/// encodes, so it is returned instead.
+fn calculate_len_of_interval(start: u64, end: u64) -> u64 {
+    match end.saturating_sub(start).checked_add(1) {
+        Some(len) => len,
+        None => LEN_REMAINING,
     }
 }
 
@@ -459,7 +479,7 @@ fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
                     locks[write].length = 0;
                 } else {
                     let new_end = std::cmp::max(write_end, read_end);
-                    locks[write].length = new_end - locks[write].offset + 1;
+                    locks[write].length = calculate_len_of_interval(locks[write].offset, new_end);
                 }
                 continue;
             }
@@ -493,5 +513,84 @@ impl NlmService {
     /// Creates an empty [`NlmService`].
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// The whole conflict detector rests on `[start, end]` being a well-formed
+    /// inclusive interval. A backwards interval overlaps nothing --- not even
+    /// itself --- so [`LockRegistry::find_conflict`] would hand two clients an
+    /// exclusive lock over the same byte, and [`merge_adjacent`] would subtract
+    /// with overflow. Both are reachable from the `offset`/`length` a client puts
+    /// in an NLM `LOCK` request.
+    #[kani::proof]
+    fn end_of_interval_never_precedes_start() {
+        let start: u64 = kani::any();
+        let len: u64 = kani::any();
+
+        assert!(calculate_end_of_interval(start, len) >= start);
+    }
+
+    /// [`calculate_len_of_interval`] inverts [`calculate_end_of_interval`], which
+    /// is what makes [`merge_adjacent`] store back the range it just computed
+    /// instead of a wrapped one.
+    #[kani::proof]
+    fn interval_length_round_trips() {
+        let start: u64 = kani::any();
+        let end: u64 = kani::any();
+        kani::assume(end >= start);
+
+        let len = calculate_len_of_interval(start, end);
+
+        assert_eq!(calculate_end_of_interval(start, len), end);
+    }
+
+    /// A lock request always conflicts with an identical one already held.
+    #[kani::proof]
+    fn ranges_overlap_is_reflexive() {
+        let start: u64 = kani::any();
+        let len: u64 = kani::any();
+
+        assert!(ranges_overlap(start, len, start, len));
+    }
+
+    /// [`LockRegistry::find_conflict`] compares the stored lock against the
+    /// request in one order only, so the answer must not depend on that order.
+    #[kani::proof]
+    fn ranges_overlap_is_symmetric() {
+        let start1: u64 = kani::any();
+        let len1: u64 = kani::any();
+        let start2: u64 = kani::any();
+        let len2: u64 = kani::any();
+
+        assert_eq!(
+            ranges_overlap(start1, len1, start2, len2),
+            ranges_overlap(start2, len2, start1, len1)
+        );
+    }
+
+    /// [`ranges_overlap`] agrees with the set semantics it stands for: it is true
+    /// exactly when some byte belongs to both ranges.
+    #[kani::proof]
+    fn ranges_overlap_matches_byte_membership() {
+        let start1: u64 = kani::any();
+        let len1: u64 = kani::any();
+        let start2: u64 = kani::any();
+        let len2: u64 = kani::any();
+
+        let end1 = calculate_end_of_interval(start1, len1);
+        let end2 = calculate_end_of_interval(start2, len2);
+
+        if ranges_overlap(start1, len1, start2, len2) {
+            // The later of the two starts is the first byte the ranges share.
+            let witness = std::cmp::max(start1, start2);
+            assert!(witness <= end1 && witness <= end2);
+        } else {
+            let byte: u64 = kani::any();
+            assert!(!(byte >= start1 && byte <= end1 && byte >= start2 && byte <= end2));
+        }
     }
 }

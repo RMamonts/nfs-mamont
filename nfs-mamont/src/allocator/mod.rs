@@ -148,6 +148,15 @@ impl Impl {
     }
 }
 
+/// Number of pool buffers needed to serve a request of `size` bytes.
+///
+/// Split out of [`Impl::allocate`] so the two facts the rest of the allocator
+/// relies on --- the pool is never asked for more buffers than it holds, and the
+/// buffers handed back always cover `size` bytes --- can be proved on their own.
+fn buffers_needed(size: NonZeroUsize, buffer_size: NonZeroUsize) -> usize {
+    size.get().div_ceil(buffer_size.get())
+}
+
 impl Allocator for Impl {
     type Buffer = slice::Slice;
 
@@ -156,8 +165,7 @@ impl Allocator for Impl {
             return None;
         }
 
-        let remain_size = size.get();
-        let count_needed = remain_size.div_ceil(self.buffer_size.get());
+        let count_needed = buffers_needed(size, self.buffer_size);
 
         let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
             Ok(p) => p,
@@ -180,5 +188,47 @@ impl Allocator for Impl {
 
     fn capacity(&self) -> NonZeroUsize {
         self.capacity
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Bounds on the pool geometry. The interesting cases are all about how a
+    /// request divides by the buffer size, so a handful of sizes and a handful of
+    /// buffers cover the arithmetic without handing CBMC a 64-bit multiplication
+    /// over the whole domain.
+    const MAX_BUFFER_SIZE: usize = 8;
+    const MAX_BUFFER_COUNT: usize = 4;
+
+    /// [`Impl::allocate`] pops [`buffers_needed`] buffers from the pool and hands
+    /// them to [`Slice::new`] as the range `0..size`. Two things must hold for
+    /// every request the capacity check lets through, and neither is checked at
+    /// runtime: the pool must hold that many buffers (`allocate` otherwise reaches
+    /// its `unreachable!`), and the buffers must cover `size` bytes (`Slice::new`
+    /// otherwise trips its "cannot index list as slice to end" assert).
+    #[kani::proof]
+    fn allocate_asks_for_a_covering_number_of_buffers() {
+        let buffer_size: usize = kani::any();
+        let buffer_count: usize = kani::any();
+        kani::assume(buffer_size >= 1 && buffer_size <= MAX_BUFFER_SIZE);
+        kani::assume(buffer_count >= 1 && buffer_count <= MAX_BUFFER_COUNT);
+
+        // `Impl::new` computes the capacity this way and panics on overflow.
+        let capacity = buffer_size * buffer_count;
+
+        let size: usize = kani::any();
+        // Everything `allocate` lets past its `size > self.capacity` check.
+        kani::assume(size >= 1 && size <= capacity);
+
+        let needed = buffers_needed(
+            NonZeroUsize::new(size).unwrap(),
+            NonZeroUsize::new(buffer_size).unwrap(),
+        );
+
+        assert!(needed >= 1);
+        assert!(needed <= buffer_count);
+        assert!(size <= needed * buffer_size);
     }
 }

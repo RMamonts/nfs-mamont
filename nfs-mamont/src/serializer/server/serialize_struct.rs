@@ -363,11 +363,31 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload [`Buffer`] (used for READ data).
+    /// Flushes the staged XDR bytes followed by `count` bytes of the payload
+    /// [`Buffer`] (used for READ data).
     ///
     /// Uses vectored I/O to coalesce all data chunks and padding into a single
     /// `writev`-style syscall, reducing kernel transitions.
+    ///
+    /// `buffer` is the allocator buffer the READ was served into, so it is sized
+    /// after the *requested* count: a short read --- near end-of-file, or whenever
+    /// the backend returns fewer bytes than asked for --- leaves it longer than
+    /// `count`. Only the first `count` bytes belong to the reply; the tail is
+    /// whatever the pool buffer happened to hold.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::InvalidInput`] if `count` exceeds `buffer.len()`:
+    /// the byte count is already on the wire at that point, and sending fewer
+    /// bytes than announced would leave the client waiting for the rest.
     async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
+        if count > buffer.len() {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "reply declares more payload bytes than the buffer holds",
+            ));
+        }
+
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
@@ -384,7 +404,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total: usize = self.buf.len() + buffer.len() + padding;
+        let total: usize = self.buf.len() + count + padding;
 
         let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
         while written < total {
@@ -398,7 +418,15 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
                 to_skip -= self.buf.len();
             }
 
+            let mut left = count;
             for chunk in buffer.chunks() {
+                if left == 0 {
+                    break;
+                }
+                // Only the first `count` bytes of the buffer are part of the reply.
+                let chunk = &chunk[..chunk.len().min(left)];
+                left -= chunk.len();
+
                 if to_skip == 0 {
                     iov.push(IoSlice::new(chunk));
                 } else if to_skip < chunk.len() {
@@ -429,5 +457,96 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
 
         self.clean();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal [`Buffer`] over owned chunks, standing in for an allocator slice.
+    struct ChunkedBuffer(Vec<Vec<u8>>);
+
+    impl Buffer for ChunkedBuffer {
+        fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_ {
+            self.0.iter().map(|chunk| chunk.as_slice())
+        }
+
+        fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_ {
+            self.0.iter_mut().map(|chunk| chunk.as_mut_slice())
+        }
+
+        fn len(&self) -> usize {
+            self.0.iter().map(|chunk| chunk.len()).sum()
+        }
+
+        fn is_empty(&self) -> bool {
+            self.len() == 0
+        }
+
+        fn empty() -> Self {
+            ChunkedBuffer(Vec::new())
+        }
+    }
+
+    /// Fragment length the RMS header of `wire` declares.
+    fn declared_fragment_size(wire: &[u8]) -> usize {
+        let header = u32::from_be_bytes(wire[..HEADER_SIZE].try_into().unwrap());
+        (header & !(HEADER_MASK as u32)) as usize
+    }
+
+    /// Sends `count` payload bytes out of `chunks` and returns the wire bytes.
+    async fn send(chunks: Vec<Vec<u8>>, count: usize) -> io::Result<Vec<u8>> {
+        let mut buffer: WriteBuffer<ChunkedBuffer, Vec<u8>> = WriteBuffer::new(Vec::new(), 64);
+        // Stands in for the READ3resok fields that precede the opaque data.
+        buffer.write_all(&[1, 2, 3, 4])?;
+        buffer.send_inner_with_buffer(ChunkedBuffer(chunks), count).await?;
+        Ok(std::mem::take(&mut buffer.socket))
+    }
+
+    #[tokio::test]
+    async fn full_read_sends_exactly_the_declared_payload() {
+        let wire = send(vec![vec![0xAA; 4], vec![0xBB; 4]], 8).await.unwrap();
+
+        assert_eq!(wire.len() - HEADER_SIZE, declared_fragment_size(&wire));
+        assert_eq!(wire.len(), HEADER_SIZE + 4 + 4 + 8);
+    }
+
+    /// A short read leaves the allocator buffer longer than the byte count the
+    /// reply declares; the tail must not reach the wire.
+    #[tokio::test]
+    async fn short_read_sends_exactly_the_declared_payload() {
+        let wire = send(vec![vec![0xAA; 4], vec![0xBB; 4]], 5).await.unwrap();
+
+        assert_eq!(wire.len() - HEADER_SIZE, declared_fragment_size(&wire));
+        // header + head + count + 5 payload bytes + 3 padding bytes
+        assert_eq!(wire.len(), HEADER_SIZE + 4 + 4 + 5 + 3);
+        assert_eq!(&wire[wire.len() - 8..], &[0xAA, 0xAA, 0xAA, 0xAA, 0xBB, 0, 0, 0]);
+    }
+
+    /// The payload is cut on a chunk boundary as readily as inside a chunk.
+    #[tokio::test]
+    async fn short_read_dropping_a_whole_chunk() {
+        let wire = send(vec![vec![0xAA; 4], vec![0xBB; 4]], 4).await.unwrap();
+
+        assert_eq!(wire.len() - HEADER_SIZE, declared_fragment_size(&wire));
+        assert_eq!(wire.len(), HEADER_SIZE + 4 + 4 + 4);
+    }
+
+    #[tokio::test]
+    async fn zero_length_read_sends_no_payload() {
+        let wire = send(vec![vec![0xAA; 4]], 0).await.unwrap();
+
+        assert_eq!(wire.len() - HEADER_SIZE, declared_fragment_size(&wire));
+        assert_eq!(wire.len(), HEADER_SIZE + 4 + 4);
+    }
+
+    /// A backend that reports more bytes than it was given a buffer for would
+    /// leave the client waiting for payload that is never sent.
+    #[tokio::test]
+    async fn count_larger_than_the_buffer_is_rejected() {
+        let err = send(vec![vec![0xAA; 4]], 5).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }
