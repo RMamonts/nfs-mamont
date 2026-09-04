@@ -343,8 +343,13 @@ impl LockRegistry {
 /// The lock covers all bytes from `offset` to EOF.
 const LEN_REMAINING: u64 = 0;
 
-/// Returns `true` when the two byte-range intervals `[start, start+len)` overlap.
-/// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
+/// Returns `true` when the two byte-range intervals share at least one byte.
+///
+/// Ranges are compared as the *inclusive* intervals `[start, end]` that
+/// [`calculate_end_of_interval`] builds, not as the half-open `[start, start + len)`
+/// the wire format spells them in --- a lock of length 1 covers the byte at `start`
+/// and conflicts with another lock on it. A length of [`LEN_REMAINING`] is
+/// interpreted as "to end-of-file" (i.e. `u64::MAX`).
 fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
     let end1 = calculate_end_of_interval(start1, len1);
     let end2 = calculate_end_of_interval(start2, len2);
@@ -423,8 +428,9 @@ fn split_lock(
     Ok(fragments)
 }
 
-/// Removes locks owned by `(caller_name, system_identifier)` that overlap with
-/// `[start, start+len)` from `locks`, keeping the non-overlapping parts via [`split_lock`].
+/// Removes locks owned by `(caller_name, system_identifier)` that overlap the
+/// inclusive range `[start, calculate_end_of_interval(start, len)]` from `locks`,
+/// keeping the non-overlapping parts via [`split_lock`].
 fn drain_overlapping(
     locks: &mut Vec<ActiveLock>,
     caller_name: &str,
