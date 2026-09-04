@@ -15,17 +15,21 @@
 #[cfg(test)]
 mod tests;
 
-use std::io::{self, Cursor, Read};
+use std::io::{self, Cursor};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{self, Duration};
+use tracing::warn;
 
-use crate::consts::mount::MOUNT_PROGRAM;
-use crate::consts::nfsv3::NFS_PROGRAM;
-use crate::consts::nlm::NLM_PROGRAM;
-use crate::rpc::{AcceptStat, AuthFlavor, RpcBody};
+use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
+use crate::consts::nfsv3::{NFS_PROGRAM, NFS_VERSION};
+use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION};
+use crate::parser::primitive;
+use crate::parser::rpc as parser_rpc;
+use crate::rpc::{AcceptStat, AuthFlavor, OpaqueAuth, ReplyBody, RpcBody, RPC_VERSION};
+use crate::serializer;
 
 /// Program number of the portmapper/`rpcbind` service itself.
 const PMAP_PROGRAM: u32 = 100000;
@@ -38,20 +42,17 @@ const PMAP_PROC_UNSET: u32 = 2;
 /// IP protocol number for TCP as used in a `mapping`.
 const IPPROTO_TCP: u32 = 6;
 
-/// Version of the NFS service registered with `rpcbind`.
-const NFS_REG_VERSION: u32 = 3;
-/// Version of the MOUNT service registered with `rpcbind`.
-const MOUNT_REG_VERSION: u32 = 3;
-/// Version of the NLM service registered with `rpcbind`.
-const NLM_REG_VERSION: u32 = 4;
-
-/// RPC `reply_stat` for an accepted, matched message.
-const MSG_ACCEPTED: u32 = 0;
-
 /// MSB of the TCP record marker flags the last (and only) fragment of a
 /// record. Per RFC 5531 section 11 every record must set it; without it the
 /// peer keeps waiting for further fragments. The low 31 bits hold the length.
 const LAST_FRAG: u32 = 0x8000_0000;
+
+/// Upper bound on the length of a reply record accepted from `rpcbind`.
+///
+/// A portmapper reply is a few dozen bytes, but the 31 length bits of a record
+/// marker allow values up to 2 GiB. Without a cap a hostile or broken peer
+/// could make the client allocate that much memory for a single reply.
+const MAX_RECORD_LEN: usize = 4096;
 
 /// Well-known address of the local `rpcbind` service (ONC port 111).
 const RPCBIND_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 111);
@@ -93,7 +94,10 @@ impl Mapping {
 
 /// Returns the three service mappings served by the NFS server.
 ///
-/// All three programs (NFS, MOUNT and NLM) share a single listening port.
+/// All three programs (NFS, MOUNT and NLM) share a single listening port. The
+/// advertised versions are the [`crate::consts`] ones the server actually
+/// implements, so a version bump cannot leave `rpcbind` advertising a version
+/// the server does not answer.
 ///
 /// # Parameters
 ///
@@ -104,9 +108,9 @@ impl Mapping {
 /// The mappings for programs 100003/3, 100005/3 and 100021/4 over TCP.
 const fn server_mappings(port: u16) -> [Mapping; 3] {
     [
-        Mapping::new(NFS_PROGRAM, NFS_REG_VERSION, port),
-        Mapping::new(MOUNT_PROGRAM, MOUNT_REG_VERSION, port),
-        Mapping::new(NLM_PROGRAM, NLM_REG_VERSION, port),
+        Mapping::new(NFS_PROGRAM, NFS_VERSION, port),
+        Mapping::new(MOUNT_PROGRAM, MOUNT_VERSION, port),
+        Mapping::new(NLM_PROGRAM, NLM_VERSION, port),
     ]
 }
 
@@ -126,6 +130,15 @@ const fn server_mappings(port: u16) -> [Mapping; 3] {
 fn usize_to_u32(n: usize) -> io::Result<u32> {
     u32::try_from(n)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "RPC record too large"))
+}
+
+/// Builds the null (`AUTH_NONE`) credential/verifier used by every call.
+///
+/// # Returns
+///
+/// An [`OpaqueAuth`] with the `AUTH_NONE` flavor and an empty body.
+fn null_auth() -> OpaqueAuth {
+    OpaqueAuth { flavor: AuthFlavor::None, body: Vec::new() }
 }
 
 /// Serializes an `rpcbind` RPC call message plus its TCP record marker.
@@ -151,31 +164,29 @@ fn encode_call(mapping: Mapping, xid: u32, proc: u32) -> io::Result<Vec<u8>> {
     let mut msg = Cursor::new(Vec::with_capacity(64));
 
     // RPC header.
-    msg.write_u32::<BigEndian>(xid)?;
-    msg.write_u32::<BigEndian>(RpcBody::Call as u32)?;
-    msg.write_u32::<BigEndian>(crate::rpc::RPC_VERSION)?;
-    msg.write_u32::<BigEndian>(PMAP_PROGRAM)?;
-    msg.write_u32::<BigEndian>(PMAP_VERSION)?;
-    msg.write_u32::<BigEndian>(proc)?;
+    serializer::u32(&mut msg, xid)?;
+    serializer::u32(&mut msg, RpcBody::Call as u32)?;
+    serializer::u32(&mut msg, RPC_VERSION)?;
+    serializer::u32(&mut msg, PMAP_PROGRAM)?;
+    serializer::u32(&mut msg, PMAP_VERSION)?;
+    serializer::u32(&mut msg, proc)?;
 
     // Null credential and verifier (AUTH_NONE): flavor 0, empty opaque body.
-    msg.write_u32::<BigEndian>(AuthFlavor::None as u32)?;
-    msg.write_u32::<BigEndian>(0)?;
-    msg.write_u32::<BigEndian>(AuthFlavor::None as u32)?;
-    msg.write_u32::<BigEndian>(0)?;
+    serializer::server::rpc::auth(&mut msg, null_auth())?;
+    serializer::server::rpc::auth(&mut msg, null_auth())?;
 
     // PMAP mapping body: { prog, vers, prot, port }.
-    msg.write_u32::<BigEndian>(mapping.prog)?;
-    msg.write_u32::<BigEndian>(mapping.vers)?;
-    msg.write_u32::<BigEndian>(mapping.prot)?;
-    msg.write_u32::<BigEndian>(mapping.port as u32)?;
+    serializer::u32(&mut msg, mapping.prog)?;
+    serializer::u32(&mut msg, mapping.vers)?;
+    serializer::u32(&mut msg, mapping.prot)?;
+    serializer::u32(&mut msg, mapping.port as u32)?;
 
     let msg = msg.into_inner();
 
     // TCP record marker: 4-byte BE length prefix (with LAST_FRAG set,
     // since a request is always a single fragment) + message body.
     let mut record = Vec::with_capacity(msg.len() + 4);
-    record.write_u32::<BigEndian>(LAST_FRAG | usize_to_u32(msg.len())?)?;
+    serializer::u32(&mut record, LAST_FRAG | usize_to_u32(msg.len())?)?;
     record.extend_from_slice(&msg);
     Ok(record)
 }
@@ -215,6 +226,9 @@ async fn send_rpc_call(mapping: Mapping, proc: u32) -> io::Result<()> {
 
 /// Like [`send_rpc_call`], but targets an explicit `addr` (useful for tests).
 ///
+/// The whole exchange - connect, write, read and verify - is bounded by a
+/// single [`RPC_TIMEOUT`], so no stage can block the caller indefinitely.
+///
 /// # Parameters
 ///
 /// * `addr` - Address of the `rpcbind` endpoint to talk to.
@@ -233,48 +247,45 @@ async fn send_rpc_call_to(addr: SocketAddr, mapping: Mapping, proc: u32) -> io::
     let xid = xid_for(mapping, proc);
     let record = encode_call(mapping, xid, proc)?;
 
-    let stream = match time::timeout(RPC_TIMEOUT, TcpStream::connect(addr)).await {
-        Ok(Ok(stream)) => stream,
-        Ok(Err(err)) => {
-            return Err(io::Error::new(
-                err.kind(),
-                format!("cannot reach rpcbind at {addr}: {err}"),
-            ))
-        }
-        Err(_) => {
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("connect to rpcbind at {addr} timed out"),
-            ))
-        }
-    };
-
-    if let Err(err) = stream.writable().await {
-        return Err(io::Error::new(
-            err.kind(),
-            format!("prepare write to rpcbind at {addr} failed: {err}"),
-        ));
-    }
-    if let Err(err) = stream.try_write(&record) {
-        return Err(io::Error::new(
-            err.kind(),
-            format!("write to rpcbind at {addr} failed: {err}"),
-        ));
-    }
-
-    let reply = time::timeout(RPC_TIMEOUT, async {
-        let body = read_record(&stream).await?;
-        verify_reply(&body, xid)
-    })
-    .await;
-
-    match reply {
+    match time::timeout(RPC_TIMEOUT, exchange(addr, &record, xid)).await {
         Ok(result) => result,
         Err(_) => Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            format!("reply from rpcbind at {addr} timed out"),
+            format!("call to rpcbind at {addr} timed out"),
         )),
     }
+}
+
+/// Performs one request/reply exchange with an `rpcbind` endpoint.
+///
+/// # Parameters
+///
+/// * `addr` - Address of the `rpcbind` endpoint to talk to.
+/// * `record` - Fully framed call record to send.
+/// * `xid` - Transaction id expected back in the reply.
+///
+/// # Returns
+///
+/// `Ok(())` if the endpoint replied with a matching, successful reply.
+///
+/// # Errors
+///
+/// Returns an `io::Error` describing the stage that failed: connecting,
+/// writing, reading, or verifying the reply.
+async fn exchange(addr: SocketAddr, record: &[u8], xid: u32) -> io::Result<()> {
+    let mut stream = TcpStream::connect(addr).await.map_err(|err| {
+        io::Error::new(err.kind(), format!("cannot reach rpcbind at {addr}: {err}"))
+    })?;
+
+    stream.write_all(record).await.map_err(|err| {
+        io::Error::new(err.kind(), format!("write to rpcbind at {addr} failed: {err}"))
+    })?;
+
+    let body = read_record(&mut stream).await.map_err(|err| {
+        io::Error::new(err.kind(), format!("read from rpcbind at {addr} failed: {err}"))
+    })?;
+
+    verify_reply(&body, xid)
 }
 
 /// Reads one single-fragment TCP-recorded RPC reply body.
@@ -292,11 +303,12 @@ async fn send_rpc_call_to(addr: SocketAddr, mapping: Mapping, proc: u32) -> io::
 ///
 /// # Errors
 ///
-/// Returns `InvalidData` if the reply is fragmented, `UnexpectedEof` if the
-/// peer closes the connection early, otherwise the underlying I/O error.
-async fn read_record(stream: &TcpStream) -> io::Result<Vec<u8>> {
+/// Returns `InvalidData` if the reply is fragmented or longer than
+/// [`MAX_RECORD_LEN`], `UnexpectedEof` if the peer closes the connection early,
+/// otherwise the underlying I/O error.
+async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     let mut marker_buf = [0u8; 4];
-    read_exact(stream, &mut marker_buf).await?;
+    stream.read_exact(&mut marker_buf).await?;
     let marker = u32::from_be_bytes(marker_buf);
     if marker & LAST_FRAG == 0 {
         return Err(io::Error::new(
@@ -304,17 +316,47 @@ async fn read_record(stream: &TcpStream) -> io::Result<Vec<u8>> {
             "fragmented rpcbind reply not supported",
         ));
     }
+
+    // The length is peer-controlled, so refuse to size an allocation by it
+    // beyond what a portmapper reply can plausibly need.
     let record_len = (marker & !LAST_FRAG) as usize;
+    if record_len > MAX_RECORD_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("rpcbind reply of {record_len} bytes exceeds the {MAX_RECORD_LEN} byte limit"),
+        ));
+    }
 
     let mut body = vec![0u8; record_len];
-    read_exact(stream, &mut body).await?;
+    stream.read_exact(&mut body).await?;
     Ok(body)
+}
+
+/// Converts a parse error from the shared XDR parser into an `io::Error`.
+///
+/// # Parameters
+///
+/// * `err` - Error reported while decoding the reply.
+///
+/// # Returns
+///
+/// The underlying I/O error, or `InvalidData` describing the malformed field.
+fn parse_error(err: crate::rpc::Error) -> io::Error {
+    match err {
+        crate::rpc::Error::IO(err) => err,
+        other => io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("malformed rpcbind reply: {other:?}"),
+        ),
+    }
 }
 
 /// Validates an `rpcbind` reply body against the sent transaction id.
 ///
 /// Checks that the reply carries the expected xid, reports `accept_stat ==
-/// SUCCESS` and a boolean result of `TRUE`.
+/// SUCCESS` and a boolean result of `TRUE`. Decoding goes through the crate's
+/// XDR [`primitive`] parser, so the verifier is length-checked against
+/// [`crate::rpc::MAX_AUTH_SIZE`] and its XDR padding is consumed correctly.
 ///
 /// # Parameters
 ///
@@ -332,66 +374,32 @@ async fn read_record(stream: &TcpStream) -> io::Result<Vec<u8>> {
 fn verify_reply(body: &[u8], xid: u32) -> io::Result<()> {
     let mut reader = Cursor::new(body);
 
-    if reader.read_u32::<BigEndian>()? != xid {
+    if primitive::u32(&mut reader).map_err(parse_error)? != xid {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "rpcbind reply xid mismatch"));
     }
-    if reader.read_u32::<BigEndian>()? != RpcBody::Reply as u32 {
+    if primitive::u32(&mut reader).map_err(parse_error)? != RpcBody::Reply as u32 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "rpcbind did not return a reply"));
     }
-    if reader.read_u32::<BigEndian>()? != MSG_ACCEPTED {
+    if primitive::u32(&mut reader).map_err(parse_error)? != ReplyBody::MsgAccepted as u32 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "rpcbind reply denied"));
     }
 
-    // Reply verifier: AUTH_NONE flavor with an acceptably-sized optional body.
-    let verf_flavor = reader.read_u32::<BigEndian>()?;
-    let verf_len = reader.read_u32::<BigEndian>()? as usize;
-    if verf_flavor != AuthFlavor::None as u32 || verf_len > 400 {
+    // Reply verifier: expected to be the null AUTH_NONE one we also send.
+    let verifier = parser_rpc::auth(&mut reader).map_err(parse_error)?;
+    if !matches!(verifier.flavor, AuthFlavor::None) {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected rpcbind verifier"));
     }
-    let mut skip = [0u8; 4];
-    for _ in 0..(verf_len / 4) {
-        reader.read_exact(&mut skip)?;
-    }
 
-    if reader.read_u32::<BigEndian>()? != AcceptStat::Success as u32 {
+    if primitive::u32(&mut reader).map_err(parse_error)? != AcceptStat::Success as u32 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "rpcbind rejected the call"));
     }
-    if reader.read_u32::<BigEndian>()? != 1 {
+    if !primitive::bool(&mut reader).map_err(parse_error)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "rpcbind reported FALSE for the request",
         ));
     }
 
-    Ok(())
-}
-
-/// Reads exactly `buf.len()` bytes from `stream`, tolerating `WouldBlock`.
-///
-/// # Parameters
-///
-/// * `stream` - Connected TCP stream to read from.
-/// * `buf` - Buffer to fill.
-///
-/// # Returns
-///
-/// `Ok(())` once the buffer is full.
-///
-/// # Errors
-///
-/// Returns `UnexpectedEof` if the peer closes the connection early, otherwise
-/// the underlying I/O error.
-async fn read_exact(stream: &TcpStream, buf: &mut [u8]) -> io::Result<()> {
-    let mut read = 0;
-    while read < buf.len() {
-        stream.readable().await?;
-        match stream.try_read(&mut buf[read..]) {
-            Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "connection closed")),
-            Ok(n) => read += n,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-            Err(e) => return Err(e),
-        }
-    }
     Ok(())
 }
 
@@ -412,16 +420,40 @@ async fn read_exact(stream: &TcpStream, buf: &mut [u8]) -> io::Result<()> {
 /// # Errors
 ///
 /// Returns an `io::Error` if `rpcbind` is unreachable, times out or rejects a
-/// registration. A failure here is not fatal to the server itself: clients can
-/// still mount with explicit `port=`/`mountport=` options.
+/// registration. In that case the mappings published so far are withdrawn
+/// again, so `rpcbind` never keeps advertising a partially registered server.
+/// A failure here is not fatal to the server itself: clients can still mount
+/// with explicit `port=`/`mountport=` options.
 pub async fn register(port: u16) -> io::Result<()> {
-    for mapping in server_mappings(port) {
-        send_rpc_call(mapping, PMAP_PROC_SET).await?;
+    let mappings = server_mappings(port);
+
+    for (published, mapping) in mappings.iter().enumerate() {
+        let Err(err) = send_rpc_call(*mapping, PMAP_PROC_SET).await else {
+            continue;
+        };
+
+        // Roll back what was already published: leaving a half-registered
+        // server behind would send clients to programs we never advertised.
+        for mapping in &mappings[..published] {
+            if let Err(err) = send_rpc_call(*mapping, PMAP_PROC_UNSET).await {
+                warn!(
+                    prog = mapping.prog,
+                    error = %err,
+                    "failed to roll back an rpcbind registration"
+                );
+            }
+        }
+
+        return Err(err);
     }
+
     Ok(())
 }
 
 /// Withdraws previously registered NFS, MOUNT and NLM mappings from `rpcbind`.
+///
+/// Every mapping is attempted even if an earlier one fails, so a single
+/// failure cannot leave the remaining programs advertised.
 ///
 /// # Parameters
 ///
@@ -433,11 +465,20 @@ pub async fn register(port: u16) -> io::Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an `io::Error` if `rpcbind` is unreachable, times out or rejects a
-/// withdrawal. The caller should treat the failure as best-effort.
+/// Returns the first `io::Error` encountered if `rpcbind` is unreachable,
+/// times out or rejects a withdrawal. The caller should treat the failure as
+/// best-effort.
 pub async fn unregister(port: u16) -> io::Result<()> {
+    let mut result = Ok(());
+
     for mapping in server_mappings(port) {
-        send_rpc_call(mapping, PMAP_PROC_UNSET).await?;
+        if let Err(err) = send_rpc_call(mapping, PMAP_PROC_UNSET).await {
+            warn!(prog = mapping.prog, error = %err, "failed to withdraw an rpcbind mapping");
+            if result.is_ok() {
+                result = Err(err);
+            }
+        }
     }
-    Ok(())
+
+    result
 }

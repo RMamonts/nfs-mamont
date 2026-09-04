@@ -5,19 +5,19 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
-use crate::rpc::{AcceptStat, AuthFlavor, RpcBody};
+use crate::rpc::{AcceptStat, AuthFlavor, ReplyBody, RpcBody};
 
 use super::{
     encode_call, send_rpc_call_to, server_mappings, usize_to_u32, verify_reply, Mapping,
-    IPPROTO_TCP, LAST_FRAG, MOUNT_PROGRAM, MSG_ACCEPTED, NFS_PROGRAM, NFS_REG_VERSION, NLM_PROGRAM,
-    PMAP_PROC_SET, PMAP_PROGRAM, PMAP_VERSION,
+    IPPROTO_TCP, LAST_FRAG, MOUNT_PROGRAM, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NLM_PROGRAM,
+    NLM_VERSION, PMAP_PROC_SET, PMAP_PROGRAM, PMAP_VERSION,
 };
 
 const XID: u32 = 0x1234_5678;
 
 #[test]
 fn test_encode_call_mapping() {
-    let mapping = Mapping::new(NFS_PROGRAM, NFS_REG_VERSION, 2049);
+    let mapping = Mapping::new(NFS_PROGRAM, NFS_VERSION, 2049);
     let record = encode_call(mapping, XID, PMAP_PROC_SET).unwrap();
 
     let marker = u32::from_be_bytes(record[0..4].try_into().unwrap());
@@ -37,7 +37,7 @@ fn test_encode_call_mapping() {
         AuthFlavor::None as u32,
         0,
         NFS_PROGRAM,
-        NFS_REG_VERSION,
+        NFS_VERSION,
         IPPROTO_TCP,
         2049,
     ];
@@ -53,9 +53,9 @@ fn test_server_mappings() {
     assert_eq!(
         server_mappings(port),
         [
-            Mapping::new(NFS_PROGRAM, 3, port),
-            Mapping::new(MOUNT_PROGRAM, 3, port),
-            Mapping::new(NLM_PROGRAM, 4, port)
+            Mapping::new(NFS_PROGRAM, NFS_VERSION, port),
+            Mapping::new(MOUNT_PROGRAM, MOUNT_VERSION, port),
+            Mapping::new(NLM_PROGRAM, NLM_VERSION, port)
         ]
     );
 }
@@ -64,7 +64,7 @@ fn fake_reply(xid: u32, accept_success: bool, result_true: bool) -> Vec<u8> {
     let mut msg = Cursor::new(Vec::with_capacity(32));
     WriteBytesExt::write_u32::<BigEndian>(&mut msg, xid).unwrap();
     WriteBytesExt::write_u32::<BigEndian>(&mut msg, RpcBody::Reply as u32).unwrap();
-    WriteBytesExt::write_u32::<BigEndian>(&mut msg, MSG_ACCEPTED).unwrap();
+    WriteBytesExt::write_u32::<BigEndian>(&mut msg, ReplyBody::MsgAccepted as u32).unwrap();
     WriteBytesExt::write_u32::<BigEndian>(&mut msg, AuthFlavor::None as u32).unwrap();
     WriteBytesExt::write_u32::<BigEndian>(&mut msg, 0).unwrap();
     WriteBytesExt::write_u32::<BigEndian>(
@@ -137,7 +137,7 @@ async fn test_send_rpc_call_to_accepts_bit_set_reply() {
         sock.write_all(&reply).await.unwrap();
     });
 
-    let mapping = Mapping::new(NFS_PROGRAM, NFS_REG_VERSION, 2049);
+    let mapping = Mapping::new(NFS_PROGRAM, NFS_VERSION, 2049);
     let result = send_rpc_call_to(server_addr, mapping, PMAP_PROC_SET).await;
     assert!(result.is_ok(), "bit-set reply should be accepted");
 
@@ -167,7 +167,7 @@ async fn test_send_rpc_call_to_rejects_fragmented_reply() {
         sock.write_all(&record).await.unwrap();
     });
 
-    let mapping = Mapping::new(NFS_PROGRAM, NFS_REG_VERSION, 2049);
+    let mapping = Mapping::new(NFS_PROGRAM, NFS_VERSION, 2049);
     let result = send_rpc_call_to(server_addr, mapping, PMAP_PROC_SET).await;
     assert!(result.is_err(), "reply without last-fragment bit should be rejected");
 
@@ -185,7 +185,7 @@ async fn test_register_round_trip() {
 
     let server = tokio::spawn(serve_one_set(listener, port));
 
-    let mapping = Mapping::new(NFS_PROGRAM, NFS_REG_VERSION, port);
+    let mapping = Mapping::new(NFS_PROGRAM, NFS_VERSION, port);
     let result = send_rpc_call_to(server_addr, mapping, PMAP_PROC_SET).await;
     assert!(result.is_ok(), "set should succeed against the fake rpcbind");
 
