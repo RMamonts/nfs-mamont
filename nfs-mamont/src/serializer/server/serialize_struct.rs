@@ -377,11 +377,21 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ErrorKind::InvalidInput`] if `count` exceeds `buffer.len()`:
-    /// the byte count is already on the wire at that point, and sending fewer
-    /// bytes than announced would leave the client waiting for the rest.
+    /// Returns [`ErrorKind::InvalidInput`] if `count` exceeds `buffer.len()`. The
+    /// count is what the reply announces --- as the XDR array length and inside the
+    /// record mark --- so sending fewer bytes than that would leave the client
+    /// blocked on a fragment that never completes. The check runs before `count`
+    /// reaches the staged header, so nothing has been committed to the socket yet
+    /// and the reply can be abandoned whole.
+    ///
+    /// The staged bytes are dropped on that path: [`Serializer::form_reply`] has already
+    /// written the RPC and READ3resok headers into `self.buf`, and the write task
+    /// logs a failed reply and goes on to the next one with this same serializer.
+    /// Leaving them staged would prepend the abandoned reply to the next one, which
+    /// is the very desynchronisation the check exists to prevent.
     async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
         if count > buffer.len() {
+            self.clean();
             return Err(io::Error::new(
                 ErrorKind::InvalidInput,
                 "reply declares more payload bytes than the buffer holds",
@@ -548,5 +558,23 @@ mod tests {
         let err = send(vec![vec![0xAA; 4]], 5).await.unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    /// The write task logs a failed reply and carries on with the same serializer,
+    /// so a rejected reply must not leave its headers staged: they would be sent as
+    /// the head of the next reply, inside that reply's record mark.
+    #[tokio::test]
+    async fn rejected_reply_does_not_prepend_itself_to_the_next_one() {
+        let mut buffer: WriteBuffer<ChunkedBuffer, Vec<u8>> = WriteBuffer::new(Vec::new(), 64);
+        buffer.write_all(&[1, 2, 3, 4]).unwrap();
+        buffer.send_inner_with_buffer(ChunkedBuffer(vec![vec![0xAA; 4]]), 5).await.unwrap_err();
+
+        // Whatever the next reply happens to be, it is alone on the wire.
+        buffer.write_all(&[9, 9, 9, 9]).unwrap();
+        buffer.send_inner_buffer().await.unwrap();
+
+        let wire = std::mem::take(&mut buffer.socket);
+        assert_eq!(wire.len() - HEADER_SIZE, declared_fragment_size(&wire));
+        assert_eq!(wire, [&(HEADER_MASK as u32 | 4).to_be_bytes()[..], &[9, 9, 9, 9]].concat());
     }
 }
