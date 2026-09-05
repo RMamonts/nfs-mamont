@@ -378,6 +378,12 @@ fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
 /// (`end - start + 1` overflows), and that is precisely what [`LEN_REMAINING`]
 /// encodes, so it is returned instead.
 fn calculate_len_of_interval(start: u64, end: u64) -> u64 {
+    // The inverse is only defined on a well-formed interval. Every caller gets one
+    // from [`calculate_end_of_interval`], which is proved never to return an end
+    // before its start, so this holds --- but the saturation below would quietly
+    // turn a backwards interval into a length of 1 rather than say so.
+    debug_assert!(end >= start, "interval end precedes its start");
+
     match end.saturating_sub(start).checked_add(1) {
         Some(len) => len,
         None => LEN_REMAINING,
@@ -390,6 +396,13 @@ fn calculate_len_of_interval(start: u64, end: u64) -> u64 {
 /// Returns an empty [`Vec`] when the unlock range fully covers the lock.
 /// Returns one element when the unlock trims the lock from one side only,
 /// and two elements when the unlock splits the lock in the middle.
+///
+/// Fragment lengths are computed here rather than through
+/// [`calculate_len_of_interval`], which is what [`merge_adjacent`] uses: a fragment
+/// of a lock that ran to end-of-file has to stay encoded as [`LEN_REMAINING`], and
+/// the helper would hand back an explicit length instead. Both the client and
+/// [`merge_adjacent`] read a length of `0` as "to end-of-file", so the distinction
+/// is not cosmetic. The `if` guards below are what keep the arithmetic in range.
 fn split_lock(
     lock: ActiveLock,
     unlock_start: u64,
@@ -402,6 +415,9 @@ fn split_lock(
 
     let mut fragments = Vec::new();
 
+    // The left fragment is the inclusive range `[lock_start, unlock_start - 1]`, so
+    // its length is the difference. The guard makes that difference at least 1, so
+    // it can never come out as `LEN_REMAINING` by accident.
     if lock_start < unlock_start {
         fragments.push(ActiveLock::new(
             lock.caller_name.clone(),
@@ -413,7 +429,11 @@ fn split_lock(
         )?);
     }
 
+    // The right fragment is `[unlock_end + 1, lock_end]`, whose inclusive length is
+    // `lock_end - unlock_end`. The guard gives `unlock_end < lock_end`, so the
+    // subtraction never goes below 1 and `unlock_end + 1` cannot wrap.
     if unlock_end < lock_end {
+        // A lock that ran to end-of-file keeps running there.
         let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
         fragments.push(ActiveLock::new(
             lock.caller_name,
