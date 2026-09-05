@@ -1,42 +1,18 @@
 name: Formal Verification
 
 # Kani model-checks the XDR padding formula on both the parser and serializer
-# side, and the NLM interval arithmetic. It is scoped to those paths because a
-# full run installs CBMC and takes several minutes, and nothing outside them is
-# reachable from a proof harness. Add a path here whenever a `#[cfg(kani)]`
-# module lands outside them.
+# side, and the NLM interval arithmetic. The proofs are unbounded, so the whole
+# job --- CBMC install included --- runs in about a minute.
 #
-# Do not make this job a required status check while the `paths` filter stands: a
-# PR that touches nothing on the list never reports a verdict, and a required check
-# that never runs blocks the PR forever. Requiring it means pairing this workflow
-# with a companion one that uses `paths-ignore` and the same job name, so that every
-# PR gets an answer either way.
-#
-# The filter is duplicated across the two triggers on purpose --- GitHub Actions
-# does not expand YAML anchors in workflow files.
+# Deliberately not scoped by `paths`: a filter would silently skip a `#[cfg(kani)]`
+# module added outside the listed directories, and a proof that never runs looks
+# exactly like a proof that passed. Running everything on every PR also leaves this
+# job safe to mark as a required status check.
 on:
-  # `rust-ci.yml` also runs on push to main; without this, a merge whose PR run was
-  # filtered out would leave main itself never verified.
   push:
     branches: ["main"]
-    paths:
-      - "nfs-mamont/src/parser/**"
-      - "nfs-mamont/src/serializer/**"
-      - "nfs-mamont/src/service/**"
-      - "nfs-mamont/Cargo.toml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/kani.yml"
   pull_request:
     branches: ["main"]
-    paths:
-      - "nfs-mamont/src/parser/**"
-      - "nfs-mamont/src/serializer/**"
-      - "nfs-mamont/src/service/**"
-      - "nfs-mamont/Cargo.toml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/kani.yml"
   workflow_dispatch:
 
 env:
