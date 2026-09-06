@@ -6,7 +6,7 @@ pub mod nlm;
 pub mod parser_struct;
 pub mod primitive;
 pub mod read_buffer;
-mod rpc;
+pub mod rpc;
 
 #[cfg(test)]
 mod tests;
