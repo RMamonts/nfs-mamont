@@ -62,7 +62,7 @@ impl<'a> Arbitrary<'a> for RpcRequest {
                 ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?)))
             }
             (NFS_PROGRAM, READ) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?)))
+                ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?, u.arbitrary()?)))
             }
             (NFS_PROGRAM, WRITE) => {
                 ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?)))
@@ -204,7 +204,7 @@ impl ParserWrapper {
 
             NfsArguments::ReadLink(link) => read_link::read_link_args(tmp_buffer, link).unwrap(),
 
-            NfsArguments::Read(read) => read::read_args(tmp_buffer, read).unwrap(),
+            NfsArguments::Read(read, ..) => read::read_args(tmp_buffer, read).unwrap(),
 
             NfsArguments::Write(write) => write::write_args(tmp_buffer, write).unwrap(),
 

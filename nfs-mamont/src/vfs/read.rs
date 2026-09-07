@@ -57,9 +57,11 @@ where
     B: arbitrary::Arbitrary<'a> + Buffer,
 {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let size = 1024 * 1024 * 512;
+
         let data = B::arbitrary(u)?;
         let count = data.len();
-        if count >= u32::MAX as usize {
+        if count >= size as usize {
             return Err(arbitrary::Error::IncorrectFormat);
         }
         Ok(Self {

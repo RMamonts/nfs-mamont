@@ -1,8 +1,5 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
-#[macro_use]
-mod macros;
-
 mod allocator;
 pub mod consts;
 mod context;
@@ -16,6 +13,7 @@ mod serializer;
 pub mod service;
 mod task;
 pub mod vfs;
+mod macros;
 
 use std::sync::Arc;
 
@@ -47,7 +45,6 @@ pub_use_if_feature!(
     parser::NlmArguments,
     parser::ProcArguments,
     parser::primitive::u32_as_usize,
-    parser::primitive::ALIGNMENT,
     parser::ArgWrapper,
     parser::ErrorWrapper,
     parser::nfsv3,

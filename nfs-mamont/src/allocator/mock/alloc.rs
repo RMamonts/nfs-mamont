@@ -33,4 +33,8 @@ impl Allocator for MockAllocator {
         }
         Some(MockBuffers::new(collector, size.get()))
     }
+
+    fn capacity(&self) -> NonZeroUsize {
+        NonZeroUsize::MAX
+    }
 }
