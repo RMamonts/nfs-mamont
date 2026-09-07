@@ -1,5 +1,7 @@
 //! Defines NFSv3 [`Access`] interface.
 
+use crate::rpc::Credential;
+
 use super::{file, Error};
 
 /// Success result.
@@ -62,5 +64,5 @@ pub trait Access {
     /// such access will be allowed to the file system object in
     /// the future, as access rights can be revoked by the server
     /// at any time.
-    async fn access(&self, args: Args) -> Result<Success, Fail>;
+    async fn access(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }

@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`ReadDir`] interface.
 
 use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -139,5 +140,5 @@ pub trait ReadDir {
     /// The [`Args::count`] specified by the client in the request should be greater than or equal to
     /// the server's preferred [`ReadDir`] transfer size from
     /// [`super::fs_info::Success::read_dir_pref`].
-    async fn read_dir(&self, args: Args) -> Result<Success, Fail>;
+    async fn read_dir(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }
