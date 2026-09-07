@@ -38,6 +38,7 @@ use crate::consts::nlm::{
     NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
     NLM_VERSION,
 };
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE};
 use crate::consts::xdr::ALIGNMENT;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
@@ -153,8 +154,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// - An I/O error occurs
     async fn read_message_header(&mut self) -> Result<u32> {
         let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
-        let last = header & 0x8000_0000 != 0;
-        let frame_size = (header & 0x7FFF_FFFF) as usize;
+        let last = header & (HEADER_MASK as u32) != 0;
+        let frame_size = header as usize & MAX_FRAGMENT_SIZE;
 
         if frame_size < std::mem::size_of::<u32>() {
             return Err(Error::IO(io::Error::new(
