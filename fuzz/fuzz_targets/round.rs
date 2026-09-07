@@ -6,7 +6,7 @@ use libfuzzer_sys::fuzz_target;
 
 use nfs_mamont::{
     arguments, nfsv3, parser_mount, parser_nlm, u32_as_usize, Buffer, MockBuffers, MountArguments,
-    NfsArguments, NlmArguments, ProcArguments, ALIGNMENT, DEFAULT_SIZE, TEST_SIZE,
+    NfsArguments, NlmArguments, ProcArguments, consts, DEFAULT_SIZE, TEST_SIZE,
 };
 
 const DEFAULT_CAPACITY: usize = DEFAULT_SIZE + TEST_SIZE;
@@ -45,7 +45,7 @@ fuzz_target!(|data: ProcArguments<MockBuffers>| {
                 roundtrip!(arg, arguments::nfsv3::read_link::read_link_args, nfsv3::read_link::args)
             }
 
-            NfsArguments::Read(arg) => {
+            NfsArguments::Read(arg,..) => {
                 roundtrip!(arg, arguments::nfsv3::read::read_args, nfsv3::read::args)
             }
 
@@ -73,7 +73,7 @@ fuzz_target!(|data: ProcArguments<MockBuffers>| {
                 assert_eq!(patrial.offset, args.offset);
                 assert_eq!(patrial.stable, args.stable);
 
-                let padding = (ALIGNMENT - size % ALIGNMENT) % ALIGNMENT;
+                let padding = (consts::xdr::ALIGNMENT - size % consts::xdr::ALIGNMENT) % consts::xdr::ALIGNMENT;
                 assert_eq!(pos + size + padding, len as usize);
             }
 

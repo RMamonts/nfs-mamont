@@ -12,7 +12,7 @@ use nfs_mamont::{AuthFlavor, MockBuffers, OpaqueAuth, ProcReply, Serializer};
 
 use write_socket::MockWriter;
 
-type TestSerializer = Serializer<MockBuffers, MockWriter>;
+type TestSerializer = Serializer<MockWriter>;
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static SERIALIZER: OnceLock<Mutex<TestSerializer>> = OnceLock::new();
 
