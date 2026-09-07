@@ -18,7 +18,7 @@ impl Mnt for MountService {
         client_addr: SocketAddr,
         _cred: OpaqueAuth,
     ) -> Result<Success, Fail> {
-        let Some(export) = self.export_entry(&args.dirpath).await else {
+        let Some(export) = self.export_entry(&args.dirpath) else {
             let configured = self
                 .exports
                 .export_list()
