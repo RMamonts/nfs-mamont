@@ -1,5 +1,4 @@
 use std::io;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -39,7 +38,6 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allo
     allocator: Arc<A>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
-    _phantom: PhantomData<B>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -65,7 +63,6 @@ where
             result_sender,
             allocator,
             pool_sender,
-            _phantom: PhantomData,
         }
     }
 
