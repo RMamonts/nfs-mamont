@@ -18,10 +18,10 @@ use crate::mount::MountRes;
 use crate::nlm::{NlmCall, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
-use crate::task::{ProcCall, ProcMessage, ProcReply, ProcResult};
 use crate::consts::xdr::ALIGNMENT;
 use crate::serializer::{u32, usize_as_u32};
+use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::task::{ProcCall, ProcMessage, ProcReply, ProcResult};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
