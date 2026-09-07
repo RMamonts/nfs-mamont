@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`ReadDirPlus`] interface.
 
-use crate::rpc::Credential;
+use crate::auth::Credential;
 use crate::vfs;
 use crate::vfs::read_dir::Cookie;
 use crate::vfs::read_dir::CookieVerifier;

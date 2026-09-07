@@ -3,8 +3,8 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Buffer;
+use crate::auth::Credential;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
-use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;

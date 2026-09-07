@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`RmDir`] interface.
 
-use crate::rpc::Credential;
+use crate::auth::Credential;
 use crate::vfs;
 
 /// Success result.

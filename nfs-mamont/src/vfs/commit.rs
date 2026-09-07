@@ -1,5 +1,5 @@
 //! Defines NFSv3 [`Commit`] interface.
-use crate::rpc::Credential;
+use crate::auth::Credential;
 use crate::vfs;
 
 use super::file;

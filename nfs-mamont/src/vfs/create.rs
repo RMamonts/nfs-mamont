@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`Create`] interface.
 
+use crate::auth::Credential;
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
-use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;

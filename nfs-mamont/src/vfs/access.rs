@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`Access`] interface.
 
-use crate::rpc::Credential;
+use crate::auth::Credential;
 
 use super::{file, Error};
 

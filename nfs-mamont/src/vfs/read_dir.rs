@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`ReadDir`] interface.
 
+use crate::auth::Credential;
 use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
-use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
