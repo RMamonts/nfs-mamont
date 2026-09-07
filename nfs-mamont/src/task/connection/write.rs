@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
@@ -14,7 +12,6 @@ pub struct WriteTask<B: Buffer> {
     result_receiver: async_channel::Receiver<ProcReply<B>>,
     /// The channel for sending the callback.
     message_receiver: async_channel::Receiver<ProcCall>,
-    _phantom: PhantomData<B>,
 }
 
 impl<B: Buffer> WriteTask<B> {
@@ -24,7 +21,7 @@ impl<B: Buffer> WriteTask<B> {
         result_receiver: async_channel::Receiver<ProcReply<B>>,
         message_receiver: async_channel::Receiver<ProcCall>,
     ) -> Self {
-        Self { writehalf, result_receiver, message_receiver, _phantom: PhantomData }
+        Self { writehalf, result_receiver, message_receiver }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.
@@ -42,8 +39,7 @@ impl<B: Buffer> WriteTask<B> {
     async fn run(self) {
         let result_receiver = self.result_receiver;
         let message_receiver = self.message_receiver;
-        let mut serializer =
-            serializer::server::serialize_struct::Serializer::<B, _>::new(self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
         loop {
             tokio::select! {

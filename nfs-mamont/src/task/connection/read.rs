@@ -1,5 +1,4 @@
 use std::io;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -61,7 +60,6 @@ pub struct ReadTask<
     client_addr: SocketAddr,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
-    _phantom: PhantomData<B>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -76,7 +74,7 @@ where
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self { readhalf, client_addr, command_senders, allocator, _phantom: PhantomData }
+        Self { readhalf, client_addr, command_senders, allocator }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
