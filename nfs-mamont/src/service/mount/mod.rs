@@ -54,12 +54,8 @@ struct ExportRegistry {
 impl ExportRegistry {
     fn from_entries(entries: Vec<ExportEntryWrapper>) -> Self {
         let mut by_directory = HashMap::new();
-        for entry in entries.into_iter() {
-            let file_handle = entry.root_handle.clone();
-            by_directory.insert(
-                entry.export.directory.clone(),
-                ExportEntryWrapper { export: entry.export, root_handle: file_handle },
-            );
+        for entry in entries {
+            by_directory.insert(entry.export.directory.clone(), entry);
         }
         Self { by_directory }
     }
@@ -96,7 +92,7 @@ impl MountService {
         }
     }
 
-    async fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
+    fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
         self.exports.by_path(path)
     }
 }
