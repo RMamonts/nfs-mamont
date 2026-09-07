@@ -68,5 +68,5 @@ pub struct Args {
 pub trait ReadDirPlus {
     /// Retrieves a variable number of entries from a file system directory and returns complete
     /// information about each.
-    async fn read_dir_plus(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn read_dir_plus(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }

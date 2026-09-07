@@ -81,5 +81,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait FsInfo {
     /// Retrieves nonvolatile file system state information and general information.
-    async fn fs_info(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn fs_info(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }

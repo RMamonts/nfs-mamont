@@ -34,5 +34,5 @@ pub trait Lookup {
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn lookup(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }
