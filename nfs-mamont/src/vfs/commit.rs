@@ -1,4 +1,5 @@
 //! Defines NFSv3 [`Commit`] interface.
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -35,5 +36,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait Commit {
     /// Forces or flushes data to stable storage that was previously written.
-    async fn commit(&self, args: Args) -> Result<Success, Fail>;
+    async fn commit(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }

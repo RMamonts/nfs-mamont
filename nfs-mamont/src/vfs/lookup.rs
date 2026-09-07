@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`Lookup`] interface.
 
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -33,5 +34,5 @@ pub trait Lookup {
     /// file system object.
     ///
     /// Note that this procedure does not follow symbolic links.
-    async fn lookup(&self, args: Args) -> Result<Success, Fail>;
+    async fn lookup(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }

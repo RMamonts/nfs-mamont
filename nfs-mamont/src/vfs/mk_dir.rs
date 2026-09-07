@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`MkDir`] interface.
 
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -35,5 +36,5 @@ pub trait MkDir {
     /// Creates a new subdirectory.
     ///
     /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
-    async fn mk_dir(&self, args: Args) -> Result<Success, Fail>;
+    async fn mk_dir(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }

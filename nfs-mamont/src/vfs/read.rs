@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`Read`] interface.
 
 use crate::allocator::Buffer;
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -53,5 +54,5 @@ pub trait Read<B: Buffer> {
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
-    async fn read(&self, args: Args, data: B) -> Result<Success<B>, Fail>;
+    async fn read(&self, _cred: Credential, args: Args, data: B) -> Result<Success<B>, Fail>;
 }

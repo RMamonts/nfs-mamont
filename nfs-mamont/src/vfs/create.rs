@@ -1,6 +1,7 @@
 //! Defines NFSv3 [`Create`] interface.
 
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
+use crate::rpc::Credential;
 use crate::vfs;
 
 use super::file;
@@ -65,5 +66,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, args: Args) -> Result<Success, Fail>;
+    async fn create(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
 }
