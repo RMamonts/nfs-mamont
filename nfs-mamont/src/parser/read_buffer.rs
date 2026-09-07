@@ -88,8 +88,8 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     ///
     /// `n` must not exceed the buffer capacity.
     async fn ensure_buffered(&mut self, n: usize) -> io::Result<()> {
-        let checked_n = min(n, self.buffered());
-        while self.buffered() < checked_n {
+        debug_assert!(n <= self.buf.len());
+        while self.buffered() < n {
             self.fill().await?;
         }
         Ok(())
@@ -112,7 +112,8 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     /// not run out of data before the window is exhausted.
     pub async fn begin_body(&mut self, size: usize) -> io::Result<()> {
         self.frame_remaining = size;
-        self.ensure_buffered(size).await
+        let head = min(size, self.buf.len());
+        self.ensure_buffered(head).await
     }
 
     /// Reads exactly `dest.len()` bytes of the frame body, first from the
