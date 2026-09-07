@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
@@ -12,7 +10,6 @@ use crate::task::ProcReply;
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<ProcReply<B>>,
-    _phantom: PhantomData<B>,
 }
 
 impl<B: Buffer> WriteTask<B> {
@@ -21,7 +18,7 @@ impl<B: Buffer> WriteTask<B> {
         writehalf: OwnedWriteHalf,
         result_receiver: async_channel::Receiver<ProcReply<B>>,
     ) -> Self {
-        Self { writehalf, result_receiver, _phantom: PhantomData }
+        Self { writehalf, result_receiver }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.
@@ -38,8 +35,7 @@ impl<B: Buffer> WriteTask<B> {
 
     async fn run(self) {
         let result_receiver = self.result_receiver;
-        let mut serializer =
-            serializer::server::serialize_struct::Serializer::<B, _>::new(self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
         while let Ok(reply) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>

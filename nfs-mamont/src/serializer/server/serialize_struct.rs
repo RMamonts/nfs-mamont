@@ -15,7 +15,8 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::consts::xdr::ALIGNMENT;
+use crate::serializer::{u32, usize_as_u32};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
@@ -62,24 +63,23 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<B: Buffer, T: AsyncWrite + Unpin> {
-    buffer: WriteBuffer<B, T>,
+pub struct Serializer<T: AsyncWrite + Unpin> {
+    buffer: WriteBuffer<T>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
+impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
-        Self { buffer: WriteBuffer::new(writer, DEFAULT_SIZE) }
+        Self::with_capacity(writer, DEFAULT_SIZE)
     }
 
     /// Creates a reply serializer with an explicit internal buffer capacity.
-    #[allow(dead_code)]
     fn with_capacity(writer: T, capacity: usize) -> Self {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
     /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_result(&mut self, result: ProcResult<B>) -> io::Result<()> {
+    async fn process_result<B: Buffer>(&mut self, result: ProcResult<B>) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
@@ -88,7 +88,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
+    async fn process_nfs3<B: Buffer>(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
         match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
@@ -227,7 +227,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(
+    pub async fn form_reply<B: Buffer>(
         &mut self,
         reply: ProcReply<B>,
         verifier: OpaqueAuth,
@@ -301,13 +301,12 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<B: Buffer, T: AsyncWrite + Unpin> {
+struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
-    _phantom: std::marker::PhantomData<B>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -320,14 +319,10 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
     }
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: T, capacity: usize) -> WriteBuffer<B, T> {
-        let mut buffer = WriteBuffer {
-            socket,
-            buf: Vec::with_capacity(capacity),
-            _phantom: std::marker::PhantomData,
-        };
+    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
+        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
         buffer.clean();
         buffer
     }
@@ -368,7 +363,11 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     ///
     /// Uses vectored I/O to coalesce all data chunks and padding into a single
     /// `writev`-style syscall, reducing kernel transitions.
-    async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
+    async fn send_inner_with_buffer<B: Buffer>(
+        &mut self,
+        buffer: B,
+        count: usize,
+    ) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
@@ -382,18 +381,22 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
 
-        self.socket.write_all(&self.buf).await?;
-
-        let padding_bytes = [0u8; ALIGNMENT];
+        const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total_payload: usize = buffer.len() + padding;
+        let total: usize = self.buf.len() + buffer.len() + padding;
 
-        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 1);
-
-        while written < total_payload {
+        let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
+        while written < total {
             iov.clear();
             let mut to_skip = written;
+
+            if to_skip < self.buf.len() {
+                iov.push(IoSlice::new(&self.buf[to_skip..]));
+                to_skip = 0;
+            } else {
+                to_skip -= self.buf.len();
+            }
 
             for chunk in buffer.chunks() {
                 if to_skip == 0 {
@@ -407,7 +410,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
             }
 
             if to_skip < padding {
-                iov.push(IoSlice::new(&padding_bytes[to_skip..padding]));
+                iov.push(IoSlice::new(&PADDING_BYTES[to_skip..padding]));
             }
 
             if !iov.is_empty() {

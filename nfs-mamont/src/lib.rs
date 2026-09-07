@@ -11,6 +11,7 @@ pub mod mount;
 mod nlm;
 mod parser;
 mod rpc;
+mod rpcbind;
 mod serializer;
 pub mod service;
 mod task;
@@ -19,6 +20,8 @@ pub mod vfs;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tokio::signal;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::nlm::Nlm;
@@ -122,9 +125,39 @@ where
     let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
-    loop {
-        let (socket, _) = listener.accept().await?;
-
-        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+    // Publish the NFS/MOUNT/NLM services to the local rpcbind
+    let port = listener.local_addr()?.port();
+    match rpcbind::register(port).await {
+        Ok(()) => info!(port, "registered NFS/MOUNT/NLM services with rpcbind"),
+        Err(err) => warn!(
+            port,
+            error = %err,
+            "failed to register with rpcbind; clients must pass port=/mountport= options"
+        ),
     }
+
+    // TODO: will be replaced with other solution in future
+    let mut shutdown = Box::pin(signal::ctrl_c());
+
+    let accept_result = loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                match accepted {
+                    Ok((socket, _)) => {
+                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+                    }
+                    Err(err) => break Err(err),
+                }
+            }
+            result = &mut shutdown => {
+                if matches!(result, Ok(())) {
+                    break Ok(());
+                }
+            }
+        }
+    };
+
+    let _ = rpcbind::unregister(port).await;
+
+    accept_result
 }

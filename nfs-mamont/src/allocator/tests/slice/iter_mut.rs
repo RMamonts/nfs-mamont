@@ -9,7 +9,8 @@ const THIRD_BUFFER: &[u8] = &[9, 10, 11];
 
 fn make_slice<Buffers>(buffers: Buffers, range: std::ops::Range<usize>) -> SliceGuard
 where
-    Buffers: IntoIterator<IntoIter: ExactSizeIterator<Item = &'static [u8]>>,
+    Buffers: IntoIterator<Item = &'static [u8]>,
+    Buffers::IntoIter: ExactSizeIterator,
 {
     SliceGuard::new(buffers, range)
 }
@@ -26,7 +27,8 @@ fn check_slice_is_empty(slice: &mut Slice) {
 
 fn check_slice_content<Content>(slice: &mut Slice, content: Content)
 where
-    Content: IntoIterator<IntoIter: Iterator<Item: AsRef<[u8]>>>,
+    Content: IntoIterator,
+    Content::Item: AsRef<[u8]>,
 {
     let mut iter_under_test = slice.iter_mut();
 
