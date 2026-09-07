@@ -44,5 +44,5 @@ pub trait Link {
     /// On some servers, the filenames, "." and "..", are illegal for link names.
     /// In addition, the link name cannot be an alias for the target directory. These servers will
     /// return the error, [`vfs::Error::InvalidArgument`], in these cases.
-    async fn link(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn link(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }

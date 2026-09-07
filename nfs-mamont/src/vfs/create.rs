@@ -66,5 +66,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait Create {
     /// Creates a [`file::Type::Regular`] file.
-    async fn create(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn create(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }

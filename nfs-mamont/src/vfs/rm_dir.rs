@@ -33,5 +33,5 @@ pub trait RmDir {
     ///
     /// On some servers, the filename, "..", is illegal. These servers will return
     /// the error, [`vfs::Error::Exist`].
-    async fn rm_dir(&self, _cred: Credential, args: Args) -> Result<Success, Fail>;
+    async fn rm_dir(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }
