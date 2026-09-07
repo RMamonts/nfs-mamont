@@ -8,11 +8,6 @@ use crate::parser::Result;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
 
-/// Parses `write::StableHow`
-fn stable_how(src: &mut impl Read) -> Result<write::StableHow> {
-    variant::<StableHow>(src)
-}
-
 /// Parses the arguments for an NFSv3 `WRITE` operation from the provided `Read` source.
 /// Function returns either `parser::Error` or `write::ArgPartial`.
 /// Later one is not a complete structure of NFSv3 `WRITE` procedure.
@@ -22,7 +17,7 @@ pub fn args(src: &mut impl Read) -> Result<write::ArgsPartial> {
         file: file::handle(src)?,
         offset: u64(src)?,
         size: u32(src)?,
-        stable: stable_how(src)?,
+        stable: variant::<StableHow>(src)?,
     })
 }
 

@@ -38,6 +38,7 @@ use crate::consts::nlm::{
     NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
     NLM_VERSION,
 };
+use crate::consts::xdr::ALIGNMENT;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -45,7 +46,7 @@ use crate::parser::nfsv3::{
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
 use crate::parser::nlm::{cancel::cancel, lock::lock, test::test, unlock::unlock};
-use crate::parser::primitive::{u32, u32_as_usize, ALIGNMENT};
+use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
