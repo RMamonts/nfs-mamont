@@ -15,10 +15,10 @@ use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
     Ok(NewAttr {
-        mode: option(src, |s| u32(s))?,
-        uid: option(src, |s| u32(s))?,
-        gid: option(src, |s| u32(s))?,
-        size: option(src, |s| u64(s))?,
+        mode: option(src, u32)?,
+        uid: option(src, u32)?,
+        gid: option(src, u32)?,
+        size: option(src, u64)?,
         atime: set_time(src)?,
         mtime: set_time(src)?,
     })
