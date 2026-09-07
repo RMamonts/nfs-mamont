@@ -22,8 +22,7 @@ use std::io::{self, Error, ErrorKind, Write};
 use byteorder::{BigEndian, WriteBytesExt};
 use num_traits::ToPrimitive;
 
-/// All serialized data is aligned to [`ALIGNMENT`] (4 bytes) boundaries.
-pub const ALIGNMENT: usize = 4;
+use crate::consts::xdr::ALIGNMENT;
 
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///

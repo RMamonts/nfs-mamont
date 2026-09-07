@@ -8,13 +8,13 @@ use crate::vfs::file;
 #[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct Success<B: Buffer> {
     /// The attributes of the file on completion of the read.
-    pub head: SuccessPartial,
+    pub head: SuccessHeader,
     /// The counted data read from the file.
     pub data: B,
 }
 
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
-pub struct SuccessPartial {
+pub struct SuccessHeader {
     /// The attributes of the file on completion of the read.
     pub file_attr: Option<file::Attr>,
     /// The number of bytes of data returned by the read.
@@ -63,7 +63,7 @@ where
             return Err(arbitrary::Error::IncorrectFormat);
         }
         Ok(Self {
-            head: SuccessPartial {
+            head: SuccessHeader {
                 file_attr: u.arbitrary::<Option<file::Attr>>()?,
                 count: count as u32,
                 eof: u.arbitrary::<bool>()?,
