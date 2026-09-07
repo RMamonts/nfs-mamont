@@ -581,11 +581,12 @@ where
     // The opaque data with its padding must lie within the current frame;
     // otherwise, the declared length is bogus and reading it would consume
     // bytes of the next message, misaligning the stream.
-    if size + padding > reader.frame_remaining() {
-        return Err(Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "WRITE data length exceeds frame size",
-        )));
+    let bounds_error = || {
+        Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
+    };
+    let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
+    if padded > reader.frame_remaining() {
+        return Err(bounds_error());
     }
 
     // Fill the allocated buffer chunk by chunk; `read_body_exact` consumes the
