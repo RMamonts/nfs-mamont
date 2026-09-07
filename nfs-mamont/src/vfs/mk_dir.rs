@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`MkDir`] interface.
 
-use crate::rpc::Credential;
+use crate::auth::Credential;
 use crate::vfs;
 
 use super::file;

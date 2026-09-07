@@ -1,10 +1,10 @@
 use std::io::Read;
 
+use crate::auth::{AuthSysParams, Credential};
 use crate::parser::primitive::{string_max_size, u32, u32_as_usize, variant, vec_max_size};
 use crate::parser::{Error, Result};
 use crate::rpc::{
-    AuthFlavor, AuthSysParams, Credential, OpaqueAuth, AUTH_SYS_MAX_GIDS,
-    AUTH_SYS_MAX_MACHINE_NAME, MAX_AUTH_SIZE,
+    AuthFlavor, OpaqueAuth, AUTH_SYS_MAX_GIDS, AUTH_SYS_MAX_MACHINE_NAME, MAX_AUTH_SIZE,
 };
 
 #[derive(Debug)]

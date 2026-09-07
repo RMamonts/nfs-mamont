@@ -4,9 +4,9 @@ use std::net::SocketAddr;
 
 use tracing::warn;
 
+use crate::auth::Credential;
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
 use crate::mount::{HostName, MountEntry};
-use crate::rpc::Credential;
 
 use super::MountService;
 use super::AUTH;
