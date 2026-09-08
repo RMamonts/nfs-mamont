@@ -358,6 +358,14 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         buffer: B,
         count: usize,
     ) -> io::Result<()> {
+        if count > buffer.len() {
+            self.clean();
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "reply declares more payload bytes than the buffer holds",
+            ));
+        }
+
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
