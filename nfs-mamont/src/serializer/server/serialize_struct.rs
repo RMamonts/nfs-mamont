@@ -11,11 +11,13 @@ use std::io::{ErrorKind, IoSlice, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::rpc::{HEADER_MASK, HEADER_SIZE, MAX_FRAGMENT_SIZE};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::consts::xdr::ALIGNMENT;
+use crate::serializer::{u32, usize_as_u32};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
@@ -32,18 +34,6 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
-
-/// Max size of RMS fragment data
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
-
-/// Header mask of RMS
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_MASK: usize = 0x8000_0000;
-
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -62,11 +52,11 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<B: Buffer, T: AsyncWrite + Unpin> {
-    buffer: WriteBuffer<B, T>,
+pub struct Serializer<T: AsyncWrite + Unpin> {
+    buffer: WriteBuffer<T>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
+impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
         Self::with_capacity(writer, DEFAULT_SIZE)
@@ -78,7 +68,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     }
 
     /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_result(&mut self, result: ProcResult<B>) -> io::Result<()> {
+    async fn process_result<B: Buffer>(&mut self, result: ProcResult<B>) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
@@ -87,7 +77,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
+    async fn process_nfs3<B: Buffer>(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
         match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
@@ -226,7 +216,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(
+    pub async fn form_reply<B: Buffer>(
         &mut self,
         reply: ProcReply<B>,
         verifier: OpaqueAuth,
@@ -300,13 +290,12 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<B: Buffer, T: AsyncWrite + Unpin> {
+struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
-    _phantom: std::marker::PhantomData<B>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -319,14 +308,10 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
     }
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: T, capacity: usize) -> WriteBuffer<B, T> {
-        let mut buffer = WriteBuffer {
-            socket,
-            buf: Vec::with_capacity(capacity),
-            _phantom: std::marker::PhantomData,
-        };
+    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
+        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
         buffer.clean();
         buffer
     }
@@ -368,36 +353,11 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
     ///
     /// Uses vectored I/O to coalesce all data chunks and padding into a single
     /// `writev`-style syscall, reducing kernel transitions.
-    ///
-    /// `buffer` is the allocator buffer the READ was served into, so it is sized
-    /// after the *requested* count: a short read --- near end-of-file, or whenever
-    /// the backend returns fewer bytes than asked for --- leaves it longer than
-    /// `count`. Only the first `count` bytes belong to the reply; the tail is
-    /// whatever the pool buffer happened to hold.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ErrorKind::InvalidInput`] if `count` exceeds `buffer.len()`. The
-    /// count is what the reply announces --- as the XDR array length and inside the
-    /// record mark --- so sending fewer bytes than that would leave the client
-    /// blocked on a fragment that never completes. The check runs before `count`
-    /// reaches the staged header, so nothing has been committed to the socket yet
-    /// and the reply can be abandoned whole.
-    ///
-    /// The staged bytes are dropped on that path: [`Serializer::form_reply`] has already
-    /// written the RPC and READ3resok headers into `self.buf`, and the write task
-    /// logs a failed reply and goes on to the next one with this same serializer.
-    /// Leaving them staged would prepend the abandoned reply to the next one, which
-    /// is the very desynchronisation the check exists to prevent.
-    async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
-        if count > buffer.len() {
-            self.clean();
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "reply declares more payload bytes than the buffer holds",
-            ));
-        }
-
+    async fn send_inner_with_buffer<B: Buffer>(
+        &mut self,
+        buffer: B,
+        count: usize,
+    ) -> io::Result<()> {
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
