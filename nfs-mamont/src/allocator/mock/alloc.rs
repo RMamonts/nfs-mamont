@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 
 use crate::allocator::mock::buffer::MockBuffers;
 use crate::allocator::Allocator;
+use crate::allocator::mock::buffer::{MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE};
 
 pub struct MockAllocator {
     block_size: usize,
@@ -9,7 +10,10 @@ pub struct MockAllocator {
 
 impl MockAllocator {
     pub fn new(block_size: usize) -> Self {
-        Self { block_size }
+        Self {
+            // Cap block size to prevent OOM in fuzzing/tests
+            block_size: block_size.min(MAX_BLOCK_SIZE),
+        }
     }
 
     pub fn empty() -> Self {
@@ -24,17 +28,24 @@ impl Allocator for MockAllocator {
         if self.block_size == 0 {
             return None;
         }
+
+        // Cap allocation to max test size to prevent OOM
+        let capped_size = size.get().min(MAX_BLOCK_AMOUNT * MAX_BLOCK_SIZE);
+
         let mut actual_size = 0;
         let mut collector = Vec::new();
-        while actual_size < size.get() {
-            let buf = vec![0; self.block_size].into_boxed_slice();
+        while actual_size < capped_size {
+            let remaining = capped_size - actual_size;
+            let buf_size = self.block_size.min(remaining);
+            let buf = vec![0; buf_size].into_boxed_slice();
             actual_size += buf.len();
             collector.push(buf);
         }
-        Some(MockBuffers::new(collector, size.get()))
+        Some(MockBuffers::new(collector, capped_size))
     }
 
     fn capacity(&self) -> NonZeroUsize {
-        NonZeroUsize::MAX
+        // Return capped capacity to prevent parser from trying to allocate too much
+        NonZeroUsize::new(MAX_BLOCK_AMOUNT * MAX_BLOCK_SIZE).expect("non-zero")
     }
 }
