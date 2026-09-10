@@ -292,3 +292,45 @@ fn remove_by_owner_unlock_past_eof_trims_right() {
     assert_eq!(locks[0].offset, 0);
     assert_eq!(locks[0].length, 50);
 }
+
+#[test]
+fn merging_locks_up_to_the_last_byte_stores_lock_to_eof() {
+    let mut reg = LockRegistry::new();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 0, 10, 1)).unwrap();
+    // `[5, u64::MAX]` trims the first lock to `[0, 4]` and then merges with it,
+    // producing a range whose length (`u64::MAX + 1`) is not representable.
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, 5, u64::MAX, 1))
+        .unwrap();
+
+    let locks = &reg.by_file[&fill_fh(FH_DEFAULT)];
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, 0);
+    assert_eq!(locks[0].length, 0);
+}
+
+#[test]
+fn conflict_is_detected_on_the_last_byte() {
+    let mut reg = LockRegistry::new();
+    push_lock(&mut reg, FH_DEFAULT, make_active_lock("a", 1, true, u64::MAX, 1, 1));
+    let req = make_active_lock("other", 999, true, u64::MAX, 1, 0);
+
+    assert!(reg.find_conflict(&fill_fh(FH_DEFAULT), &req).is_some());
+}
+
+#[test]
+fn merging_two_locks_on_the_last_byte_keeps_one_lock() {
+    let mut reg = LockRegistry::new();
+    // Both requests cover the single byte at `u64::MAX`. They used to be judged
+    // non-overlapping, so both were stored, and merging them then subtracted an
+    // end that lay before the start.
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, u64::MAX, 1, 1))
+        .unwrap();
+    reg.push_or_replace(fill_fh(FH_DEFAULT), make_active_lock("a", 1, true, u64::MAX, 2, 1))
+        .unwrap();
+
+    // The second request replaces the first instead of piling up beside it.
+    let locks = &reg.by_file[&fill_fh(FH_DEFAULT)];
+    assert_eq!(locks.len(), 1);
+    assert_eq!(locks[0].offset, u64::MAX);
+    assert_eq!(locks[0].length, 2);
+}

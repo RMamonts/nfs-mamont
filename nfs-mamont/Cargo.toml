@@ -26,3 +26,8 @@ async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
 libc = { version = "0.2.186", optional = true }
+
+[lints.rust]
+# `cfg(kani)` is set only by `cargo kani`; declare it so ordinary builds do not
+# warn about the `#[cfg(kani)]` proof harnesses.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
