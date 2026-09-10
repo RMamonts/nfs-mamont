@@ -27,6 +27,9 @@ crossbeam-queue.workspace = true
 trait-variant.workspace = true
 libc = { version = "0.2.186", optional = true }
 
+[target.'cfg(kani_ra)'.dependencies]
+kani = { git = "https://github.com/model-checking/kani" }
+
 [lints.rust]
 # `cfg(kani)` is set only by `cargo kani`; declare it so ordinary builds do not
 # warn about the `#[cfg(kani)]` proof harnesses.
