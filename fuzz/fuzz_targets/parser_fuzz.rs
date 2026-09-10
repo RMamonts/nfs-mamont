@@ -2,6 +2,7 @@
 
 mod parser_wrapper;
 pub mod read_socket;
+mod zero_allocator;
 
 use std::sync::{Arc, OnceLock};
 
@@ -10,14 +11,14 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use nfs_mamont::{
-    Error, MockAllocator, NfsArguments, ProcArguments, RpcBody, RpcParser, MAX_BLOCK_AMOUNT,
-    NFS_PROGRAM, NFS_VERSION, NULL, RPC_VERSION,
+    Error, NfsArguments, ProcArguments, RpcBody, RpcParser, NFS_PROGRAM, NFS_VERSION, NULL,
+    RPC_VERSION,
 };
 
 use read_socket::FuzzMockSocket;
+use zero_allocator::ZeroAllocator;
 
-use crate::parser_wrapper::ParserWrapper;
-use crate::parser_wrapper::RpcRequest;
+use crate::parser_wrapper::{ParserWrapper, RpcRequest};
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PARSER: OnceLock<Mutex<ParserWrapper>> = OnceLock::new();
@@ -29,10 +30,8 @@ fn get_runtime() -> &'static Runtime {
 fn get_parser() -> &'static Mutex<ParserWrapper> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
-        let mut parser = ParserWrapper::new(
-            RpcParser::new(sock, Arc::new(MockAllocator::new(MAX_BLOCK_AMOUNT))),
-            hand,
-        );
+        let mut parser =
+            ParserWrapper::new(RpcParser::new(sock, Arc::new(ZeroAllocator::new())), hand);
         let initial_value = RpcRequest {
             xid: 78,
             request: RpcBody::Call as u32,
