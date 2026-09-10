@@ -1,16 +1,13 @@
 #![no_main]
 
-pub mod write_socket;
-
 use std::sync::OnceLock;
 
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+use fuzz_shared::write_socket::MockWriter;
 use nfs_mamont::{AuthFlavor, MockBuffers, OpaqueAuth, ProcReply, Serializer};
-
-use write_socket::MockWriter;
 
 type TestSerializer = Serializer<MockWriter>;
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();

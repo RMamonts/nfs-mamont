@@ -4,6 +4,10 @@ use arbitrary::{Arbitrary, Unstructured};
 
 use nfs_mamont::{Allocator, Buffer};
 
+pub mod parser_wrapper;
+pub mod read_socket;
+pub mod write_socket;
+
 #[derive(Clone, Debug, Default)]
 pub struct ZeroBuffers;
 
