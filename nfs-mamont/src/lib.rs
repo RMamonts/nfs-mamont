@@ -6,7 +6,7 @@ mod context;
 
 mod macros;
 pub mod mount;
-mod nlm;
+pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
