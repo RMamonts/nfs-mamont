@@ -4,7 +4,6 @@ use arbitrary::Unstructured;
 
 use crate::Buffer;
 
-pub const TEST_SIZE: usize = MAX_BLOCK_AMOUNT * MAX_BLOCK_SIZE;
 pub const MAX_BLOCK_AMOUNT: usize = 64;
 pub const MAX_BLOCK_SIZE: usize = 64;
 
