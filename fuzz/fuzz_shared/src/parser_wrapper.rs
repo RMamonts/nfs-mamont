@@ -15,7 +15,7 @@ use nfs_mamont::arguments::nfsv3::{
 };
 
 use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
-use crate::zero_allocator::{ZeroAllocator, ZeroBuffers};
+use crate::{ZeroAllocator, ZeroBuffers};
 
 type TestParser = RpcParser<ZeroAllocator, FuzzMockSocket>;
 const FAULT_VERSION: u32 = 7;

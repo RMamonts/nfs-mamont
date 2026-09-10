@@ -1,24 +1,16 @@
 #![no_main]
 
-mod parser_wrapper;
-pub mod read_socket;
-mod zero_allocator;
-
 use std::sync::{Arc, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+use fuzz_shared::{parser_wrapper::{ParserWrapper, RpcRequest}, read_socket::FuzzMockSocket, ZeroAllocator};
 use nfs_mamont::{
     Error, NfsArguments, ProcArguments, RpcBody, RpcParser, NFS_PROGRAM, NFS_VERSION, NULL,
     RPC_VERSION,
 };
-
-use read_socket::FuzzMockSocket;
-use zero_allocator::ZeroAllocator;
-
-use crate::parser_wrapper::{ParserWrapper, RpcRequest};
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static PARSER: OnceLock<Mutex<ParserWrapper>> = OnceLock::new();

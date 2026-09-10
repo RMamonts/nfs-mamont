@@ -1,7 +1,5 @@
 #![no_main]
 
-mod zero_allocator;
-
 use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
