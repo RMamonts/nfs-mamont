@@ -4,7 +4,7 @@
 mod buffer;
 mod slice;
 
-#[cfg(any(test, feature = "arbitrary"))]
+#[cfg(test)]
 pub mod mock;
 #[cfg(test)]
 mod tests;

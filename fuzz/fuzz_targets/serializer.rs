@@ -7,7 +7,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use fuzz_shared::write_socket::MockWriter;
-use nfs_mamont::{AuthFlavor, MockBuffers, OpaqueAuth, ProcReply, Serializer};
+use fuzz_shared::ZeroBuffers;
+use nfs_mamont::{AuthFlavor, OpaqueAuth, ProcReply, Serializer};
 
 type TestSerializer = Serializer<MockWriter>;
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -21,7 +22,7 @@ fn get_serializer() -> &'static Mutex<TestSerializer> {
     SERIALIZER.get_or_init(|| Mutex::new(Serializer::new(MockWriter)))
 }
 
-fuzz_target!(|data: ProcReply<MockBuffers>| {
+fuzz_target!(|data: ProcReply<ZeroBuffers>| {
     // fuzzed code goes here
     let runtime = get_runtime();
     let auth = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };

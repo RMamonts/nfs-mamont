@@ -2,14 +2,14 @@
 
 use std::io::Cursor;
 
+use fuzz_shared::ZeroBuffers;
 use libfuzzer_sys::fuzz_target;
-
 use nfs_mamont::{
-    arguments, consts, nfsv3, parser_mount, parser_nlm, u32_as_usize, Buffer, MockBuffers,
-    MountArguments, NfsArguments, NlmArguments, ProcArguments, DEFAULT_SIZE, TEST_SIZE,
+    arguments, consts, nfsv3, parser_mount, parser_nlm, u32_as_usize, Buffer, MountArguments,
+    NfsArguments, NlmArguments, ProcArguments, DEFAULT_SIZE,
 };
 
-const DEFAULT_CAPACITY: usize = DEFAULT_SIZE + TEST_SIZE;
+const DEFAULT_CAPACITY: usize = DEFAULT_SIZE;
 
 macro_rules! roundtrip {
     ($arg:expr, $write:path, $read:path) => {{
@@ -22,7 +22,7 @@ macro_rules! roundtrip {
     }};
 }
 
-fuzz_target!(|data: ProcArguments<MockBuffers>| {
+fuzz_target!(|data: ProcArguments<ZeroBuffers>| {
     match data {
         ProcArguments::Nfs3(nfs) => match *nfs {
             NfsArguments::GetAttr(arg) => {
