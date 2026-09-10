@@ -1,0 +1,29 @@
+name: Formal Verification
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  kani:
+    name: Kani Proof Harnesses
+    runs-on: ubuntu-latest
+    # A CBMC run that blows past this is a proof whose bounds need revisiting,
+    # not a job worth leaving to the 6-hour default.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned: CBMC updates change solving times, and an unpinned bump would
+      # surface as an unexplained timeout on an unrelated PR.
+      - uses: model-checking/kani-github-action@v1
+        with:
+          kani-version: "0.67.0"
+          args: "-p nfs-mamont"
