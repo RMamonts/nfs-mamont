@@ -1,6 +1,10 @@
 //! Defines [`Slice`] --- list of buffers bounded by custome byte range.
 
+pub mod nodropslice;
+
 use std::sync::Arc;
+
+use crate::allocator::buffer::{RawBuffer, UnownedBuffer};
 
 use super::Buffer;
 
@@ -9,7 +13,7 @@ use super::Buffer;
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,
-    state: Option<Arc<super::AllocatorState>>,
+    state: Option<Arc<super::AllocatorState<super::UnownedBuffer>>>,
 }
 
 impl Slice {
@@ -27,7 +31,7 @@ impl Slice {
     pub fn new(
         buffers: Vec<super::UnownedBuffer>,
         range: std::ops::Range<usize>,
-        state: Option<Arc<super::AllocatorState>>,
+        state: Option<Arc<super::AllocatorState<super::UnownedBuffer>>>,
     ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 
@@ -59,11 +63,11 @@ impl Slice {
         self.range.len() == 0
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<'_> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, UnownedBuffer> {
         self.into_iter()
     }
 
-    pub fn iter(&self) -> Iter<'_> {
+    pub fn iter(&self) -> Iter<'_, UnownedBuffer> {
         self.into_iter()
     }
 
@@ -94,12 +98,12 @@ impl Drop for Slice {
 /// Shared iterator over [`Slice`] buffers.
 ///
 /// Return shared slices accordingly to [`Slice`] bounds.
-pub struct Iter<'a> {
-    slice_iter: std::slice::Iter<'a, super::UnownedBuffer>,
+pub struct Iter<'a, R: RawBuffer> {
+    slice_iter: std::slice::Iter<'a, R>,
     range: std::ops::Range<usize>,
 }
 
-impl<'a> Iterator for Iter<'a> {
+impl<'a, R: RawBuffer> Iterator for Iter<'a, R> {
     type Item = &'a [u8];
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -120,14 +124,14 @@ impl<'a> Iterator for Iter<'a> {
             self.range.end = self.range.end.saturating_sub(len);
 
             if len > start {
-                return Some(&result[start..end.min(len)]);
+                return Some(&(result.as_ref()[start..end.min(len)]));
             }
         }
     }
 }
 
 impl<'a> IntoIterator for &'a Slice {
-    type IntoIter = Iter<'a>;
+    type IntoIter = Iter<'a, UnownedBuffer>;
     type Item = &'a [u8];
 
     fn into_iter(self) -> Self::IntoIter {
@@ -138,12 +142,12 @@ impl<'a> IntoIterator for &'a Slice {
 /// Unique iterator over [`Slice`] buffers.
 ///
 /// Return mutable slices accordingly to [`Slice`] bounds.
-pub struct IterMut<'a> {
-    slice_iter: std::slice::IterMut<'a, super::UnownedBuffer>,
+pub struct IterMut<'a, R: RawBuffer> {
+    slice_iter: std::slice::IterMut<'a, R>,
     range: std::ops::Range<usize>,
 }
 
-impl<'a> Iterator for IterMut<'a> {
+impl<'a, R: RawBuffer> Iterator for IterMut<'a, R> {
     type Item = &'a mut [u8];
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -164,18 +168,40 @@ impl<'a> Iterator for IterMut<'a> {
             self.range.end = self.range.end.saturating_sub(len);
 
             if len > start {
-                return Some(&mut result[start..end.min(len)]);
+                return Some(&mut result.as_mut()[start..end.min(len)]);
             }
         }
     }
 }
 
 impl<'a> IntoIterator for &'a mut Slice {
-    type IntoIter = IterMut<'a>;
+    type IntoIter = IterMut<'a, UnownedBuffer>;
     type Item = &'a mut [u8];
 
     fn into_iter(self) -> Self::IntoIter {
         IterMut { slice_iter: self.buffers.iter_mut(), range: self.range.clone() }
+    }
+}
+
+impl Buffer for Slice {
+    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_ {
+        self.into_iter()
+    }
+
+    fn len(&self) -> usize {
+        self.range.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.range.len() == 0
+    }
+
+    fn empty() -> Self {
+        Self::empty()
     }
 }
 
@@ -219,28 +245,6 @@ impl PartialEq<[u8]> for Slice {
                 }
             }
         }
-    }
-}
-
-impl Buffer for Slice {
-    fn chunks(&self) -> impl Iterator<Item = &[u8]> + Send + '_ {
-        self.into_iter()
-    }
-
-    fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [u8]> + Send + '_ {
-        self.into_iter()
-    }
-
-    fn len(&self) -> usize {
-        self.range.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.range.len() == 0
-    }
-
-    fn empty() -> Self {
-        Self::empty()
     }
 }
 

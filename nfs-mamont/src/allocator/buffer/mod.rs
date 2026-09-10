@@ -1,4 +1,16 @@
+pub mod dropbuf;
+
 use std::ops::{Deref, DerefMut};
+
+pub trait RawBuffer: Deref + DerefMut + AsRef<[u8]> + AsMut<[u8]> {
+    fn len(&self) -> usize;
+}
+
+impl RawBuffer for UnownedBuffer {
+    fn len(&self) -> usize {
+        Self::len(self)
+    }
+}
 
 #[derive(Debug)]
 pub struct UnownedBuffer {
@@ -42,5 +54,17 @@ impl Deref for UnownedBuffer {
 impl DerefMut for UnownedBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+}
+
+impl AsRef<[u8]> for UnownedBuffer {
+    fn as_ref(&self) -> &[u8] {
+        self.deref()
+    }
+}
+
+impl AsMut<[u8]> for UnownedBuffer {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.deref_mut()
     }
 }
