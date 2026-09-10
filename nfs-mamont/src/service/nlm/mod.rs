@@ -7,14 +7,15 @@
 //! The service implements `Lock`, `Unlock`, `Test` and `Cancel`
 //! procedure traits from `crate::nlm::procedures`.
 
-use std::collections::HashMap;
-use std::io::Error;
-
 use crate::consts::nlm;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::OpaqueHandle;
+use crate::task::ProcCall;
 use crate::vfs::file::Handle;
+use async_channel::Sender;
+use std::collections::HashMap;
+use std::io::Error;
 
 mod cancel;
 mod lock;
@@ -23,6 +24,21 @@ mod unlock;
 
 #[cfg(test)]
 mod tests;
+
+/// The wrapper needed to notify the client.
+struct PendingGrant {
+    /// Transaction identifier from the original blocking LOCK request;
+    /// echoed back to the client in the GRANTED callback.
+    pub cookie: Cookie,
+    /// The channel for sending the callback.
+    pub message_sender: Option<Sender<ProcCall>>,
+}
+
+impl PendingGrant {
+    fn new(message_sender: Option<Sender<ProcCall>>, cookie: Cookie) -> Self {
+        Self { message_sender, cookie }
+    }
+}
 
 /// A held lock with full owner identity and state.
 #[derive(Clone)]
@@ -109,10 +125,8 @@ struct PendingLock {
     length: u64,
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     opaque_handle: OpaqueHandle,
-    /// The cookie from the original blocking LOCK request.
-    /// TODO: Needed for NLMPROC4_GRANTED callback (#267).
-    #[allow(dead_code)]
-    cookie: Cookie,
+    /// A wrapper for the cookie and a channel for sending it to the client.
+    grant_notification: PendingGrant,
 }
 
 impl PendingLock {
@@ -130,7 +144,7 @@ impl PendingLock {
         offset: u64,
         length: u64,
         opaque_handle: OpaqueHandle,
-        cookie: Cookie,
+        grant_notification: PendingGrant,
     ) -> Result<Self, Error> {
         check_caller_name(&caller_name)?;
         Ok(PendingLock {
@@ -140,7 +154,7 @@ impl PendingLock {
             offset,
             length,
             opaque_handle,
-            cookie,
+            grant_notification,
         })
     }
 }

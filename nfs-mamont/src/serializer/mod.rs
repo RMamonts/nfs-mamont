@@ -47,6 +47,11 @@ pub fn u64(dest: &mut impl Write, n: u64) -> io::Result<()> {
     dest.write_u64::<BigEndian>(n)
 }
 
+/// Serializes an XDR `signed hyper` (32-bit) in big-endian order.
+pub fn i32(dest: &mut impl Write, n: i32) -> io::Result<()> {
+    dest.write_i32::<BigEndian>(n)
+}
+
 /// Serializes an XDR `bool` as `0`/`1` (encoded as a 32-bit integer).
 #[inline]
 pub fn bool(dest: &mut impl Write, b: bool) -> io::Result<()> {

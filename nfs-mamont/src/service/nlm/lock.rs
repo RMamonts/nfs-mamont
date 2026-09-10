@@ -1,10 +1,15 @@
+use super::{ActiveLock, NlmService, PendingGrant, PendingLock};
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
-
-use super::{ActiveLock, NlmService, PendingLock};
+use crate::task::ProcCall;
+use async_channel::Sender;
 
 impl Lock for NlmService {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
+    async fn lock(
+        &self,
+        rpc_call_sender: Option<Sender<ProcCall>>,
+        args: Nlm4LockArgs,
+    ) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
         let new_lock = match PendingLock::new(
@@ -14,7 +19,7 @@ impl Lock for NlmService {
             args.lock.lock_offset,
             args.lock.lock_length,
             args.lock.opaque_handle,
-            args.cookie,
+            PendingGrant::new(rpc_call_sender.clone(), args.cookie),
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
