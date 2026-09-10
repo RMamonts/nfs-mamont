@@ -1,8 +1,8 @@
 use std::num::NonZeroUsize;
 
 use crate::allocator::mock::buffer::MockBuffers;
-use crate::allocator::Allocator;
 use crate::allocator::mock::buffer::{MAX_BLOCK_AMOUNT, MAX_BLOCK_SIZE};
+use crate::allocator::Allocator;
 
 pub struct MockAllocator {
     block_size: usize,

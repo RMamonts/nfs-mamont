@@ -6,7 +6,11 @@ use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
-use fuzz_shared::{parser_wrapper::{ParserWrapper, RpcRequest}, read_socket::FuzzMockSocket, ZeroAllocator};
+use fuzz_shared::{
+    parser_wrapper::{ParserWrapper, RpcRequest},
+    read_socket::FuzzMockSocket,
+    ZeroAllocator,
+};
 use nfs_mamont::{
     Error, NfsArguments, ProcArguments, RpcBody, RpcParser, NFS_PROGRAM, NFS_VERSION, NULL,
     RPC_VERSION,

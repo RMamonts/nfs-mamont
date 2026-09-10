@@ -4,6 +4,7 @@ mod allocator;
 pub mod consts;
 mod context;
 
+mod macros;
 pub mod mount;
 mod nlm;
 mod parser;
@@ -13,7 +14,6 @@ mod serializer;
 pub mod service;
 mod task;
 pub mod vfs;
-mod macros;
 
 use std::sync::Arc;
 
