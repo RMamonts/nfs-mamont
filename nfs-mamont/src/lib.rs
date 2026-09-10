@@ -11,7 +11,7 @@ mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
-pub mod service;
+mod service;
 mod task;
 pub mod vfs;
 
@@ -33,10 +33,6 @@ pub use context::ServerContext;
 
 pub_use_if_feature!(
     "arbitrary",
-    allocator::mock::alloc::MockAllocator,
-    allocator::mock::buffer::MockBuffers,
-    allocator::mock::buffer::MAX_BLOCK_AMOUNT,
-    allocator::mock::buffer::TEST_SIZE,
     parser::parser_struct::RpcParser,
     parser::parser_struct::DEFAULT_SIZE,
     parser::parser_struct::RMS_HEADER_SIZE,

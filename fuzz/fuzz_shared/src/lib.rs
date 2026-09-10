@@ -8,16 +8,16 @@ pub mod parser_wrapper;
 pub mod read_socket;
 pub mod write_socket;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct ZeroBuffers;
 
 impl ZeroBuffers {
     pub fn new(_bufs: Vec<Box<[u8]>>, _len: usize) -> Self {
-        Self { ..Self::default() }
+        Self
     }
 
     pub fn empty() -> Self {
-        Self::default()
+        Self
     }
 }
 
@@ -42,7 +42,7 @@ impl Buffer for ZeroBuffers {
     where
         Self: Sized,
     {
-        Self::default()
+        Self
     }
 }
 
@@ -60,7 +60,7 @@ impl PartialEq<ZeroBuffers> for [u8] {
 
 impl<'a> Arbitrary<'a> for ZeroBuffers {
     fn arbitrary(_u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(ZeroBuffers::default())
+        Ok(ZeroBuffers)
     }
 }
 

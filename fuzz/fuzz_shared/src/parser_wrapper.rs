@@ -6,7 +6,7 @@ use nfs_mamont::{
     LOOKUP, MKDIR, MKNOD, MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM,
     MOUNT_UMNT, MOUNT_UMNTALL, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ,
     READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE, RPC_VERSION, SETATTR,
-    SYMLINK, TEST_SIZE, WRITE,
+    SYMLINK, WRITE,
 };
 
 use nfs_mamont::arguments::nfsv3::{
@@ -154,7 +154,7 @@ impl ParserWrapper {
 
     // forms completely new message
     pub fn write_new_message(&mut self, arg: RpcRequest) {
-        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE + TEST_SIZE);
+        let mut tmp_buffer = Vec::with_capacity(DEFAULT_SIZE);
         // place for size
         tmp_buffer.extend_from_slice(&[0, 0, 0, 0]);
         // xid
@@ -178,9 +178,9 @@ impl ParserWrapper {
         // now we can do only Auth::None
         tmp_buffer.extend_from_slice(&arg.auth_verf.to_be_bytes());
         match arg.args {
-            ProcArguments::Nfs3(nfs) => Self::match_nfsv3(&mut tmp_buffer, nfs),
-            ProcArguments::Mount(mnt) => Self::match_mount(&mut tmp_buffer, mnt),
-            ProcArguments::Nlm4(nlm) => Self::match_nlm(&mut tmp_buffer, nlm),
+            ProcArguments::Nfs3(nfs) => Self::match_nfsv3(&mut tmp_buffer, *nfs),
+            ProcArguments::Mount(mnt) => Self::match_mount(&mut tmp_buffer, *mnt),
+            ProcArguments::Nlm4(nlm) => Self::match_nlm(&mut tmp_buffer, *nlm),
         }
         let pos = tmp_buffer.len();
         assert!(pos - RMS_HEADER_SIZE < 0x8000_0000);
@@ -193,8 +193,8 @@ impl ParserWrapper {
         self.parser.next_message().await
     }
 
-    fn match_nfsv3(tmp_buffer: &mut Vec<u8>, nfs: Box<NfsArguments<ZeroBuffers>>) {
-        match *nfs {
+    fn match_nfsv3(tmp_buffer: &mut Vec<u8>, nfs: NfsArguments<ZeroBuffers>) {
+        match nfs {
             NfsArguments::GetAttr(get) => get_attr::get_attr_args(tmp_buffer, get).unwrap(),
 
             NfsArguments::SetAttr(set) => set_attr::set_attr_args(tmp_buffer, set).unwrap(),
@@ -245,8 +245,8 @@ impl ParserWrapper {
         }
     }
 
-    fn match_mount(tmp_buffer: &mut Vec<u8>, mnt: Box<MountArguments>) {
-        match *mnt {
+    fn match_mount(tmp_buffer: &mut Vec<u8>, mnt: MountArguments) {
+        match mnt {
             MountArguments::Mount(mount) => {
                 arguments::mount::mnt::mount_args(tmp_buffer, mount).unwrap()
             }
@@ -262,8 +262,8 @@ impl ParserWrapper {
         }
     }
 
-    fn match_nlm(tmp_buffer: &mut Vec<u8>, nlm: Box<NlmArguments>) {
-        match *nlm {
+    fn match_nlm(tmp_buffer: &mut Vec<u8>, nlm: NlmArguments) {
+        match nlm {
             NlmArguments::Cancel(cancel) => {
                 arguments::nlm4::cancel::cancel_args(tmp_buffer, cancel).unwrap()
             }
