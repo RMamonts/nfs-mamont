@@ -53,10 +53,8 @@ impl AsyncRead for FuzzMockSocket {
             // not sure if we now need to check for Empty error
             // for fuzz test it's alright - we will do not more, than 2 blocks at a time
             while let Poll::Ready(Some(new_data)) = Pin::new(&mut inner.recv).poll_recv(cx) {
-
-                        inner.data.extend_from_slice(&new_data);
-                        inner.end = inner.data.len();
-
+                inner.data.extend_from_slice(&new_data);
+                inner.end = inner.data.len();
             }
         }
         let remaining_data = inner.end - inner.start;
