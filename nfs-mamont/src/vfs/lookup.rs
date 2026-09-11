@@ -5,6 +5,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub file: file::Handle,
     pub file_attr: Option<file::Attr>,
@@ -12,6 +13,7 @@ pub struct Success {
 }
 
 /// Failed result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -20,6 +22,8 @@ pub struct Fail {
 }
 
 /// [`Lookup::lookup`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// File handle for the directory to search.
     pub parent: file::Handle,

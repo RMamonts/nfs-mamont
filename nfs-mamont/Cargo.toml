@@ -13,6 +13,7 @@ doctest = true
 [features]
 default = []
 mlock = ["dep:libc"]
+arbitrary = ["dep:arbitrary"]
 
 [dependencies]
 # External dependencies
@@ -25,4 +26,7 @@ tracing-subscriber.workspace = true
 async-channel.workspace = true
 crossbeam-queue.workspace = true
 trait-variant.workspace = true
+
+arbitrary = { version = "1", optional = true, features = ["derive"] }
+
 libc = { version = "0.2.186", optional = true }

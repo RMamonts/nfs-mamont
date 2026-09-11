@@ -4,6 +4,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Weak cache consistency data for the file.
     pub file_wcc: vfs::WccData,
@@ -14,6 +15,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -22,6 +24,8 @@ pub struct Fail {
 }
 
 /// [`Commit::commit`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the file to which data is to be flushed.
     pub file: file::Handle,

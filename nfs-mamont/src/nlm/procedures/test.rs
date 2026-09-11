@@ -8,6 +8,7 @@ use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// NLM TEST arguments.
 ///
 /// Used to test whether a lock can be granted without actually acquiring it.
@@ -23,6 +24,7 @@ pub struct Nlm4TestArgs {
 /// NLM TEST result.
 ///
 /// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
@@ -33,11 +35,21 @@ pub struct Nlm4TestRes {
 /// NLM TEST reply status union.
 ///
 /// Contains either granted status (no holder), or denied with holder info.
+#[cfg_attr(feature = "arbitrary", derive(Debug))]
 pub struct Nlm4TestReply {
     /// Status code (Granted, Denied, etc.).
     pub stat: Nlm4Stats,
     /// Present only when stat is Denied — info about current lock holder.
     pub holder: Option<Nlm4Holder>,
+}
+
+#[cfg(feature = "arbitrary")]
+impl arbitrary::Arbitrary<'_> for Nlm4TestReply {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let stat = Nlm4Stats::arbitrary(u)?;
+        let holder = if stat == Nlm4Stats::Denied { Some(Nlm4Holder::arbitrary(u)?) } else { None };
+        Ok(Self { stat, holder })
+    }
 }
 
 /// Trait for handling NLMv4 `TEST` procedure calls.

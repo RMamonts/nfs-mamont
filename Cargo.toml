@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont"]
+members = ["nfs-mamont", "fuzz", "fuzz/fuzz_shared"]
 resolver = "2"
 
 [workspace.package]
@@ -19,3 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
+
+# Internal dependencies
+nfs-mamont.path = "nfs-mamont"
+fuzz-shared.path = "fuzz/fuzz_shared"

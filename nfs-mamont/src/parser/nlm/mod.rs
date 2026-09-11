@@ -29,7 +29,7 @@ pub fn parse_lock(src: &mut impl Read) -> Result<Nlm4Lock> {
         u64(src)?,
         u64(src)?,
     )
-    .map_err(|_| Error::BadFileHandle)
+    .map_err(Error::IO)
 }
 
 /// Test helpers that encode NLM procedure arguments in XDR format.

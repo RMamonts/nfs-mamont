@@ -35,7 +35,6 @@ impl Mnt for MountService {
         };
 
         let file_handle = export.root_handle.clone();
-
         let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };

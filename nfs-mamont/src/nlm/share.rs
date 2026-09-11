@@ -13,6 +13,7 @@ use super::OpaqueHandle;
 ///
 /// Defines what operations other clients are prohibited from performing.
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum FileSharingMode {
     /// Other clients may perform any operation.
     None = 0,
@@ -28,6 +29,7 @@ pub enum FileSharingMode {
 ///
 /// Defines what operations the requesting client is allowed to perform.
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum FileSharingAccess {
     /// Client has no access to the file.
     None = 0,
@@ -40,6 +42,7 @@ pub enum FileSharingAccess {
 }
 
 /// This structure is used to support DOS file sharing.
+#[allow(dead_code)]
 pub struct Nlm4Share {
     /// Name of the client host making the lock request.
     pub caller_name: String,
@@ -74,6 +77,7 @@ impl Nlm4Share {
     ///
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than `LM_MAXSTRLEN`.
+    #[allow(dead_code)]
     pub fn new(
         caller_name: String,
         file_handle: vfs::file::Handle,
