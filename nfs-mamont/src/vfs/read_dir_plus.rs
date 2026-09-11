@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`ReadDirPlus`] interface.
 
+use crate::auth::Credential;
 use crate::vfs;
 use crate::vfs::read_dir::Cookie;
 use crate::vfs::read_dir::CookieVerifier;
@@ -67,5 +68,5 @@ pub struct Args {
 pub trait ReadDirPlus {
     /// Retrieves a variable number of entries from a file system directory and returns complete
     /// information about each.
-    async fn read_dir_plus(&self, args: Args) -> Result<Success, Fail>;
+    async fn read_dir_plus(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }

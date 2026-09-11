@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`PathConf`] interface.
 
+use crate::auth::Credential;
 use crate::vfs;
 
 use super::file;
@@ -49,5 +50,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait PathConf {
     /// Retrieves the pathconf information for a file or directory.
-    async fn path_conf(&self, args: Args) -> Result<Success, Fail>;
+    async fn path_conf(&self, cred: Credential, args: Args) -> Result<Success, Fail>;
 }
