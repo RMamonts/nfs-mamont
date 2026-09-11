@@ -11,6 +11,7 @@ use std::io::{ErrorKind, IoSlice, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::rpc::{HEADER_MASK, HEADER_SIZE, MAX_FRAGMENT_SIZE};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
@@ -33,18 +34,6 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
-
-/// Max size of RMS fragment data
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
-
-/// Header mask of RMS
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_MASK: usize = 0x8000_0000;
-
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -359,7 +348,8 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload [`Buffer`] (used for READ data).
+    /// Flushes the staged XDR bytes followed by `count` bytes of the payload
+    /// [`Buffer`] (used for READ data).
     ///
     /// Uses vectored I/O to coalesce all data chunks and padding into a single
     /// `writev`-style syscall, reducing kernel transitions.
@@ -368,6 +358,14 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         buffer: B,
         count: usize,
     ) -> io::Result<()> {
+        if count > buffer.len() {
+            self.clean();
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "reply declares more payload bytes than the buffer holds",
+            ));
+        }
+
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
@@ -384,7 +382,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total: usize = self.buf.len() + buffer.len() + padding;
+        let total: usize = self.buf.len() + count + padding;
 
         let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
         while written < total {
@@ -398,7 +396,15 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
                 to_skip -= self.buf.len();
             }
 
+            let mut left = count;
             for chunk in buffer.chunks() {
+                if left == 0 {
+                    break;
+                }
+                // Only the first `count` bytes of the buffer are part of the reply.
+                let chunk = &chunk[..chunk.len().min(left)];
+                left -= chunk.len();
+
                 if to_skip == 0 {
                     iov.push(IoSlice::new(chunk));
                 } else if to_skip < chunk.len() {
