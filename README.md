@@ -42,6 +42,9 @@ with the following jobs:
 - **security** — `cargo audit` for known vulnerabilities in dependencies.
 - **docs** — build documentation with warnings-as-errors.
 - **udeps** — detect unused dependencies via `cargo-udeps`.
+- **kani** — formal verification of the XDR padding and NLM interval
+  arithmetic with [Kani](https://model-checking.github.io/kani/) (separate
+  workflow, runs on PRs that touch those paths).
 
 ### Local commands
 
@@ -64,6 +67,39 @@ cargo fmt --all --check          # formatting check
 ```bash
 cargo doc --no-deps              # build docs
 ```
+
+```bash
+cargo install --locked kani-verifier && cargo kani setup   # one-time
+cargo kani -p nfs-mamont         # run proof harnesses
+```
+
+### Formal verification
+
+A few pieces of arithmetic that untrusted network input reaches directly are
+model-checked with Kani. Proof harnesses live next to the code they prove, in
+`#[cfg(kani)] mod verification` blocks, and are invisible to a normal build.
+They currently cover:
+
+- XDR alignment padding on both the parser and serializer side: it consumes
+  (emits) fewer than `ALIGNMENT` bytes for every length, keeping its slice index
+  in bounds, and the count it picks really does restore alignment. The formula is
+  duplicated in the parser and the serializer, and proving both independently is
+  what keeps the two copies honest;
+- the NLM interval arithmetic behind byte-range locks: an interval's end never
+  precedes its start, length and end round-trip through each other, and
+  `ranges_overlap` is reflexive, symmetric, and true exactly when the two ranges
+  share a byte. `find_conflict` compares a stored lock against a request in one
+  order only, so an asymmetric or backwards answer would hand two clients an
+  exclusive lock over the same byte --- from nothing worse than the `offset` and
+  `length` a client puts in a `LOCK` request.
+
+Both groups are proved over the whole `usize` / `u64` domain rather than up to a
+bound, which is what makes them cheap enough to keep in CI.
+
+Kani complements `cargo-fuzz` rather than replacing it: fuzzing explores the
+real async stack in depth, Kani proves these cores exhaustively. The async
+layers (`tokio`) are out of scope for these harnesses and stay covered by tests
+and fuzzing.
 
 ### Optional feature
 

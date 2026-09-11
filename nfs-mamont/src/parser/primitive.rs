@@ -122,3 +122,26 @@ pub fn variant<T: FromPrimitive>(src: &mut impl Read) -> Result<T> {
 pub fn u32_as_usize(src: &mut impl Read) -> Result<usize> {
     u32(src)?.to_usize().ok_or(Error::ImpossibleTypeCast)
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Proves [`padding`] consumes fewer than [`ALIGNMENT`] bytes for every `n`,
+    /// so its internal `buf[..padding]` slice is always in bounds, and that the
+    /// bytes it skips really do restore XDR alignment.
+    #[kani::proof]
+    fn padding_is_bounded_and_aligns() {
+        let n: usize = kani::any();
+
+        let data = [0u8; ALIGNMENT];
+        let mut src = std::io::Cursor::new(&data[..]);
+
+        assert!(padding(&mut src, n).is_ok());
+
+        let consumed = src.position() as usize;
+        assert!(consumed < ALIGNMENT);
+        // Stated on the residues so the check itself cannot overflow at `usize::MAX`.
+        assert_eq!((n % ALIGNMENT + consumed) % ALIGNMENT, 0);
+    }
+}
