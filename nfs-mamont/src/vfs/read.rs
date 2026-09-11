@@ -54,5 +54,9 @@ pub trait Read<B: Buffer> {
     ///
     /// The `data` buffer is allocated by NFS-Mamont allocator and must be
     /// filled by implementation. This keeps allocation policy under server control.
+    ///
+    /// The implementation must guarantee that [`SuccessHeader::count`] does not
+    /// exceed the size of the `data` buffer. Otherwise, a serialization error
+    /// will occur and the server will not be able to send a reply.
     async fn read(&self, cred: Credential, args: Args, data: B) -> Result<Success<B>, Fail>;
 }
