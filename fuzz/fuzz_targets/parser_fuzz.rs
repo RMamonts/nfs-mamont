@@ -9,11 +9,10 @@ use tokio::sync::Mutex;
 use fuzz_shared::{
     parser_wrapper::{ParserWrapper, RpcRequest},
     read_socket::FuzzMockSocket,
-    ZeroAllocator,
 };
 use nfs_mamont::{
-    Error, NfsArguments, ProcArguments, RpcBody, RpcParser, NFS_PROGRAM, NFS_VERSION, NULL,
-    RPC_VERSION,
+    Error, MockAllocator, NfsArguments, ProcArguments, RpcBody, RpcParser, NFS_PROGRAM,
+    NFS_VERSION, NULL, RPC_VERSION,
 };
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -27,7 +26,7 @@ fn get_parser() -> &'static Mutex<ParserWrapper> {
     PARSER.get_or_init(|| {
         let (sock, hand) = FuzzMockSocket::new();
         let mut parser =
-            ParserWrapper::new(RpcParser::new(sock, Arc::new(ZeroAllocator::new())), hand);
+            ParserWrapper::new(RpcParser::new(sock, Arc::new(MockAllocator::new(64))), hand);
         let initial_value = RpcRequest {
             xid: 78,
             request: RpcBody::Call as u32,

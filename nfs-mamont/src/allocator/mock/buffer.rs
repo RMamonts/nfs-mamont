@@ -5,7 +5,7 @@ use arbitrary::Unstructured;
 use crate::Buffer;
 
 pub const MAX_BLOCK_AMOUNT: usize = 64;
-pub const MAX_BLOCK_SIZE: usize = 64;
+pub const MAX_BLOCK_SIZE: usize = 4096;
 
 #[derive(Clone, Debug)]
 pub struct MockBuffers {

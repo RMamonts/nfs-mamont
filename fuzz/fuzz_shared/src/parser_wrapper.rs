@@ -1,13 +1,6 @@
 use arbitrary::{Arbitrary, Unstructured};
 
-use nfs_mamont::{
-    arguments, ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
-    RpcBody, RpcParser, ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO, FSSTAT, GETATTR, LINK,
-    LOOKUP, MKDIR, MKNOD, MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM,
-    MOUNT_UMNT, MOUNT_UMNTALL, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ,
-    READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE, RPC_VERSION, SETATTR,
-    SYMLINK, WRITE,
-};
+use nfs_mamont::{arguments, ArgWrapper, ErrorWrapper, MockAllocator, MockBuffers, MountArguments, NfsArguments, NlmArguments, ProcArguments, RpcBody, RpcParser, ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE, RPC_VERSION, SETATTR, SYMLINK, WRITE};
 
 use nfs_mamont::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
@@ -15,9 +8,8 @@ use nfs_mamont::arguments::nfsv3::{
 };
 
 use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
-use crate::{ZeroAllocator, ZeroBuffers};
 
-type TestParser = RpcParser<ZeroAllocator, FuzzMockSocket>;
+type TestParser = RpcParser<MockAllocator, FuzzMockSocket>;
 const FAULT_VERSION: u32 = 7;
 const FAULT_PROGRAM: u32 = 1;
 
@@ -33,7 +25,7 @@ pub struct RpcRequest {
     pub auth: u32,
     // for now only None (0)
     pub auth_verf: u32,
-    pub args: ProcArguments<ZeroBuffers>,
+    pub args: ProcArguments<MockBuffers>,
 }
 
 impl<'a> Arbitrary<'a> for RpcRequest {
@@ -122,7 +114,7 @@ impl<'a> Arbitrary<'a> for RpcRequest {
                 ProcArguments::Mount(Box::new(MountArguments::UnmountAll))
             }
             (MOUNT_PROGRAM, MOUNT_EXPORT) => ProcArguments::Mount(Box::new(MountArguments::Export)),
-            _ => u.arbitrary::<ProcArguments<ZeroBuffers>>()?,
+            _ => u.arbitrary::<ProcArguments<MockBuffers>>()?,
         };
         Ok(Self {
             xid: u.arbitrary()?,
@@ -189,11 +181,11 @@ impl ParserWrapper {
         // there should be sending to mpsc
         self.sender.send_data(tmp_buffer);
     }
-    pub async fn parse_message(&mut self) -> Result<ArgWrapper<ZeroBuffers>, ErrorWrapper> {
+    pub async fn parse_message(&mut self) -> Result<ArgWrapper<MockBuffers>, ErrorWrapper> {
         self.parser.next_message().await
     }
 
-    fn match_nfsv3(tmp_buffer: &mut Vec<u8>, nfs: NfsArguments<ZeroBuffers>) {
+    fn match_nfsv3(tmp_buffer: &mut Vec<u8>, nfs: NfsArguments<MockBuffers>) {
         match nfs {
             NfsArguments::GetAttr(get) => get_attr::get_attr_args(tmp_buffer, get).unwrap(),
 

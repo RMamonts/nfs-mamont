@@ -33,6 +33,8 @@ pub use context::ServerContext;
 
 pub_use_if_feature!(
     "arbitrary",
+    allocator::mock::alloc::MockAllocator,
+    allocator::mock::buffer::MockBuffers,
     parser::parser_struct::RpcParser,
     parser::parser_struct::DEFAULT_SIZE,
     parser::parser_struct::RMS_HEADER_SIZE,
