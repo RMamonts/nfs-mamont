@@ -8,6 +8,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 
 /// Defines the information needed to remove a previously established lock.
+#[derive(Clone)]
 pub struct Nlm4UnlockArgs {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

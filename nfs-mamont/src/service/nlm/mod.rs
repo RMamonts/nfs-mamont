@@ -302,20 +302,6 @@ impl LockRegistry {
     }
 
     /// Promotes pending lock requests that no longer conflict with active locks.
-    ///
-    /// Called after releasing an active lock (`remove_by_owner`) to check
-    /// whether any previously blocked request can now be granted.
-    ///
-    /// Each non-conflicting request is moved into `by_file` as an [`ActiveLock`]
-    /// and included in the returned vector. Requests that still conflict are
-    /// kept in the pending queue.
-    ///
-    /// ### Parameters
-    /// * `file_handle` — file whose pending queue should be rechecked.
-    ///
-    /// ### Returns
-    /// A vector of [`PendingLock`]s that have been granted —
-    /// the caller should send `NLMPROC4_GRANTED` for each one.
     fn grant_pending(&mut self, file_handle: &Handle) -> Result<Vec<PendingLock>, Error> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
         let mut granted: Vec<PendingLock> = Vec::new();

@@ -14,7 +14,7 @@ use tracing::error;
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::NlmCommand;
+use crate::task::global::nlm::{NlmCommand, PendingResolverTask};
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
@@ -26,6 +26,7 @@ pub async fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
+    pending_resolver: PendingResolverTask<B>,
     context: &ServerContext<A, V, B>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
@@ -43,6 +44,7 @@ pub async fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
+    pending_resolver.register_writer(peer_addr, result_sender.clone());
 
     read::ReadTask::<A, B>::new(
         readhalf,

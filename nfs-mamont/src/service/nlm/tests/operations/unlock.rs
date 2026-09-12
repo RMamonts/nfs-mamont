@@ -44,7 +44,7 @@ async fn unlock_auto_grants_pending_exclusive() {
         .lock(make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0))
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);
-    // Alice unlocks -> Bob should be auto-granted
+    // Alice unlocks -> Bob should be auto-granted in service state.
     svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
     // Charlie should be denied because Bob now holds the lock
     let denied = svc

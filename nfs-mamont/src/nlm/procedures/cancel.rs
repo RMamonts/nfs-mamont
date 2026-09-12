@@ -9,6 +9,7 @@ use crate::nlm::Nlm4Stats;
 
 /// Defines the information needed to cancel an outstanding lock request.
 /// The data in the `Nlm4CancelArgs` structure must exactly match the corresponding information in the `Nlm4LockArgs` structure of the outstanding lock request to be cancelled.
+#[derive(Clone)]
 pub struct Nlm4CancelArgs {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
