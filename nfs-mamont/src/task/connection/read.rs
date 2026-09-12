@@ -79,7 +79,7 @@ where
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let mut parser = RpcParser::new(self.readhalf, self.allocator, self.client_addr);
 
         loop {
             match parser.next_message().await {
