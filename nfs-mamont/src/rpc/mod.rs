@@ -3,7 +3,9 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::auth::AuthStat;
+use auth::AuthStat;
+
+pub mod auth;
 
 pub const RPC_VERSION: u32 = 2;
 
