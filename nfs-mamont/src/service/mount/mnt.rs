@@ -6,7 +6,7 @@ use tracing::warn;
 
 use crate::mount::mnt::{Args, Fail, Mnt, Success};
 use crate::mount::{HostName, MountEntry};
-use crate::rpc::Credential;
+use crate::rpc::auth::Credential;
 
 use super::MountService;
 use super::AUTH;
@@ -16,7 +16,7 @@ impl Mnt for MountService {
         &self,
         args: Args,
         client_addr: SocketAddr,
-        _cred: Credential,
+        _cred: &Credential,
     ) -> Result<Success, Fail> {
         let Some(export) = self.export_entry(&args.dirpath) else {
             let configured = self
