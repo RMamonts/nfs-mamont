@@ -12,6 +12,7 @@ pub mod rpc;
 mod tests;
 
 use std::future::Future;
+use std::net::SocketAddr;
 
 use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
@@ -42,6 +43,8 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 #[cfg_attr(test, derive(PartialEq, Debug, Clone))]
 pub struct RpcHeader {
     pub xid: u32,
+    /// Address of the client connection that issued this RPC call.
+    pub client_addr: SocketAddr,
     /// Authenticated caller identity extracted from the RPC credential.
     ///
     /// The reply verifier is always `AUTH_NONE` for the accepted flavors

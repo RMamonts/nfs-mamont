@@ -57,7 +57,7 @@ where
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();
 
-    let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
+    let (nlm_task, nlm_sender, nlm_registration_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
     // Publish the NFS/MOUNT/NLM services to the local rpcbind
@@ -79,7 +79,14 @@ where
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+                        connection::new(
+                            socket,
+                            mount_sender.clone(),
+                            nlm_sender.clone(),
+                            nlm_registration_sender.clone(),
+                            &context,
+                        )
+                        .await;
                     }
                     Err(err) => break Err(err),
                 }

@@ -14,7 +14,7 @@ use tracing::error;
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::NlmCommand;
+use crate::task::global::nlm::{NlmCommand, NlmRegistration};
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
@@ -25,7 +25,8 @@ mod write;
 pub async fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
-    nlm_sender: async_channel::Sender<NlmCommand<B>>,
+    nlm_sender: async_channel::Sender<NlmCommand>,
+    nlm_registration_sender: async_channel::Sender<NlmRegistration<B>>,
     context: &ServerContext<A, V, B>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
@@ -43,6 +44,13 @@ pub async fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
+
+    // Notify the NLM task that a new client connection exists and register the
+    // channel that must be used to deliver replies back to its write task.
+    // TODO: pass result by oneshot?
+    let _ = nlm_registration_sender
+        .send(NlmRegistration { client_addr: peer_addr, result_tx: result_sender.clone() })
+        .await;
 
     read::ReadTask::<A, B>::new(
         readhalf,
