@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`Read`] interface.
 
 use crate::allocator::Buffer;
-use crate::auth::Credential;
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 use super::file;

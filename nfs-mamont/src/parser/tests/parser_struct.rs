@@ -2,7 +2,6 @@ use num_traits::ToPrimitive;
 use std::sync::Arc;
 
 use crate::allocator::Buffer;
-use crate::auth::{AuthStat, AuthSysParams, Credential};
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{FSSTAT, NFS_PROGRAM, NFS_VERSION, WRITE};
 use crate::parser::parser_struct::RpcParser;
@@ -11,6 +10,7 @@ use crate::parser::tests::socket::MockSocket;
 use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
 };
+use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
 use crate::rpc::{AuthFlavor, OpaqueAuth, RpcBody, RPC_VERSION};
 use crate::vfs::file::Handle;
 use crate::vfs::write;

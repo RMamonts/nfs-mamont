@@ -1,7 +1,7 @@
 //! Service implementation for the MOUNT v3 `UMNTALL` procedure.
 
-use crate::auth::Credential;
 use crate::mount::umntall::Umntall;
+use crate::rpc::auth::Credential;
 use std::net::SocketAddr;
 
 use super::MountService;

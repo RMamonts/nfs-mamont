@@ -1,6 +1,6 @@
-use crate::auth::Credential;
 use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Nlm4UnlockRes, Unlock};
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 use super::{check_caller_name, NlmService};
 

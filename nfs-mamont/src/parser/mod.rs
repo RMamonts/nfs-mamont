@@ -14,11 +14,11 @@ mod tests;
 use std::future::Future;
 
 use crate::allocator::Buffer;
-use crate::auth::Credential;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
+use crate::rpc::auth::Credential;
 use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,

@@ -1,4 +1,4 @@
-use crate::auth::Credential;
+use crate::rpc::auth::Credential;
 
 pub mod cancel;
 pub mod lock;

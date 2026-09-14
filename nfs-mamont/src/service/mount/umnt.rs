@@ -1,7 +1,7 @@
 //! Service implementation for the MOUNT v3 `UMNT` procedure.
 
-use crate::auth::Credential;
 use crate::mount::umnt::{Args, Umnt};
+use crate::rpc::auth::Credential;
 use std::net::SocketAddr;
 
 use super::MountService;
