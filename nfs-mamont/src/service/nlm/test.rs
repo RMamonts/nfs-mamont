@@ -1,6 +1,6 @@
-use crate::auth::Credential;
 use crate::nlm::procedures::test::{Nlm4TestArgs, Nlm4TestReply, Nlm4TestRes, Test};
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 use super::{ActiveLock, NlmService};
 

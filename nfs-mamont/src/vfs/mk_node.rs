@@ -1,6 +1,6 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
-use crate::auth::Credential;
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 use super::file;

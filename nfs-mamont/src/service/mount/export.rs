@@ -1,7 +1,7 @@
 //! Service implementation for the MOUNT v3 `EXPORT` procedure.
 
-use crate::auth::Credential;
 use crate::mount::export::{Export, Success};
+use crate::rpc::auth::Credential;
 
 use super::MountService;
 

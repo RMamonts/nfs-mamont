@@ -1,7 +1,7 @@
 //! Service implementation for the MOUNT v3 `DUMP` procedure.
 
-use crate::auth::Credential;
 use crate::mount::dump::{Dump, Success};
+use crate::rpc::auth::Credential;
 
 use super::MountService;
 

@@ -4,7 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
 
 use super::MountEntry;
-use crate::auth::Credential;
+use crate::rpc::auth::Credential;
 
 /// Success result.
 pub struct Success {

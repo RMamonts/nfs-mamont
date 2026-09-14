@@ -3,10 +3,10 @@
 //! Defines argument and result structures for the `NLMPROC4_UNLOCK`
 //! operation as specified in RFC 1813.
 
-use crate::auth::Credential;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 /// Defines the information needed to remove a previously established lock.
 pub struct Nlm4UnlockArgs {

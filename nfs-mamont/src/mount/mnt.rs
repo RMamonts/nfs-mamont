@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::auth::Credential;
+use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
