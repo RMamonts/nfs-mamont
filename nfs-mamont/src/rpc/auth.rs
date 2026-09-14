@@ -6,12 +6,10 @@
 //! parser, and is what gets handed to the NFS/MOUNT services via [`Credential`]
 //! so they can enforce per-caller permissions.
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 /// Authentication status codes (`auth_stat`) from RFC 5531, section 5.3.3.
 ///
 /// See RFC 5531, for the canonical descriptions.
-#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
+#[derive(Debug)]
 pub enum AuthStat {
     /// The call succeeded and the credentials were accepted. `AUTH_OK`.
     Ok = 0,
