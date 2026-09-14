@@ -84,13 +84,7 @@ where
     N: Nlm + Send + Sync + 'static,
 {
     /// Creates new instance of [`NlmTask`]
-    pub fn new(
-        nlm_service: Arc<N>,
-    ) -> (
-        Self,
-        Sender<NlmCommand>,
-        Sender<NlmRegistration<B>>,
-    ) {
+    pub fn new(nlm_service: Arc<N>) -> (Self, Sender<NlmCommand>, Sender<NlmRegistration<B>>) {
         let (sender, receiver) = async_channel::unbounded::<NlmCommand>();
         let (registration_sender, registration_receiver) =
             async_channel::unbounded::<NlmRegistration<B>>();
@@ -158,7 +152,12 @@ where
                 let res = nlm_service.lock(lock_args.clone()).await;
                 if res.stat == Nlm4Stats::Blocked {
                     debug!(xid = header.xid, "nlm task: LOCK blocked, scheduling retry");
-                    self.schedule_lock_grant(nlm_service, lock_args, header.xid, header.client_addr);
+                    self.schedule_lock_grant(
+                        nlm_service,
+                        lock_args,
+                        header.xid,
+                        header.client_addr,
+                    );
                 }
                 self.send_reply(
                     header.client_addr,
@@ -229,10 +228,10 @@ where
     ) {
         let future = Box::pin(async move {
             let res = lock_until_granted(nlm_service, lock_args).await;
-            (client_addr, ProcReply {
-                xid,
-                proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Lock(res)))),
-            })
+            (
+                client_addr,
+                ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Lock(res)))) },
+            )
         });
         self.blocked_grants.push(future);
     }
