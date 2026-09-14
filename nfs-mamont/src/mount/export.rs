@@ -4,6 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.5>.
 
 use super::ExportEntry;
+use crate::auth::Credential;
 
 /// Success result.
 pub struct Success {
@@ -18,5 +19,5 @@ pub trait Export {
     /// are allowed to mount each one.
     ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn export(&self) -> Success;
+    async fn export(&self, cred: &Credential) -> Success;
 }

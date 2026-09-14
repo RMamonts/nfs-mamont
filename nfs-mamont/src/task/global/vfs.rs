@@ -111,67 +111,67 @@ where
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,
                 NfsArguments::GetAttr(args) => {
-                    NfsRes::GetAttr(self.backend.get_attr(header.cred, args).await)
+                    NfsRes::GetAttr(self.backend.get_attr(&header.cred, args).await)
                 }
                 NfsArguments::SetAttr(args) => {
-                    NfsRes::SetAttr(self.backend.set_attr(header.cred, args).await)
+                    NfsRes::SetAttr(self.backend.set_attr(&header.cred, args).await)
                 }
                 NfsArguments::LookUp(args) => {
-                    NfsRes::LookUp(self.backend.lookup(header.cred, args).await)
+                    NfsRes::LookUp(self.backend.lookup(&header.cred, args).await)
                 }
                 NfsArguments::Access(args) => {
-                    NfsRes::Access(self.backend.access(header.cred, args).await)
+                    NfsRes::Access(self.backend.access(&header.cred, args).await)
                 }
                 NfsArguments::ReadLink(args) => {
-                    NfsRes::ReadLink(self.backend.read_link(header.cred, args).await)
+                    NfsRes::ReadLink(self.backend.read_link(&header.cred, args).await)
                 }
                 NfsArguments::Read(args, data) => {
-                    NfsRes::Read(self.backend.read(header.cred, args, data).await)
+                    NfsRes::Read(self.backend.read(&header.cred, args, data).await)
                 }
                 NfsArguments::Write(args) => {
-                    NfsRes::Write(self.backend.write(header.cred, args).await)
+                    NfsRes::Write(self.backend.write(&header.cred, args).await)
                 }
                 NfsArguments::Create(args) => {
-                    NfsRes::Create(self.backend.create(header.cred, args).await)
+                    NfsRes::Create(self.backend.create(&header.cred, args).await)
                 }
                 NfsArguments::MkDir(args) => {
-                    NfsRes::MkDir(self.backend.mk_dir(header.cred, args).await)
+                    NfsRes::MkDir(self.backend.mk_dir(&header.cred, args).await)
                 }
                 NfsArguments::SymLink(args) => {
-                    NfsRes::SymLink(self.backend.symlink(header.cred, args).await)
+                    NfsRes::SymLink(self.backend.symlink(&header.cred, args).await)
                 }
                 NfsArguments::MkNod(args) => {
-                    NfsRes::MkNod(self.backend.mk_node(header.cred, args).await)
+                    NfsRes::MkNod(self.backend.mk_node(&header.cred, args).await)
                 }
                 NfsArguments::Remove(args) => {
-                    NfsRes::Remove(self.backend.remove(header.cred, args).await)
+                    NfsRes::Remove(self.backend.remove(&header.cred, args).await)
                 }
                 NfsArguments::RmDir(args) => {
-                    NfsRes::RmDir(self.backend.rm_dir(header.cred, args).await)
+                    NfsRes::RmDir(self.backend.rm_dir(&header.cred, args).await)
                 }
                 NfsArguments::Rename(args) => {
-                    NfsRes::Rename(self.backend.rename(header.cred, args).await)
+                    NfsRes::Rename(self.backend.rename(&header.cred, args).await)
                 }
                 NfsArguments::Link(args) => {
-                    NfsRes::Link(self.backend.link(header.cred, args).await)
+                    NfsRes::Link(self.backend.link(&header.cred, args).await)
                 }
                 NfsArguments::ReadDir(args) => {
-                    NfsRes::ReadDir(self.backend.read_dir(header.cred, args).await)
+                    NfsRes::ReadDir(self.backend.read_dir(&header.cred, args).await)
                 }
                 NfsArguments::ReadDirPlus(args) => {
-                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(header.cred, args).await)
+                    NfsRes::ReadDirPlus(self.backend.read_dir_plus(&header.cred, args).await)
                 }
                 NfsArguments::FsStat(args) => {
-                    NfsRes::FsStat(self.backend.fs_stat(header.cred, args).await)
+                    NfsRes::FsStat(self.backend.fs_stat(&header.cred, args).await)
                 }
                 NfsArguments::FsInfo(args) => {
-                    NfsRes::FsInfo(self.backend.fs_info(header.cred, args).await)
+                    NfsRes::FsInfo(self.backend.fs_info(&header.cred, args).await)
                 }
                 NfsArguments::PathConf(args) => {
-                    NfsRes::PathConf(self.backend.path_conf(header.cred, args).await)
+                    NfsRes::PathConf(self.backend.path_conf(&header.cred, args).await)
                 }
                 NfsArguments::Commit(args) => {
-                    NfsRes::Commit(self.backend.commit(header.cred, args).await)
+                    NfsRes::Commit(self.backend.commit(&header.cred, args).await)
                 }
             };
 
