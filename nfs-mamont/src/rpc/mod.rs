@@ -17,7 +17,6 @@ pub const AUTH_SYS_MAX_MACHINE_NAME: usize = 255;
 /// Maximum number of auxiliary GIDs in `AUTH_SYS` credentials (RFC 5531, appendix A).
 pub const AUTH_SYS_MAX_GIDS: usize = 16;
 
-#[derive(ToPrimitive, FromPrimitive)]
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
