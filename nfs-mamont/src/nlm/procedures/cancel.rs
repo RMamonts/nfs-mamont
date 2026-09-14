@@ -3,6 +3,7 @@
 //! Defines argument and result structures for the `NLMPROC4_CANCEL`
 //! operation as specified in RFC 1813.
 
+use crate::auth::Credential;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
@@ -37,5 +38,5 @@ pub struct Nlm4CancelRes {
 /// that matches the given parameters.
 #[trait_variant::make(Send)]
 pub trait Cancel {
-    async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes;
+    async fn cancel(&self, cred: &Credential, args: Nlm4CancelArgs) -> Nlm4CancelRes;
 }

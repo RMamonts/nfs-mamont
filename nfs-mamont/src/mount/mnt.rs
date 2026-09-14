@@ -64,6 +64,6 @@ pub trait Mnt {
         &self,
         args: Args,
         client_addr: SocketAddr,
-        cred: Credential,
+        cred: &Credential,
     ) -> Result<Success, Fail>;
 }

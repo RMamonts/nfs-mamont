@@ -1,13 +1,13 @@
 //! Service implementation for the MOUNT v3 `UMNT` procedure.
 
-use std::net::SocketAddr;
-
+use crate::auth::Credential;
 use crate::mount::umnt::{Args, Umnt};
+use std::net::SocketAddr;
 
 use super::MountService;
 
 impl Umnt for MountService {
-    async fn umnt(&self, args: Args, client_addr: SocketAddr) {
+    async fn umnt(&self, args: Args, client_addr: SocketAddr, _cred: &Credential) {
         let mut mounts = self.mounts.write().await;
 
         if let Some(entries) = mounts.by_client.get_mut(&client_addr) {

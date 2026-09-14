@@ -3,6 +3,7 @@
 //! Defines argument and result structures for the `NLMPROC4_TEST`
 //! operation as specified in RFC 1813.
 
+use crate::auth::Credential;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
@@ -47,5 +48,5 @@ pub struct Nlm4TestReply {
 /// `Denied` with details of the conflicting lock.
 #[trait_variant::make(Send)]
 pub trait Test {
-    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes;
+    async fn test(&self, cred: &Credential, args: Nlm4TestArgs) -> Nlm4TestRes;
 }
