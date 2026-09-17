@@ -54,7 +54,8 @@ use crate::parser::{
     proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments,
     NlmArguments, ProcArguments, Result, RpcHeader,
 };
-use crate::rpc::{AuthFlavor, AuthStat, Credential, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::auth::{AuthStat, Credential};
+use crate::rpc::{AuthFlavor, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
 /// Minimum buffer size, that could hold complete RPC message
@@ -234,7 +235,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// accepted flavors, the verifier must be `AUTH_NONE` with an empty body
     /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
     ///
-    /// [`AuthSysParams`]: crate::rpc::AuthSysParams
+    /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
     ///
     /// # Returns
     ///

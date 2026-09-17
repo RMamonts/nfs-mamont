@@ -10,9 +10,8 @@ use crate::parser::tests::socket::MockSocket;
 use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
 };
-use crate::rpc::{
-    AuthFlavor, AuthStat, AuthSysParams, Credential, OpaqueAuth, RpcBody, RPC_VERSION,
-};
+use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
+use crate::rpc::{AuthFlavor, OpaqueAuth, RpcBody, RPC_VERSION};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
@@ -339,7 +338,7 @@ async fn parse_two_correct() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x39);
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -420,7 +419,7 @@ async fn parse_write() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0x24));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 72);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
 
     let result = parser.next_message().await.unwrap();
 
@@ -581,7 +580,7 @@ async fn parse_write_with_empty_payload() {
     buf.extend_from_slice(&first);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(2));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 72);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
@@ -642,7 +641,7 @@ async fn parse_accepts_auth_sys_credentials() {
     });
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x64);
 
     let result = parser.next_message().await.unwrap();
     assert_eq!(result.header, header);
