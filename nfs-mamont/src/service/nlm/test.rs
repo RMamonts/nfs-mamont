@@ -1,10 +1,11 @@
 use crate::nlm::procedures::test::{Nlm4TestArgs, Nlm4TestReply, Nlm4TestRes, Test};
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 use super::{ActiveLock, NlmService};
 
 impl Test for NlmService {
-    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes {
+    async fn test(&self, _cred: &Credential, args: Nlm4TestArgs) -> Nlm4TestRes {
         let registry = self.locks.read().await;
 
         let request = match ActiveLock::new(

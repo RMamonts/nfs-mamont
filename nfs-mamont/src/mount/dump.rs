@@ -4,6 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
 
 use super::MountEntry;
+use crate::rpc::auth::Credential;
 
 /// Success result.
 pub struct Success {
@@ -18,5 +19,5 @@ pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.
     ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn dump(&self) -> Success;
+    async fn dump(&self, cred: &Credential) -> Success;
 }

@@ -7,6 +7,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 /// NLM TEST arguments.
 ///
@@ -47,5 +48,5 @@ pub struct Nlm4TestReply {
 /// `Denied` with details of the conflicting lock.
 #[trait_variant::make(Send)]
 pub trait Test {
-    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes;
+    async fn test(&self, cred: &Credential, args: Nlm4TestArgs) -> Nlm4TestRes;
 }

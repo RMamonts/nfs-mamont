@@ -31,7 +31,7 @@ use crate::{mount::Mount, task::connection};
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
-pub use rpc::{AuthSysParams, Credential};
+pub use rpc::auth::{AuthSysParams, Credential};
 pub use vfs::file::BackendId;
 
 /// Initializes tracing logs.

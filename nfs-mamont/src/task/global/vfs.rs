@@ -7,6 +7,7 @@ use tracing::{error, warn};
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
 use crate::parser::{NfsArgWrapper, NfsArguments};
+use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
@@ -233,7 +234,7 @@ where
                 Target::None => NfsRes::Null,
                 Target::Crossing => failed_response(&proc, vfs::Error::XDev),
                 Target::Single(backend_id) => match self.backends.get(backend_id) {
-                    Some(backend) => self.execute(*proc, backend).await,
+                    Some(backend) => Self::execute(*proc, &header.cred, backend).await,
                     None => {
                         warn!(
                             xid = header.xid,
@@ -264,32 +265,32 @@ where
     }
 
     /// Runs the procedure against `backend` and wraps its result.
-    async fn execute(&self, proc: NfsArguments<B>, backend: Arc<V>) -> NfsRes<B> {
+    async fn execute(proc: NfsArguments<B>, cred: &Credential, backend: Arc<V>) -> NfsRes<B> {
         match proc {
             NfsArguments::Null => NfsRes::Null,
-            NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
-            NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args).await),
-            NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args).await),
-            NfsArguments::Access(args) => NfsRes::Access(backend.access(args).await),
-            NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args).await),
-            NfsArguments::Read(args, data) => NfsRes::Read(backend.read(args, data).await),
-            NfsArguments::Write(args) => NfsRes::Write(backend.write(args).await),
-            NfsArguments::Create(args) => NfsRes::Create(backend.create(args).await),
-            NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args).await),
-            NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args).await),
-            NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args).await),
-            NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(args).await),
-            NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args).await),
-            NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(args).await),
-            NfsArguments::Link(args) => NfsRes::Link(backend.link(args).await),
-            NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args).await),
+            NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(cred, args).await),
+            NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(cred, args).await),
+            NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(cred, args).await),
+            NfsArguments::Access(args) => NfsRes::Access(backend.access(cred, args).await),
+            NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(cred, args).await),
+            NfsArguments::Read(args, data) => NfsRes::Read(backend.read(cred, args, data).await),
+            NfsArguments::Write(args) => NfsRes::Write(backend.write(cred, args).await),
+            NfsArguments::Create(args) => NfsRes::Create(backend.create(cred, args).await),
+            NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(cred, args).await),
+            NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(cred, args).await),
+            NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(cred, args).await),
+            NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(cred, args).await),
+            NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(cred, args).await),
+            NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(cred, args).await),
+            NfsArguments::Link(args) => NfsRes::Link(backend.link(cred, args).await),
+            NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(cred, args).await),
             NfsArguments::ReadDirPlus(args) => {
-                NfsRes::ReadDirPlus(backend.read_dir_plus(args).await)
+                NfsRes::ReadDirPlus(backend.read_dir_plus(cred, args).await)
             }
-            NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args).await),
-            NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args).await),
-            NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args).await),
-            NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args).await),
+            NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(cred, args).await),
+            NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(cred, args).await),
+            NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(cred, args).await),
+            NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(cred, args).await),
         }
     }
 
