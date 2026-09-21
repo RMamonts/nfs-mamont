@@ -8,6 +8,6 @@ pub const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 pub const HEADER_MASK: usize = 0x8000_0000;
 
-/// Size of RMS header
+/// RMS frame header size in bytes.
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-pub const HEADER_SIZE: usize = 4;
+pub const RMS_HEADER_SIZE: usize = 4;

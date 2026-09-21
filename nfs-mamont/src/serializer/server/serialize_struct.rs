@@ -11,7 +11,7 @@ use std::io::{ErrorKind, IoSlice, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
-use crate::consts::rpc::{HEADER_MASK, HEADER_SIZE, MAX_FRAGMENT_SIZE};
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
@@ -336,13 +336,13 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         // there is no need for check, since we initialize vector in new()
         // and we append 4 bytes after clean()
         // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
-        self.buf[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
+        self.buf[..RMS_HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
         Ok(())
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
+        self.append_fragment_size(self.buf.len().saturating_sub(RMS_HEADER_SIZE))?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
@@ -377,7 +377,9 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         u32(&mut self.buf, count as u32)?;
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
+        self.append_fragment_size(
+            self.buf.len().saturating_sub(RMS_HEADER_SIZE) + count + padding,
+        )?;
 
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
