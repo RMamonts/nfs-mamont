@@ -29,6 +29,7 @@ use crate::{mount::Mount, task::connection};
 
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use context::ServerContext;
+pub use rpc::auth;
 
 /// Initializes tracing logs.
 ///
