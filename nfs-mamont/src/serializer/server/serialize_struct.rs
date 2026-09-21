@@ -13,7 +13,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
 use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
-use crate::consts::rpc::{HEADER_MASK, HEADER_SIZE, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
 use crate::mount::MountRes;
 use crate::nlm::{NlmCallbackReply, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
