@@ -19,7 +19,7 @@ impl Lock for NlmService {
             args.lock.lock_offset,
             args.lock.lock_length,
             args.lock.opaque_handle,
-            PendingGrant::new(rpc_call_sender.clone(), args.cookie),
+            PendingGrant::new(rpc_call_sender, args.cookie),
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
