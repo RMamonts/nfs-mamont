@@ -29,7 +29,7 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allo
     // to send messages into mount task
     mount_sender: Sender<MountCommand<B>>,
     // to send messages into nlm task
-    nlm_sender: Sender<NlmCommand<B>>,
+    nlm_sender: Sender<NlmCommand>,
     // to pass into mount task as part of message,
     // so mount task can send result back to write task
     // and
@@ -50,7 +50,7 @@ where
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
         mount_sender: Sender<MountCommand<B>>,
-        nlm_sender: Sender<NlmCommand<B>>,
+        nlm_sender: Sender<NlmCommand>,
         result_sender: Sender<ProcReply<B>>,
         allocator: Arc<A>,
         pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
@@ -79,7 +79,7 @@ where
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let mut parser = RpcParser::new(self.readhalf, self.allocator, self.client_addr);
 
         loop {
             match parser.next_message().await {
@@ -155,10 +155,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
-                    let command = NlmCommand {
-                        result_tx: self.result_sender.clone(),
-                        args: NlmArgWrapper { header, proc },
-                    };
+                    let command = NlmCommand { args: NlmArgWrapper { header, proc } };
 
                     if let Err(err) = self.nlm_sender.send(command).await {
                         return send_broken_pipe(&self.result_sender, xid, err).await;

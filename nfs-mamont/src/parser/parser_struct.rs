@@ -18,6 +18,7 @@
 
 use std::cmp::min;
 use std::io::{self, ErrorKind};
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -101,6 +102,7 @@ fn map_eof(error: Error) -> Error {
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: Arc<A>,
     reader: FrameReader<S>,
+    client_addr: SocketAddr,
 }
 
 impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
@@ -110,12 +112,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// * `socket` - The async stream to read RPC messages from
     /// * `allocator` - The allocator to use for dynamic memory allocation
+    /// * `client_addr` - The address of the client connection messages are read from
     ///
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: Arc<A>) -> Self {
-        Self::with_capacity(socket, allocator, DEFAULT_SIZE)
+    pub fn new(socket: S, allocator: Arc<A>, client_addr: SocketAddr) -> Self {
+        Self::with_capacity(socket, allocator, DEFAULT_SIZE, client_addr)
     }
 
     /// Creates a new `RpcParser` with the specified buffer size.
@@ -126,12 +129,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// * `allocator` - The allocator to use for dynamic memory allocation
     /// * `size` - The size of the internal frame buffer; arguments of any
     ///   procedure (except opaque `WRITE` data) must fit into it
+    /// * `client_addr` - The address of the client connection messages are read from
     ///
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
-        Self { allocator, reader: FrameReader::new(size, socket) }
+    pub fn with_capacity(
+        socket: S,
+        allocator: Arc<A>,
+        size: usize,
+        client_addr: SocketAddr,
+    ) -> Self {
+        Self { allocator, reader: FrameReader::new(size, socket), client_addr }
     }
 
     /// Reads and parses the RPC message header.
@@ -383,7 +392,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
-            Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
+            Ok(_) => Ok(ArgWrapper {
+                header: RpcHeader { xid, client_addr: self.client_addr, cred: rpc_header.cred },
+                proc,
+            }),
             Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
         }
     }
