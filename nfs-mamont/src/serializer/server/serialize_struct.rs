@@ -15,14 +15,12 @@ use crate::allocator::Buffer;
 use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::{HEADER_MASK, HEADER_SIZE, MAX_FRAGMENT_SIZE};
 use crate::mount::MountRes;
-use crate::nlm::{NlmCall, NlmRes};
+use crate::nlm::{NlmCallbackReply, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
 use crate::consts::xdr::ALIGNMENT;
 use crate::serializer::{u32, usize_as_u32};
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
 use crate::task::{ProcCall, ProcMessage, ProcReply, ProcResult};
-use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
@@ -38,18 +36,6 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
-
-/// Max size of RMS fragment data
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
-
-/// Header mask of RMS
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_MASK: usize = 0x8000_0000;
-
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
 
 /// Remote Procedure Call Protocol Version 2
 const RPC_VERSION: u32 = 2;
@@ -257,7 +243,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         auth(&mut self.buffer, verifier)?;
         match call.proc_message {
             ProcMessage::Nlm4(call) => match call {
-                NlmCall::Granted(test_args) => {
+                NlmCallbackReply::Granted(test_args) => {
                     nlm::test_args(&mut self.buffer, test_args)?;
                 }
             },

@@ -66,7 +66,7 @@ pub enum NlmRes {
 }
 
 /// Wrapper for all supported types of procedures that call the client.
-pub enum NlmCall {
+pub enum NlmCallbackReply {
     /// Client response to the NLM GRANTED procedure.
     Granted(Nlm4TestArgs),
 }

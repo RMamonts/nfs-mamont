@@ -24,10 +24,12 @@ fn stat(dest: &mut impl Write, stat: Nlm4Stats) -> io::Result<()> {
     variant::<Nlm4Stats>(dest, stat)
 }
 
+/// Serializes an [`OpaqueHandle`].
 fn opaque_handle(dest: &mut impl Write, opaque: OpaqueHandle) -> io::Result<()> {
     vector(dest, opaque.as_bytes())
 }
 
+/// Serializes an [`Nlm4Lock`] as the XDR reply body.
 fn lock(dest: &mut impl Write, lock: Nlm4Lock) -> io::Result<()> {
     string(dest, &lock.caller_name)?;
     file_handle(dest, lock.file_handle)?;
@@ -37,6 +39,7 @@ fn lock(dest: &mut impl Write, lock: Nlm4Lock) -> io::Result<()> {
     u64(dest, lock.lock_length)
 }
 
+/// Serializes an [`Nlm4TestArgs`] as the XDR reply body.
 pub fn test_args(dest: &mut impl Write, args: Nlm4TestArgs) -> io::Result<()> {
     cookie(dest, args.cookie)?;
     bool(dest, args.exclusive)?;

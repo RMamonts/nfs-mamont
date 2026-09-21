@@ -1,7 +1,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::unlock::Unlock;
-use crate::nlm::{Nlm4Stats, NlmCall};
+use crate::nlm::{Nlm4Stats, NlmCallbackReply};
 use crate::service::nlm::tests::{
     make_lock_args_with_block, make_lock_args_without_block, make_unlock_args, FH_DEFAULT,
     LOCK_WHOLE_LENGTH,
@@ -94,7 +94,7 @@ async fn unlock_sends_granted_callback_via_channel() {
     let received = rx.recv().await.expect("channel should not be closed");
     match received.proc_message {
         ProcMessage::Nlm4(nlm_call) => match nlm_call {
-            NlmCall::Granted(test_args) => {
+            NlmCallbackReply::Granted(test_args) => {
                 assert_eq!(test_args.cookie.raw(), 99);
             }
         },
