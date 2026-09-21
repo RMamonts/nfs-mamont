@@ -5,7 +5,7 @@
 
 use crate::allocator::Buffer;
 use crate::mount::MountRes;
-use crate::nlm::{NlmCall, NlmRes};
+use crate::nlm::{NlmCallbackReply, NlmRes};
 use crate::rpc::Error;
 use crate::vfs::NfsRes;
 
@@ -20,7 +20,7 @@ pub enum ProcResult<B: Buffer> {
 }
 
 pub enum ProcMessage {
-    Nlm4(NlmCall),
+    Nlm4(NlmCallbackReply),
 }
 
 /// RPC reply metadata plus a typed result to be serialized.
