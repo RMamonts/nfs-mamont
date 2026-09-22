@@ -18,8 +18,8 @@ use crate::task::global::nlm::NlmCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
-mod read;
-mod write;
+pub mod read;
+pub mod write;
 
 // Creates all connection tasks with their inner connections
 pub async fn new<A, V, B>(
@@ -43,7 +43,6 @@ pub async fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
-
     read::ReadTask::<A, B>::new(
         readhalf,
         peer_addr,

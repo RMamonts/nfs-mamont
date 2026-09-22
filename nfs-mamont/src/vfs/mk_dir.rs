@@ -5,6 +5,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The file handle for the newly created directory.
     pub file: Option<file::Handle>,
@@ -15,6 +16,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -23,6 +25,8 @@ pub struct Fail {
 }
 
 /// [`MkDir::mk_dir`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The location of the subdirectory to be created.
     pub object: vfs::DirOpArgs,

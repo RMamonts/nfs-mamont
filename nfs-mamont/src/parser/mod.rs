@@ -88,6 +88,11 @@ pub struct ErrorWrapper {
 ///
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept both NFSv3 and MOUNT calls from the same connection.
+#[cfg_attr(
+    feature = "arbitrary",
+    derive(arbitrary::Arbitrary, Clone, Debug),
+    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
+)]
 pub enum ProcArguments<B: Buffer> {
     Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),
@@ -95,6 +100,11 @@ pub enum ProcArguments<B: Buffer> {
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
+#[cfg_attr(
+    feature = "arbitrary",
+    derive(arbitrary::Arbitrary, Clone, Debug),
+    arbitrary(bound = "B: for <'a> arbitrary::Arbitrary<'a> + Buffer")
+)]
 pub enum NfsArguments<B: Buffer> {
     /// Null operation arguments.
     Null,
@@ -144,6 +154,7 @@ pub enum NfsArguments<B: Buffer> {
 }
 
 /// Enumerates supported MOUNT protocol procedure arguments.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum MountArguments {
     /// Null operation arguments.
     Null,
@@ -160,6 +171,7 @@ pub enum MountArguments {
 }
 
 /// Enumerates supported NLMv4 protocol procedure arguments.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug))]
 pub enum NlmArguments {
     /// Null operation arguments.
     Null,

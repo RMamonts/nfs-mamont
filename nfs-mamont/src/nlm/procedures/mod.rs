@@ -6,6 +6,7 @@ pub mod unlock;
 /// NLMv4 RPC procedure numbers.
 ///
 /// Corresponds to NLM version 4 protocol as defined in RFC 1813.
+#[allow(dead_code)]
 pub enum Nlm4Procedures {
     /// NLM4_NULL — no operation, used to test server availability.
     Null = 0,

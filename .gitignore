@@ -15,5 +15,9 @@
 .env.local
 .env.production
 
+#fuzz
+/fuzz/artifacts
+/fuzz/corpus
+/fuzz/coverage
 # local configs
 rust-toolchain.toml
