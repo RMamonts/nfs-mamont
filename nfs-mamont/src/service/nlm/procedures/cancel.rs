@@ -1,7 +1,7 @@
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs, Nlm4CancelRes};
 use crate::nlm::Nlm4Stats;
-
-use super::{ActiveLock, NlmService, PendingGrant, PendingLock};
+use crate::service::nlm::lock_types::{ActiveLock, PendingGrant, PendingLock};
+use crate::service::nlm::NlmService;
 
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes {
@@ -25,7 +25,7 @@ impl Cancel for NlmService {
             return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }
 
-        let request_as_active: ActiveLock = (&target).into();
+        let request_as_active: ActiveLock = <&PendingLock>::into(&target);
         if registry.has_active_lock(&fh, &request_as_active) {
             return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }

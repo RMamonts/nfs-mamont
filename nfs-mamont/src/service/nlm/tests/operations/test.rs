@@ -4,7 +4,8 @@ use crate::nlm::procedures::lock::Lock;
 use crate::nlm::procedures::test::{Nlm4TestArgs, Test};
 use crate::nlm::Nlm4Stats;
 use crate::service::nlm::tests::{
-    fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
+    create_empty_event_handler, fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT,
+    LOCK_WHOLE_LENGTH,
 };
 use crate::service::nlm::NlmService;
 
@@ -40,7 +41,7 @@ async fn test_reports_granted_when_free() {
 async fn test_reports_denied_when_conflict() {
     let svc = NlmService::new();
     svc.lock(
-        None,
+        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
     )
     .await;
@@ -52,7 +53,7 @@ async fn test_reports_denied_when_conflict() {
 async fn test_denied_holder_matches_conflicting_lock() {
     let svc = NlmService::new();
     svc.lock(
-        None,
+        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0),
     )
     .await;
@@ -80,7 +81,11 @@ async fn test_preserves_cookie() {
 #[tokio::test]
 async fn test_reports_shared_compatible_as_granted() {
     let svc = NlmService::new();
-    svc.lock(None, make_lock_args_without_block(FH_DEFAULT, false, 0, 100, "alice", 100, 0)).await;
+    svc.lock(
+        create_empty_event_handler(),
+        make_lock_args_without_block(FH_DEFAULT, false, 0, 100, "alice", 100, 0),
+    )
+    .await;
     let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0)).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
 }

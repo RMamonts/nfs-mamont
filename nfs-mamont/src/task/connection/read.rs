@@ -17,7 +17,7 @@ use crate::parser::{
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::NlmCommand;
+use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::{ProcCall, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
