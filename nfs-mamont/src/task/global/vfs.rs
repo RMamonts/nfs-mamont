@@ -106,7 +106,7 @@ where
 
         while let Ok((command, tx)) = command_receiver.recv().await {
             let NfsArgWrapper { header, proc } = command;
-            let proc_name = Self::proc_name(&proc);
+            let proc_name = proc.get_name();
 
             let response = match *proc {
                 NfsArguments::Null => NfsRes::Null,
@@ -152,34 +152,6 @@ where
             if tx.send(reply).await.is_err() {
                 warn!("writer task closed, connection pipeline is done");
             }
-        }
-    }
-
-    /// Static label for logging/tracing for the given procedure variant.
-    fn proc_name(proc: &NfsArguments<B>) -> &'static str {
-        match proc {
-            NfsArguments::Null => "NULL",
-            NfsArguments::GetAttr(_) => "GETATTR",
-            NfsArguments::SetAttr(_) => "SETATTR",
-            NfsArguments::LookUp(_) => "LOOKUP",
-            NfsArguments::Access(_) => "ACCESS",
-            NfsArguments::ReadLink(_) => "READLINK",
-            NfsArguments::Read(..) => "READ",
-            NfsArguments::Write(_) => "WRITE",
-            NfsArguments::Create(_) => "CREATE",
-            NfsArguments::MkDir(_) => "MKDIR",
-            NfsArguments::SymLink(_) => "SYMLINK",
-            NfsArguments::MkNod(_) => "MKNOD",
-            NfsArguments::Remove(_) => "REMOVE",
-            NfsArguments::RmDir(_) => "RMDIR",
-            NfsArguments::Rename(_) => "RENAME",
-            NfsArguments::Link(_) => "LINK",
-            NfsArguments::ReadDir(_) => "READDIR",
-            NfsArguments::ReadDirPlus(_) => "READDIRPLUS",
-            NfsArguments::FsStat(_) => "FSSTAT",
-            NfsArguments::FsInfo(_) => "FSINFO",
-            NfsArguments::PathConf(_) => "PATHCONF",
-            NfsArguments::Commit(_) => "COMMIT",
         }
     }
 
