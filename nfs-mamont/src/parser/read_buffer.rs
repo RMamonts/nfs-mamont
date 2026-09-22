@@ -21,8 +21,7 @@ use std::io::{self, ErrorKind, Read};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-/// Size of an RMS frame header in bytes.
-const RMS_HEADER_SIZE: usize = 4;
+use crate::consts::rpc::RMS_HEADER_SIZE;
 
 /// A buffered reader exposing RMS frame bodies of an async stream.
 ///
