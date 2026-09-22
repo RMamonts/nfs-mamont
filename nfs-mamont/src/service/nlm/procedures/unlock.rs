@@ -1,10 +1,10 @@
-use super::{check_caller_name, NlmService};
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Nlm4UnlockRes, Unlock};
 use crate::nlm::Nlm4Stats;
 use crate::nlm::Nlm4Stats::Granted;
-use crate::task::{ProcCall, ProcMessage};
+use crate::service::nlm::lock_types::check_caller_name;
+use crate::service::nlm::NlmService;
 
 impl Unlock for NlmService {
     async fn unlock(&self, args: Nlm4UnlockArgs) -> Nlm4UnlockRes {
@@ -37,28 +37,24 @@ impl Unlock for NlmService {
         };
 
         for lock in granted_locks {
-            if let Some(message_sender) = lock.grant_notification.message_sender {
-                let alock = Nlm4Lock {
-                    caller_name: lock.caller_name,
-                    file_handle: fh.clone(),
-                    lock_length: lock.length,
-                    lock_offset: lock.offset,
-                    opaque_handle: lock.opaque_handle,
-                    system_identifier: lock.system_identifier,
-                };
-                let test_args = Nlm4TestArgs {
-                    cookie: lock.grant_notification.cookie,
-                    exclusive: lock.exclusive,
-                    lock: alock,
-                };
-
-                let call = crate::nlm::NlmCallbackReply::Granted(test_args);
-                let proc_message = ProcMessage::Nlm4(call);
-                let proc_call = ProcCall { proc_message };
-                if let Err(e) = message_sender.send(proc_call).await {
-                    tracing::warn!("failed to send grant callback: {}", e);
-                }
+            if lock.grant_notification.event_handler.is_none() {
+                tracing::warn!("failed to send grant callback: event_handler is none");
+                continue;
             }
+            let alock = Nlm4Lock {
+                caller_name: lock.caller_name,
+                file_handle: fh.clone(),
+                lock_length: lock.length,
+                lock_offset: lock.offset,
+                opaque_handle: lock.opaque_handle,
+                system_identifier: lock.system_identifier,
+            };
+            let test_args = Nlm4TestArgs {
+                cookie: lock.grant_notification.cookie,
+                exclusive: lock.exclusive,
+                lock: alock,
+            };
+            lock.grant_notification.event_handler.unwrap().granted(test_args).await;
         }
 
         Nlm4UnlockRes { cookie: args.cookie, stat: Granted }

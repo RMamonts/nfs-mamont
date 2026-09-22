@@ -33,3 +33,9 @@ pub struct ProcReply<B: Buffer> {
 pub struct ProcCall {
     pub proc_message: ProcMessage,
 }
+
+impl ProcCall {
+    pub fn new(proc_message: ProcMessage) -> ProcCall {
+        ProcCall { proc_message }
+    }
+}

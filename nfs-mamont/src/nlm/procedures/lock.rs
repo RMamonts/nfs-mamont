@@ -6,8 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
-use crate::task::ProcCall;
-use async_channel::Sender;
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
 
 /// Defines the information needed to request a lock on a server.
 pub struct Nlm4LockArgs {
@@ -46,14 +45,10 @@ pub trait Lock {
     /// Promotes pending lock requests that no longer conflict with active locks.
     ///
     /// ### Parameters
-    /// * `rpc_call_sender` — the part of the channel required to send a message about the release of the resource.
+    /// * `event_handler` — use methods of this type to initialize the message for the client.
     /// * `args` — call arguments according to the RFC standard.
     ///
     /// ### Returns
     /// The result of the locking procedure.
-    async fn lock(
-        &self,
-        rpc_call_sender: Option<Sender<ProcCall>>,
-        args: Nlm4LockArgs,
-    ) -> Nlm4LockRes;
+    async fn lock(&self, event_handler: NlmEventHandler, args: Nlm4LockArgs) -> Nlm4LockRes;
 }

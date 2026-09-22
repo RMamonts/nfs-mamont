@@ -10,13 +10,14 @@ use tracing::debug;
 
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
-use crate::task::ProcCall;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+use crate::task::{ProcCall, ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
 
+/// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
     pub result_sender: Sender<ProcReply<B>>,
@@ -72,6 +73,7 @@ where
 
         while let Ok(command) = receiver.recv().await {
             let NlmCommand { result_sender, message_sender, args } = command;
+            let event_handler = NlmEventHandler::new(message_sender);
             let NlmArgWrapper { header, proc } = args;
             debug!(xid = header.xid, "nlm task: command received");
 
@@ -79,7 +81,7 @@ where
                 NlmArguments::Null => NlmRes::Null,
                 NlmArguments::Lock(nlm4_lock_args) => {
                     debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-                    let res = nlm_service.lock(Some(message_sender), nlm4_lock_args).await;
+                    let res = nlm_service.lock(event_handler, nlm4_lock_args).await;
                     NlmRes::Lock(res)
                 }
                 NlmArguments::Unlock(nlm4_unlock_args) => {

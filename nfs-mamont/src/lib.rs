@@ -22,7 +22,7 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::task::global::mount::MountTask;
-use crate::task::global::nlm::NlmTask;
+use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
