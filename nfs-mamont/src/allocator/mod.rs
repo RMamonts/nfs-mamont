@@ -2,6 +2,7 @@
 //! for user data transmission inside NFS-Mamont implementation.
 
 mod buffer;
+mod impl2;
 mod slice;
 
 #[cfg(test)]
@@ -17,22 +18,25 @@ use std::sync::Arc;
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+use crate::allocator::buffer::RawBuffer;
+
 pub use buffer::UnownedBuffer;
+pub use impl2::Impl2;
 pub use slice::Slice;
 
 /// Shared state of the allocator to allow return of buffers and permit restoration.
 #[derive(Debug)]
-pub struct AllocatorState {
-    pub pool: ArrayQueue<UnownedBuffer>,
+pub struct AllocatorState<B: RawBuffer> {
+    pub pool: ArrayQueue<B>,
     pub semaphore: Semaphore,
     base_ptr: *mut u8,
     layout: Layout,
 }
 
-unsafe impl Send for AllocatorState {}
-unsafe impl Sync for AllocatorState {}
+unsafe impl<R: RawBuffer> Send for AllocatorState<R> {}
+unsafe impl<R: RawBuffer> Sync for AllocatorState<R> {}
 
-impl Drop for AllocatorState {
+impl<R: RawBuffer> Drop for AllocatorState<R> {
     fn drop(&mut self) {
         while self.pool.pop().is_some() {}
         #[cfg(feature = "mlock")]
@@ -94,7 +98,7 @@ pub trait Allocator {
 }
 
 pub struct Impl {
-    state: Arc<AllocatorState>,
+    state: Arc<AllocatorState<crate::allocator::buffer::UnownedBuffer>>,
     buffer_size: NonZeroUsize,
     capacity: NonZeroUsize,
 }

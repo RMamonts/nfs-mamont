@@ -27,7 +27,7 @@ use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
 use crate::nlm::Nlm;
-pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use allocator::{Allocator, Buffer, Impl, Impl2, Slice, UnownedBuffer};
 pub use context::ServerContext;
 
 /// Initializes tracing logs.
