@@ -13,7 +13,7 @@ use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
     ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
-    NlmArgWrapper, NlmArguments, ProcArguments,
+    NlmMessage, NlmMessageWrapper, ProcArguments,
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
@@ -114,7 +114,7 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
-                    if matches!(*proc, NlmArguments::Null) =>
+                    if matches!(*proc, NlmMessage::Null) =>
                 {
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
@@ -185,7 +185,7 @@ where
                     let command = NlmCommand {
                         result_sender: self.command_senders.result_sender.clone(),
                         message_sender: self.command_senders.message_sender.clone(),
-                        args: NlmArgWrapper { header, proc },
+                        message: NlmMessageWrapper { header, proc },
                     };
 
                     if let Err(err) = self.command_senders.nlm_sender.send(command).await {

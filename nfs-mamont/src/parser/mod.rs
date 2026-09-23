@@ -15,6 +15,7 @@ use std::future::Future;
 
 use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
+use crate::nlm::procedures::granted::Nlm4GrantedRes;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
@@ -64,9 +65,9 @@ pub struct MountArgWrapper {
 }
 
 /// Wrapper for NLM protocol procedure arguments along with the RPC header.
-pub struct NlmArgWrapper {
+pub struct NlmMessageWrapper {
     pub header: RpcHeader,
-    pub proc: Box<NlmArguments>,
+    pub proc: Box<NlmMessage>,
 }
 
 /// Generic wrapper for RPC arguments used when the protocol type
@@ -91,7 +92,7 @@ pub struct ErrorWrapper {
 pub enum ProcArguments<B: Buffer> {
     Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),
-    Nlm4(Box<NlmArguments>),
+    Nlm4(Box<NlmMessage>),
 }
 
 /// Enumerates supported NFS protocol procedure arguments.
@@ -159,8 +160,8 @@ pub enum MountArguments {
     UnmountAll,
 }
 
-/// Enumerates supported NLMv4 protocol procedure arguments.
-pub enum NlmArguments {
+/// Enumerates supported NLMv4 protocol procedure arguments and results.
+pub enum NlmMessage {
     /// Null operation arguments.
     Null,
     /// Arguments for the Lock operation.
@@ -171,4 +172,6 @@ pub enum NlmArguments {
     Test(Nlm4TestArgs),
     /// Arguments for the Cancel operation.
     Cancel(Nlm4CancelArgs),
+    /// Result for the Granted operation.
+    Granted(Nlm4GrantedRes),
 }

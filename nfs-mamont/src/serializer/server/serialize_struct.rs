@@ -181,6 +181,9 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 nlm::cancel_res(&mut self.buffer, res)?;
                 self.buffer.send_inner_buffer().await
             }
+            NlmRes::Granted(_) => {
+                Err(io::Error::new(ErrorKind::Unsupported, "The result of the granted procedure should not be sent from the server to the client."))
+            }
         }
     }
 
