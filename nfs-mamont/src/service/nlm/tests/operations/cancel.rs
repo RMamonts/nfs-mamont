@@ -3,6 +3,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs};
 use crate::nlm::procedures::lock::Lock;
 use crate::nlm::Nlm4Stats;
+use crate::service::nlm::tests::operations::DEFAULT_CRED;
 use crate::service::nlm::tests::{
     create_empty_event_handler, fill_fh, fill_opaque, make_lock_args_with_block,
     make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
@@ -31,27 +32,29 @@ async fn cancel_removes_blocked_request() {
     svc.lock(
         create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
     let res = svc
         .lock(
             create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
+            &DEFAULT_CRED,
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Blocked);
 
-    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 0)).await;
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 0), &DEFAULT_CRED).await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
 
-    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 0)).await;
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 0), &DEFAULT_CRED).await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
 }
 
 #[tokio::test]
 async fn cancel_on_nonexistent_returns_denied() {
     let svc = NlmService::new();
-    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "nobody", 0, 0)).await;
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "nobody", 0, 0), &DEFAULT_CRED).await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
 }
 
@@ -61,11 +64,13 @@ async fn cancel_preserves_cookie() {
     svc.lock(
         create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
     svc.lock(
         create_empty_event_handler(),
         make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
+        &DEFAULT_CRED,
     )
     .await;
     let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 55)).await;
@@ -79,10 +84,11 @@ async fn cancel_on_granted_lock_returns_granted() {
         .lock(
             create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, 100, "alice", 100, 0),
+            &DEFAULT_CRED,
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
 
-    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "alice", 100, 0)).await;
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "alice", 100, 0), &DEFAULT_CRED).await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
 }

@@ -51,7 +51,7 @@ pub async fn new<A, V, B>(
     let command_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
-        context.get_vfs_pool().sender(),
+        context.get_vfs_manager().sender(),
         result_sender.clone(),
         message_sender,
     );

@@ -1,11 +1,12 @@
 //! Service implementation for the MOUNT v3 `DUMP` procedure.
 
 use crate::mount::dump::{Dump, Success};
+use crate::rpc::auth::Credential;
 
 use super::MountService;
 
 impl Dump for MountService {
-    async fn dump(&self) -> Success {
+    async fn dump(&self, _cred: &Credential) -> Success {
         let mount_list = self
             .mounts
             .read()

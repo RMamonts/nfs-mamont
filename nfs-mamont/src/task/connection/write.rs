@@ -6,7 +6,7 @@ use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcCall, ProcReply};
 
-/// Writes [`super::super::global::vfs::VfsPool`] responses to a network connection.
+/// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<ProcReply<B>>,

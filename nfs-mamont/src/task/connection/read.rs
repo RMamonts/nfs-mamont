@@ -51,7 +51,7 @@ impl<B: Buffer + 'static> CommandSenders<B> {
 }
 
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
+/// and forwards to [`super::super::global::vfs::VfsTask`] or other global tasks.
 pub struct ReadTask<
     A: Allocator + Send + Sync + 'static,
     B: Buffer + 'static = <A as Allocator>::Buffer,
