@@ -139,7 +139,7 @@ where
                 NfsArguments::Commit(args) => NfsRes::Commit(self.backend.commit(args).await),
             };
 
-            if let Some(error) = Self::error_from_response(&response) {
+            if let Some(error) = response.error_from_response() {
                 error!(xid=header.xid, proc=%proc_name, error=?error, "nfs op failed");
             }
 
@@ -152,35 +152,6 @@ where
             if tx.send(reply).await.is_err() {
                 warn!("writer task closed, connection pipeline is done");
             }
-        }
-    }
-
-    /// Returns the domain error when the NFS result variant is `Err`, if present.
-    fn error_from_response(response: &NfsRes<B>) -> Option<vfs::Error> {
-        match response {
-            NfsRes::Null => None,
-            NfsRes::GetAttr(Err(err)) => Some(err.error),
-            NfsRes::SetAttr(Err(err)) => Some(err.error),
-            NfsRes::LookUp(Err(err)) => Some(err.error),
-            NfsRes::Access(Err(err)) => Some(err.error),
-            NfsRes::ReadLink(Err(err)) => Some(err.error),
-            NfsRes::Read(Err(err)) => Some(err.error),
-            NfsRes::Write(Err(err)) => Some(err.error),
-            NfsRes::Create(Err(err)) => Some(err.error),
-            NfsRes::MkDir(Err(err)) => Some(err.error),
-            NfsRes::SymLink(Err(err)) => Some(err.error),
-            NfsRes::MkNod(Err(err)) => Some(err.error),
-            NfsRes::Remove(Err(err)) => Some(err.error),
-            NfsRes::RmDir(Err(err)) => Some(err.error),
-            NfsRes::Rename(Err(err)) => Some(err.error),
-            NfsRes::Link(Err(err)) => Some(err.error),
-            NfsRes::ReadDir(Err(err)) => Some(err.error),
-            NfsRes::ReadDirPlus(Err(err)) => Some(err.error),
-            NfsRes::FsStat(Err(err)) => Some(err.error),
-            NfsRes::FsInfo(Err(err)) => Some(err.error),
-            NfsRes::PathConf(Err(err)) => Some(err.error),
-            NfsRes::Commit(Err(err)) => Some(err.error),
-            _ => None,
         }
     }
 }
