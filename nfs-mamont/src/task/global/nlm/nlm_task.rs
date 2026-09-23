@@ -4,10 +4,6 @@
 //! connection read tasks, forwards them to the [`Nlm`] service, and sends
 //! the serialized reply back to the appropriate write task.
 
-use async_channel::{Receiver, Sender};
-use std::sync::Arc;
-use tracing::debug;
-
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
 use crate::task::global::nlm::nlm_event::NlmEventHandler;
@@ -16,6 +12,13 @@ use crate::{
     nlm::NlmRes,
     parser::{NlmMessage, NlmMessageWrapper},
 };
+use async_channel::{Receiver, Sender};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use tracing::debug;
+
+const INIT_XID: u32 = 0;
 
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
@@ -37,6 +40,10 @@ where
 
     /// Channel for commands from client connection tasks
     receiver: Receiver<NlmCommand<B>>,
+
+    /// The transaction ID.
+    /// Incremented with each new client (write task).
+    xid_for_call: AtomicU32,
 }
 
 impl<B, N> NlmTask<B, N>
@@ -48,7 +55,7 @@ where
     pub fn new(nlm_service: Arc<N>) -> (Self, Sender<NlmCommand<B>>) {
         let (sender, receiver) = async_channel::unbounded::<NlmCommand<B>>();
 
-        let task = Self { nlm_service, receiver };
+        let task = Self { nlm_service, receiver, xid_for_call: AtomicU32::new(INIT_XID) };
 
         (task, sender)
     }
@@ -73,7 +80,10 @@ where
 
         while let Ok(command) = receiver.recv().await {
             let NlmCommand { result_sender, message_sender, message } = command;
-            let event_handler = NlmEventHandler::new(message_sender);
+            let event_handler = NlmEventHandler::new(
+                self.xid_for_call.fetch_add(1, Ordering::Relaxed),
+                message_sender,
+            );
             let xid = message.header.xid;
             let nlm_result =
                 process_message(message, Arc::clone(&nlm_service), event_handler).await;

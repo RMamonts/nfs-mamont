@@ -83,7 +83,7 @@ async fn unlock_sends_granted_callback_via_channel() {
     let (tx, rx) = async_channel::unbounded::<ProcCall>();
 
     svc.lock(
-        NlmEventHandler::new(tx.clone()),
+        NlmEventHandler::new(0, tx.clone()),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
     )
@@ -91,7 +91,7 @@ async fn unlock_sends_granted_callback_via_channel() {
 
     let blocked = svc
         .lock(
-            NlmEventHandler::new(tx.clone()),
+            NlmEventHandler::new(1, tx.clone()),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
             &DEFAULT_CRED,
         )

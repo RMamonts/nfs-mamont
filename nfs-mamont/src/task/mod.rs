@@ -31,11 +31,12 @@ pub struct ProcReply<B: Buffer> {
 
 /// RPC call metadata plus a typed message to be serialized.
 pub struct ProcCall {
+    pub xid: u32,
     pub proc_message: ProcMessage,
 }
 
 impl ProcCall {
-    pub fn new(proc_message: ProcMessage) -> ProcCall {
-        ProcCall { proc_message }
+    pub fn new(xid: u32, proc_message: ProcMessage) -> ProcCall {
+        ProcCall { xid, proc_message }
     }
 }
