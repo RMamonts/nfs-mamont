@@ -6,6 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 use crate::task::global::nlm::nlm_event::NlmEventHandler;
 
 /// Defines the information needed to request a lock on a server.
@@ -40,7 +41,6 @@ pub struct Nlm4LockRes {
 /// Implementations should check for conflicting locks and either
 /// grant the lock (returning `Granted`) or deny it.
 #[trait_variant::make(Send)]
-
 pub trait Lock {
     /// Promotes pending lock requests that no longer conflict with active locks.
     ///
@@ -50,5 +50,5 @@ pub trait Lock {
     ///
     /// ### Returns
     /// The result of the locking procedure.
-    async fn lock(&self, event_handler: NlmEventHandler, args: Nlm4LockArgs) -> Nlm4LockRes;
+    async fn lock(&self, event_handler: NlmEventHandler, args: Nlm4LockArgs, cred: &Credential) -> Nlm4LockRes;
 }

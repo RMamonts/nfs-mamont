@@ -7,7 +7,8 @@ use std::net::SocketAddr;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::rpc::{AuthFlavor, Credential};
+use crate::rpc::auth::Credential;
+use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
 #[derive(Debug, ToPrimitive, FromPrimitive)]
@@ -63,6 +64,6 @@ pub trait Mnt {
         &self,
         args: Args,
         client_addr: SocketAddr,
-        cred: Credential,
+        cred: &Credential,
     ) -> Result<Success, Fail>;
 }

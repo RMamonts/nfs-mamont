@@ -6,6 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 /// Defines the information needed to cancel an outstanding lock request.
 /// The data in the `Nlm4CancelArgs` structure must exactly match the corresponding information in the `Nlm4LockArgs` structure of the outstanding lock request to be cancelled.
@@ -37,5 +38,5 @@ pub struct Nlm4CancelRes {
 /// that matches the given parameters.
 #[trait_variant::make(Send)]
 pub trait Cancel {
-    async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes;
+    async fn cancel(&self, args: Nlm4CancelArgs, cred: &Credential) -> Nlm4CancelRes;
 }

@@ -227,3 +227,34 @@ pub enum NfsRes<B: Buffer> {
     PathConf(std::result::Result<path_conf::Success, path_conf::Fail>),
     Commit(std::result::Result<commit::Success, commit::Fail>),
 }
+
+impl<B: Buffer> NfsRes<B> {
+    /// Returns the domain error when the NFS result variant is `Err`, if present.
+    pub fn error_from_response(&self) -> Option<Error> {
+        match self {
+            NfsRes::Null => None,
+            NfsRes::GetAttr(Err(err)) => Some(err.error),
+            NfsRes::SetAttr(Err(err)) => Some(err.error),
+            NfsRes::LookUp(Err(err)) => Some(err.error),
+            NfsRes::Access(Err(err)) => Some(err.error),
+            NfsRes::ReadLink(Err(err)) => Some(err.error),
+            NfsRes::Read(Err(err)) => Some(err.error),
+            NfsRes::Write(Err(err)) => Some(err.error),
+            NfsRes::Create(Err(err)) => Some(err.error),
+            NfsRes::MkDir(Err(err)) => Some(err.error),
+            NfsRes::SymLink(Err(err)) => Some(err.error),
+            NfsRes::MkNod(Err(err)) => Some(err.error),
+            NfsRes::Remove(Err(err)) => Some(err.error),
+            NfsRes::RmDir(Err(err)) => Some(err.error),
+            NfsRes::Rename(Err(err)) => Some(err.error),
+            NfsRes::Link(Err(err)) => Some(err.error),
+            NfsRes::ReadDir(Err(err)) => Some(err.error),
+            NfsRes::ReadDirPlus(Err(err)) => Some(err.error),
+            NfsRes::FsStat(Err(err)) => Some(err.error),
+            NfsRes::FsInfo(Err(err)) => Some(err.error),
+            NfsRes::PathConf(Err(err)) => Some(err.error),
+            NfsRes::Commit(Err(err)) => Some(err.error),
+            _ => None,
+        }
+    }
+}
