@@ -133,7 +133,7 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     let (args, tx) = command;
-    let proc_name = proc_name(&args.proc);
+    let proc_name = args.proc.get_name();
 
     let response = match *args.proc {
         NfsArguments::Null => NfsRes::Null,
@@ -170,33 +170,5 @@ where
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
         warn!("writer task closed, connection pipeline is done");
-    }
-}
-
-/// Static label for logging/tracing for the given procedure variant.
-fn proc_name<B: Buffer>(proc: &NfsArguments<B>) -> &'static str {
-    match proc {
-        NfsArguments::Null => "NULL",
-        NfsArguments::GetAttr(_) => "GETATTR",
-        NfsArguments::SetAttr(_) => "SETATTR",
-        NfsArguments::LookUp(_) => "LOOKUP",
-        NfsArguments::Access(_) => "ACCESS",
-        NfsArguments::ReadLink(_) => "READLINK",
-        NfsArguments::Read(..) => "READ",
-        NfsArguments::Write(_) => "WRITE",
-        NfsArguments::Create(_) => "CREATE",
-        NfsArguments::MkDir(_) => "MKDIR",
-        NfsArguments::SymLink(_) => "SYMLINK",
-        NfsArguments::MkNod(_) => "MKNOD",
-        NfsArguments::Remove(_) => "REMOVE",
-        NfsArguments::RmDir(_) => "RMDIR",
-        NfsArguments::Rename(_) => "RENAME",
-        NfsArguments::Link(_) => "LINK",
-        NfsArguments::ReadDir(_) => "READDIR",
-        NfsArguments::ReadDirPlus(_) => "READDIRPLUS",
-        NfsArguments::FsStat(_) => "FSSTAT",
-        NfsArguments::FsInfo(_) => "FSINFO",
-        NfsArguments::PathConf(_) => "PATHCONF",
-        NfsArguments::Commit(_) => "COMMIT",
     }
 }

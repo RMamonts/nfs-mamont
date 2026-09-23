@@ -21,7 +21,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
@@ -64,6 +63,20 @@ impl ExportRegistry {
         self.by_directory.get(path)
     }
 
+    fn insert(&mut self, directory: file::Path, root_handle: file::Handle) {
+        self.by_directory.insert(
+            directory.clone(),
+            ExportEntryWrapper {
+                export: ExportEntry { directory, names: Vec::new() },
+                root_handle,
+            },
+        );
+    }
+
+    fn remove(&mut self, directory: &file::Path) -> bool {
+        self.by_directory.remove(directory).is_some()
+    }
+
     fn export_list(&self) -> Vec<ExportEntry> {
         self.by_directory.values().map(|entry| entry.export.clone()).collect()
     }
@@ -79,7 +92,7 @@ struct MountRegistry {
 /// In-memory state backing the MOUNT v3 service implementation
 pub struct MountService {
     /// Exported directories that are available for mounting
-    exports: Arc<ExportRegistry>,
+    exports: RwLock<ExportRegistry>,
     /// Active mounts keyed by client.
     mounts: RwLock<MountRegistry>,
 }
@@ -87,12 +100,96 @@ pub struct MountService {
 impl MountService {
     pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
         Self {
-            exports: Arc::new(ExportRegistry::from_entries(entries)),
+            exports: RwLock::new(ExportRegistry::from_entries(entries)),
             mounts: RwLock::new(MountRegistry::default()),
         }
     }
 
-    fn export_entry(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
-        self.exports.by_path(path)
+    async fn export_entry(&self, path: &file::Path) -> Option<ExportEntryWrapper> {
+        self.exports.read().await.by_path(path).cloned()
+    }
+
+    /// Add a new export entry at runtime.
+    ///
+    /// If an export for `directory` already exists it will be replaced.
+    pub async fn add_export(&self, directory: file::Path, root_handle: file::Handle) {
+        self.exports.write().await.insert(directory, root_handle);
+    }
+
+    /// Remove an export entry at runtime.
+    ///
+    /// Returns `true` if the export existed and was removed.
+    pub async fn remove_export(&self, directory: &file::Path) -> bool {
+        self.exports.write().await.remove(directory)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vfs::file;
+
+    fn handle(byte: u8) -> file::Handle {
+        file::Handle([byte; 8])
+    }
+
+    fn path(name: &str) -> file::Path {
+        file::Path::new(name.to_string()).unwrap()
+    }
+
+    fn service() -> MountService {
+        MountService::with_exports(vec![ExportEntryWrapper {
+            export: ExportEntry { directory: path("/initial"), names: Vec::new() },
+            root_handle: handle(1),
+        }])
+    }
+
+    #[tokio::test]
+    async fn with_exports_keeps_initial_entries() {
+        let service = service();
+
+        let entry = service.export_entry(&path("/initial")).await.unwrap();
+        assert_eq!(entry.root_handle, handle(1));
+        assert_eq!(service.exports.read().await.export_list().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn add_export_makes_entry_visible() {
+        let service = service();
+
+        service.add_export(path("/added"), handle(2)).await;
+
+        let entry = service.export_entry(&path("/added")).await.unwrap();
+        assert_eq!(entry.root_handle, handle(2));
+        let directories = service
+            .exports
+            .read()
+            .await
+            .export_list()
+            .into_iter()
+            .map(|entry| entry.directory)
+            .collect::<Vec<_>>();
+        assert_eq!(directories.len(), 2);
+        assert!(directories.contains(&path("/added")));
+    }
+
+    #[tokio::test]
+    async fn add_export_replaces_existing_entry() {
+        let service = service();
+
+        service.add_export(path("/initial"), handle(9)).await;
+
+        let entry = service.export_entry(&path("/initial")).await.unwrap();
+        assert_eq!(entry.root_handle, handle(9));
+        assert_eq!(service.exports.read().await.export_list().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn remove_export_removes_entry_and_reports_whether_it_existed() {
+        let service = service();
+
+        assert!(service.remove_export(&path("/initial")).await);
+        assert!(!service.remove_export(&path("/initial")).await);
+        assert!(service.exports.read().await.export_list().is_empty());
     }
 }
