@@ -132,11 +132,10 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let NfsArgWrapper { header, proc } = command.0;
-    let tx = command.1;
-    let proc_name = proc_name(&proc);
+    let (args, tx) = command;
+    let proc_name = proc_name(&args.proc);
 
-    let response = match *proc {
+    let response = match *args.proc {
         NfsArguments::Null => NfsRes::Null,
         NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
         NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args).await),
@@ -162,11 +161,11 @@ where
     };
 
     if let Some(error) = response.error_from_response() {
-        error!(xid=header.xid, proc=proc_name, error=?error, "nfs op failed");
+        error!(xid=args.header.xid, proc=proc_name, error=?error, "nfs op failed");
     }
 
     let reply =
-        ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
+        ProcReply { xid: args.header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
 
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
