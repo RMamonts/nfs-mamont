@@ -6,6 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 /// Defines the information needed to request a lock on a server.
 pub struct Nlm4LockArgs {
@@ -40,5 +41,5 @@ pub struct Nlm4LockRes {
 /// grant the lock (returning `Granted`) or deny it.
 #[trait_variant::make(Send)]
 pub trait Lock {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;
+    async fn lock(&self, args: Nlm4LockArgs, cred: &Credential) -> Nlm4LockRes;
 }

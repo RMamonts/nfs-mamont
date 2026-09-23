@@ -1,10 +1,11 @@
 use crate::nlm::procedures::unlock::{Nlm4UnlockArgs, Nlm4UnlockRes, Unlock};
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 use super::{check_caller_name, NlmService};
 
 impl Unlock for NlmService {
-    async fn unlock(&self, args: Nlm4UnlockArgs) -> Nlm4UnlockRes {
+    async fn unlock(&self, args: Nlm4UnlockArgs, _cred: &Credential) -> Nlm4UnlockRes {
         if check_caller_name(&args.lock.caller_name).is_err() {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
