@@ -32,5 +32,5 @@ pub struct Nlm4UnlockRes {
 /// the request parameters and return the result status.
 #[trait_variant::make(Send)]
 pub trait Unlock {
-    async fn unlock(&self, cred: &Credential, args: Nlm4UnlockArgs) -> Nlm4UnlockRes;
+    async fn unlock(&self, args: Nlm4UnlockArgs, cred: &Credential) -> Nlm4UnlockRes;
 }

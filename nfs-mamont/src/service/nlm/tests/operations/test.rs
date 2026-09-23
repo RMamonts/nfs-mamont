@@ -34,7 +34,7 @@ fn make_test_args(
 async fn test_reports_granted_when_free() {
     let svc = NlmService::new();
     let res =
-        svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
 }
 
@@ -42,12 +42,12 @@ async fn test_reports_granted_when_free() {
 async fn test_reports_denied_when_conflict() {
     let svc = NlmService::new();
     svc.lock(
-        &DEFAULT_CRED,
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
     let res =
-        svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Denied);
 }
 
@@ -55,12 +55,12 @@ async fn test_reports_denied_when_conflict() {
 async fn test_denied_holder_matches_conflicting_lock() {
     let svc = NlmService::new();
     svc.lock(
-        &DEFAULT_CRED,
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0),
+        &DEFAULT_CRED,
     )
     .await;
     let res =
-        svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     let holder = res.test_stat.holder.expect("Denied response must have a holder");
     assert!(holder.exclusive);
     assert_eq!(holder.system_identifier, 42);
@@ -70,7 +70,7 @@ async fn test_denied_holder_matches_conflicting_lock() {
 async fn test_no_holder_when_granted() {
     let svc = NlmService::new();
     let res =
-        svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
     assert!(res.test_stat.holder.is_none());
 }
@@ -79,7 +79,7 @@ async fn test_no_holder_when_granted() {
 async fn test_preserves_cookie() {
     let svc = NlmService::new();
     let res =
-        svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 77)).await;
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 77), &DEFAULT_CRED).await;
     assert_eq!(res.cookie.raw(), 77);
 }
 
@@ -87,10 +87,10 @@ async fn test_preserves_cookie() {
 async fn test_reports_shared_compatible_as_granted() {
     let svc = NlmService::new();
     svc.lock(
-        &DEFAULT_CRED,
         make_lock_args_without_block(FH_DEFAULT, false, 0, 100, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
-    let res = svc.test(&DEFAULT_CRED, make_test_args(FH_DEFAULT, false, 10, 20, 0)).await;
+    let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
 }

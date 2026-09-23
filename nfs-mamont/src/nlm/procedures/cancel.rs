@@ -38,5 +38,5 @@ pub struct Nlm4CancelRes {
 /// that matches the given parameters.
 #[trait_variant::make(Send)]
 pub trait Cancel {
-    async fn cancel(&self, cred: &Credential, args: Nlm4CancelArgs) -> Nlm4CancelRes;
+    async fn cancel(&self, args: Nlm4CancelArgs, cred: &Credential) -> Nlm4CancelRes;
 }

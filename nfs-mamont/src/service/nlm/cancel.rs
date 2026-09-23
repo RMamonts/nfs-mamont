@@ -5,7 +5,7 @@ use crate::rpc::auth::Credential;
 use super::{ActiveLock, NlmService, PendingLock};
 
 impl Cancel for NlmService {
-    async fn cancel(&self, _cred: &Credential, args: Nlm4CancelArgs) -> Nlm4CancelRes {
+    async fn cancel(&self, args: Nlm4CancelArgs, _cred: &Credential) -> Nlm4CancelRes {
         let target = match PendingLock::new(
             args.lock.caller_name,
             args.lock.system_identifier,

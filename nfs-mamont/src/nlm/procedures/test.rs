@@ -48,5 +48,5 @@ pub struct Nlm4TestReply {
 /// `Denied` with details of the conflicting lock.
 #[trait_variant::make(Send)]
 pub trait Test {
-    async fn test(&self, cred: &Credential, args: Nlm4TestArgs) -> Nlm4TestRes;
+    async fn test(&self, args: Nlm4TestArgs, cred: &Credential) -> Nlm4TestRes;
 }
