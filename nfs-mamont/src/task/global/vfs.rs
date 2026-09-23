@@ -32,7 +32,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     ///
     /// # Returns
     ///
-    /// A new [`VfsManager`] that executes commands concurrently.
+    /// Creates new [`VfsTask`] and link to it that executes commands.
     pub fn new<V>(backend: Arc<V>) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
