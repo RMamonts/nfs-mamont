@@ -109,7 +109,7 @@ pub trait Nlm:
     + procedures::unlock::Unlock
     + procedures::test::Test
     + procedures::cancel::Cancel
-+ procedures::granted::Granted
+    + procedures::granted::Granted
 {
 }
 
@@ -118,7 +118,7 @@ impl<T> Nlm for T where
         + procedures::unlock::Unlock
         + procedures::test::Test
         + procedures::cancel::Cancel
-    + procedures::granted::Granted
+        + procedures::granted::Granted
 {
 }
 

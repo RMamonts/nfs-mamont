@@ -35,8 +35,8 @@ use crate::consts::nfsv3::{
     SETATTR, SYMLINK, WRITE,
 };
 use crate::consts::nlm::{
-    NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
-    NLM_VERSION,
+    NLMPROC4_CANCEL, NLMPROC4_GRANTED, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST,
+    NLMPROC4_UNLOCK, NLM_PROGRAM, NLM_VERSION,
 };
 use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE};
 use crate::consts::xdr::ALIGNMENT;
@@ -46,13 +46,15 @@ use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use crate::parser::nlm::{cancel::cancel, lock::lock, test::test, unlock::unlock};
+use crate::parser::nlm::{
+    cancel::cancel, granted::granted, lock::lock, test::test, unlock::unlock,
+};
 use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments,
-    NlmArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, NlmMessage,
+    ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::{AuthFlavor, AuthStat, Credential, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
@@ -345,13 +347,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     }
 
     /// Parses NLM procedure arguments from the current frame.
-    fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmArguments> {
+    fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmMessage> {
         let args = match procedure {
-            NLMPROC4_NULL => NlmArguments::Null,
-            NLMPROC4_LOCK => NlmArguments::Lock(lock(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_UNLOCK => NlmArguments::Unlock(unlock(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_TEST => NlmArguments::Test(test(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_CANCEL => NlmArguments::Cancel(cancel(&mut self.reader).map_err(map_eof)?),
+            NLMPROC4_NULL => NlmMessage::Null,
+            NLMPROC4_LOCK => NlmMessage::Lock(lock(&mut self.reader).map_err(map_eof)?),
+            NLMPROC4_UNLOCK => NlmMessage::Unlock(unlock(&mut self.reader).map_err(map_eof)?),
+            NLMPROC4_TEST => NlmMessage::Test(test(&mut self.reader).map_err(map_eof)?),
+            NLMPROC4_CANCEL => NlmMessage::Cancel(cancel(&mut self.reader).map_err(map_eof)?),
+            NLMPROC4_GRANTED => NlmMessage::Granted(granted(&mut self.reader).map_err(map_eof)?),
             _ => return Err(Error::ProcedureMismatch),
         };
         Ok(args)
@@ -461,7 +464,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         self.parse_mount_proc(head.procedure)
     }
 
-    fn parse_nlm_message_with_header(&mut self, head: &RpcMessage) -> Result<NlmArguments> {
+    fn parse_nlm_message_with_header(&mut self, head: &RpcMessage) -> Result<NlmMessage> {
         if head.program != NLM_PROGRAM {
             error!(
                 got = head.program,
