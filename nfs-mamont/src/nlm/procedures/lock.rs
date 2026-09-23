@@ -50,5 +50,10 @@ pub trait Lock {
     ///
     /// ### Returns
     /// The result of the locking procedure.
-    async fn lock(&self, event_handler: NlmEventHandler, args: Nlm4LockArgs, cred: &Credential) -> Nlm4LockRes;
+    async fn lock(
+        &self,
+        event_handler: NlmEventHandler,
+        args: Nlm4LockArgs,
+        cred: &Credential,
+    ) -> Nlm4LockRes;
 }

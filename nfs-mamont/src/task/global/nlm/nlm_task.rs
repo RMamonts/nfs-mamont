@@ -107,22 +107,22 @@ async fn process_message<N: Nlm + Send + Sync + 'static>(
         NlmMessage::Null => Some(NlmRes::Null),
         NlmMessage::Lock(nlm4_lock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-            let res = nlm_service.lock(event_handler, nlm4_lock_args).await;
+            let res = nlm_service.lock(event_handler, nlm4_lock_args, &header.cred).await;
             Some(NlmRes::Lock(res))
         }
         NlmMessage::Unlock(nlm4_unlock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
-            let res = nlm_service.unlock(nlm4_unlock_args).await;
+            let res = nlm_service.unlock(nlm4_unlock_args, &header.cred).await;
             Some(NlmRes::Unlock(res))
         }
         NlmMessage::Test(nlm4_test_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM TEST");
-            let res = nlm_service.test(nlm4_test_args).await;
+            let res = nlm_service.test(nlm4_test_args, &header.cred).await;
             Some(NlmRes::Test(Box::new(res)))
         }
         NlmMessage::Cancel(nlm4_cancel_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
-            let res = nlm_service.cancel(nlm4_cancel_args).await;
+            let res = nlm_service.cancel(nlm4_cancel_args, &header.cred).await;
             Some(NlmRes::Cancel(res))
         }
         NlmMessage::Granted(nlm4_granted_res) => {

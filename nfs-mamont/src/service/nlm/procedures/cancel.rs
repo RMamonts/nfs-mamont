@@ -1,8 +1,6 @@
 use crate::nlm::procedures::cancel::{Cancel, Nlm4CancelArgs, Nlm4CancelRes};
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
-
-use super::{ActiveLock, NlmService, PendingLock};
 use crate::service::nlm::lock_types::{ActiveLock, PendingGrant, PendingLock};
 use crate::service::nlm::NlmService;
 

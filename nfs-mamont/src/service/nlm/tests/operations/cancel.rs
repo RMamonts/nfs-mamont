@@ -73,7 +73,7 @@ async fn cancel_preserves_cookie() {
         &DEFAULT_CRED,
     )
     .await;
-    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 55)).await;
+    let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 55), &DEFAULT_CRED).await;
     assert_eq!(res.cookie.raw(), 55);
 }
 

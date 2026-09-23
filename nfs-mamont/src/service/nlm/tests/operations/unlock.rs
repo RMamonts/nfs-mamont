@@ -20,7 +20,7 @@ async fn unlock_removes_lock_and_allows_new_lock() {
         &DEFAULT_CRED,
     )
     .await;
-    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
+    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1), &DEFAULT_CRED).await;
     let res = svc
         .lock(
             create_empty_event_handler(),
@@ -85,6 +85,7 @@ async fn unlock_sends_granted_callback_via_channel() {
     svc.lock(
         NlmEventHandler::new(tx.clone()),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
 
@@ -92,11 +93,12 @@ async fn unlock_sends_granted_callback_via_channel() {
         .lock(
             NlmEventHandler::new(tx.clone()),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
+            &DEFAULT_CRED,
         )
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);
 
-    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
+    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1), &DEFAULT_CRED).await;
 
     let received = rx.recv().await.expect("channel should not be closed");
     match received.proc_message {
@@ -116,17 +118,19 @@ async fn unlock_no_callback_when_granted_tx_is_none() {
     svc.lock(
         create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
+        &DEFAULT_CRED,
     )
     .await;
     let blocked = svc
         .lock(
             create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
+            &DEFAULT_CRED,
         )
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);
 
-    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1)).await;
+    svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1), &DEFAULT_CRED).await;
 
     assert!(matches!(rx.try_recv(), Err(async_channel::TryRecvError::Empty)));
     drop(tx);
