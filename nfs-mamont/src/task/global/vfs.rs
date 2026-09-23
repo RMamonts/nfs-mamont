@@ -109,14 +109,13 @@ where
 
         loop {
             tokio::select! {
-                biased;
                 command = command_receiver.recv() => match command {
                     Ok(command) => {
                         commands.push(dispatch(Arc::clone(&backend), command));
                     }
                     Err(_) => break,
                 },
-                // Poll completed commands before accepting new work. The guard keeps
+                // Poll completed commands. The guard keeps
                 // select! from busy-spinning on an empty set.
                 _ = commands.next(), if !commands.is_empty() => {}
             }
