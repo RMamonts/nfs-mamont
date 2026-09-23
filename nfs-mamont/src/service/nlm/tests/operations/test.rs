@@ -48,7 +48,8 @@ async fn test_reports_denied_when_conflict() {
         &DEFAULT_CRED,
     )
     .await;
-    let res = svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+    let res =
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Denied);
 }
 
@@ -61,7 +62,8 @@ async fn test_denied_holder_matches_conflicting_lock() {
         &DEFAULT_CRED,
     )
     .await;
-    let res = svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0)).await;
+    let res =
+        svc.test(make_test_args(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, 0), &DEFAULT_CRED).await;
     let holder = res.test_stat.holder.expect("Denied response must have a holder");
     assert!(holder.exclusive);
     assert_eq!(holder.system_identifier, 42);
@@ -93,6 +95,6 @@ async fn test_reports_shared_compatible_as_granted() {
         &DEFAULT_CRED,
     )
     .await;
-    let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0)).await;
+    let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0), &DEFAULT_CRED).await;
     assert_eq!(res.test_stat.stat, Nlm4Stats::Granted);
 }

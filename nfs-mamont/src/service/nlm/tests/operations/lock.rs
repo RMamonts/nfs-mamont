@@ -54,6 +54,7 @@ async fn lock_allows_shared_overlapping() {
         .lock(
             create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, false, 10, 20, "other", 99, 1),
+            &DEFAULT_CRED,
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -254,7 +255,7 @@ async fn lock_unlock_lock_sequence_same_client() {
     assert_eq!(
         svc.lock(
             create_empty_event_handler(),
-            make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 1)
+            make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 1),
             &DEFAULT_CRED,
         )
         .await
@@ -268,7 +269,7 @@ async fn lock_unlock_lock_sequence_same_client() {
     assert_eq!(
         svc.lock(
             create_empty_event_handler(),
-            make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 3)
+            make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 3),
             &DEFAULT_CRED,
         )
         .await
@@ -283,7 +284,7 @@ async fn multiple_clients_lock_different_ranges_on_same_file() {
     assert_eq!(
         svc.lock(
             create_empty_event_handler(),
-            make_lock_args_without_block(FH_DEFAULT, true, 0, 50, "client1", 100, 1)
+            make_lock_args_without_block(FH_DEFAULT, true, 0, 50, "client1", 100, 1),
             &DEFAULT_CRED,
         )
         .await
@@ -293,7 +294,7 @@ async fn multiple_clients_lock_different_ranges_on_same_file() {
     assert_eq!(
         svc.lock(
             create_empty_event_handler(),
-            make_lock_args_without_block(FH_DEFAULT, true, 60, 50, "client2", 200, 2)
+            make_lock_args_without_block(FH_DEFAULT, true, 60, 50, "client2", 200, 2),
             &DEFAULT_CRED,
         )
         .await
