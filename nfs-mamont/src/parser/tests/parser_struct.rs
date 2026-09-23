@@ -10,9 +10,8 @@ use crate::parser::tests::socket::MockSocket;
 use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
 };
-use crate::rpc::{
-    AuthFlavor, AuthStat, AuthSysParams, Credential, OpaqueAuth, RpcBody, RPC_VERSION,
-};
+use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
+use crate::rpc::{AuthFlavor, OpaqueAuth, RpcBody, RPC_VERSION};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;

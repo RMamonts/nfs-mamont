@@ -132,40 +132,49 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (args, tx) = command;
-    let proc_name = args.proc.get_name();
+    let (wrapper, tx) = command;
+    let NfsArgWrapper { header, proc } = wrapper;
+    let proc_name = proc.get_name();
 
-    let response = match *args.proc {
+    let response = match *proc {
         NfsArguments::Null => NfsRes::Null,
-        NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args).await),
-        NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args).await),
-        NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args).await),
-        NfsArguments::Access(args) => NfsRes::Access(backend.access(args).await),
-        NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args).await),
-        NfsArguments::Read(args, data) => NfsRes::Read(backend.read(args, data).await),
-        NfsArguments::Write(args) => NfsRes::Write(backend.write(args).await),
-        NfsArguments::Create(args) => NfsRes::Create(backend.create(args).await),
-        NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args).await),
-        NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args).await),
-        NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args).await),
-        NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(args).await),
-        NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args).await),
-        NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(args).await),
-        NfsArguments::Link(args) => NfsRes::Link(backend.link(args).await),
-        NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args).await),
-        NfsArguments::ReadDirPlus(args) => NfsRes::ReadDirPlus(backend.read_dir_plus(args).await),
-        NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args).await),
-        NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args).await),
-        NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args).await),
-        NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args).await),
+        NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args, &header.cred).await),
+        NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args, &header.cred).await),
+        NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args, &header.cred).await),
+        NfsArguments::Access(args) => NfsRes::Access(backend.access(args, &header.cred).await),
+        NfsArguments::ReadLink(args) => {
+            NfsRes::ReadLink(backend.read_link(args, &header.cred).await)
+        }
+        NfsArguments::Read(args, data) => {
+            NfsRes::Read(backend.read(args, data, &header.cred).await)
+        }
+        NfsArguments::Write(args) => NfsRes::Write(backend.write(args, &header.cred).await),
+        NfsArguments::Create(args) => NfsRes::Create(backend.create(args, &header.cred).await),
+        NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args, &header.cred).await),
+        NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args, &header.cred).await),
+        NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args, &header.cred).await),
+        NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(args, &header.cred).await),
+        NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args, &header.cred).await),
+        NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(args, &header.cred).await),
+        NfsArguments::Link(args) => NfsRes::Link(backend.link(args, &header.cred).await),
+        NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args, &header.cred).await),
+        NfsArguments::ReadDirPlus(args) => {
+            NfsRes::ReadDirPlus(backend.read_dir_plus(args, &header.cred).await)
+        }
+        NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args, &header.cred).await),
+        NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args, &header.cred).await),
+        NfsArguments::PathConf(args) => {
+            NfsRes::PathConf(backend.path_conf(args, &header.cred).await)
+        }
+        NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args, &header.cred).await),
     };
 
     if let Some(error) = response.error_from_response() {
-        error!(xid=args.header.xid, proc=proc_name, error=?error, "nfs op failed");
+        error!(xid=header.xid, proc=proc_name, error=?error, "nfs op failed");
     }
 
     let reply =
-        ProcReply { xid: args.header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
+        ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
 
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {

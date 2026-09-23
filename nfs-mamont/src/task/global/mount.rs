@@ -67,7 +67,7 @@ where
                 MountArguments::Null => MountRes::Null,
                 MountArguments::Mount(args) => {
                     debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=MNT");
-                    let res = mount_service.mnt(args, client_addr, header.cred).await;
+                    let res = mount_service.mnt(args, client_addr, &header.cred).await;
                     match &res {
                         Ok(_) => {
                             debug!(xid = header.xid, "mount task: proc=MNT result=OK");
@@ -80,12 +80,12 @@ where
                 }
                 MountArguments::Unmount(args) => {
                     debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=UMNT");
-                    mount_service.umnt(args, client_addr).await;
+                    mount_service.umnt(args, client_addr, &header.cred).await;
                     MountRes::Unmount
                 }
                 MountArguments::Export => {
                     debug!(xid = header.xid, "mount task: proc=EXPORT");
-                    let res = mount_service.export().await;
+                    let res = mount_service.export(&header.cred).await;
                     debug!(
                         xid = header.xid,
                         entries = res.exports.len(),
@@ -95,7 +95,7 @@ where
                 }
                 MountArguments::Dump => {
                     debug!(xid = header.xid, "mount task: proc=DUMP");
-                    let res = mount_service.dump().await;
+                    let res = mount_service.dump(&header.cred).await;
                     debug!(
                         xid = header.xid,
                         entries = res.mount_list.len(),
@@ -105,7 +105,7 @@ where
                 }
                 MountArguments::UnmountAll => {
                     debug!(xid = header.xid, "mount task: proc=UMNTALL");
-                    mount_service.umntall(client_addr).await;
+                    mount_service.umntall(client_addr, &header.cred).await;
                     MountRes::UnmountAll
                 }
             };
