@@ -24,7 +24,9 @@ pub struct NlmCommand<B: Buffer> {
     /// The channel for sending the callback.
     pub message_sender: Sender<ProcCall>,
     /// Placeholder for NLM procedure args.
-    pub args: NlmArgWrapper,
+    pub args: Option<NlmArgWrapper>,
+    /// Placeholder for NLM procedure res.
+    pub res: Option<NlmRes>,
 }
 
 pub struct NlmTask<B, N>
@@ -72,46 +74,72 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, message_sender, args } = command;
-            let event_handler = NlmEventHandler::new(message_sender);
-            let NlmArgWrapper { header, proc } = args;
-            debug!(xid = header.xid, "nlm task: command received");
+            let NlmCommand { result_sender, message_sender, args, res } = command;
+            if args.is_some() {
+                let args = args.unwrap();
+                let event_handler = NlmEventHandler::new(message_sender);
+                let xid = args.header.xid;
+                let nlm_result = process_clients_request(args, Arc::clone(&nlm_service), event_handler).await;
+                send_reply(result_sender, nlm_result, xid).await;
+            }
+            if res.is_some() {
+                let res = res.unwrap();
+                match res {
+                    NlmRes::Null => debug!("nlm task: unexpected result; Null should not send result to server"),
+                    NlmRes::Lock(_) => debug!("nlm task: unexpected result; Lock should not send result to server"),
+                    NlmRes::Unlock(_) => debug!("nlm task: unexpected result; Unlock should not send result to server"),
+                    NlmRes::Cancel(_) => debug!("nlm task: unexpected result; Cancel should not send result to server"),
+                    NlmRes::Test(_) => debug!("nlm task: unexpected result; Test should not send result to server"),
+                    NlmRes::Granted(granted_res) => nlm_service.granted(granted_res).await,
+                }
+            }
+        }
+    }
+}
 
-            let nlm_result = match *proc {
-                NlmArguments::Null => NlmRes::Null,
-                NlmArguments::Lock(nlm4_lock_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-                    let res = nlm_service.lock(event_handler, nlm4_lock_args).await;
-                    NlmRes::Lock(res)
-                }
-                NlmArguments::Unlock(nlm4_unlock_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
-                    let res = nlm_service.unlock(nlm4_unlock_args).await;
-                    NlmRes::Unlock(res)
-                }
-                NlmArguments::Test(nlm4_test_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM TEST");
-                    let res = nlm_service.test(nlm4_test_args).await;
-                    NlmRes::Test(Box::new(res))
-                }
-                NlmArguments::Cancel(nlm4_cancel_args) => {
-                    debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
-                    let res = nlm_service.cancel(nlm4_cancel_args).await;
-                    NlmRes::Cancel(res)
-                }
-            };
+async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: NlmRes, xid: u32) {
+    // TODO:
+    // - some logs when occurred error
+    // - or retry with fail
+    // * but don't stop task
+    let _ = result_sender
+        .send(ProcReply {
+            xid,
+            proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
+        })
+        .await;
+    debug!(xid = xid, "nlm task: reply queued");
+}
 
-            // TODO:
-            // - some logs when occurred error
-            // - or retry with fail
-            // * but don't stop task
-            let _ = result_sender
-                .send(ProcReply {
-                    xid: header.xid,
-                    proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
-                })
-                .await;
-            debug!(xid = header.xid, "nlm task: reply queued");
+async fn process_clients_request<N: Nlm + Send + Sync + 'static>(
+    args: NlmArgWrapper,
+    nlm_service: Arc<N>,
+    event_handler: NlmEventHandler,
+) -> NlmRes {
+    let NlmArgWrapper { header, proc } = args;
+    debug!(xid = header.xid, "nlm task: command received");
+
+    match *proc {
+        NlmArguments::Null => NlmRes::Null,
+        NlmArguments::Lock(nlm4_lock_args) => {
+            debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
+            let res = nlm_service.lock(event_handler, nlm4_lock_args).await;
+            NlmRes::Lock(res)
+        }
+        NlmArguments::Unlock(nlm4_unlock_args) => {
+            debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
+            let res = nlm_service.unlock(nlm4_unlock_args).await;
+            NlmRes::Unlock(res)
+        }
+        NlmArguments::Test(nlm4_test_args) => {
+            debug!(xid = header.xid, "nlm task: proc=NLM TEST");
+            let res = nlm_service.test(nlm4_test_args).await;
+            NlmRes::Test(Box::new(res))
+        }
+        NlmArguments::Cancel(nlm4_cancel_args) => {
+            debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
+            let res = nlm_service.cancel(nlm4_cancel_args).await;
+            NlmRes::Cancel(res)
         }
     }
 }
