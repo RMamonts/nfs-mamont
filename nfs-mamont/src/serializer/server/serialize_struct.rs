@@ -7,8 +7,6 @@
 
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
@@ -229,14 +227,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
         cred: OpaqueAuth,
         verifier: OpaqueAuth,
     ) -> io::Result<()> {
-        let random_number_u64 = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(current_time) => current_time.as_secs(),
-            Err(_) => Err(io::Error::other("SystemTime before UNIX EPOCH"))?,
-        };
-
-        let xid = (random_number_u64 >> 32) as u32;
-
-        u32(&mut self.buffer, xid)?;
+        u32(&mut self.buffer, call.xid)?;
         u32(&mut self.buffer, RpcBody::Call as u32)?;
         u32(&mut self.buffer, RPC_VERSION)?;
         u32(&mut self.buffer, NLM_PROGRAM)?;
