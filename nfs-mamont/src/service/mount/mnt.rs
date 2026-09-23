@@ -18,9 +18,11 @@ impl Mnt for MountService {
         client_addr: SocketAddr,
         _cred: &Credential,
     ) -> Result<Success, Fail> {
-        let Some(export) = self.export_entry(&args.dirpath) else {
+        let Some(export) = self.export_entry(&args.dirpath).await else {
             let configured = self
                 .exports
+                .read()
+                .await
                 .export_list()
                 .into_iter()
                 .map(|entry| entry.directory.as_path().to_string_lossy().into_owned())
@@ -34,7 +36,7 @@ impl Mnt for MountService {
             return Err(Fail::Access);
         };
 
-        let file_handle = export.root_handle.clone();
+        let file_handle = export.root_handle;
 
         let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
 

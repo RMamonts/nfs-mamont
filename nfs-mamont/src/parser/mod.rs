@@ -144,6 +144,36 @@ pub enum NfsArguments<B: Buffer> {
     Commit(commit::Args),
 }
 
+impl<B: Buffer> NfsArguments<B> {
+    /// Static label for logging/tracing for the given procedure variant.
+    pub fn get_name(&self) -> &'static str {
+        match self {
+            Self::Null => "NULL",
+            Self::GetAttr(_) => "GETATTR",
+            Self::SetAttr(_) => "SETATTR",
+            Self::LookUp(_) => "LOOKUP",
+            Self::Access(_) => "ACCESS",
+            Self::ReadLink(_) => "READLINK",
+            Self::Read(..) => "READ",
+            Self::Write(_) => "WRITE",
+            Self::Create(_) => "CREATE",
+            Self::MkDir(_) => "MKDIR",
+            Self::SymLink(_) => "SYMLINK",
+            Self::MkNod(_) => "MKNOD",
+            Self::Remove(_) => "REMOVE",
+            Self::RmDir(_) => "RMDIR",
+            Self::Rename(_) => "RENAME",
+            Self::Link(_) => "LINK",
+            Self::ReadDir(_) => "READDIR",
+            Self::ReadDirPlus(_) => "READDIRPLUS",
+            Self::FsStat(_) => "FSSTAT",
+            Self::FsInfo(_) => "FSINFO",
+            Self::PathConf(_) => "PATHCONF",
+            Self::Commit(_) => "COMMIT",
+        }
+    }
+}
+
 /// Enumerates supported MOUNT protocol procedure arguments.
 pub enum MountArguments {
     /// Null operation arguments.
