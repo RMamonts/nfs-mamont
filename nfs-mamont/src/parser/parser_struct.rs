@@ -633,7 +633,7 @@ where
 /// buffer allocated here is the server-side *output* buffer that the backend
 /// fills with the read result. Allocating it on the read side keeps a single
 /// allocator serving both READ and WRITE and removes the allocator from the
-/// VFS worker pool.
+/// VFS task.
 ///
 /// # Arguments
 ///
