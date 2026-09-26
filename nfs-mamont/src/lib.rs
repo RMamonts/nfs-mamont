@@ -80,7 +80,7 @@ where
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
                     Err(err) => break Err(err),
                 }
