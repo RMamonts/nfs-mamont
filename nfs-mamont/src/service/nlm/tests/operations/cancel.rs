@@ -5,8 +5,8 @@ use crate::nlm::procedures::lock::Lock;
 use crate::nlm::Nlm4Stats;
 use crate::service::nlm::tests::operations::DEFAULT_CRED;
 use crate::service::nlm::tests::{
-    fill_fh, fill_opaque, make_lock_args_with_block, make_lock_args_without_block, FH_DEFAULT,
-    LOCK_WHOLE_LENGTH,
+    create_empty_event_handler, fill_fh, fill_opaque, make_lock_args_with_block,
+    make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
 };
 use crate::service::nlm::NlmService;
 
@@ -30,12 +30,14 @@ fn make_cancel_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> 
 async fn cancel_removes_blocked_request() {
     let svc = NlmService::new();
     svc.lock(
+        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
     )
     .await;
     let res = svc
         .lock(
+            create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
             &DEFAULT_CRED,
         )
@@ -60,11 +62,13 @@ async fn cancel_on_nonexistent_returns_denied() {
 async fn cancel_preserves_cookie() {
     let svc = NlmService::new();
     svc.lock(
+        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
     )
     .await;
     svc.lock(
+        create_empty_event_handler(),
         make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
         &DEFAULT_CRED,
     )
@@ -78,6 +82,7 @@ async fn cancel_on_granted_lock_returns_granted() {
     let svc = NlmService::new();
     let res = svc
         .lock(
+            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, 100, "alice", 100, 0),
             &DEFAULT_CRED,
         )

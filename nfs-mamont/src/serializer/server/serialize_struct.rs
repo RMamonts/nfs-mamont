@@ -7,18 +7,18 @@
 
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
-
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
 use crate::mount::MountRes;
-use crate::nlm::NlmRes;
+use crate::nlm::{NlmCallbackReply, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
 use crate::consts::xdr::ALIGNMENT;
 use crate::serializer::{u32, usize_as_u32};
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ProcCall, ProcMessage, ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
@@ -34,6 +34,9 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
+
+/// Remote Procedure Call Protocol Version 2
+const RPC_VERSION: u32 = 2;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -176,6 +179,9 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 nlm::cancel_res(&mut self.buffer, res)?;
                 self.buffer.send_inner_buffer().await
             }
+            NlmRes::Granted(_) => {
+                Err(io::Error::new(ErrorKind::Unsupported, "The result of the granted procedure should not be sent from the server to the client."))
+            }
         }
     }
 
@@ -206,6 +212,38 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 self.buffer.send_inner_buffer().await
             }
         }
+    }
+
+    /// Serializes [`ProcCall`] into a complete XDR RPC reply and writes it to the underlying writer.
+    ///
+    /// ## Arguments:
+    /// *   `call` - a client call of [`ProcCall`] type
+    /// *   `cred` - an authentication credential of [`OpaqueAuth`] type that identifies the caller to the server
+    /// *   `verifier` - an authentication verifier of [`OpaqueAuth`] type that the server generates in
+    ///     in order to validate itself to the client
+    pub async fn form_call(
+        &mut self,
+        call: ProcCall,
+        cred: OpaqueAuth,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
+        u32(&mut self.buffer, call.xid)?;
+        u32(&mut self.buffer, RpcBody::Call as u32)?;
+        u32(&mut self.buffer, RPC_VERSION)?;
+        u32(&mut self.buffer, NLM_PROGRAM)?;
+        u32(&mut self.buffer, NLM_VERSION)?;
+        u32(&mut self.buffer, NLMPROC4_GRANTED)?;
+        auth(&mut self.buffer, cred)?;
+        auth(&mut self.buffer, verifier)?;
+        match call.proc_message {
+            ProcMessage::Nlm4(call) => match call {
+                NlmCallbackReply::Granted(test_args) => {
+                    nlm::test_args(&mut self.buffer, test_args)?;
+                }
+            },
+        }
+        self.buffer.send_inner_buffer().await?;
+        Ok(())
     }
 
     /// Serializes [`ProcReply`] into a complete XDR RPC reply and writes it to the underlying writer.

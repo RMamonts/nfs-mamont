@@ -2,16 +2,35 @@
 
 use crate::consts::nlm;
 use crate::nlm::lock::Nlm4Lock;
-use crate::nlm::OpaqueHandle;
+use crate::nlm::{Nlm4Stats, OpaqueHandle};
 use crate::parser::nfsv3::file;
+use crate::parser::primitive::u32;
 use crate::parser::primitive::{i32, string_max_size, u64, vector};
 use crate::parser::{Error, Result};
 use std::io::Read;
 
 pub mod cancel;
+pub mod granted;
 pub mod lock;
 pub mod test;
 pub mod unlock;
+
+/// Parses a Nlm4Stats enum from the provided Read source.
+pub fn nlm_stat(src: &mut impl Read) -> Result<Nlm4Stats> {
+    match u32(src)? {
+        0 => Ok(Nlm4Stats::Granted),
+        1 => Ok(Nlm4Stats::Denied),
+        2 => Ok(Nlm4Stats::DeniedNolocks),
+        3 => Ok(Nlm4Stats::Blocked),
+        4 => Ok(Nlm4Stats::DeniedGracePeriod),
+        5 => Ok(Nlm4Stats::Deadlock),
+        6 => Ok(Nlm4Stats::Rofs),
+        7 => Ok(Nlm4Stats::StaleFh),
+        8 => Ok(Nlm4Stats::Fbig),
+        9 => Ok(Nlm4Stats::Failed),
+        _ => Err(Error::EnumDiscMismatch),
+    }
+}
 
 /// Decodes the lock-owner identifier from an NLM request.
 /// The wire encoding is a variable-length opaque capped at [`OPAQUE_HANDLE_SIZE`](nlm::OPAQUE_HANDLE_SIZE).

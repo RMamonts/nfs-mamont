@@ -1,4 +1,5 @@
 pub mod cancel;
+pub mod granted;
 pub mod lock;
 pub mod test;
 pub mod unlock;
@@ -17,4 +18,8 @@ pub enum Nlm4Procedures {
     Cancel = 3,
     /// NLM4_UNLOCK — release a lock.
     Unlock = 4,
+    /// NLM_GRANTED — lock granted.
+    /// This procedure is a call-back procedure from the server NLM running on the host
+    /// where the file resides to the client.
+    Granted = 5,
 }
