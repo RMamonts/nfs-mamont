@@ -44,7 +44,7 @@ pub fn make_active_lock(
 }
 
 pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, lock: ActiveLock) {
-    reg.by_file.entry(fill_fh(fh_value)).or_default().push(lock);
+    reg.active.entry(fill_fh(fh_value)).or_default().push(lock);
 }
 
 pub fn make_lock_args_without_block(

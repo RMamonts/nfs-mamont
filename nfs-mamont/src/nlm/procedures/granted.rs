@@ -3,6 +3,7 @@
 //! Defines argument and result structures for the `NLMPROC4_GRANTED`
 //! operation as specified in RFC 1813.
 
+use crate::auth::Credential;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::Nlm4Stats;
 
@@ -25,5 +26,6 @@ pub trait Granted {
     ///
     /// ### Parameters
     /// * `res` — result arguments according to the RFC standard.
-    async fn granted(&self, res: Nlm4GrantedRes);
+    /// * `cred` — authenticated caller identity extracted from an RPC credential.
+    async fn granted(&self, res: Nlm4GrantedRes, cred: &Credential);
 }

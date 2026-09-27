@@ -137,7 +137,7 @@ async fn process_message<N: Nlm + Send + Sync + 'static>(
         }
         NlmMessage::Granted(nlm4_granted_res) => {
             debug!(xid = header.xid, "nlm task: proc=NLM GRANTED");
-            nlm_service.granted(nlm4_granted_res).await;
+            nlm_service.granted(nlm4_granted_res, &header.cred).await;
             None
         }
     }
