@@ -1,5 +1,7 @@
+use super::arithmetic::drain_overlapping;
+use super::lock_types::AwaitingAckLock;
+use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
-use crate::service::nlm::arithmetic::drain_overlapping;
 use crate::service::nlm::arithmetic::merge_adjacent;
 use crate::service::nlm::arithmetic::ranges_overlap;
 use crate::service::nlm::lock_types::ActiveLock;
@@ -11,15 +13,25 @@ use std::io::Error;
 /// In-memory collection of all active locks grouped by file handle.
 pub struct LockRegistry {
     /// Locks indexed by file handle for fast conflict checks.
-    pub by_file: HashMap<Handle, Vec<ActiveLock>>,
+    pub active: HashMap<Handle, Vec<ActiveLock>>,
     /// Blocked lock requests awaiting grant.
     pub pending: HashMap<Handle, Vec<PendingLock>>,
+    /// Locks for which the resource has already been allocated, but an ACK is expected from the client.
+    pub awaiting_ack: HashMap<Cookie, Vec<AwaitingAckLock>>,
+    /// It is generated incrementally when the client is called.
+    /// It is used to identify the customers who responded to the callback.
+    pub last_used_cookie: Cookie,
 }
 
 impl LockRegistry {
     /// Creates an empty lock registry with no active or pending locks.
     pub fn new() -> LockRegistry {
-        LockRegistry { by_file: HashMap::new(), pending: HashMap::new() }
+        LockRegistry {
+            active: HashMap::new(),
+            pending: HashMap::new(),
+            awaiting_ack: HashMap::new(),
+            last_used_cookie: Cookie::new(0),
+        }
     }
 
     /// Looks for an existing lock that would conflict with `request`.
@@ -28,7 +40,7 @@ impl LockRegistry {
     /// Returns `true` if there is an active lock from the same `(caller_name, system_identifier)`
     /// with the same `exclusive` mode and an overlapping range.
     pub fn has_active_lock(&self, file_handle: &Handle, request: &ActiveLock) -> bool {
-        self.by_file.get(file_handle).is_some_and(|locks| {
+        self.active.get(file_handle).is_some_and(|locks| {
             locks.iter().any(|lock| {
                 lock.caller_name == request.caller_name
                     && lock.system_identifier == request.system_identifier
@@ -42,7 +54,7 @@ impl LockRegistry {
     /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
     /// are skipped — a client re-requesting its own range is not a conflict.
     pub fn find_conflict(&self, file_handle: &Handle, request: &ActiveLock) -> Option<Nlm4Holder> {
-        let locks = self.by_file.get(file_handle)?;
+        let locks = self.active.get(file_handle)?;
         for lock in locks {
             let is_same_owner = lock.caller_name == request.caller_name
                 && lock.system_identifier == request.system_identifier
@@ -100,7 +112,7 @@ impl LockRegistry {
         offset: u64,
         len: u64,
     ) -> Result<(), Error> {
-        let active_locks = match self.by_file.get_mut(file_handle) {
+        let active_locks = match self.active.get_mut(file_handle) {
             Some(locks) => locks,
             None => return Ok(()),
         };
@@ -108,7 +120,7 @@ impl LockRegistry {
         drain_overlapping(active_locks, caller_name, system_identifier, offset, len)?;
 
         if active_locks.is_empty() {
-            self.by_file.remove(file_handle);
+            self.active.remove(file_handle);
         }
         Ok(())
     }
@@ -124,7 +136,7 @@ impl LockRegistry {
         file_handle: Handle,
         new_lock: ActiveLock,
     ) -> Result<(), Error> {
-        let locks = self.by_file.entry(file_handle).or_default();
+        let locks = self.active.entry(file_handle).or_default();
         drain_overlapping(
             locks,
             &new_lock.caller_name,

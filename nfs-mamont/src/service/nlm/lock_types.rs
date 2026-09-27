@@ -4,6 +4,21 @@ use crate::nlm::OpaqueHandle;
 use crate::task::global::nlm::nlm_event::NlmEventHandler;
 use std::io::Error;
 
+/// A wrapper over ActiveLock for storage in a separate registry.
+pub struct AwaitingAckLock {
+    /// Initial blocking identity. Passed from the active table.
+    lock: ActiveLock,
+    /// Incrementally generated starting from scratch.
+    cookie: Cookie,
+}
+
+impl AwaitingAckLock {
+    /// Creates a new [`AwaitingAckLock`] with the given active lock
+    pub fn new(lock: ActiveLock, cookie: Cookie) -> Self {
+        Self { lock, cookie }
+    }
+}
+
 /// The wrapper needed to notify the client.
 pub struct PendingGrant {
     /// Transaction identifier from the original blocking LOCK request;
