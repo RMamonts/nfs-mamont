@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender, TryRecvError};
@@ -18,7 +19,7 @@ pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Manager that contains only one task that dispatching NFS procedures to a single task running them concurrently via
-/// [`FuturesUnordered`].
+/// [`FuturesUnorderedBounded`].
 pub struct VfsManager<B: Buffer> {
     /// Sender to enqueue work in the vfs task for execution.
     sender: VfsCommandSender<B>,
@@ -35,7 +36,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Returns
     ///
     /// Creates new [`VfsTask`] and link to it that executes commands.
-    pub fn new<V>(backend: Arc<V>, vfs_concurrency: usize) -> Self
+    pub fn new<V>(backend: Arc<V>, vfs_concurrency: NonZeroUsize) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
@@ -61,7 +62,7 @@ impl<B: Buffer> Drop for VfsManager<B> {
 
 /// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
 ///
-/// All received commands are pushed into a [`FuturesUnordered`] and polled concurrently.
+/// All received commands are pushed into a [`FuturesUnorderedBounded`] and polled concurrently.
 pub struct VfsTask<V, B>
 where
     B: Buffer,
@@ -72,7 +73,7 @@ where
     /// Receiver from the vfs task, consumed by this single task.
     command_receiver: VfsCommandReceiver<B>,
     /// Maximum number of concurrent VFS operations.
-    vfs_concurrency: usize,
+    vfs_concurrency: NonZeroUsize,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -94,7 +95,7 @@ where
     pub fn new(
         backend: Arc<V>,
         command_receiver: VfsCommandReceiver<B>,
-        vfs_concurrency: usize,
+        vfs_concurrency: NonZeroUsize,
     ) -> Self {
         Self { backend, command_receiver, vfs_concurrency }
     }
@@ -113,7 +114,7 @@ where
     async fn run(self) {
         let backend = self.backend;
         let command_receiver = self.command_receiver;
-        let vfs_concurrency = self.vfs_concurrency;
+        let vfs_concurrency = self.vfs_concurrency.get();
 
         let mut commands = FuturesUnorderedBounded::new(vfs_concurrency);
         let mut capacity_left = vfs_concurrency;
@@ -126,7 +127,9 @@ where
                         capacity_left -= 1;
                         let fut = dispatch(Arc::clone(&backend), command);
                         if commands.try_push(fut).is_err() {
-                            unreachable!("since there is explicit counter, there could not be push fail")
+                            unreachable!(
+                                "since there is explicit counter, there could not be push fail"
+                            )
                         }
                         if capacity_left == 0 {
                             break;
