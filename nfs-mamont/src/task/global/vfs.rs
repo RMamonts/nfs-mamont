@@ -1,7 +1,8 @@
-use async_channel::{Receiver, Sender};
 use std::sync::Arc;
 
-use futures_util::stream::{FuturesUnordered, StreamExt};
+use async_channel::{Receiver, Sender, TryRecvError};
+use futures_util::stream::FuturesUnordered;
+use futures_util::StreamExt;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
@@ -29,17 +30,18 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Parameters
     ///
     /// - `backend` --- shared filesystem implementation
+    /// - `vfs_concurrency` --- max concurrent VFS operations
     ///
     /// # Returns
     ///
     /// Creates new [`VfsTask`] and link to it that executes commands.
-    pub fn new<V>(backend: Arc<V>) -> Self
+    pub fn new<V>(backend: Arc<V>, vfs_concurrency: usize) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
         let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
-        VfsTask::new(backend, rx).spawn();
+        VfsTask::new(backend, rx, vfs_concurrency).spawn();
 
         Self { sender: tx }
     }
@@ -69,6 +71,8 @@ where
     backend: Arc<V>,
     /// Receiver from the vfs task, consumed by this single task.
     command_receiver: VfsCommandReceiver<B>,
+    /// Maximum number of concurrent VFS operations.
+    vfs_concurrency: usize,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -82,12 +86,17 @@ where
     ///
     /// - `backend` --- shared filesystem implementation
     /// - `command_receiver` --- receiver from the read task
+    /// - `vfs_concurrency` --- max concurrent VFS operations
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backend: Arc<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backend, command_receiver }
+    pub fn new(
+        backend: Arc<V>,
+        command_receiver: VfsCommandReceiver<B>,
+        vfs_concurrency: usize,
+    ) -> Self {
+        Self { backend, command_receiver, vfs_concurrency }
     }
 
     /// Spawns a [`VfsTask`].
@@ -104,25 +113,36 @@ where
     async fn run(self) {
         let backend = self.backend;
         let command_receiver = self.command_receiver;
+        let vfs_concurrency = self.vfs_concurrency;
 
         let mut commands = FuturesUnordered::new();
+        let mut capacity_left = vfs_concurrency;
+        let mut finish = false;
 
-        loop {
-            tokio::select! {
-                command = command_receiver.recv() => match command {
+        while !finish {
+            loop {
+                match command_receiver.try_recv() {
                     Ok(command) => {
-                        commands.push(dispatch(Arc::clone(&backend), command));
+                        capacity_left -= 1;
+                        let fut = dispatch(Arc::clone(&backend), command);
+                        commands.push(fut);
+                        if capacity_left == 0 {
+                            break;
+                        }
                     }
-                    Err(_) => break,
-                },
-                // Poll completed commands. The guard keeps
-                // select! from busy-spinning on an empty set.
-                _ = commands.next(), if !commands.is_empty() => {}
+                    Err(TryRecvError::Closed) => {
+                        finish = true;
+                        break;
+                    }
+                    Err(TryRecvError::Empty) => {
+                        break;
+                    }
+                }
+            }
+            while commands.next().await.is_some() {
+                capacity_left += 1;
             }
         }
-
-        // The task is closed; drain in-flight commands before exiting.
-        while commands.next().await.is_some() {}
     }
 }
 

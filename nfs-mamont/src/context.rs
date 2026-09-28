@@ -29,8 +29,8 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Creates a context with the given backend and allocator.
-    pub fn new(backend: Arc<V>, allocator: Arc<A>) -> Self {
-        let vfs_manager = VfsManager::new(Arc::clone(&backend));
+    pub fn new(backend: Arc<V>, allocator: Arc<A>, vfs_concurrency: usize) -> Self {
+        let vfs_manager = VfsManager::new(Arc::clone(&backend), vfs_concurrency);
 
         Self { vfs_manager, allocator, backend }
     }
