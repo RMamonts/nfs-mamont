@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender, TryRecvError};
-use futures_util::stream::FuturesUnordered;
+use futures_buffered::FuturesUnorderedBounded;
 use futures_util::StreamExt;
 use tracing::{error, warn};
 
@@ -115,7 +115,7 @@ where
         let command_receiver = self.command_receiver;
         let vfs_concurrency = self.vfs_concurrency;
 
-        let mut commands = FuturesUnordered::new();
+        let mut commands = FuturesUnorderedBounded::new(vfs_concurrency);
         let mut capacity_left = vfs_concurrency;
         let mut finish = false;
 
@@ -125,7 +125,9 @@ where
                     Ok(command) => {
                         capacity_left -= 1;
                         let fut = dispatch(Arc::clone(&backend), command);
-                        commands.push(fut);
+                        if commands.try_push(fut).is_err() {
+                            unreachable!("since there is explicit counter, there could not be push fail")
+                        }
                         if capacity_left == 0 {
                             break;
                         }
