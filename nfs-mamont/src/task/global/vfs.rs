@@ -161,7 +161,8 @@ where
                 // ignore errors of command_receiver.try_recv(), since futures still must be processed
             }
             // in case there are no futures to process in FuturesUnordered and channel is empty
-            if capacity_left == vfs_concurrency {
+            // finish flag check is required in case channel is closed
+            if capacity_left == vfs_concurrency && !finish {
                 yield_now().await;
             }
         }
