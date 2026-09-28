@@ -1,9 +1,12 @@
+use std::future::Future;
 use std::num::NonZeroUsize;
+use std::ops::{Sub, SubAssign};
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender, TryRecvError};
 use futures_buffered::FuturesUnorderedBounded;
 use futures_util::StreamExt;
+use tokio::task::yield_now;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
@@ -146,6 +149,22 @@ where
             }
             while commands.next().await.is_some() {
                 capacity_left += 1;
+                match command_receiver.try_recv() {
+                    Ok(command) => {
+                        capacity_left -= 1;
+                        let fut = dispatch(Arc::clone(&backend), command);
+                        if commands.try_push(fut).is_err() {
+                            unreachable!(
+                                "since there is explicit counter, there could not be push fail"
+                            )
+                        }
+                    }
+                    // ignore errors, since futures still must be processed
+                    _ => ()
+                }
+            }
+            if capacity_left == vfs_concurrency {
+                yield_now().await;
             }
         }
     }
