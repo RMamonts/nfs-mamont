@@ -26,4 +26,5 @@ async-channel.workspace = true
 crossbeam-queue.workspace = true
 futures-util.workspace = true
 trait-variant.workspace = true
+futures-buffered.workspace = true
 libc = { version = "0.2.186", optional = true }
