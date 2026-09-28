@@ -1,6 +1,4 @@
-use std::future::Future;
 use std::num::NonZeroUsize;
-use std::ops::{Sub, SubAssign};
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender, TryRecvError};
@@ -149,19 +147,18 @@ where
             }
             while commands.next().await.is_some() {
                 capacity_left += 1;
-                match command_receiver.try_recv() {
-                    Ok(command) => {
-                        capacity_left -= 1;
-                        let fut = dispatch(Arc::clone(&backend), command);
-                        if commands.try_push(fut).is_err() {
-                            unreachable!(
-                                "since there is explicit counter, there could not be push fail"
-                            )
-                        }
+                // since single future is ready, we could safely try to get one more
+                // future form channel without checking capacity
+                if let Ok(command) = command_receiver.try_recv() {
+                    capacity_left -= 1;
+                    let fut = dispatch(Arc::clone(&backend), command);
+                    if commands.try_push(fut).is_err() {
+                        unreachable!(
+                            "since there is explicit counter, there could not be push fail"
+                        )
                     }
-                    // ignore errors, since futures still must be processed
-                    _ => ()
                 }
+                // ignore errors of command_receiver.try_recv(), since futures still must be processed
             }
             // in case there are no futures to process in FuturesUnordered and channel is empty
             if capacity_left == vfs_concurrency {
