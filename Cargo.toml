@@ -19,4 +19,5 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+futures-buffered = "0.2.13"
 trait-variant = "0.1.2"
