@@ -1,6 +1,6 @@
 //! Implements [`crate::vfs::file`] structures parsing
 
-use std::io::{self, Read};
+use std::io::Read;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
@@ -8,14 +8,6 @@ use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
-
-fn map_validation_error(err: io::Error) -> Error {
-    if err.kind() == io::ErrorKind::InvalidInput && err.to_string().contains("too long") {
-        Error::MaxElemLimit
-    } else {
-        Error::IO(err)
-    }
-}
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
@@ -80,12 +72,12 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(map_validation_error)
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(Error::IO)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(map_validation_error)
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(Error::IO)
 }
 
 #[cfg(test)]
@@ -229,6 +221,36 @@ mod tests {
         const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e'];
         let file = file::Name::new("file".to_string()).unwrap();
         assert_eq!(super::file_name(&mut Cursor::new(DATA)).unwrap(), file);
+    }
+
+    #[test]
+    fn test_file_name_too_long_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x01, 0x00];
+        assert!(matches!(super::file_name(&mut Cursor::new(DATA)), Err(Error::MaxElemLimit)));
+    }
+
+    #[test]
+    fn test_file_name_empty_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
+        assert!(matches!(super::file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_file_name_separator_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03, b'a', b'/', b'b', 0x00];
+        assert!(matches!(super::file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    }
+
+    #[test]
+    fn test_file_path_too_long_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x04, 0x01];
+        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::MaxElemLimit)));
+    }
+
+    #[test]
+    fn test_file_path_empty_error() {
+        const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
+        assert!(matches!(super::file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
     }
 
     #[test]
