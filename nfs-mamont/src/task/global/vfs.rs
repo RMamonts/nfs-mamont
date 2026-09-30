@@ -20,7 +20,7 @@ pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
-enum Target {
+pub(crate) enum Target {
     /// The procedure does not address any object, so no backend is needed.
     None,
     /// The procedure addresses objects of a single backend.
@@ -34,7 +34,7 @@ enum Target {
 /// The backend index is taken from the first byte of the file handle carried by the
 /// arguments. Procedures addressing two objects must keep both of them within the
 /// same backend, otherwise [`Target::Crossing`] is returned.
-fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
+pub(crate) fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
     let (first, second) = match proc {
         NfsArguments::Null => return Target::None,
         NfsArguments::GetAttr(args) => (&args.file, None),
@@ -70,7 +70,7 @@ fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
 ///
 /// Used when the procedure cannot reach a backend at all, so no backend-provided
 /// attributes are available.
-fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
+pub(crate) fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
     let wcc_data = || vfs::WccData { before: None, after: None };
 
     match proc {
@@ -319,76 +319,5 @@ where
         NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args, cred).await),
         NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args, cred).await),
         NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args, cred).await),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{failed_response, target, Target};
-    use crate::allocator::Slice;
-    use crate::parser::NfsArguments;
-    use crate::vfs::file::{Handle, PAYLOAD_SIZE};
-    use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
-
-    fn handle(backend: u8) -> Handle {
-        Handle::new(backend, [0x01; PAYLOAD_SIZE])
-    }
-
-    fn name() -> vfs::file::Name {
-        vfs::file::Name::new("file".to_string()).unwrap()
-    }
-
-    #[test]
-    fn null_needs_no_backend() {
-        let proc = NfsArguments::<Slice>::Null;
-
-        assert!(matches!(target(&proc), Target::None));
-    }
-
-    #[test]
-    fn backend_is_taken_from_the_handle() {
-        let proc = NfsArguments::<Slice>::GetAttr(get_attr::Args { file: handle(3) });
-
-        assert!(matches!(target(&proc), Target::Single(3)));
-    }
-
-    #[test]
-    fn rename_within_one_backend_is_routed_to_it() {
-        let proc = NfsArguments::<Slice>::Rename(rename::Args {
-            from: DirOpArgs { dir: handle(2), name: name() },
-            to: DirOpArgs { dir: handle(2), name: name() },
-        });
-
-        assert!(matches!(target(&proc), Target::Single(2)));
-    }
-
-    #[test]
-    fn rename_across_backends_is_crossing() {
-        let proc = NfsArguments::<Slice>::Rename(rename::Args {
-            from: DirOpArgs { dir: handle(2), name: name() },
-            to: DirOpArgs { dir: handle(5), name: name() },
-        });
-
-        assert!(matches!(target(&proc), Target::Crossing));
-    }
-
-    #[test]
-    fn link_across_backends_is_crossing() {
-        let proc = NfsArguments::<Slice>::Link(link::Args {
-            file: handle(0),
-            link: DirOpArgs { dir: handle(1), name: name() },
-        });
-
-        assert!(matches!(target(&proc), Target::Crossing));
-    }
-
-    #[test]
-    fn failed_response_keeps_the_procedure_variant() {
-        let proc = NfsArguments::<Slice>::GetAttr(get_attr::Args { file: handle(0) });
-
-        let NfsRes::GetAttr(Err(fail)) = failed_response(&proc, vfs::Error::StaleFile) else {
-            panic!("expected a failed GETATTR response");
-        };
-        assert_eq!(fail.error, vfs::Error::StaleFile);
     }
 }
