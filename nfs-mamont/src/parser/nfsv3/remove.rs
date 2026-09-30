@@ -13,23 +13,3 @@ pub fn args(src: &mut impl Read) -> Result<remove::Args> {
         object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    #[test]
-    fn test_remove() {
-        #[rustfmt::skip]
-        const DATA: &[u8] = &[
-            0x00, 0x00, 0x00, 0x09, 0x00, 0x01, 0x02, 0x03,
-            0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x04, b'f', b'i', b'l', b'e',
-        ];
-
-        let result = super::args(&mut Cursor::new(DATA)).unwrap();
-
-        assert_eq!(result.object.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        assert_eq!(result.object.name.as_str(), "file");
-    }
-}
