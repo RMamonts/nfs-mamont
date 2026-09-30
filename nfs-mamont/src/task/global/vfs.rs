@@ -20,7 +20,7 @@ pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
-pub(crate) enum Target {
+pub enum Target {
     /// The procedure does not address any object, so no backend is needed.
     None,
     /// The procedure addresses objects of a single backend.
@@ -34,7 +34,7 @@ pub(crate) enum Target {
 /// The backend index is taken from the first byte of the file handle carried by the
 /// arguments. Procedures addressing two objects must keep both of them within the
 /// same backend, otherwise [`Target::Crossing`] is returned.
-pub(crate) fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
+pub fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
     let (first, second) = match proc {
         NfsArguments::Null => return Target::None,
         NfsArguments::GetAttr(args) => (&args.file, None),
@@ -70,7 +70,7 @@ pub(crate) fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
 ///
 /// Used when the procedure cannot reach a backend at all, so no backend-provided
 /// attributes are available.
-pub(crate) fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
+pub fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
     let wcc_data = || vfs::WccData { before: None, after: None };
 
     match proc {
