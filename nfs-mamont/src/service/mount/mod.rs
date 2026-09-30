@@ -127,10 +127,11 @@ impl MountService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::vfs::file;
 
     fn handle(byte: u8) -> file::Handle {
-        file::Handle([byte; 8])
+        file::Handle([byte; NFS3_FHSIZE])
     }
 
     fn path(name: &str) -> file::Path {
