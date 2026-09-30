@@ -15,14 +15,25 @@ use crate::vfs::file::BackendId;
 ///
 /// # Example
 ///
-/// ```ignore
-/// let context = ServerContext::new(allocator);
-/// // Keep a registry handle before the context is moved into the server task.
-/// let backends = context.backends();
-/// tokio::spawn(handle_forever(listener, context, mount_service, nlm_service));
+/// ```no_run
+/// use std::sync::Arc;
 ///
-/// let id = backends.add(Arc::new(MyFs::new())).expect("no free backend slot");
-/// backends.remove(id);
+/// use nfs_mamont::vfs::Vfs;
+/// use nfs_mamont::{Allocator, Buffer, ServerContext};
+///
+/// fn attach_and_detach<A, B, V>(allocator: Arc<A>, fs: Arc<V>) -> Option<Arc<V>>
+/// where
+///     A: Allocator<Buffer = B> + Send + Sync + 'static,
+///     B: Buffer + 'static,
+///     V: Vfs<B> + Send + Sync + 'static,
+/// {
+///     let context = ServerContext::new(allocator);
+///     // Keep a registry handle before the context is moved into the server task.
+///     let backends = context.backends();
+///
+///     let id = backends.add(fs).expect("no free backend slot");
+///     backends.remove(id)
+/// }
 /// ```
 pub struct ServerContext<A, V, B>
 where
