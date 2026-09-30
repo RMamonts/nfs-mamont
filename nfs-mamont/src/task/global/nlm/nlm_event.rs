@@ -22,7 +22,7 @@ impl NlmEventHandler {
     pub async fn granted(&self, test_args: Nlm4TestArgs) {
         let callback_reply = NlmCallbackReply::Granted(test_args);
         let proc_message = ProcMessage::Nlm4(callback_reply);
-        let call = ProcCall::new(self.xid, proc_message);
+        let call = ProcCall { xid: self.xid, proc_message };
         if let Err(e) = self.message_sender.send(call).await {
             tracing::warn!("failed to send grant callback: {}", e);
         }

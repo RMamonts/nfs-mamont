@@ -34,9 +34,3 @@ pub struct ProcCall {
     pub xid: u32,
     pub proc_message: ProcMessage,
 }
-
-impl ProcCall {
-    pub fn new(xid: u32, proc_message: ProcMessage) -> ProcCall {
-        ProcCall { xid, proc_message }
-    }
-}
