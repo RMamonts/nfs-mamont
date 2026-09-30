@@ -1,9 +1,10 @@
-use crate::service::nlm::lock_types::ActiveLock;
 use std::io::Error;
+
+use crate::service::nlm::lock_types::ActiveLock;
 
 /// Length value that means "lock until end-of-file".
 /// The lock covers all bytes from `offset` to EOF.
-const LEN_REMAINING: u64 = 0;
+const LEN_TO_EOF: u64 = 0;
 
 /// Returns `true` when the two byte-range intervals `[start, start+len)` overlap.
 /// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
@@ -16,7 +17,7 @@ pub fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
 /// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
 pub fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
     match len {
-        LEN_REMAINING => u64::MAX,
+        LEN_TO_EOF => u64::MAX,
         _ => start.saturating_add(len).saturating_sub(1),
     }
 }

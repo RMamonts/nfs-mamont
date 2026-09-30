@@ -4,19 +4,18 @@
 //! connection read tasks, forwards them to the [`Nlm`] service, and sends
 //! the serialized reply back to the appropriate write task.
 
-use crate::allocator::Buffer;
-use crate::nlm::Nlm;
-use crate::task::global::nlm::nlm_event::NlmEventHandler;
-use crate::task::{ProcCall, ProcReply, ProcResult};
-use crate::{
-    nlm::NlmRes,
-    parser::{NlmMessage, NlmMessageWrapper},
-};
-use async_channel::{Receiver, Sender};
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use async_channel::{Receiver, Sender};
 use tracing::debug;
+
+use crate::allocator::Buffer;
+use crate::nlm::{Nlm, NlmRes};
+use crate::parser::{NlmMessage, NlmMessageWrapper};
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+use crate::task::{ProcCall, ProcReply, ProcResult};
 
 const INIT_XID: u32 = 0;
 

@@ -11,7 +11,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
 use crate::consts::nlm::{NLMPROC4_GRANTED, NLM_PROGRAM, NLM_VERSION};
-use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE, RPC_VERSION};
 use crate::mount::MountRes;
 use crate::nlm::{NlmCallbackReply, NlmRes};
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
@@ -34,9 +34,6 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
-
-/// Remote Procedure Call Protocol Version 2
-const RPC_VERSION: u32 = 2;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{

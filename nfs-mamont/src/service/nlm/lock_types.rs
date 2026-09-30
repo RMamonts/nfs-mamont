@@ -1,8 +1,8 @@
-use crate::consts::nlm::LM_MAXSTRLEN;
-use crate::nlm::cookie::Cookie;
-use crate::nlm::OpaqueHandle;
-use crate::task::global::nlm::nlm_event::NlmEventHandler;
 use std::io::Error;
+
+use crate::consts::nlm::LM_MAXSTRLEN;
+use crate::nlm::{cookie::Cookie, OpaqueHandle};
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
 
 /// The wrapper needed to notify the client.
 pub struct PendingGrant {
