@@ -7,14 +7,14 @@ use crate::service::nlm::lock_types::ActiveLock;
 const LEN_TO_EOF: u64 = 0;
 
 /// Returns `true` when the two byte-range intervals `[start, start+len)` overlap.
-/// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
+/// A length of [`LEN_TO_EOF`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
 pub fn ranges_overlap(start1: u64, len1: u64, start2: u64, len2: u64) -> bool {
     let end1 = calculate_end_of_interval(start1, len1);
     let end2 = calculate_end_of_interval(start2, len2);
     start1 <= end2 && start2 <= end1
 }
 
-/// A length of [`LEN_REMAINING`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
+/// A length of [`LEN_TO_EOF`] is interpreted as "to end-of-file" (i.e. `u64::MAX`).
 pub fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
     match len {
         LEN_TO_EOF => u64::MAX,
