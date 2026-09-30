@@ -7,11 +7,48 @@ use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
 
+/// Index of a backend registered in [`crate::BackendRegistry`].
+///
+/// Encoded in the first byte of every [`Handle`], which limits the server to
+/// [`BackendId::MAX`] + 1 simultaneously attached backends.
+pub type BackendId = u8;
+
+/// Size of the backend-specific part of a [`Handle`], in bytes.
+pub const PAYLOAD_SIZE: usize = NFS3_FHSIZE - 1;
+
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
+///
+/// The first byte is the [`BackendId`] of the backend that owns the object; the
+/// remaining [`PAYLOAD_SIZE`] bytes are opaque to the server and interpreted only
+/// by that backend.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Handle(pub [u8; NFS3_FHSIZE]);
+
+impl Handle {
+    /// Builds a handle owned by `backend` from a backend-specific `payload`.
+    pub fn new(backend: BackendId, payload: [u8; PAYLOAD_SIZE]) -> Self {
+        let mut raw = [0u8; NFS3_FHSIZE];
+        raw[0] = backend;
+        raw[1..].copy_from_slice(&payload);
+        Handle(raw)
+    }
+
+    /// Returns the index of the backend that owns the object behind this handle.
+    #[inline]
+    pub fn backend_id(&self) -> BackendId {
+        self.0[0]
+    }
+
+    /// Returns the backend-specific part of the handle.
+    #[inline]
+    pub fn payload(&self) -> [u8; PAYLOAD_SIZE] {
+        let mut payload = [0u8; PAYLOAD_SIZE];
+        payload.copy_from_slice(&self.0[1..]);
+        payload
+    }
+}
 
 /// A validated wrapper around a `String` representing a name.
 ///
