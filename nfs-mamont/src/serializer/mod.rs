@@ -10,9 +10,8 @@
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
 
-#[allow(dead_code)]
 #[cfg(test)]
-pub mod client;
+mod tests;
 
 pub mod server;
 
