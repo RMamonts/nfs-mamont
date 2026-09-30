@@ -4,7 +4,9 @@ use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::procedures::{
-    cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::{Nlm4TestReply, Nlm4TestRes},
+    cancel::Nlm4CancelRes,
+    lock::Nlm4LockRes,
+    test::{Nlm4TestReply, Nlm4TestRes},
     unlock::Nlm4UnlockRes,
 };
 use crate::nlm::{Nlm4Stats, OpaqueHandle};

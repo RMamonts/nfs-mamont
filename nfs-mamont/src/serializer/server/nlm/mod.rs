@@ -12,9 +12,9 @@ use crate::serializer::{u64, variant};
 mod cancel;
 mod lock;
 mod test;
-mod unlock;
 #[cfg(test)]
 mod tests;
+mod unlock;
 
 pub use cancel::cancel_res;
 pub use lock::lock_res;
