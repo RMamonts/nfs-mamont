@@ -16,6 +16,7 @@ pub fn unlock(src: &mut impl Read) -> Result<Nlm4UnlockArgs> {
 mod tests {
     use std::io::Cursor;
 
+    use crate::consts::nfsv3::NFS3_FHSIZE;
     use crate::parser::nlm::xdr;
 
     #[test]
@@ -23,7 +24,7 @@ mod tests {
         let mut data = Vec::new();
         data.extend(xdr::u64_val(42));
         data.extend(xdr::string("nfs-client"));
-        data.extend(xdr::handle(&[0xFE; 8]));
+        data.extend(xdr::handle(&[0xFE; NFS3_FHSIZE]));
         data.extend(xdr::opaque(&[0xAB, 0xCD]));
         data.extend(xdr::i32_val(-1));
         data.extend(xdr::u64_val(50));
