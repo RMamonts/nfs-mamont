@@ -22,7 +22,30 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture)
 ### Quick start
 
-As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementaion
+A server is assembled with a builder and controlled with `start`/`stop`:
+
+```rust
+use std::sync::Arc;
+
+use nfs_mamont::{Impl, Server};
+
+let mut server = Server::builder(Arc::new(Impl::new(buffer_size, buffer_count)))
+    .bind("0.0.0.0:2049".parse()?)
+    .build();
+
+// Attach a backend implementing `nfs_mamont::vfs::Vfs` and export its root.
+server.backends().add(fs).expect("no free backend slot");
+server.mount_service().add_export(export_path, root_handle).await;
+
+server.start().await?; // binds the port and registers with rpcbind
+tokio::signal::ctrl_c().await?;
+server.stop().await?; // answers in-flight requests, then releases every resource
+```
+
+A stopped server can be started again. Backends and exports can be attached and
+detached while the server is running.
+
+As a complete example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation.
 
 ## Safety & Requirements
 
