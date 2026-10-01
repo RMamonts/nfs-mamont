@@ -3,6 +3,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};
 
 use async_channel::Sender;
@@ -21,6 +23,8 @@ use crate::task::global::nlm::NlmCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
+use super::ConnectionContext;
+
 /// Reads RPC commands from a network connection, parses them,
 /// and forwards to [`super::super::global::vfs::VfsTask`] or other global tasks.
 pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
@@ -38,6 +42,8 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allo
     allocator: Arc<A>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+    // cancelled when the server stops, so the task stops reading new requests
+    shutdown: CancellationToken,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -45,44 +51,58 @@ where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
 {
-    /// Creates new instance of [`ReadTask`]
+    /// Creates new instance of [`ReadTask`] dispatching requests to the global tasks
+    /// of `context`.
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        mount_sender: Sender<MountCommand<B>>,
-        nlm_sender: Sender<NlmCommand<B>>,
         result_sender: Sender<ProcReply<B>>,
-        allocator: Arc<A>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        context: &ConnectionContext<A>,
     ) -> Self {
         Self {
             readhalf,
             client_addr,
-            mount_sender,
-            nlm_sender,
+            mount_sender: context.mount_sender.clone(),
+            nlm_sender: context.nlm_sender.clone(),
             result_sender,
-            allocator,
-            pool_sender,
+            allocator: Arc::clone(&context.allocator),
+            pool_sender: context.vfs_sender.clone(),
+            shutdown: context.shutdown.clone(),
         }
     }
 
-    /// Spawns a [`ReadTask`]  that reads commands from a socket.
+    /// Spawns a [`ReadTask`] that reads commands from a socket into `tasks`.
     ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self)
+    pub fn spawn(self, tasks: &mut JoinSet<()>)
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tasks.spawn(async move {
+            let _ = self.run().await;
+        });
     }
 
     async fn run(self) -> io::Result<()> {
         let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        // Registered once per connection, so waiting on it costs nothing per message.
+        let shutdown = self.shutdown.cancelled();
+        tokio::pin!(shutdown);
 
         loop {
-            match parser.next_message().await {
+            let message = tokio::select! {
+                // Checked first, so a busy connection cannot delay the shutdown.
+                biased;
+                _ = &mut shutdown => {
+                    debug!(client=%self.client_addr, "read task: server is shutting down");
+                    return Ok(());
+                }
+                message = parser.next_message() => message,
+            };
+
+            match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {

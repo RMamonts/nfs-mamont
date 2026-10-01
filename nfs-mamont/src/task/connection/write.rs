@@ -1,4 +1,5 @@
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::task::JoinSet;
 use tracing::error;
 
 use crate::allocator::Buffer;
@@ -21,16 +22,18 @@ impl<B: Buffer> WriteTask<B> {
         Self { writehalf, result_receiver }
     }
 
-    /// Spawns a [`WriteTask`] that writes command results to a socket.
+    /// Spawns a [`WriteTask`] that writes command results to a socket into `tasks`.
+    ///
+    /// The task stops once every sender of its result channel is dropped.
     ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self)
+    pub fn spawn(self, tasks: &mut JoinSet<()>)
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tasks.spawn(async move { self.run().await });
     }
 
     async fn run(self) {

@@ -2,6 +2,7 @@ use async_channel::{Receiver, Sender};
 use std::sync::Arc;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use tokio::task::JoinSet;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
@@ -10,7 +11,7 @@ use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
-use crate::vfs::{self, NfsRes, Vfs};
+use crate::vfs::{self, NfsRes};
 
 /// One queued NFS procedure: parsed arguments and a channel to send the result.
 pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
@@ -137,48 +138,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
     }
 }
 
-/// Manager that contains only one task that dispatching NFS procedures to a single task running them concurrently via
-/// [`FuturesUnordered`].
-pub struct VfsManager<B: Buffer> {
-    /// Sender to enqueue work in the vfs task for execution.
-    sender: VfsCommandSender<B>,
-}
-
-impl<B: Buffer + 'static> VfsManager<B> {
-    /// Creates a new [`VfsManager`] backed by a single task.
-    ///
-    /// # Parameters
-    ///
-    /// - `backends` --- registry of filesystem implementations, may be empty
-    ///
-    /// # Returns
-    ///
-    /// Creates new [`VfsTask`] and link to it that executes commands.
-    pub fn new<V>(backends: BackendRegistry<V>) -> Self
-    where
-        V: Vfs<B> + Send + Sync + 'static,
-    {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
-
-        VfsTask::new(backends, rx).spawn();
-
-        Self { sender: tx }
-    }
-
-    /// Returns a clone of the command sender for enqueueing work in the queue.
-    pub fn sender(&self) -> VfsCommandSender<B> {
-        self.sender.clone()
-    }
-}
-
-impl<B: Buffer> Drop for VfsManager<B> {
-    /// Closes the [`VfsTask`] sender so the task stops after the command stream is empty.
-    fn drop(&mut self) {
-        self.sender.close();
-    }
-}
-
-/// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
+/// Task that executes NFS procedures against [`vfs::Vfs`] and sends the result to the writer pipeline.
 ///
 /// All received commands are pushed into a [`FuturesUnordered`] and polled concurrently.
 pub struct VfsTask<V, B>
@@ -197,27 +157,29 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    /// Builds a task that reads commands from the channel and executes them.
+    /// Builds a task that reads commands from a new channel and executes them.
     ///
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `command_receiver` --- receiver from the read task
     ///
     /// # Returns
     ///
-    /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backends, command_receiver }
+    /// A new [`VfsTask`] and the sender to enqueue commands into it. The task stops
+    /// once every clone of the sender is dropped and in-flight commands are done.
+    pub fn new(backends: BackendRegistry<V>) -> (Self, VfsCommandSender<B>) {
+        let (sender, command_receiver) = async_channel::unbounded::<VfsCommand<B>>();
+
+        (Self { backends, command_receiver }, sender)
     }
 
-    /// Spawns a [`VfsTask`].
+    /// Spawns a [`VfsTask`] into `tasks`.
     ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(self, tasks: &mut JoinSet<()>) {
+        tasks.spawn(async move { self.run().await });
     }
 
     /// Consumes commands until the channel closes, executing each NFS op concurrently

@@ -6,6 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use std::sync::Arc;
+use tokio::task::JoinSet;
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -49,7 +50,7 @@ where
         (task, sender)
     }
 
-    /// Spawns the [`NlmTask`] on the current Tokio runtime.
+    /// Spawns the [`NlmTask`] into `tasks`.
     ///
     /// The task processes NLM commands received from read tasks and
     /// returns results to write tasks.
@@ -57,8 +58,8 @@ where
     /// # Panics
     ///
     /// If called outside a Tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(self, tasks: &mut JoinSet<()>) {
+        tasks.spawn(async move { self.run().await });
     }
 
     /// Main event loop: waits for commands, dispatches to the NLM service,

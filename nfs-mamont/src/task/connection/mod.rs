@@ -8,52 +8,55 @@
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use async_channel::Sender;
 use tokio::net::TcpStream;
-use tracing::error;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::context::ServerContext;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::NlmCommand;
+use crate::task::global::vfs::VfsCommandSender;
 use crate::task::ProcReply;
-use crate::vfs::Vfs;
 
 mod read;
 mod write;
 
-// Creates all connection tasks with their inner connections
-pub fn new<A, V, B>(
+/// Resources of one server run shared by all of its connections.
+pub struct ConnectionContext<A: Allocator> {
+    /// Allocator serving `WRITE` payload buffers.
+    pub allocator: Arc<A>,
+    /// Queue of the task executing NFS procedures.
+    pub vfs_sender: VfsCommandSender<A::Buffer>,
+    /// Queue of the task executing MOUNT procedures.
+    pub mount_sender: Sender<MountCommand<A::Buffer>>,
+    /// Queue of the task executing NLM procedures.
+    pub nlm_sender: Sender<NlmCommand<A::Buffer>>,
+    /// Cancelled when the server stops: read tasks stop taking new requests.
+    pub shutdown: CancellationToken,
+}
+
+/// Spawns the read and write tasks serving `socket` into `tasks`.
+///
+/// # Panics
+///
+/// If called outside of tokio runtime context.
+pub fn spawn<A, B>(
     socket: TcpStream,
-    mount_sender: async_channel::Sender<MountCommand<B>>,
-    nlm_sender: async_channel::Sender<NlmCommand<B>>,
-    context: &ServerContext<A, V, B>,
+    client_addr: SocketAddr,
+    context: &ConnectionContext<A>,
+    tasks: &mut JoinSet<()>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
-    V: Vfs<B> + Send + Sync + 'static,
 {
-    let peer_addr = match socket.peer_addr() {
-        Ok(addr) => addr,
-        Err(err) => {
-            error!(error=%err, "failed to determine peer address");
-            return;
-        }
-    };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
-    // channel for request
 
-    read::ReadTask::<A, B>::new(
-        readhalf,
-        peer_addr,
-        mount_sender,
-        nlm_sender,
-        result_sender.clone(),
-        context.get_allocator(),
-        context.get_vfs_manager().sender(),
-    )
-    .spawn();
-
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    read::ReadTask::<A, B>::new(readhalf, client_addr, result_sender, context).spawn(tasks);
+    write::WriteTask::<B>::new(writehalf, result_receiver).spawn(tasks);
 }

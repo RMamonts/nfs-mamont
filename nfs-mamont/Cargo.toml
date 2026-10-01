@@ -17,6 +17,7 @@ mlock = ["dep:libc"]
 [dependencies]
 # External dependencies
 tokio.workspace = true
+tokio-util.workspace = true
 byteorder.workspace = true
 num-derive.workspace = true
 num-traits.workspace = true
