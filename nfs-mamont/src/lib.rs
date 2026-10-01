@@ -11,6 +11,7 @@ mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
+mod server;
 pub mod service;
 mod task;
 pub mod vfs;
@@ -19,14 +20,13 @@ use std::sync::Arc;
 
 use tokio::net::TcpListener;
 use tokio::signal;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+use crate::mount::Mount;
 use crate::nlm::Nlm;
-use crate::task::global::mount::MountTask;
-use crate::task::global::nlm::NlmTask;
 use crate::vfs::Vfs;
-use crate::{mount::Mount, task::connection};
 
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use backend::BackendRegistry;
@@ -58,12 +58,6 @@ where
     N: Nlm + Send + Sync + 'static,
     V: Vfs<B> + Send + Sync + 'static,
 {
-    let (mount_task, mount_sender) = MountTask::new(mount_service);
-    mount_task.spawn();
-
-    let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
-    nlm_task.spawn();
-
     // Publish the NFS/MOUNT/NLM services to the local rpcbind
     let port = listener.local_addr()?.port();
     match rpcbind::register(port).await {
@@ -75,28 +69,31 @@ where
         ),
     }
 
-    // TODO: will be replaced with other solution in future
-    let mut shutdown = Box::pin(signal::ctrl_c());
+    let shutdown = CancellationToken::new();
+    let serving = server::serve(
+        listener,
+        context.get_allocator(),
+        context.backends(),
+        mount_service,
+        nlm_service,
+        shutdown.clone(),
+        server::DEFAULT_SHUTDOWN_TIMEOUT,
+    );
+    tokio::pin!(serving);
 
-    let accept_result = loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                match accepted {
-                    Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
-                    }
-                    Err(err) => break Err(err),
-                }
+    // TODO: will be replaced with other solution in future
+    let result = tokio::select! {
+        result = &mut serving => result,
+        signal = signal::ctrl_c() => {
+            match signal {
+                Ok(()) => shutdown.cancel(),
+                Err(err) => warn!(error = %err, "cannot listen for Ctrl-C, the server keeps running"),
             }
-            result = &mut shutdown => {
-                if matches!(result, Ok(())) {
-                    break Ok(());
-                }
-            }
+            serving.await
         }
     };
 
     let _ = rpcbind::unregister(port).await;
 
-    accept_result
+    result
 }

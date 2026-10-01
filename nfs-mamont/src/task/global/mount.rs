@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender};
+use tokio::task::JoinSet;
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -43,15 +44,14 @@ where
         (task, sender)
     }
 
-    /// Spawns a [`MountTask`]  that processes mount commands received from
-    /// `ReadTask` and returns results to
-    /// `WriteTask`.
+    /// Spawns a [`MountTask`] into `tasks`. The task processes mount commands received
+    /// from `ReadTask` and returns results to `WriteTask`.
     ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+    pub fn spawn(self, tasks: &mut JoinSet<()>) {
+        tasks.spawn(async move { self.run().await });
     }
 
     async fn run(self) {
