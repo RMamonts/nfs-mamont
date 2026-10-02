@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ["1.75.0", "1.95.0"]
+        rust: ["1.75.0", "1.99.0"]
 
     steps:
       - uses: actions/checkout@v7
