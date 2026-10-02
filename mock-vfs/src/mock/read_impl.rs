@@ -1,10 +1,16 @@
+use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::read;
 use nfs_mamont::Buffer;
 
 use super::MockVfs;
 
 impl<B: Buffer> read::Read<B> for MockVfs {
-    async fn read(&self, args: read::Args, mut data: B) -> Result<read::Success<B>, read::Fail> {
+    async fn read(
+        &self,
+        args: read::Args,
+        mut data: B,
+        _cred: &Credential,
+    ) -> Result<read::Success<B>, read::Fail> {
         if !self.config.latency.is_zero() {
             tokio::time::sleep(self.config.latency).await;
         }

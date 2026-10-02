@@ -1,5 +1,4 @@
 use std::io;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -23,7 +22,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`super::super::global::vfs::VfsPool`] or other global tasks.
+/// and forwards to [`super::super::global::vfs::VfsTask`] or other global tasks.
 pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allocator>::Buffer> {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
@@ -39,7 +38,6 @@ pub struct ReadTask<A: Allocator + Send + Sync + 'static, B: Buffer = <A as Allo
     allocator: Arc<A>,
     // to pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task
     pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
-    _phantom: PhantomData<B>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -65,7 +63,6 @@ where
             result_sender,
             allocator,
             pool_sender,
-            _phantom: PhantomData,
         }
     }
 

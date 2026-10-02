@@ -1,3 +1,4 @@
+use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::path_conf;
 
 use super::MockVfs;
@@ -6,6 +7,7 @@ impl path_conf::PathConf for MockVfs {
     async fn path_conf(
         &self,
         _args: path_conf::Args,
+        _cred: &Credential,
     ) -> Result<path_conf::Success, path_conf::Fail> {
         Ok(path_conf::Success {
             file_attr: Some(self.file_attr()),

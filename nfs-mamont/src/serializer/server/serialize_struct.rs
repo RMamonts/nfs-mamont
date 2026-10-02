@@ -11,11 +11,13 @@ use std::io::{ErrorKind, IoSlice, Write};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use crate::allocator::Buffer;
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RMS_HEADER_SIZE};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::serializer::{u32, usize_as_u32, ALIGNMENT};
+use crate::consts::xdr::ALIGNMENT;
+use crate::serializer::{u32, usize_as_u32};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
@@ -32,18 +34,6 @@ use super::rpc::auth;
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
-
-/// Max size of RMS fragment data
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const MAX_FRAGMENT_SIZE: usize = 0x7FFF_FFFF;
-
-/// Header mask of RMS
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_MASK: usize = 0x8000_0000;
-
-/// Size of RMS header
-/// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
-const HEADER_SIZE: usize = 4;
 
 macro_rules! nfs_result {
     ($self:expr, $res:expr, $ok_fn:path, $fail_fn:path) => {{
@@ -62,11 +52,11 @@ macro_rules! nfs_result {
 }
 
 /// Async writer wrapper used to emit XDR-encoded RPC replies.
-pub struct Serializer<B: Buffer, T: AsyncWrite + Unpin> {
-    buffer: WriteBuffer<B, T>,
+pub struct Serializer<T: AsyncWrite + Unpin> {
+    buffer: WriteBuffer<T>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
+impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Creates a reply serializer writing XDR bytes to the provided async writer.
     pub fn new(writer: T) -> Self {
         Self::with_capacity(writer, DEFAULT_SIZE)
@@ -78,7 +68,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     }
 
     /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_result(&mut self, result: ProcResult<B>) -> io::Result<()> {
+    async fn process_result<B: Buffer>(&mut self, result: ProcResult<B>) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
@@ -87,7 +77,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     }
 
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
-    async fn process_nfs3(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
+    async fn process_nfs3<B: Buffer>(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
         match *data {
             NfsRes::Null => self.buffer.send_inner_buffer().await,
             NfsRes::GetAttr(res) => {
@@ -226,7 +216,7 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
-    pub async fn form_reply(
+    pub async fn form_reply<B: Buffer>(
         &mut self,
         reply: ProcReply<B>,
         verifier: OpaqueAuth,
@@ -300,13 +290,12 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Serializer<B, T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
-struct WriteBuffer<B: Buffer, T: AsyncWrite + Unpin> {
+struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
-    _phantom: std::marker::PhantomData<B>,
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
     /// Writes raw bytes into the internal staging buffer (not directly to the socket).
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.extend_from_slice(buf);
@@ -319,14 +308,10 @@ impl<B: Buffer, T: AsyncWrite + Unpin> Write for WriteBuffer<B, T> {
     }
 }
 
-impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
+impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
-    fn new(socket: T, capacity: usize) -> WriteBuffer<B, T> {
-        let mut buffer = WriteBuffer {
-            socket,
-            buf: Vec::with_capacity(capacity),
-            _phantom: std::marker::PhantomData,
-        };
+    fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
+        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
         buffer.clean();
         buffer
     }
@@ -351,23 +336,36 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         // there is no need for check, since we initialize vector in new()
         // and we append 4 bytes after clean()
         // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
-        self.buf[..HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
+        self.buf[..RMS_HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
         Ok(())
     }
 
     /// Flushes the staged XDR bytes to the underlying writer.
     async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE))?;
+        self.append_fragment_size(self.buf.len().saturating_sub(RMS_HEADER_SIZE))?;
         self.socket.write_all(&self.buf).await?;
         self.clean();
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes followed by a streamed payload [`Buffer`] (used for READ data).
+    /// Flushes the staged XDR bytes followed by `count` bytes of the payload
+    /// [`Buffer`] (used for READ data).
     ///
     /// Uses vectored I/O to coalesce all data chunks and padding into a single
     /// `writev`-style syscall, reducing kernel transitions.
-    async fn send_inner_with_buffer(&mut self, buffer: B, count: usize) -> io::Result<()> {
+    async fn send_inner_with_buffer<B: Buffer>(
+        &mut self,
+        buffer: B,
+        count: usize,
+    ) -> io::Result<()> {
+        if count > buffer.len() {
+            self.clean();
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "reply declares more payload bytes than the buffer holds",
+            ));
+        }
+
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
         // (which is represented with Buffer in vfs::read::Success) from XDR
@@ -379,12 +377,14 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
         u32(&mut self.buf, count as u32)?;
 
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
-        self.append_fragment_size(self.buf.len().saturating_sub(HEADER_SIZE) + count + padding)?;
+        self.append_fragment_size(
+            self.buf.len().saturating_sub(RMS_HEADER_SIZE) + count + padding,
+        )?;
 
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 
         let mut written: usize = 0;
-        let total: usize = self.buf.len() + buffer.len() + padding;
+        let total: usize = self.buf.len() + count + padding;
 
         let mut iov: Vec<IoSlice<'_>> = Vec::with_capacity(buffer.chunks().count() + 2);
         while written < total {
@@ -398,7 +398,15 @@ impl<B: Buffer, T: AsyncWrite + Unpin> WriteBuffer<B, T> {
                 to_skip -= self.buf.len();
             }
 
+            let mut left = count;
             for chunk in buffer.chunks() {
+                if left == 0 {
+                    break;
+                }
+                // Only the first `count` bytes of the buffer are part of the reply.
+                let chunk = &chunk[..chunk.len().min(left)];
+                left -= chunk.len();
+
                 if to_skip == 0 {
                     iov.push(IoSlice::new(chunk));
                 } else if to_skip < chunk.len() {

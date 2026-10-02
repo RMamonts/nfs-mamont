@@ -22,7 +22,7 @@ mod read;
 mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new<A, V, B>(
+pub fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
@@ -51,7 +51,7 @@ pub async fn new<A, V, B>(
         nlm_sender,
         result_sender.clone(),
         context.get_allocator(),
-        context.get_vfs_pool().sender(),
+        context.get_vfs_manager().sender(),
     )
     .spawn();
 

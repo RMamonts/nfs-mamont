@@ -1,6 +1,7 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
 mod allocator;
+mod backend;
 pub mod consts;
 mod context;
 pub mod mount;
@@ -8,6 +9,7 @@ pub mod mount;
 mod nlm;
 mod parser;
 mod rpc;
+mod rpcbind;
 mod serializer;
 pub mod service;
 mod task;
@@ -16,17 +18,22 @@ pub mod vfs;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tokio::signal;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::NlmTask;
 use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
-use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use rpc::auth;
 pub use rpc::{AuthFlavor, OpaqueAuth};
+pub use vfs::file::BackendId;
 
 /// Initializes tracing logs.
 ///
@@ -58,12 +65,42 @@ where
     let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
-    loop {
-        let (socket, _) = listener.accept().await?;
-
-        // Disable Nagle on accepted sockets to prevent multi-buffer write latency
-        let _ = socket.set_nodelay(true);
-
-        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+    // Publish the NFS/MOUNT/NLM services to the local rpcbind
+    let port = listener.local_addr()?.port();
+    match rpcbind::register(port).await {
+        Ok(()) => info!(port, "registered NFS/MOUNT/NLM services with rpcbind"),
+        Err(err) => warn!(
+            port,
+            error = %err,
+            "failed to register with rpcbind; clients must pass port=/mountport= options"
+        ),
     }
+
+    // TODO: will be replaced with other solution in future
+    let mut shutdown = Box::pin(signal::ctrl_c());
+
+    let accept_result = loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                match accepted {
+                    Ok((socket, _)) => {
+                        // Disable Nagle on accepted sockets to prevent multi-buffer write latency
+                        let _ = socket.set_nodelay(true);
+
+                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
+                    }
+                    Err(err) => break Err(err),
+                }
+            }
+            result = &mut shutdown => {
+                if matches!(result, Ok(())) {
+                    break Ok(());
+                }
+            }
+        }
+    };
+
+    let _ = rpcbind::unregister(port).await;
+
+    accept_result
 }

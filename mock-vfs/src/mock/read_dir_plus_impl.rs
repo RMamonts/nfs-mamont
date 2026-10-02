@@ -1,3 +1,4 @@
+use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::file::Name;
 use nfs_mamont::vfs::read_dir;
 use nfs_mamont::vfs::read_dir_plus;
@@ -8,6 +9,7 @@ impl read_dir_plus::ReadDirPlus for MockVfs {
     async fn read_dir_plus(
         &self,
         _args: read_dir_plus::Args,
+        _cred: &Credential,
     ) -> Result<read_dir_plus::Success, read_dir_plus::Fail> {
         let count = self.config.dir_entry_count;
         let mut entries = Vec::with_capacity(count);

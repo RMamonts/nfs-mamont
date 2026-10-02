@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use nfs_mamont::auth::Credential;
 use nfs_mamont::consts::nfsv3::NFS3_FHSIZE;
 use nfs_mamont::mount::{dump, export, mnt, umnt, umntall};
 use nfs_mamont::vfs::file::Handle;
 use nfs_mamont::vfs::WccData;
-use nfs_mamont::OpaqueAuth;
 
 use crate::config::MockVfsConfig;
 
@@ -103,7 +103,7 @@ impl mnt::Mnt for MockMount {
         &self,
         _args: mnt::Args,
         _client_addr: SocketAddr,
-        _cred: OpaqueAuth,
+        _cred: &Credential,
     ) -> Result<mnt::Success, mnt::Fail> {
         Ok(mnt::Success {
             file_handle: ROOT_HANDLE,
@@ -113,21 +113,21 @@ impl mnt::Mnt for MockMount {
 }
 
 impl umnt::Umnt for MockMount {
-    async fn umnt(&self, _args: umnt::Args, _client_addr: SocketAddr) {}
+    async fn umnt(&self, _args: umnt::Args, _client_addr: SocketAddr, _cred: &Credential) {}
 }
 
 impl umntall::Umntall for MockMount {
-    async fn umntall(&self, _client_addr: SocketAddr) {}
+    async fn umntall(&self, _client_addr: SocketAddr, _cred: &Credential) {}
 }
 
 impl export::Export for MockMount {
-    async fn export(&self) -> export::Success {
+    async fn export(&self, _cred: &Credential) -> export::Success {
         export::Success { exports: vec![] }
     }
 }
 
 impl dump::Dump for MockMount {
-    async fn dump(&self) -> dump::Success {
+    async fn dump(&self, _cred: &Credential) -> dump::Success {
         dump::Success { mount_list: vec![] }
     }
 }
