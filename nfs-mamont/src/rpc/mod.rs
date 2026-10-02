@@ -3,11 +3,20 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use auth::AuthStat;
+
+pub mod auth;
+
 pub const RPC_VERSION: u32 = 2;
 
 pub const MAX_AUTH_SIZE: usize = 400;
 
-#[derive(ToPrimitive, FromPrimitive)]
+/// Maximum length of the `machinename` field in `AUTH_SYS` credentials (RFC 5531, appendix A).
+pub const AUTH_SYS_MAX_MACHINE_NAME: usize = 255;
+
+/// Maximum number of auxiliary GIDs in `AUTH_SYS` credentials (RFC 5531, appendix A).
+pub const AUTH_SYS_MAX_GIDS: usize = 16;
+
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -15,25 +24,6 @@ pub enum AcceptStat {
     ProcUnavail = 3,
     GarbageArgs = 4,
     SystemErr = 5,
-}
-
-#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
-pub enum AuthStat {
-    Ok = 0,
-    BadCred = 1,
-    RejectedCred = 2,
-    BadVerf = 3,
-    RejectedVerf = 4,
-    TooWeak = 5,
-    InvalidResp = 6,
-    Failed = 7,
-    KerbGeneric = 8,
-    TimeExpire = 9,
-    TktFile = 10,
-    Decode = 11,
-    NetAddr = 12,
-    RpcSecGssCredProblem = 13,
-    RpcSecGssCtxProblem = 14,
 }
 
 #[derive(ToPrimitive, FromPrimitive)]

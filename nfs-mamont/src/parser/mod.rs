@@ -6,7 +6,7 @@ pub mod nlm;
 pub mod parser_struct;
 pub mod primitive;
 pub mod read_buffer;
-mod rpc;
+pub mod rpc;
 
 #[cfg(test)]
 mod tests;
@@ -18,7 +18,8 @@ use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
-use crate::rpc::{Error, OpaqueAuth};
+use crate::rpc::auth::Credential;
+use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -39,12 +40,15 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 
 /// Represents the RPC request header extracted during message parsing.
 /// Contains metadata required for identifying and authenticating an RPC call.
-#[cfg_attr(test, derive(PartialEq, Debug, Clone))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct RpcHeader {
     pub xid: u32,
-    pub cred: OpaqueAuth,
-    // TODO: use when auth will be provided
-    pub verf: OpaqueAuth,
+    /// Authenticated caller identity extracted from the RPC credential.
+    ///
+    /// The reply verifier is always `AUTH_NONE` for the accepted flavors
+    /// (`AUTH_NONE`/`AUTH_SYS`), so the request verifier is validated during
+    /// parsing and then dropped rather than stored here.
+    pub cred: Credential,
 }
 
 /// Wrapper for NFS procedure arguments along with the parsed RPC header.
@@ -105,8 +109,8 @@ pub enum NfsArguments<B: Buffer> {
     Access(access::Args),
     /// Arguments for the [`read_link`] operation.
     ReadLink(read_link::Args),
-    /// Arguments for the [`read`] operation together with the output buffer
-    /// the backend fills with the read result.
+    /// Arguments for the [`read`] operation, together with the server-side
+    /// output buffer allocated for the response data.
     Read(read::Args, B),
     /// Arguments for the [`mod@write`] operation.
     Write(write::Args<B>),
@@ -138,6 +142,36 @@ pub enum NfsArguments<B: Buffer> {
     PathConf(path_conf::Args),
     /// Arguments for the [`commit`] operation.
     Commit(commit::Args),
+}
+
+impl<B: Buffer> NfsArguments<B> {
+    /// Static label for logging/tracing for the given procedure variant.
+    pub fn get_name(&self) -> &'static str {
+        match self {
+            Self::Null => "NULL",
+            Self::GetAttr(_) => "GETATTR",
+            Self::SetAttr(_) => "SETATTR",
+            Self::LookUp(_) => "LOOKUP",
+            Self::Access(_) => "ACCESS",
+            Self::ReadLink(_) => "READLINK",
+            Self::Read(..) => "READ",
+            Self::Write(_) => "WRITE",
+            Self::Create(_) => "CREATE",
+            Self::MkDir(_) => "MKDIR",
+            Self::SymLink(_) => "SYMLINK",
+            Self::MkNod(_) => "MKNOD",
+            Self::Remove(_) => "REMOVE",
+            Self::RmDir(_) => "RMDIR",
+            Self::Rename(_) => "RENAME",
+            Self::Link(_) => "LINK",
+            Self::ReadDir(_) => "READDIR",
+            Self::ReadDirPlus(_) => "READDIRPLUS",
+            Self::FsStat(_) => "FSSTAT",
+            Self::FsInfo(_) => "FSINFO",
+            Self::PathConf(_) => "PATHCONF",
+            Self::Commit(_) => "COMMIT",
+        }
+    }
 }
 
 /// Enumerates supported MOUNT protocol procedure arguments.

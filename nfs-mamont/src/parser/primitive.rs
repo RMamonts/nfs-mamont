@@ -6,9 +6,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use super::{Error, Result};
-
-/// The XDR alignment in bytes.
-pub const ALIGNMENT: usize = 4;
+use crate::consts::xdr::ALIGNMENT;
 
 /// Reads and discards padding bytes to ensure XDR alignment.
 #[inline]

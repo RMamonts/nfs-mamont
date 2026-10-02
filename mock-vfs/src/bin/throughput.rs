@@ -297,8 +297,8 @@ async fn start_local_server() -> std::net::SocketAddr {
     let buf_size = NonZeroUsize::new(65536).unwrap();
     let buf_count = NonZeroUsize::new(1024).unwrap();
     let allocator = Arc::new(Impl::new(buf_size, buf_count));
-    let pool_size = NonZeroUsize::new(4).unwrap();
-    let context = ServerContext::new(backend, allocator, pool_size);
+    let context = ServerContext::new(allocator);
+    context.add_backend(backend);
     let mount_service = Arc::new(MockMount);
     let nlm_service = Arc::new(NlmService::new());
 

@@ -24,7 +24,12 @@ pub const FSINFO: u32 = 19;
 pub const PATHCONF: u32 = 20;
 pub const COMMIT: u32 = 21;
 
-pub const NFS3_FHSIZE: usize = 8;
+/// Size of a file handle in bytes.
+///
+/// The first byte carries the [`crate::BackendId`] of the backend owning the object,
+/// the rest identifies the object inside that backend. The value is not a multiple of
+/// the XDR alignment; padding is added by the serializer and skipped by the parser.
+pub const NFS3_FHSIZE: usize = 9;
 
 pub const NFS3_COOKIEVERFSIZE: usize = 8;
 

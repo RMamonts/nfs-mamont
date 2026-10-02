@@ -1,9 +1,14 @@
+use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::symlink;
 
 use super::MockVfs;
 
 impl symlink::Symlink for MockVfs {
-    async fn symlink(&self, _args: symlink::Args) -> Result<symlink::Success, symlink::Fail> {
+    async fn symlink(
+        &self,
+        _args: symlink::Args,
+        _cred: &Credential,
+    ) -> Result<symlink::Success, symlink::Fail> {
         let handle = self.next_handle();
         Ok(symlink::Success {
             file: Some(handle),

@@ -47,8 +47,8 @@ async fn main() -> std::io::Result<()> {
     let buf_size = NonZeroUsize::new(1048576).unwrap();
     let buf_count = NonZeroUsize::new(64).unwrap();
     let allocator = Arc::new(Impl::new(buf_size, buf_count));
-    let pool_size = NonZeroUsize::new(4).unwrap();
-    let context = ServerContext::new(backend, allocator, pool_size);
+    let context = ServerContext::new(allocator);
+    context.add_backend(backend);
     let mount_service = Arc::new(MockMount);
     let nlm_service = Arc::new(NlmService::new());
 

@@ -1,3 +1,4 @@
+use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::file::Path;
 use nfs_mamont::vfs::read_link;
 
@@ -7,6 +8,7 @@ impl read_link::ReadLink for MockVfs {
     async fn read_link(
         &self,
         _args: read_link::Args,
+        _cred: &Credential,
     ) -> Result<read_link::Success, read_link::Fail> {
         Ok(read_link::Success {
             symlink_attr: Some(self.file_attr()),
