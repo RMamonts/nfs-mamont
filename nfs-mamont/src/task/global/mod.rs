@@ -10,3 +10,6 @@
 pub mod mount;
 pub mod nlm;
 pub mod vfs;
+
+#[cfg(test)]
+mod tests;
