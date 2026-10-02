@@ -84,9 +84,6 @@ where
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        // Disable Nagle on accepted sockets to prevent multi-buffer write latency
-                        let _ = socket.set_nodelay(true);
-
                         connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
                     Err(err) => break Err(err),
