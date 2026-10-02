@@ -1,0 +1,17 @@
+[package]
+name = "mock-vfs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+nfs-mamont = { path = "../nfs-mamont" }
+tokio = { workspace = true }
+fastrand = "2.3"
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["async_tokio"] }
+
+[[bench]]
+name = "pipeline"
+harness = false

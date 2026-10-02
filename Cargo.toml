@@ -1,5 +1,7 @@
 [workspace]
-members = ["nfs-mamont"]
+members = ["nfs-mamont", "mock-vfs"]
+default-members = ["nfs-mamont", "mock-vfs"]
+
 resolver = "2"
 
 [workspace.package]
@@ -18,5 +20,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-channel = "2.3.0"
 crossbeam-queue = "0.3.12"
-futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
 trait-variant = "0.1.2"
+criterion = { version = "0.5", features = ["async_tokio"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }

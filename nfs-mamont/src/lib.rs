@@ -32,6 +32,7 @@ pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
+pub use rpc::{AuthFlavor, OpaqueAuth};
 pub use vfs::file::BackendId;
 
 /// Initializes tracing logs.
