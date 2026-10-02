@@ -15,7 +15,7 @@ pub fn push_u64(buf: &mut Vec<u8>, v: u64) {
 
 pub fn pad(buf: &mut Vec<u8>, n: usize) {
     let p = (4 - (n & 3)) & 3;
-    buf.extend(std::iter::repeat_n(0u8, p));
+    buf.resize(buf.len() + p, 0);
 }
 
 pub fn push_opaque(buf: &mut Vec<u8>, bytes: &[u8]) {
