@@ -121,6 +121,54 @@ jobs:
           path: target/doc/
           retention-days: 7
 
+  kani-modules:
+    name: Kani Modules
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.modules.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Collect top-level crate modules
+        id: modules
+        run: |
+          modules=$(sed -nE 's/^(pub(\([^)]*\))? +)?mod +([a-z0-9_]+);.*/\3/p' nfs-mamont/src/lib.rs | jq -Rnc '[inputs]')
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
+  kani:
+    name: Kani Autoharness (${{ matrix.module }})
+    needs: [lint, kani-modules]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.kani-modules.outputs.modules) }}
+        # everything outside top-level modules: crate root, trait impls for foreign types
+        include:
+          - module: other
+    steps:
+      - uses: actions/checkout@v7
+
+      # Kani matches functions as `nfs_mamont::<path>`; `<?` also covers `<module::Type as Trait>::method`
+      - name: Build function filter
+        id: filter
+        env:
+          MODULE: ${{ matrix.module }}
+          MODULES: ${{ join(fromJSON(needs.kani-modules.outputs.modules), '|') }}
+        run: |
+          if [ "$MODULE" = other ]; then
+            echo "args=--exclude-pattern '^nfs_mamont::<?($MODULES)::'" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--include-pattern '^nfs_mamont::<?$MODULE::'" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 0.68.0 panics on `catch_unwind` intrinsic: https://github.com/model-checking/kani/issues/4813
+      - name: Run Kani autoharness
+        uses: model-checking/kani-github-action@v1.1
+        with:
+          kani-version: "0.67.0"
+          args: autoharness -Z autoharness ${{ steps.filter.outputs.args }}
+
   udeps:
     name: Check Unused Dependencies
     needs: [security]
