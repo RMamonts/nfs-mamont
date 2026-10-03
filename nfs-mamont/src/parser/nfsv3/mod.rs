@@ -22,3 +22,6 @@ pub mod rm_dir;
 pub mod set_attr;
 pub mod symlink;
 pub mod write;
+
+#[cfg(test)]
+mod tests;
