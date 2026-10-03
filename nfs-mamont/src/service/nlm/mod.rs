@@ -3,9 +3,6 @@
 //! This module provides an in-memory lock manager that tracks active locks
 //! grouped by file handle. The registry supports shared/exclusive semantics
 //! and range-based conflict detection.
-//!
-//! The service implements `Lock`, `Unlock`, `Test` and `Cancel`
-//! procedure traits from `crate::nlm::procedures`.
 
 use crate::service::nlm::lock_registry::LockRegistry;
 
