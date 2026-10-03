@@ -27,6 +27,9 @@ pub mod set_attr;
 pub mod symlink;
 pub mod write;
 
+#[cfg(test)]
+mod tests;
+
 /// Maximum length of name passed into [`Vfs`] methods.
 pub const MAX_NAME_LEN: usize = 255;
 
