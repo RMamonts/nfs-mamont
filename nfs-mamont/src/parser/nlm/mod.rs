@@ -10,7 +10,6 @@ use crate::parser::{Error, Result};
 use std::io::Read;
 
 pub mod cancel;
-pub mod granted;
 pub mod lock;
 pub mod test;
 pub mod unlock;
@@ -53,3 +52,4 @@ pub fn parse_lock(src: &mut impl Read) -> Result<Nlm4Lock> {
 
 #[cfg(test)]
 mod tests;
+mod granted;
