@@ -18,6 +18,11 @@ mod operations;
 mod ranges;
 mod registry;
 
+fn create_empty_event_handler() -> NlmEventHandler {
+    let (message_sender_placeholder, _) = async_channel::unbounded::<ProcCall>();
+    NlmEventHandler::new(0, message_sender_placeholder)
+}
+
 pub fn fill_fh(value: u8) -> Handle {
     Handle([value; NFS3_FHSIZE])
 }
