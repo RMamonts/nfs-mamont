@@ -137,7 +137,7 @@ impl From<&PendingLock> for ActiveLock {
             p.length,
             p.opaque_handle.clone(),
         )
-            .expect("PendingLock must have valid caller_name")
+        .expect("PendingLock must have valid caller_name")
     }
 }
 
