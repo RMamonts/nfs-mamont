@@ -24,7 +24,7 @@ pub struct ActiveLock {
 ///
 /// Returns [`Error`] if:
 /// - `caller_name` is empty.
-/// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+/// - `caller_name` is longer than [`LM_MAXSTRLEN`].
 pub fn check_caller_name(caller_name: &str) -> Result<(), Error> {
     if caller_name.is_empty() {
         return Err(Error::new(std::io::ErrorKind::InvalidInput, "caller_name must not be empty"));
@@ -46,7 +46,7 @@ impl ActiveLock {
     ///
     /// Returns [`Error`] if:
     /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
     pub fn new(
         caller_name: String,
         system_identifier: i32,
@@ -101,7 +101,7 @@ impl PendingLock {
     ///
     /// Returns [`Error`] if:
     /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`](nlm::LM_MAXSTRLEN).
+    /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
     pub fn new(
         caller_name: String,
         system_identifier: i32,
