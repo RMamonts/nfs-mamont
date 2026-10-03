@@ -14,9 +14,10 @@ pub fn granted(src: &mut impl Read) -> crate::parser::Result<Nlm4GrantedRes> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use crate::nlm::Nlm4Stats;
     use crate::parser::nlm::xdr;
-    use std::io::Cursor;
 
     #[test]
     fn test_granted() {
