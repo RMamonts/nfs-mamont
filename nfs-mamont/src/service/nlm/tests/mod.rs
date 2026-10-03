@@ -4,9 +4,11 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
 use crate::nlm::OpaqueHandle;
+use crate::service::nlm::lock_types::ActiveLock;
+use crate::service::nlm::LockRegistry;
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+use crate::task::ProcCall;
 use crate::vfs::file::Handle;
-
-use super::{ActiveLock, LockRegistry};
 
 pub const FH_DEFAULT: u8 = 1;
 pub const FH_OTHER: u8 = 2;
