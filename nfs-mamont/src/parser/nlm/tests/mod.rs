@@ -1,9 +1,9 @@
 mod cancel;
+pub mod granted;
 mod lock;
 mod test;
 mod unlock;
 mod xdr;
-pub mod granted;
 
 use std::io::Cursor;
 

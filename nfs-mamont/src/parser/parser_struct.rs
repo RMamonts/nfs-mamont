@@ -46,10 +46,8 @@ use crate::parser::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
-use crate::parser::nlm::tests::granted::granted;
-use crate::parser::nlm::{
-    cancel::cancel, lock::lock, test::test, unlock::unlock,
-};
+use crate::parser::nlm::granted::granted;
+use crate::parser::nlm::{cancel::cancel, lock::lock, test::test, unlock::unlock};
 use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
