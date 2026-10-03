@@ -1,7 +1,7 @@
-use std::io::Cursor;
+use super::xdr;
 use crate::nlm::Nlm4Stats;
 use crate::parser::nlm::granted::granted;
-use super::xdr;
+use std::io::Cursor;
 
 #[test]
 fn test_granted() {
