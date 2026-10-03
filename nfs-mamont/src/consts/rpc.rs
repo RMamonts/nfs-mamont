@@ -11,3 +11,6 @@ pub const HEADER_MASK: usize = 0x8000_0000;
 /// RMS frame header size in bytes.
 /// (<https://datatracker.ietf.org/doc/html/rfc5531#autoid-19>)
 pub const RMS_HEADER_SIZE: usize = 4;
+
+/// Remote Procedure Call Protocol Version 2
+pub const RPC_VERSION: u32 = 2;

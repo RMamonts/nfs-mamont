@@ -1,11 +1,17 @@
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
-
-use super::{ActiveLock, NlmService, PendingLock};
+use crate::service::nlm::lock_types::{ActiveLock, PendingGrant, PendingLock};
+use crate::service::nlm::NlmService;
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
 
 impl Lock for NlmService {
-    async fn lock(&self, args: Nlm4LockArgs, _cred: &Credential) -> Nlm4LockRes {
+    async fn lock(
+        &self,
+        event_handler: NlmEventHandler,
+        args: Nlm4LockArgs,
+        _cred: &Credential,
+    ) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
         let new_lock = match PendingLock::new(
@@ -15,7 +21,7 @@ impl Lock for NlmService {
             args.lock.lock_offset,
             args.lock.lock_length,
             args.lock.opaque_handle,
-            args.cookie,
+            PendingGrant::new(Some(event_handler), args.cookie),
         ) {
             Ok(new_lock) => new_lock,
             Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
