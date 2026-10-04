@@ -8,6 +8,8 @@ pub mod primitive;
 pub mod read_buffer;
 pub mod rpc;
 
+#[cfg(kani)]
+mod proofs;
 #[cfg(test)]
 mod tests;
 

@@ -11,6 +11,8 @@ mod lock_types;
 mod range_ops;
 
 mod procedures;
+#[cfg(kani)]
+mod proofs;
 #[cfg(test)]
 mod tests;
 

@@ -5,6 +5,9 @@
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
 
+#[cfg(kani)]
+mod proofs;
+
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
 

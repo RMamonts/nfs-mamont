@@ -16,6 +16,9 @@
 //! bytes of the next frame. Bytes of the next frame that were buffered while
 //! refilling are consumed by the next [`FrameReader::read_frame_header`] call.
 
+#[cfg(kani)]
+mod proofs;
+
 use std::cmp::min;
 use std::io::{self, ErrorKind, Read};
 

@@ -14,6 +14,10 @@ doctest = true
 default = []
 mlock = ["dep:libc"]
 
+[lints.rust]
+# `cfg(kani)` is set by `cargo kani` for model-checking harnesses.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
 [dependencies]
 # External dependencies
 tokio.workspace = true

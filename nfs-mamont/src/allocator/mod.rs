@@ -4,6 +4,8 @@
 mod buffer;
 mod slice;
 
+#[cfg(kani)]
+mod proofs;
 #[cfg(test)]
 mod tests;
 
