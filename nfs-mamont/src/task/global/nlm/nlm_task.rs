@@ -89,8 +89,9 @@ async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: 
         .await
     {
         error!(xid = xid, "nlm task: failed to send reply: {}", e);
+    } else {
+        debug!(xid = xid, "nlm task: reply queued");
     }
-    debug!(xid = xid, "nlm task: reply queued");
 }
 
 async fn process_message<N: Nlm + Send + Sync + 'static>(
