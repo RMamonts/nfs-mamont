@@ -6,7 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
@@ -84,9 +84,12 @@ async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: 
     // - some logs when occurred error
     // - or retry with fail
     // * but don't stop task
-    let _ = result_sender
+    if let Err(e) = result_sender
         .send(ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) })
-        .await;
+        .await
+    {
+        error!(xid = xid, "nlm task: failed to send reply: {}", e);
+    }
     debug!(xid = xid, "nlm task: reply queued");
 }
 
