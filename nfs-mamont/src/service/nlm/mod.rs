@@ -6,9 +6,9 @@
 
 use crate::service::nlm::lock_registry::LockRegistry;
 
-mod arithmetic;
 mod lock_registry;
 mod lock_types;
+mod range_ops;
 
 mod procedures;
 #[cfg(test)]
