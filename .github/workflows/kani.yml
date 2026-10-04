@@ -14,7 +14,13 @@ jobs:
   verify:
     name: Kani (${{ matrix.harnesses }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      # Kani 0.68 crashes on any reachable `catch_unwind` (model-checking/kani#4813,
+      # fixed after the release); move to the next release once it is out.
+      KANI_VERSION: "0.67.0"
+      # Toolchain installed by `cargo kani setup` for KANI_VERSION.
+      KANI_TOOLCHAIN: nightly-2025-11-21-x86_64-unknown-linux-gnu
     strategy:
       fail-fast: false
       matrix:
@@ -35,8 +41,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Verify harnesses
-        uses: model-checking/kani-github-action@v1
+      # `~/.kani/kani-*/toolchain` links into `~/.rustup/toolchains`, so the
+      # toolchain is cached together with the Kani bundle.
+      - name: Cache Kani
+        id: cache-kani
+        uses: actions/cache@v4
         with:
-          kani-version: "0.68.0"
-          args: -p nfs-mamont --harness ${{ matrix.harnesses }} --output-format terse
+          path: |
+            ~/.kani
+            ~/.rustup/toolchains/${{ env.KANI_TOOLCHAIN }}
+            ~/.cargo/bin/kani
+            ~/.cargo/bin/cargo-kani
+          key: kani-${{ env.KANI_VERSION }}-${{ runner.os }}
+
+      - name: Install Kani
+        if: steps.cache-kani.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked kani-verifier --version "$KANI_VERSION"
+          cargo kani setup
+
+      - name: Verify harnesses
+        run: |
+          # Cap virtual memory: a CBMC run that exhausts it fails its own
+          # harness instead of taking the runner down with the remaining ones.
+          ulimit -v $((12 * 1024 * 1024))
+          cargo kani -p nfs-mamont \
+            -Z async-lib -Z stubbing -Z unstable-options \
+            --harness-timeout 10m \
+            --harness "${{ matrix.harnesses }}" \
+            --output-format terse
