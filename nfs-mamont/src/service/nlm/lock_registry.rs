@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::io::Error;
 
 use crate::nlm::holder::Nlm4Holder;
-use crate::service::nlm::arithmetic::{drain_overlapping, merge_adjacent, ranges_overlap};
 use crate::service::nlm::lock_types::{ActiveLock, PendingLock};
+use crate::service::nlm::range_ops::{drain_overlapping, merge_adjacent, ranges_overlap};
 use crate::vfs::file::Handle;
 
 /// In-memory collection of all active locks grouped by file handle.

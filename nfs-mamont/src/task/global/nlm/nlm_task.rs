@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender};
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::nlm::{Nlm, NlmRes};
@@ -29,6 +29,7 @@ pub struct NlmCommand<B: Buffer> {
     pub message: NlmMessageWrapper,
 }
 
+/// The main task is to obtain/send nlm procedures.
 pub struct NlmTask<B, N>
 where
     B: Buffer + 'static,
@@ -98,10 +99,14 @@ async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: 
     // - some logs when occurred error
     // - or retry with fail
     // * but don't stop task
-    let _ = result_sender
+    if let Err(e) = result_sender
         .send(ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) })
-        .await;
-    debug!(xid = xid, "nlm task: reply queued");
+        .await
+    {
+        error!(xid = xid, "nlm task: failed to send reply: {}", e);
+    } else {
+        debug!(xid = xid, "nlm task: reply queued");
+    }
 }
 
 async fn process_message<N: Nlm + Send + Sync + 'static>(
