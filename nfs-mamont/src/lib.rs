@@ -1,6 +1,7 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
 mod allocator;
+mod backend;
 pub mod consts;
 mod context;
 pub mod mount;
@@ -21,14 +22,17 @@ use tokio::signal;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
-use crate::task::global::nlm::NlmTask;
+use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
 use crate::{mount::Mount, task::connection};
 
-use crate::nlm::Nlm;
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use rpc::auth;
+pub use vfs::file::BackendId;
 
 /// Initializes tracing logs.
 ///
@@ -79,7 +83,7 @@ where
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
                     Err(err) => break Err(err),
                 }

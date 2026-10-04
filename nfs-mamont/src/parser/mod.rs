@@ -18,7 +18,8 @@ use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
-use crate::rpc::{Credential, Error};
+use crate::rpc::auth::Credential;
+use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
@@ -39,7 +40,7 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
 
 /// Represents the RPC request header extracted during message parsing.
 /// Contains metadata required for identifying and authenticating an RPC call.
-#[cfg_attr(test, derive(PartialEq, Debug, Clone))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct RpcHeader {
     pub xid: u32,
     /// Authenticated caller identity extracted from the RPC credential.

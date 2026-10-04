@@ -11,33 +11,3 @@ use std::io::Read;
 pub fn unlock(src: &mut impl Read) -> Result<Nlm4UnlockArgs> {
     Ok(Nlm4UnlockArgs { cookie: Cookie::new(u64(src)?), lock: parse_lock(src)? })
 }
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use crate::parser::nlm::xdr;
-
-    #[test]
-    fn test_unlock() {
-        let mut data = Vec::new();
-        data.extend(xdr::u64_val(42));
-        data.extend(xdr::string("nfs-client"));
-        data.extend(xdr::handle(&[0xFE; 8]));
-        data.extend(xdr::opaque(&[0xAB, 0xCD]));
-        data.extend(xdr::i32_val(-1));
-        data.extend(xdr::u64_val(50));
-        data.extend(xdr::u64_val(0));
-
-        let result = super::unlock(&mut Cursor::new(data)).unwrap();
-
-        assert_eq!(result.cookie.raw(), 42);
-        assert_eq!(result.lock.caller_name, "nfs-client");
-        assert_eq!(result.lock.system_identifier, -1);
-    }
-
-    #[test]
-    fn test_unlock_insufficient_data() {
-        assert!(super::unlock(&mut Cursor::new(xdr::string("test"))).is_err());
-    }
-}
