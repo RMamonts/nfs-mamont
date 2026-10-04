@@ -24,6 +24,7 @@ pub struct NlmCommand<B: Buffer> {
     pub args: NlmArgWrapper,
 }
 
+/// The main task is to obtain/send nlm procedures.
 pub struct NlmTask<B, N>
 where
     B: Buffer + 'static,
