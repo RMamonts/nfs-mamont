@@ -2,7 +2,8 @@ use crate::nlm::procedures::test::{Nlm4TestArgs, Nlm4TestReply, Nlm4TestRes, Tes
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
 
-use super::{ActiveLock, NlmService};
+use crate::service::nlm::lock_types::ActiveLock;
+use crate::service::nlm::NlmService;
 
 impl Test for NlmService {
     async fn test(&self, args: Nlm4TestArgs, _cred: &Credential) -> Nlm4TestRes {

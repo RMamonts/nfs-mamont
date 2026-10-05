@@ -6,6 +6,8 @@ NFS Mamont is a from-scratch, user-space implementation of the NFS protocol
 family. It is built on `tokio` and uses its own RPC/XDR encoder and decoder,
 providing a complete MOUNT and NFSv3 stack. The project currently targets
 **NFSv3** support, with NFSv4 planned as a future milestone.
+> [!CAUTION]
+> Project is  under active development now
 
 ## Features
 
