@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender, TryRecvError};
@@ -156,7 +157,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Returns
     ///
     /// Creates new [`VfsTask`] and link to it that executes commands.
-    pub fn new<V>(backends: BackendRegistry<V>, vfs_concurrency: usize) -> Self
+    pub fn new<V>(backends: BackendRegistry<V>, vfs_concurrency: NonZeroUsize) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
@@ -193,7 +194,7 @@ where
     /// Receiver from the vfs task, consumed by this single task.
     command_receiver: VfsCommandReceiver<B>,
     /// Maximum number of concurrent VFS operations.
-    vfs_concurrency: usize,
+    vfs_concurrency: NonZeroUsize,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -215,7 +216,7 @@ where
     pub fn new(
         backends: BackendRegistry<V>,
         command_receiver: VfsCommandReceiver<B>,
-        vfs_concurrency: usize,
+        vfs_concurrency: NonZeroUsize,
     ) -> Self {
         Self { backends, command_receiver, vfs_concurrency }
     }
@@ -237,7 +238,7 @@ where
         let vfs_concurrency = self.vfs_concurrency;
 
         let mut commands = FuturesUnordered::new();
-        let mut capacity_left = vfs_concurrency;
+        let mut capacity_left = vfs_concurrency.get();
         let mut finish = false;
 
         while !finish {

@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use crate::allocator::{Allocator, Buffer};
@@ -58,7 +59,7 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Creates a context with the given allocator and no backends attached.
-    pub fn new(allocator: Arc<A>, vfs_concurrency: usize) -> Self {
+    pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
         let backends = BackendRegistry::new();
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
 
