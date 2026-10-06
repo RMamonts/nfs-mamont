@@ -19,7 +19,7 @@ pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
     match (res.test_stat.stat, res.test_stat.holder) {
         (Nlm4Stats::Denied, Some(nlm_holder)) => holder(dest, nlm_holder),
         (Nlm4Stats::Denied, None) | (_, Some(_)) => {
-            Err(io::Error::new(io::ErrorKind::InvalidInput, "Stat is Denied but holder is None"))
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "holder should be present only with Denied status"))
         }
         (_, None) => Ok(()),
     }

@@ -96,7 +96,7 @@ fn test_res_granted_ignores_holder() {
     let res = Nlm4TestRes {
         cookie: cookie(100),
         test_stat: Nlm4TestReply {
-            stat: Nlm4Stats::Granted,
+            stat: Nlm4Stats::Denied,
             holder: Some(Nlm4Holder {
                 exclusive: true,
                 system_identifier: 1,
@@ -111,7 +111,7 @@ fn test_res_granted_ignores_holder() {
         buf.into_inner(),
         [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
+            0x00, 0x00, 0x00, 0x01, // Granted = 0
         ]
     );
 }
