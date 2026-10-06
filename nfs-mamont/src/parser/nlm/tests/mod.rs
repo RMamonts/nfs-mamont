@@ -1,4 +1,5 @@
 mod cancel;
+pub mod granted;
 mod lock;
 mod test;
 mod unlock;

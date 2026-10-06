@@ -16,7 +16,7 @@ use crate::context::ServerContext;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::ProcReply;
+use crate::task::{ProcCall, ProcReply};
 use crate::vfs::Vfs;
 
 mod read;
@@ -45,15 +45,18 @@ pub fn new<A, V, B>(
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
 
+    // Channel for call.
+    let (message_sender, message_receiver) = async_channel::unbounded::<ProcCall>();
+
     let command_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
         context.get_vfs_manager().sender(),
         result_sender.clone(),
+        message_sender,
     );
-
     read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
         .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, result_receiver, message_receiver).spawn();
 }

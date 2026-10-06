@@ -13,6 +13,8 @@ use std::io;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::nlm::procedures::granted::Nlm4GrantedRes;
+use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
@@ -54,14 +56,22 @@ pub enum Nlm4Stats {
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,
-    /// NLM LOCK procedure response.
+    /// Server response to the NLM LOCK procedure.
     Lock(Nlm4LockRes),
-    /// NLM UNLOCK procedure response.
+    /// Server response to the NLM UNLOCK procedure.
     Unlock(Nlm4UnlockRes),
-    /// NLM TEST procedure response.
+    /// Server response to the NLM TEST procedure.
     Test(Box<Nlm4TestRes>),
-    /// NLM CANCEL procedure response.
+    /// Server response to the NLM CANCEL procedure.
     Cancel(Nlm4CancelRes),
+    /// Client response to the NLM GRANTED procedure.
+    Granted(Nlm4GrantedRes),
+}
+
+/// Wrapper for all supported types of procedures that call the client.
+pub enum NlmCallbackReply {
+    /// Client response to the NLM GRANTED procedure.
+    Granted(Nlm4TestArgs),
 }
 
 /// The unique identifier of the lock owner.
@@ -93,11 +103,13 @@ impl OpaqueHandle {
 /// - [`Unlock`](procedures::unlock::Unlock) — release a lock
 /// - [`Test`](procedures::test::Test) — test whether a lock could be granted
 /// - [`Cancel`](procedures::cancel::Cancel) — cancel a pending lock request
+/// - [`Granted`](procedures::granted::Granted) — is is necessary to process the client's response to the RPC call
 pub trait Nlm:
     procedures::lock::Lock
     + procedures::unlock::Unlock
     + procedures::test::Test
     + procedures::cancel::Cancel
+    + procedures::granted::Granted
 {
 }
 
@@ -106,6 +118,7 @@ impl<T> Nlm for T where
         + procedures::unlock::Unlock
         + procedures::test::Test
         + procedures::cancel::Cancel
+        + procedures::granted::Granted
 {
 }
 
