@@ -56,8 +56,8 @@ fn opaque_handle_normal() {
 #[test]
 fn opaque_handle_zero_length() {
     let data = xdr::opaque(&[]);
-    let oh = opaque_handle(&mut Cursor::new(data)).unwrap();
-    assert!(oh.as_bytes().iter().all(|&b| b == 0));
+    let handle = opaque_handle(&mut Cursor::new(data));
+    assert!(matches!(handle, Err(Error::IO(..))));
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn opaque_handle_max_size() {
 #[test]
 fn opaque_handle_too_large() {
     let data = xdr::opaque(&[0; 1025]);
-    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::BadFileHandle)));
+    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::MaxElemLimit)));
 }
 
 #[test]

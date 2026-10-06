@@ -75,6 +75,9 @@ impl OpaqueHandle {
         if inner.len() > OPAQUE_HANDLE_SIZE {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
+        if inner.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle should not be empty"));
+        }
         Ok(OpaqueHandle(inner))
     }
 
