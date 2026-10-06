@@ -357,7 +357,7 @@ fn parse_error(err: crate::rpc::Error) -> io::Error {
 /// Checks that the reply carries the expected xid, reports `accept_stat ==
 /// SUCCESS` and a boolean result of `TRUE`. Decoding goes through the crate's
 /// XDR [`primitive`] parser, so the verifier is length-checked against
-/// [`crate::rpc::MAX_AUTH_SIZE`] and its XDR padding is consumed correctly.
+/// [`crate::consts::rpc::MAX_AUTH_SIZE`] and its XDR padding is consumed correctly.
 ///
 /// # Parameters
 ///
