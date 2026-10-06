@@ -58,8 +58,6 @@ use crate::rpc::auth::{AuthStat, Credential};
 use crate::rpc::{AuthFlavor, RpcBody, VersionMismatch, RPC_VERSION};
 use crate::vfs;
 
-use super::map_eof;
-
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
 /// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`vfs::write::Args`]).
@@ -69,6 +67,24 @@ use super::map_eof;
 /// frame into memory before parsing and fails with `InvalidData` if the
 /// arguments extend beyond that window.
 pub const DEFAULT_SIZE: usize = 2500;
+
+/// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
+///
+/// After [`FrameReader::begin_body`] the head window of the frame is fully
+/// buffered, so running out of data during synchronous parsing means either
+/// the frame is shorter than its arguments (truncated message) or the
+/// arguments do not fit into the parser buffer (legal only for `WRITE`
+/// payloads, which are streamed separately). Both cases are protocol
+/// violations rather than transient I/O conditions.
+fn map_eof(error: Error) -> Error {
+    match error {
+        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "RPC message arguments exceed frame or buffer bounds",
+        )),
+        other => other,
+    }
+}
 
 /// Parser for RPC messages over async streams.
 ///

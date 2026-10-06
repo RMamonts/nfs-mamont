@@ -95,10 +95,7 @@ fn test_res_granted_ignores_holder() {
     let mut buf = Cursor::new(vec![0u8; 12]);
     let res = Nlm4TestRes {
         cookie: cookie(100),
-        test_stat: Nlm4TestReply {
-            stat: Nlm4Stats::Granted,
-            holder: None,
-        },
+        test_stat: Nlm4TestReply { stat: Nlm4Stats::Granted, holder: None },
     };
     test_res(&mut buf, res).unwrap();
     assert_eq!(
