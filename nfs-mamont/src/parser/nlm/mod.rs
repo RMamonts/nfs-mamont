@@ -1,5 +1,7 @@
 //! Parsing of NLMv4 procedure arguments from incoming RPC calls.
 
+use std::io::Read;
+
 use crate::consts::nlm;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::{Nlm4Stats, OpaqueHandle};
@@ -7,7 +9,6 @@ use crate::parser::nfsv3::file;
 use crate::parser::primitive::u32;
 use crate::parser::primitive::{i32, string_max_size, u64, vector};
 use crate::parser::{Error, Result};
-use std::io::Read;
 
 pub mod cancel;
 pub mod granted;

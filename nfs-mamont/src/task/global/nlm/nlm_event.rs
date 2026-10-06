@@ -1,7 +1,8 @@
+use async_channel::Sender;
+
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::NlmCallbackReply;
 use crate::task::{ProcCall, ProcMessage};
-use async_channel::Sender;
 
 /// The abstraction necessary to encapsulate the host channel in WriteTask.
 /// The channel is required to identify the client.
