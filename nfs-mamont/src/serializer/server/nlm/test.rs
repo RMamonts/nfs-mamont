@@ -7,7 +7,7 @@ use crate::nlm::procedures::test::Nlm4TestRes;
 use crate::nlm::Nlm4Stats;
 use crate::serializer::{u32, u64, vector};
 
-use super::{cookie, stat};
+use super::{cookie, holder, stat};
 
 /// Serializes an [`Nlm4TestRes`] as the XDR reply body for `NLMPROC4_TEST`.
 ///
@@ -17,21 +17,11 @@ use super::{cookie, stat};
 pub fn test_res(dest: &mut impl Write, res: Nlm4TestRes) -> io::Result<()> {
     cookie(dest, res.cookie)?;
     stat(dest, res.test_stat.stat)?;
-    if res.test_stat.stat == Nlm4Stats::Denied {
-        let holder = match res.test_stat.holder {
-            Some(holder) => holder,
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Stat is Denied but holder is None",
-                ))
-            }
-        };
-        u32(dest, holder.exclusive as u32)?;
-        u32(dest, holder.system_identifier as u32)?;
-        vector(dest, holder.opaque_handle.as_bytes())?;
-        u64(dest, holder.lock_offset)?;
-        u64(dest, holder.lock_length)?;
+    match (res.test_stat.stat, res.test_stat.holder) {
+        (Nlm4Stats::Denied, Some(nlm_holder)) => holder(dest, nlm_holder),
+        (Nlm4Stats::Denied, None) | (_, Some(_)) => {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "Stat is Denied but holder is None"))
+        }
+        (_, None) => Ok(()),
     }
-    Ok(())
 }
