@@ -25,15 +25,21 @@ pub fn fill_opaque(value: u8) -> OpaqueHandle {
 }
 
 pub fn make_active_lock(
-    caller: &str,
+    caller_name: &str,
     pid: i32,
     exclusive: bool,
     offset: u64,
     length: u64,
     opaque_value: u8,
 ) -> ActiveLock {
-    ActiveLock::new(caller, pid, exclusive, offset, length, fill_opaque(opaque_value))
-        .expect("Test caller_name must be valid")
+    ActiveLock {
+        caller_name: caller_name.to_string(),
+        system_identifier: pid,
+        exclusive,
+        offset,
+        length,
+        opaque_handle: fill_opaque(opaque_value),
+    }
 }
 
 pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, lock: ActiveLock) {

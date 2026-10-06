@@ -5,7 +5,6 @@ use std::io::Write;
 
 use crate::nlm::procedures::test::Nlm4TestRes;
 use crate::nlm::Nlm4Stats;
-use crate::serializer::{u32, u64, vector};
 
 use super::{cookie, holder, stat};
 

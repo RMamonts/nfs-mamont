@@ -41,26 +41,26 @@ pub fn split_lock(
     let mut fragments = Vec::new();
 
     if lock_start < unlock_start {
-        fragments.push(ActiveLock::new(
-            lock.caller_name.as_str(),
-            lock.system_identifier,
-            lock.exclusive,
-            lock_start,
-            unlock_start - lock_start,
-            lock.opaque_handle.clone(),
-        )?);
+        fragments.push(ActiveLock {
+            caller_name: lock.caller_name.clone(),
+            system_identifier: lock.system_identifier,
+            exclusive: lock.exclusive,
+            offset: lock_start,
+            length: unlock_start - lock_start,
+            opaque_handle: lock.opaque_handle.clone(),
+        });
     }
 
     if unlock_end < lock_end {
         let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
-        fragments.push(ActiveLock::new(
-            lock.caller_name.as_str(),
-            lock.system_identifier,
-            lock.exclusive,
-            unlock_end + 1,
-            right_len,
-            lock.opaque_handle,
-        )?);
+        fragments.push(ActiveLock {
+            caller_name: lock.caller_name,
+            system_identifier: lock.system_identifier,
+            exclusive: lock.exclusive,
+            offset: unlock_end + 1,
+            length: right_len,
+            opaque_handle: lock.opaque_handle,
+        });
     }
 
     Ok(fragments)

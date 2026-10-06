@@ -3,11 +3,12 @@
 //! Serializes NLM procedure responses (Lock, Unlock, Test, Cancel)
 //! into XDR wire format for transmission back to the client.
 
-use crate::nlm::Nlm4Stats;
-use crate::serializer::{u32, u64, variant, vector};
-use futures_util::TryStreamExt;
 use std::io;
 use std::io::Write;
+
+use crate::nlm::holder::Nlm4Holder;
+use crate::nlm::Nlm4Stats;
+use crate::serializer::{u32, u64, variant, vector};
 
 mod cancel;
 mod lock;
@@ -16,7 +17,6 @@ mod test;
 mod tests;
 mod unlock;
 
-use crate::nlm::holder::Nlm4Holder;
 pub use cancel::cancel_res;
 pub use lock::lock_res;
 pub use test::test_res;
