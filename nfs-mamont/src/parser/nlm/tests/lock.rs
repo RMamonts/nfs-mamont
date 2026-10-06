@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use super::xdr;
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::Name;
 use crate::parser::nlm::lock::lock;
 
 #[test]
@@ -20,13 +21,14 @@ fn test_lock() {
     data.extend(xdr::u32_val(3));
 
     let result = lock(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("client".to_string()).unwrap();
 
     assert_eq!(result.cookie.raw(), 7);
     assert!(result.block);
     assert!(!result.exclusive);
     assert!(!result.reclaim);
     assert_eq!(result.state, 3);
-    assert_eq!(result.lock.caller_name, "client");
+    assert_eq!(result.lock.caller_name, name);
 }
 
 #[test]

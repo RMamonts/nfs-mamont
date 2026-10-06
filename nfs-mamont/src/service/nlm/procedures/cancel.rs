@@ -8,7 +8,7 @@ use crate::service::nlm::NlmService;
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs, _cred: &Credential) -> Nlm4CancelRes {
         let target = match PendingLock::new(
-            args.lock.caller_name,
+            args.lock.caller_name.as_str(),
             args.lock.system_identifier,
             args.exclusive,
             args.lock.lock_offset,

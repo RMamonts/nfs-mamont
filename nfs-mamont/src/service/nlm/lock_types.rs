@@ -48,15 +48,15 @@ impl ActiveLock {
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
     pub fn new(
-        caller_name: String,
+        caller_name: &str,
         system_identifier: i32,
         exclusive: bool,
         offset: u64,
         length: u64,
         opaque_handle: OpaqueHandle,
     ) -> Result<Self, Error> {
-        check_caller_name(&caller_name)?;
-
+        check_caller_name(caller_name)?;
+        let caller_name = caller_name.to_string();
         Ok(ActiveLock { caller_name, system_identifier, exclusive, offset, length, opaque_handle })
     }
 }
@@ -103,7 +103,7 @@ impl PendingLock {
     /// - `caller_name` is empty.
     /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
     pub fn new(
-        caller_name: String,
+        caller_name: &str,
         system_identifier: i32,
         exclusive: bool,
         offset: u64,
@@ -111,7 +111,8 @@ impl PendingLock {
         opaque_handle: OpaqueHandle,
         cookie: Cookie,
     ) -> Result<Self, Error> {
-        check_caller_name(&caller_name)?;
+        check_caller_name(caller_name)?;
+        let caller_name = caller_name.to_string();
         Ok(PendingLock {
             caller_name,
             system_identifier,
@@ -130,7 +131,7 @@ impl PendingLock {
 impl From<&PendingLock> for ActiveLock {
     fn from(p: &PendingLock) -> Self {
         ActiveLock::new(
-            p.caller_name.clone(),
+            p.caller_name.as_str(),
             p.system_identifier,
             p.exclusive,
             p.offset,

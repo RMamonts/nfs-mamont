@@ -42,7 +42,7 @@ pub fn split_lock(
 
     if lock_start < unlock_start {
         fragments.push(ActiveLock::new(
-            lock.caller_name.clone(),
+            lock.caller_name.as_str(),
             lock.system_identifier,
             lock.exclusive,
             lock_start,
@@ -54,7 +54,7 @@ pub fn split_lock(
     if unlock_end < lock_end {
         let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
         fragments.push(ActiveLock::new(
-            lock.caller_name,
+            lock.caller_name.as_str(),
             lock.system_identifier,
             lock.exclusive,
             unlock_end + 1,

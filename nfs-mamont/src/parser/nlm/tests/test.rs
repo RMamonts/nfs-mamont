@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use super::xdr;
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::Name;
 use crate::parser::nlm::test::test;
 
 #[test]
@@ -17,10 +18,11 @@ fn test_test() {
     data.extend(xdr::u64_val(200));
 
     let result = test(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("host".to_string()).unwrap();
 
     assert_eq!(result.cookie.raw(), 1);
     assert!(result.exclusive);
-    assert_eq!(result.lock.caller_name, "host");
+    assert_eq!(result.lock.caller_name, name);
 }
 
 #[test]

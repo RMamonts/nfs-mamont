@@ -10,7 +10,7 @@ impl Test for NlmService {
         let registry = self.locks.read().await;
 
         let request = match ActiveLock::new(
-            args.lock.caller_name,
+            args.lock.caller_name.as_str(),
             args.lock.system_identifier,
             args.exclusive,
             args.lock.lock_offset,

@@ -6,7 +6,7 @@ use crate::service::nlm::NlmService;
 
 impl Unlock for NlmService {
     async fn unlock(&self, args: Nlm4UnlockArgs, _cred: &Credential) -> Nlm4UnlockRes {
-        if check_caller_name(&args.lock.caller_name).is_err() {
+        if check_caller_name(args.lock.caller_name.as_str()).is_err() {
             return Nlm4UnlockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
         }
 
@@ -16,7 +16,7 @@ impl Unlock for NlmService {
         if registry
             .remove_by_owner(
                 &fh,
-                &args.lock.caller_name,
+                args.lock.caller_name.as_str(),
                 args.lock.system_identifier,
                 args.lock.lock_offset,
                 args.lock.lock_length,

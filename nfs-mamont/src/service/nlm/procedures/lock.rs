@@ -10,7 +10,7 @@ impl Lock for NlmService {
         let mut registry = self.locks.write().await;
 
         let new_lock = match PendingLock::new(
-            args.lock.caller_name,
+            args.lock.caller_name.as_str(),
             args.lock.system_identifier,
             args.exclusive,
             args.lock.lock_offset,

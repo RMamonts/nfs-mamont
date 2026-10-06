@@ -11,19 +11,21 @@ pub mod rpc;
 #[cfg(test)]
 mod tests;
 
-use std::future::Future;
-
 use crate::allocator::Buffer;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
+
 use crate::rpc::auth::Credential;
 use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
+use std::future::Future;
+use std::io;
+use std::io::ErrorKind;
 
 /// Result of parsing operations with errors type [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
@@ -35,6 +37,24 @@ pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Re
     match future.await {
         Ok(_) => error,
         Err(err) => err,
+    }
+}
+
+/// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
+///
+/// After [`FrameReader::begin_body`] the head window of the frame is fully
+/// buffered, so running out of data during synchronous parsing means either
+/// the frame is shorter than its arguments (truncated message) or the
+/// arguments do not fit into the parser buffer (legal only for `WRITE`
+/// payloads, which are streamed separately). Both cases are protocol
+/// violations rather than transient I/O conditions.
+fn map_eof(error: Error) -> Error {
+    match error {
+        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "RPC message arguments exceed frame or buffer bounds",
+        )),
+        other => other,
     }
 }
 

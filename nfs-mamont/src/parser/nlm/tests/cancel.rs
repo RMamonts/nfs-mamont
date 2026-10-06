@@ -1,7 +1,7 @@
-use std::io::Cursor;
-
 use super::xdr;
+use crate::nlm::Name;
 use crate::parser::nlm::cancel::cancel;
+use std::io::Cursor;
 
 #[test]
 fn test_cancel() {
@@ -17,11 +17,12 @@ fn test_cancel() {
     data.extend(xdr::u64_val(512));
 
     let result = cancel(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("hostname".to_string()).unwrap();
 
     assert!(result.cookie.is_zero());
     assert!(!result.block);
     assert!(result.exclusive);
-    assert_eq!(result.lock.caller_name, "hostname");
+    assert_eq!(result.lock.caller_name, name);
 }
 
 #[test]

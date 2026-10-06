@@ -8,6 +8,7 @@ use std::io::Cursor;
 
 use super::{opaque_handle, parse_lock};
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::Name;
 use crate::parser::Error;
 
 fn make_lock_bytes(
@@ -32,8 +33,9 @@ fn make_lock_bytes(
 fn parse_lock_success() {
     let data = make_lock_bytes("host", &[0xAB; NFS3_FHSIZE], &[0xCD; 4], 12345, 0, 100);
     let lock = parse_lock(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("host".to_string()).unwrap();
 
-    assert_eq!(lock.caller_name, "host");
+    assert_eq!(lock.caller_name, name);
     assert_eq!(lock.system_identifier, 12345);
     assert_eq!(lock.lock_length, 100);
 }
