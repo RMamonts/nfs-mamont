@@ -6,7 +6,8 @@
 use std::io;
 use std::io::Write;
 
-use crate::rpc::{OpaqueAuth, MAX_AUTH_SIZE};
+use crate::consts::rpc::MAX_AUTH_SIZE;
+use crate::rpc::OpaqueAuth;
 use crate::serializer::{variant, vec_max_size};
 
 /// Serializes [`OpaqueAuth`] (flavor + body) into XDR.
