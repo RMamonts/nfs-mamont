@@ -2,12 +2,9 @@
 //!
 //! Contains [`Nlm4Share`], [`FileSharingMode`] and [`FileSharingAccess`] types for DOS file sharing.
 
-use std::io::Error;
-
-use crate::consts::nlm;
 use crate::vfs;
 
-use super::OpaqueHandle;
+use super::{Name, OpaqueHandle};
 
 /// DOS-style file sharing mode.
 ///
@@ -42,7 +39,7 @@ pub enum FileSharingAccess {
 /// This structure is used to support DOS file sharing.
 pub struct Nlm4Share {
     /// Name of the client host making the lock request.
-    pub caller_name: String,
+    pub caller_name: Name,
     /// Handle to the file to share.
     pub file_handle: vfs::file::Handle,
     /// Host or process that is making the request.
@@ -51,81 +48,4 @@ pub struct Nlm4Share {
     pub fsh4_mode: FileSharingMode,
     /// Specifies operations allowed to the requesting client.
     pub fsh4_access: FileSharingAccess,
-}
-
-impl Nlm4Share {
-    /// Creates a new file share request.
-    ///
-    /// # Parameters
-    ///
-    /// - `caller_name`: Name of the client host making the lock request.
-    /// - `file_handle`: Handle to the file to share.
-    /// - `opaque_handle`: Host or process that is making the request.
-    /// - `fsh4_mode`: Specifies operations prohibited to other clients.
-    /// - `fsh4_access`: Specifies operations allowed to the requesting client.
-    ///
-    /// # Returns
-    ///
-    /// Returns a new [`Nlm4Share`] instance if the request is valid.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` with a text message if:
-    ///
-    /// - `caller_name` is empty.
-    /// - `caller_name` is longer than `LM_MAXSTRLEN`.
-    pub fn new(
-        caller_name: String,
-        file_handle: vfs::file::Handle,
-        opaque_handle: OpaqueHandle,
-        fsh4_mode: FileSharingMode,
-        fsh4_access: FileSharingAccess,
-    ) -> Result<Self, Error> {
-        if caller_name.is_empty() {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "caller_name must not be empty",
-            ));
-        }
-
-        if caller_name.len() > nlm::LM_MAXSTRLEN {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("caller_name is too long (max {})", nlm::LM_MAXSTRLEN),
-            ));
-        }
-
-        Ok(Nlm4Share { caller_name, file_handle, opaque_handle, fsh4_mode, fsh4_access })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::consts::nfsv3::NFS3_FHSIZE;
-    use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
-    use crate::vfs::file::Handle;
-
-    use super::{FileSharingAccess, FileSharingMode, Nlm4Share, OpaqueHandle};
-
-    #[test]
-    fn new_share_succeeds() {
-        let caller_name = "host".to_string();
-        let fh = [0; NFS3_FHSIZE];
-        let file_handle = Handle(fh);
-        let oh = [1; OPAQUE_HANDLE_SIZE].to_vec();
-        let oh_verf = oh.clone();
-        let opaque_handle = OpaqueHandle::new(oh).unwrap();
-        let fsh4_mode = FileSharingMode::Read;
-        let fsh4_access = FileSharingAccess::ReadWrite;
-
-        let lock =
-            Nlm4Share::new(caller_name.clone(), file_handle, opaque_handle, fsh4_mode, fsh4_access)
-                .unwrap();
-
-        assert_eq!(lock.caller_name, caller_name);
-        assert_eq!(lock.file_handle.0, fh);
-        assert_eq!(lock.opaque_handle.as_bytes(), oh_verf.as_slice());
-        assert_eq!(lock.fsh4_access, fsh4_access);
-        assert_eq!(lock.fsh4_mode, fsh4_mode);
-    }
 }

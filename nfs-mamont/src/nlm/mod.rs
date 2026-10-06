@@ -76,7 +76,10 @@ impl OpaqueHandle {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
         if inner.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle should not be empty"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "opaque handle should not be empty",
+            ));
         }
         Ok(OpaqueHandle(inner))
     }

@@ -55,13 +55,13 @@ impl LockRegistry {
             if !ranges_overlap(lock.offset, lock.length, request.offset, request.length) {
                 continue;
             }
-            return Some(Nlm4Holder::new(
-                lock.exclusive,
-                lock.system_identifier,
-                lock.opaque_handle.clone(),
-                lock.offset,
-                lock.length,
-            ));
+            return Some(Nlm4Holder {
+                exclusive: lock.exclusive,
+                system_identifier: lock.system_identifier,
+                opaque_handle: lock.opaque_handle.clone(),
+                lock_offset: lock.offset,
+                lock_length: lock.length,
+            });
         }
         None
     }

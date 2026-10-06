@@ -27,14 +27,14 @@ pub fn caller_name(src: &mut impl Read) -> Result<Name> {
 
 /// Decodes the lock-arguments block shared by every LOCK/UNLOCK/TEST/CANCEL request.
 pub fn parse_lock(src: &mut impl Read) -> Result<Nlm4Lock> {
-    Ok(Nlm4Lock::new(
-        caller_name(src)?,
-        file::handle(src)?,
-        opaque_handle(src)?,
-        i32(src)?,
-        u64(src)?,
-        u64(src)?,
-    ))
+    Ok(Nlm4Lock {
+        caller_name: caller_name(src)?,
+        file_handle: file::handle(src)?,
+        opaque_handle: opaque_handle(src)?,
+        system_identifier: i32(src)?,
+        lock_offset: u64(src)?,
+        lock_length: u64(src)?,
+    })
 }
 
 #[cfg(test)]
