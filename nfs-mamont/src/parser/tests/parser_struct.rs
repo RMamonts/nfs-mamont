@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::allocator::Buffer;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{FSSTAT, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION, WRITE};
+use crate::consts::rpc::RPC_VERSION;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
@@ -11,7 +12,7 @@ use crate::parser::{
     ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
 };
 use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
-use crate::rpc::{AuthFlavor, OpaqueAuth, RpcBody, RPC_VERSION};
+use crate::rpc::{AuthFlavor, OpaqueAuth, RpcBody};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;

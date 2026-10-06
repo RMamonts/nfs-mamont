@@ -7,16 +7,6 @@ use auth::AuthStat;
 
 pub mod auth;
 
-pub const RPC_VERSION: u32 = 2;
-
-pub const MAX_AUTH_SIZE: usize = 400;
-
-/// Maximum length of the `machinename` field in `AUTH_SYS` credentials (RFC 5531, appendix A).
-pub const AUTH_SYS_MAX_MACHINE_NAME: usize = 255;
-
-/// Maximum number of auxiliary GIDs in `AUTH_SYS` credentials (RFC 5531, appendix A).
-pub const AUTH_SYS_MAX_GIDS: usize = 16;
-
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,

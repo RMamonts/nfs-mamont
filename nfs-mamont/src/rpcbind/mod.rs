@@ -26,9 +26,10 @@ use tracing::warn;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION};
+use crate::consts::rpc::RPC_VERSION;
 use crate::parser::primitive;
 use crate::parser::rpc as parser_rpc;
-use crate::rpc::{AcceptStat, AuthFlavor, OpaqueAuth, ReplyBody, RpcBody, RPC_VERSION};
+use crate::rpc::{AcceptStat, AuthFlavor, OpaqueAuth, ReplyBody, RpcBody};
 use crate::serializer;
 
 /// Program number of the portmapper/`rpcbind` service itself.
