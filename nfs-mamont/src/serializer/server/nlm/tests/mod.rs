@@ -25,8 +25,9 @@ fn lock_res_serializes_cookie_and_granted() {
     assert_eq!(
         buf.into_inner(),
         [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // cookie
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
+            // cookie
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // Granted = 0
+            0x00, 0x00, 0x00, 0x00,
         ]
     );
 }
@@ -39,8 +40,9 @@ fn lock_res_serializes_cookie_and_denied() {
     assert_eq!(
         buf.into_inner(),
         [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // cookie = 0
-            0x00, 0x00, 0x00, 0x01, // Denied = 1
+            // cookie = 0
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Denied = 1
+            0x00, 0x00, 0x00, 0x01,
         ]
     );
 }
@@ -53,8 +55,9 @@ fn unlock_res_serializes_cookie_and_stat() {
     assert_eq!(
         buf.into_inner(),
         [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, // cookie = 7
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
+            // cookie = 7
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, // Granted = 0
+            0x00, 0x00, 0x00, 0x00,
         ]
     );
 }
@@ -67,8 +70,9 @@ fn cancel_res_serializes_cookie_and_stat() {
     assert_eq!(
         buf.into_inner(),
         [
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // cookie = u64::MAX
-            0x00, 0x00, 0x00, 0x01, // Denied = 1
+            // cookie = u64::MAX
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // Denied = 1
+            0x00, 0x00, 0x00, 0x01,
         ]
     );
 }
@@ -84,8 +88,9 @@ fn test_res_granted_serializes_cookie_and_granted_no_holder() {
     assert_eq!(
         buf.into_inner(),
         [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
+            // cookie = 100
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // Granted = 0
+            0x00, 0x00, 0x00, 0x00,
         ]
     );
 }
@@ -101,8 +106,9 @@ fn test_res_granted_ignores_holder() {
     assert_eq!(
         buf.into_inner(),
         [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // cookie = 100
-            0x00, 0x00, 0x00, 0x00, // Granted = 0
+            // cookie = 100
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x64, // Granted = 0
+            0x00, 0x00, 0x00, 0x00,
         ]
     );
 }
@@ -125,11 +131,17 @@ fn test_res_denied_serializes_full_holder() {
     test_res(&mut buf, res).unwrap();
 
     let bytes = buf.into_inner();
+    // cookie
     assert_eq!(&bytes[0..8], [0x00, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF]);
+    // Denied = 1
     assert_eq!(&bytes[8..12], [0x00, 0x00, 0x00, 0x01]);
+    // exclusive = true
     assert_eq!(&bytes[12..16], [0x00, 0x00, 0x00, 0x01]);
+    // system_identifier = 12345
     assert_eq!(&bytes[16..20], [0x00, 0x00, 0x30, 0x39]);
+    // opaque_handle length = 1024
     assert_eq!(&bytes[20..24], [0x00, 0x00, 0x04, 0x00]);
+    // opaque_handle bytes
     assert_eq!(&bytes[24..24 + OPAQUE_HANDLE_SIZE], [0xAB; OPAQUE_HANDLE_SIZE]);
     let offset_off = 24 + OPAQUE_HANDLE_SIZE;
     assert_eq!(
@@ -158,6 +170,8 @@ fn test_res_denied_holder_has_correct_offset_in_buffer() {
     test_res(&mut buf, res).unwrap();
 
     let bytes = buf.into_inner();
-    assert_eq!(&bytes[12..16], [0x00, 0x00, 0x00, 0x00]); // exclusive = false
-    assert_eq!(&bytes[16..20], [0x00, 0x00, 0x03, 0xE7]); // system_identifier = 999
+    // exclusive = false
+    assert_eq!(&bytes[12..16], [0x00, 0x00, 0x00, 0x00]);
+    // system_identifier = 999
+    assert_eq!(&bytes[16..20], [0x00, 0x00, 0x03, 0xE7]);
 }
