@@ -99,7 +99,7 @@ impl Name {
     ///
     /// # Errors
     ///
-    /// Returns an error if `name.len() > MAX_NAME_LEN`.
+    /// Returns an error if `name.len() > MAX_NAME_LEN` or if `name` is empty.
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > LM_MAXSTRLEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));

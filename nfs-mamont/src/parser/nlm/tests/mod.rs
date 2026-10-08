@@ -4,12 +4,15 @@ mod test;
 mod unlock;
 mod xdr;
 
+use std::io;
 use std::io::Cursor;
 
-use super::{opaque_handle, parse_lock};
 use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::nlm::Name;
 use crate::parser::Error;
+
+use super::{opaque_handle, parse_lock};
+
 
 fn make_lock_bytes(
     caller_name: &str,
@@ -57,7 +60,7 @@ fn opaque_handle_normal() {
 fn opaque_handle_zero_length() {
     let data = xdr::opaque(&[]);
     let handle = opaque_handle(&mut Cursor::new(data));
-    assert!(matches!(handle, Err(Error::IO(..))));
+    assert!(matches!(handle, Err(Error::IO(err)) if err.kind() == io::ErrorKind::InvalidInput));
 }
 
 #[test]

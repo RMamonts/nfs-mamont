@@ -1,7 +1,9 @@
-use super::xdr;
+use std::io::Cursor;
+
 use crate::nlm::Name;
 use crate::parser::nlm::cancel::cancel;
-use std::io::Cursor;
+
+use super::xdr;
 
 #[test]
 fn test_cancel() {

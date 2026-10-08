@@ -103,7 +103,7 @@ impl LockRegistry {
             None => return Ok(()),
         };
 
-        drain_overlapping(active_locks, caller_name, system_identifier, offset, len)?;
+        drain_overlapping(active_locks, caller_name, system_identifier, offset, len);
 
         if active_locks.is_empty() {
             self.by_file.remove(file_handle);
@@ -129,7 +129,7 @@ impl LockRegistry {
             new_lock.system_identifier,
             new_lock.offset,
             new_lock.length,
-        )?;
+        );
         locks.push(new_lock);
         merge_adjacent(locks);
         Ok(())
