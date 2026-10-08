@@ -75,7 +75,7 @@ impl OpaqueHandle {
         if inner.len() > OPAQUE_HANDLE_SIZE {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
-Ok(OpaqueHandle(inner))
+        Ok(OpaqueHandle(inner))
     }
 
     /// Returns the underlying bytes of the opaque handle.
