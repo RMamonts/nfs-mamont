@@ -673,3 +673,92 @@ async fn parse_rejects_truncated_auth_sys() {
         Err(ErrorWrapper { error: Error::Auth(AuthStat::BadCred), xid: Some(XID) })
     ));
 }
+
+/// Socket that returns as much as the reader asks for and counts the reads.
+struct CountingSocket {
+    data: Vec<u8>,
+    position: usize,
+    reads: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl tokio::io::AsyncRead for CountingSocket {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let inner = self.get_mut();
+        inner.reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let n = buf.remaining().min(inner.data.len() - inner.position);
+        buf.put_slice(&inner.data[inner.position..inner.position + n]);
+        inner.position += n;
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+fn counting_socket(data: Vec<u8>) -> (CountingSocket, Arc<std::sync::atomic::AtomicUsize>) {
+    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    (CountingSocket { data, position: 0, reads: Arc::clone(&reads) }, reads)
+}
+
+/// Test: Pipelined small calls are fetched from the socket by a single read.
+#[tokio::test]
+async fn small_frames_share_a_read() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let root = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args(root));
+    });
+    let (socket, reads) = counting_socket(frame.repeat(64));
+    let mut parser = RpcParser::new(socket, Arc::new(MockAllocator::new(0)));
+
+    // 64 calls take ~3.8 KiB: more than an old 2500-byte buffer, far less than the default.
+    for _ in 0..64 {
+        let result = parser.next_message().await.unwrap();
+        assert_arg_wrapper(result, &header, assert_fsstat_proc_result, &root[..]);
+    }
+    assert_eq!(reads.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
+/// Test: A WRITE larger than the parser buffer is parsed between small calls,
+/// and the calls after it are parsed as well.
+#[tokio::test]
+async fn write_larger_than_buffer_between_small_frames() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let root = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    let fsstat = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args(root));
+    });
+    let data: Vec<u8> = (0..40_003u32).map(|i| (i % 251) as u8).collect();
+    let write = WriteWrapper {
+        part: write::ArgsPartial {
+            file: Handle(root),
+            offset: 7,
+            size: data.len() as u32,
+            stable: StableHow::FileSync,
+        },
+        data: &data,
+    };
+    let write_frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, WRITE, |buf| {
+        buf.extend_from_slice(&write_args(&write));
+    });
+    let stream = [&fsstat[..], &write_frame, &write_frame, &fsstat, &fsstat].concat();
+    let (socket, _) = counting_socket(stream);
+    let mut parser = RpcParser::new(socket, Arc::new(MockAllocator::new(data.len())));
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(result, &header, assert_fsstat_proc_result, &root[..]);
+    for _ in 0..2 {
+        let result = parser.next_message().await.unwrap();
+        assert_arg_wrapper(
+            result,
+            &header,
+            |proc, arg| assert_write_proc_result(proc, arg),
+            &write,
+        );
+    }
+    for _ in 0..2 {
+        let result = parser.next_message().await.unwrap();
+        assert_arg_wrapper(result, &header, assert_fsstat_proc_result, &root[..]);
+    }
+}
