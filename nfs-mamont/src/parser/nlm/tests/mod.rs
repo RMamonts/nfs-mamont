@@ -13,7 +13,6 @@ use crate::parser::Error;
 
 use super::{opaque_handle, parse_lock};
 
-
 fn make_lock_bytes(
     caller_name: &str,
     fh: &[u8],
