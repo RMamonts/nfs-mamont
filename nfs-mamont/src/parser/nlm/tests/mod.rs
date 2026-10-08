@@ -4,7 +4,6 @@ mod test;
 mod unlock;
 mod xdr;
 
-use std::io;
 use std::io::Cursor;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
@@ -58,8 +57,8 @@ fn opaque_handle_normal() {
 #[test]
 fn opaque_handle_zero_length() {
     let data = xdr::opaque(&[]);
-    let handle = opaque_handle(&mut Cursor::new(data));
-    assert!(matches!(handle, Err(Error::IO(err)) if err.kind() == io::ErrorKind::InvalidInput));
+    let handle = opaque_handle(&mut Cursor::new(data)).unwrap();
+    assert!(handle.as_bytes().is_empty());
 }
 
 #[test]
