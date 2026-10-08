@@ -22,6 +22,7 @@ fn lock_res_serializes_cookie_and_granted() {
     let mut buf = Cursor::new(vec![0u8; 12]);
     let res = Nlm4LockRes { cookie: cookie(0x0102030405060708), stat: Nlm4Stats::Granted };
     lock_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
@@ -37,6 +38,7 @@ fn lock_res_serializes_cookie_and_denied() {
     let mut buf = Cursor::new(vec![0u8; 12]);
     let res = Nlm4LockRes { cookie: cookie(0), stat: Nlm4Stats::Denied };
     lock_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
@@ -52,6 +54,7 @@ fn unlock_res_serializes_cookie_and_stat() {
     let mut buf = Cursor::new(vec![0u8; 12]);
     let res = Nlm4UnlockRes { cookie: cookie(7), stat: Nlm4Stats::Granted };
     unlock_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
@@ -67,6 +70,7 @@ fn cancel_res_serializes_cookie_and_stat() {
     let mut buf = Cursor::new(vec![0u8; 12]);
     let res = Nlm4CancelRes { cookie: cookie(u64::MAX), stat: Nlm4Stats::Denied };
     cancel_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
@@ -85,6 +89,7 @@ fn test_res_granted_serializes_cookie_and_granted_no_holder() {
         test_stat: Nlm4TestReply { stat: Nlm4Stats::Granted, holder: None },
     };
     test_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
@@ -103,6 +108,7 @@ fn test_res_granted_ignores_holder() {
         test_stat: Nlm4TestReply { stat: Nlm4Stats::Granted, holder: None },
     };
     test_res(&mut buf, res).unwrap();
+    #[rustfmt::skip]
     assert_eq!(
         buf.into_inner(),
         [
