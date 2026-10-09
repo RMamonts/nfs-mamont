@@ -7,6 +7,7 @@ use crate::vfs;
 use super::{Name, OpaqueHandle};
 
 /// This structure describes a lock request.
+#[derive(Clone)]
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
     pub caller_name: Name,

@@ -1,10 +1,26 @@
-use crate::nlm::{cookie::Cookie, OpaqueHandle};
+use crate::nlm::{cookie::Cookie, Name, OpaqueHandle};
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+
+/// The wrapper needed to notify the client.
+pub struct PendingGrant {
+    /// Transaction identifier from the original blocking LOCK request;
+    /// echoed back to the client in the GRANTED callback.
+    pub cookie: Cookie,
+    /// The channel for sending the callback.
+    pub event_handler: Option<NlmEventHandler>,
+}
+
+impl PendingGrant {
+    pub fn new(event_handler: Option<NlmEventHandler>, cookie: Cookie) -> Self {
+        Self { event_handler, cookie }
+    }
+}
 
 /// A held lock with full owner identity and state.
 #[derive(Clone)]
 pub struct ActiveLock {
     /// Name of the client host that owns the lock.
-    pub caller_name: String,
+    pub caller_name: Name,
     /// PID of the process on the client that owns the lock.
     pub system_identifier: i32,
     /// `true` for exclusive lock, `false` for shared lock.
@@ -33,7 +49,7 @@ impl PartialEq for ActiveLock {
 /// A blocked (pending) lock request waiting to be granted.
 pub struct PendingLock {
     /// Name of the client host that owns the lock.
-    pub caller_name: String,
+    pub caller_name: Name,
     /// PID of the process on the client that owns the lock.
     pub system_identifier: i32,
     /// `true` for exclusive lock, `false` for shared lock.
@@ -44,10 +60,8 @@ pub struct PendingLock {
     pub length: u64,
     /// Opaque handle identifying the lock owner (used in GRANTED callback).
     pub opaque_handle: OpaqueHandle,
-    /// The cookie from the original blocking LOCK request.
-    /// TODO: Needed for NLMPROC4_GRANTED callback (#267).
-    #[allow(dead_code)]
-    pub cookie: Cookie,
+    /// A wrapper for the cookie and a channel for sending it to the client.
+    pub grant_notification: PendingGrant,
 }
 
 /// Converts a [`PendingLock`] reference into an [`ActiveLock`] by copying all shared fields.
@@ -56,7 +70,7 @@ pub struct PendingLock {
 impl From<&PendingLock> for ActiveLock {
     fn from(lock: &PendingLock) -> Self {
         ActiveLock {
-            caller_name: lock.caller_name.to_string(),
+            caller_name: lock.caller_name.clone(),
             system_identifier: lock.system_identifier,
             exclusive: lock.exclusive,
             offset: lock.offset,

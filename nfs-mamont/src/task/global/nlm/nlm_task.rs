@@ -4,24 +4,29 @@
 //! connection read tasks, forwards them to the [`Nlm`] service, and sends
 //! the serialized reply back to the appropriate write task.
 
-use async_channel::{Receiver, Sender};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use async_channel::{Receiver, Sender};
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
-use crate::nlm::Nlm;
-use crate::task::{ProcReply, ProcResult};
-use crate::{
-    nlm::NlmRes,
-    parser::{NlmArgWrapper, NlmArguments},
-};
+use crate::nlm::{Nlm, NlmRes};
+use crate::parser::{NlmMessage, NlmMessageWrapper};
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+use crate::task::{ProcCall, ProcReply, ProcResult};
+
+const INIT_XID: u32 = 0;
 
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
     pub result_sender: Sender<ProcReply<B>>,
-    /// Placeholder for NLM procedure args.
-    pub args: NlmArgWrapper,
+    /// The channel for sending the callback.
+    pub message_sender: Sender<ProcCall>,
+    /// Placeholder for NLM procedure args/res.
+    pub message: NlmMessageWrapper,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -35,6 +40,10 @@ where
 
     /// Channel for commands from client connection tasks
     receiver: Receiver<NlmCommand<B>>,
+
+    /// The transaction ID.
+    /// Incremented with each new client (write task).
+    xid_for_call: AtomicU32,
 }
 
 impl<B, N> NlmTask<B, N>
@@ -46,7 +55,7 @@ where
     pub fn new(nlm_service: Arc<N>) -> (Self, Sender<NlmCommand<B>>) {
         let (sender, receiver) = async_channel::unbounded::<NlmCommand<B>>();
 
-        let task = Self { nlm_service, receiver };
+        let task = Self { nlm_service, receiver, xid_for_call: AtomicU32::new(INIT_XID) };
 
         (task, sender)
     }
@@ -70,9 +79,14 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args } = command;
-            let xid = args.header.xid;
-            let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
+            let NlmCommand { result_sender, message_sender, message } = command;
+            let event_handler = NlmEventHandler::new(
+                self.xid_for_call.fetch_add(1, Ordering::Relaxed),
+                message_sender,
+            );
+            let xid = message.header.xid;
+            let nlm_result =
+                process_message(message, Arc::clone(&nlm_service), event_handler).await;
             if let Some(result) = nlm_result {
                 send_reply(result_sender, result, xid).await;
             }
@@ -96,33 +110,39 @@ async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: 
 }
 
 async fn process_message<N: Nlm + Send + Sync + 'static>(
-    args: NlmArgWrapper,
+    args: NlmMessageWrapper,
     nlm_service: Arc<N>,
+    event_handler: NlmEventHandler,
 ) -> Option<NlmRes> {
-    let NlmArgWrapper { header, proc } = args;
+    let NlmMessageWrapper { header, proc } = args;
     debug!(xid = header.xid, "nlm task: command received");
 
     match *proc {
-        NlmArguments::Null => Some(NlmRes::Null),
-        NlmArguments::Lock(nlm4_lock_args) => {
+        NlmMessage::Null => Some(NlmRes::Null),
+        NlmMessage::Lock(nlm4_lock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-            let res = nlm_service.lock(nlm4_lock_args, &header.cred).await;
+            let res = nlm_service.lock(event_handler, nlm4_lock_args, &header.cred).await;
             Some(NlmRes::Lock(res))
         }
-        NlmArguments::Unlock(nlm4_unlock_args) => {
+        NlmMessage::Unlock(nlm4_unlock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
             let res = nlm_service.unlock(nlm4_unlock_args, &header.cred).await;
             Some(NlmRes::Unlock(res))
         }
-        NlmArguments::Test(nlm4_test_args) => {
+        NlmMessage::Test(nlm4_test_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM TEST");
             let res = nlm_service.test(nlm4_test_args, &header.cred).await;
             Some(NlmRes::Test(Box::new(res)))
         }
-        NlmArguments::Cancel(nlm4_cancel_args) => {
+        NlmMessage::Cancel(nlm4_cancel_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
             let res = nlm_service.cancel(nlm4_cancel_args, &header.cred).await;
             Some(NlmRes::Cancel(res))
+        }
+        NlmMessage::Granted(nlm4_granted_res) => {
+            debug!(xid = header.xid, "nlm task: proc=NLM GRANTED");
+            nlm_service.granted(nlm4_granted_res).await;
+            None
         }
     }
 }
