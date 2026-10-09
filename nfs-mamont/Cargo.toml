@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 description = "An asynchronous NFS server library: complete MOUNT and NFSv3 stack with a pluggable VFS backend, built on tokio with a hand-written RPC/XDR layer"
-publish = false
+publish = true
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/RMamonts/nfs-mamont"
-keywords = ["nfs", "nfsv3", "async", "server", "rpc", "xdr", "mount"]
+keywords = ["nfs", "nfsv3", "async", "server"]
 categories = ["network-programming", "filesystem"]
 rust-version.workspace = true
 
