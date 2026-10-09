@@ -1,5 +1,3 @@
-use std::io::Error;
-
 use crate::service::nlm::lock_types::ActiveLock;
 
 /// Length value that means "lock until end-of-file".
@@ -28,11 +26,7 @@ pub fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
 /// Returns an empty [`Vec`] when the unlock range fully covers the lock.
 /// Returns one element when the unlock trims the lock from one side only,
 /// and two elements when the unlock splits the lock in the middle.
-pub fn split_lock(
-    lock: ActiveLock,
-    unlock_start: u64,
-    unlock_len: u64,
-) -> Result<Vec<ActiveLock>, Error> {
+pub fn split_lock(lock: ActiveLock, unlock_start: u64, unlock_len: u64) -> Vec<ActiveLock> {
     let lock_start = lock.offset;
     let lock_len = lock.length;
     let lock_end = calculate_end_of_interval(lock_start, lock_len);
@@ -41,29 +35,29 @@ pub fn split_lock(
     let mut fragments = Vec::new();
 
     if lock_start < unlock_start {
-        fragments.push(ActiveLock::new(
-            lock.caller_name.clone(),
-            lock.system_identifier,
-            lock.exclusive,
-            lock_start,
-            unlock_start - lock_start,
-            lock.opaque_handle.clone(),
-        )?);
+        fragments.push(ActiveLock {
+            caller_name: lock.caller_name.clone(),
+            system_identifier: lock.system_identifier,
+            exclusive: lock.exclusive,
+            offset: lock_start,
+            length: unlock_start - lock_start,
+            opaque_handle: lock.opaque_handle.clone(),
+        });
     }
 
     if unlock_end < lock_end {
         let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
-        fragments.push(ActiveLock::new(
-            lock.caller_name,
-            lock.system_identifier,
-            lock.exclusive,
-            unlock_end + 1,
-            right_len,
-            lock.opaque_handle,
-        )?);
+        fragments.push(ActiveLock {
+            caller_name: lock.caller_name,
+            system_identifier: lock.system_identifier,
+            exclusive: lock.exclusive,
+            offset: unlock_end + 1,
+            length: right_len,
+            opaque_handle: lock.opaque_handle,
+        });
     }
 
-    Ok(fragments)
+    fragments
 }
 
 /// Removes locks owned by `(caller_name, system_identifier)` that overlap with
@@ -74,7 +68,7 @@ pub fn drain_overlapping(
     system_identifier: i32,
     start: u64,
     len: u64,
-) -> Result<(), Error> {
+) {
     let mut i = 0;
     while i < locks.len() {
         if locks[i].caller_name != caller_name || locks[i].system_identifier != system_identifier {
@@ -86,9 +80,8 @@ pub fn drain_overlapping(
             continue;
         }
         let old = locks.swap_remove(i);
-        locks.extend(split_lock(old, start, len)?);
+        locks.extend(split_lock(old, start, len));
     }
-    Ok(())
 }
 
 /// Merges adjacent or overlapping lock ranges from the same owner

@@ -1,6 +1,3 @@
-use std::io::Error;
-
-use crate::consts::nlm::LM_MAXSTRLEN;
 use crate::nlm::{cookie::Cookie, OpaqueHandle};
 
 /// A held lock with full owner identity and state.
@@ -18,47 +15,6 @@ pub struct ActiveLock {
     pub length: u64,
     /// Opaque handle identifying the lock owner (returned in TEST responses).
     pub opaque_handle: OpaqueHandle,
-}
-
-/// # Errors
-///
-/// Returns [`Error`] if:
-/// - `caller_name` is empty.
-/// - `caller_name` is longer than [`LM_MAXSTRLEN`].
-pub fn check_caller_name(caller_name: &str) -> Result<(), Error> {
-    if caller_name.is_empty() {
-        return Err(Error::new(std::io::ErrorKind::InvalidInput, "caller_name must not be empty"));
-    }
-
-    if caller_name.len() > LM_MAXSTRLEN {
-        return Err(Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("caller_name is too long (max {})", LM_MAXSTRLEN),
-        ));
-    }
-    Ok(())
-}
-
-impl ActiveLock {
-    /// Creates a new [`ActiveLock`] with validation.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error`] if:
-    /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
-    pub fn new(
-        caller_name: String,
-        system_identifier: i32,
-        exclusive: bool,
-        offset: u64,
-        length: u64,
-        opaque_handle: OpaqueHandle,
-    ) -> Result<Self, Error> {
-        check_caller_name(&caller_name)?;
-
-        Ok(ActiveLock { caller_name, system_identifier, exclusive, offset, length, opaque_handle })
-    }
 }
 
 /// Equality compares only the unlock-identity fields
@@ -94,50 +50,19 @@ pub struct PendingLock {
     pub cookie: Cookie,
 }
 
-impl PendingLock {
-    /// Creates a new [`PendingLock`] with validation.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error`] if:
-    /// - `caller_name` is empty.
-    /// - `caller_name` is longer than [`LM_MAXSTRLEN`].
-    pub fn new(
-        caller_name: String,
-        system_identifier: i32,
-        exclusive: bool,
-        offset: u64,
-        length: u64,
-        opaque_handle: OpaqueHandle,
-        cookie: Cookie,
-    ) -> Result<Self, Error> {
-        check_caller_name(&caller_name)?;
-        Ok(PendingLock {
-            caller_name,
-            system_identifier,
-            exclusive,
-            offset,
-            length,
-            opaque_handle,
-            cookie,
-        })
-    }
-}
-
 /// Converts a [`PendingLock`] reference into an [`ActiveLock`] by copying all shared fields.
 /// The `cookie` field from the pending request is intentionally dropped,
 /// as it is only relevant for the GRANTED callback and has no meaning for an active lock.
 impl From<&PendingLock> for ActiveLock {
-    fn from(p: &PendingLock) -> Self {
-        ActiveLock::new(
-            p.caller_name.clone(),
-            p.system_identifier,
-            p.exclusive,
-            p.offset,
-            p.length,
-            p.opaque_handle.clone(),
-        )
-        .expect("PendingLock must have valid caller_name")
+    fn from(lock: &PendingLock) -> Self {
+        ActiveLock {
+            caller_name: lock.caller_name.to_string(),
+            system_identifier: lock.system_identifier,
+            exclusive: lock.exclusive,
+            offset: lock.offset,
+            length: lock.length,
+            opaque_handle: lock.opaque_handle.clone(),
+        }
     }
 }
 

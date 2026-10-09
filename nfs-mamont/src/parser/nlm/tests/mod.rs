@@ -6,9 +6,11 @@ mod xdr;
 
 use std::io::Cursor;
 
-use super::{opaque_handle, parse_lock};
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::Name;
 use crate::parser::Error;
+
+use super::{opaque_handle, parse_lock};
 
 fn make_lock_bytes(
     caller_name: &str,
@@ -32,8 +34,9 @@ fn make_lock_bytes(
 fn parse_lock_success() {
     let data = make_lock_bytes("host", &[0xAB; NFS3_FHSIZE], &[0xCD; 4], 12345, 0, 100);
     let lock = parse_lock(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("host".to_string()).unwrap();
 
-    assert_eq!(lock.caller_name, "host");
+    assert_eq!(lock.caller_name, name);
     assert_eq!(lock.system_identifier, 12345);
     assert_eq!(lock.lock_length, 100);
 }
@@ -54,8 +57,8 @@ fn opaque_handle_normal() {
 #[test]
 fn opaque_handle_zero_length() {
     let data = xdr::opaque(&[]);
-    let oh = opaque_handle(&mut Cursor::new(data)).unwrap();
-    assert!(oh.as_bytes().iter().all(|&b| b == 0));
+    let handle = opaque_handle(&mut Cursor::new(data)).unwrap();
+    assert!(handle.as_bytes().is_empty());
 }
 
 #[test]
@@ -68,7 +71,7 @@ fn opaque_handle_max_size() {
 #[test]
 fn opaque_handle_too_large() {
     let data = xdr::opaque(&[0; 1025]);
-    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::BadFileHandle)));
+    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::MaxElemLimit)));
 }
 
 #[test]
