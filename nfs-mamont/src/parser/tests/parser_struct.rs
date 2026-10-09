@@ -403,7 +403,7 @@ async fn parse_write() {
         part: write::ArgsPartial {
             file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
-            size: 0xFF,
+            size: data.len() as u32,
             stable: StableHow::Unstable,
         },
         data: &data,
@@ -447,7 +447,7 @@ async fn parse_write_after_error() {
         part: write::ArgsPartial {
             file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
-            size: 0xFF,
+            size: data.len() as u32,
             stable: StableHow::Unstable,
         },
         data: &data,
@@ -567,7 +567,7 @@ async fn parse_write_with_empty_payload() {
         part: write::ArgsPartial {
             file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
-            size: 0xFF,
+            size: 0,
             stable: StableHow::Unstable,
         },
         data: &[],

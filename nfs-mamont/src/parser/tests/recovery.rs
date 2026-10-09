@@ -5,7 +5,7 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 
 use crate::consts::nfsv3::{
-    CREATE, GETATTR, LOOKUP, MKNOD, NFS_PROGRAM, NFS_VERSION, NULL, READ, WRITE,
+    CREATE, GETATTR, LOOKUP, MAX_PAYLOAD_SIZE, MKNOD, NFS_PROGRAM, NFS_VERSION, NULL, READ, WRITE,
 };
 use crate::parser::parser_struct::{RpcParser, MAX_RECORD_SIZE};
 use crate::parser::tests::allocator::MockAllocator;
@@ -163,6 +163,25 @@ async fn write_with_foreign_handle_skips_its_payload() {
         error,
         Error::Nfs3Status { procedure: WRITE, status: vfs::Error::BadFileHandle }
     ));
+}
+
+#[tokio::test]
+async fn write_count_that_differs_from_data_length_is_malformed() {
+    let args = write_args(&handle(9), 0xFF, &[0xAB; 18]);
+
+    let error = reject_then_recover(nfs_call(1, WRITE, &args)).await;
+
+    assert!(matches!(error, Error::Malformed(_)));
+}
+
+#[tokio::test]
+async fn write_larger_than_any_client_sends_is_malformed() {
+    let data = vec![0xAB; MAX_PAYLOAD_SIZE + 4];
+    let args = write_args(&handle(9), data.len() as u32, &data);
+
+    let error = reject_then_recover(nfs_call(1, WRITE, &args)).await;
+
+    assert!(matches!(error, Error::Malformed(_)));
 }
 
 #[tokio::test]
