@@ -1,0 +1,48 @@
+name: Publish to crates.io
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      # Required for crates.io Trusted Publishing (OIDC)
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+
+      - name: Check tag matches crate version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "nfs-mamont") | .version')
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match crate version ${version}"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test --locked --all-features
+
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish
+        run: cargo publish -p nfs-mamont --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
