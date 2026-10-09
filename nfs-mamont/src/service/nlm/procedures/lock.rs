@@ -15,7 +15,7 @@ impl Lock for NlmService {
         let mut registry = self.locks.write().await;
 
         let new_lock = PendingLock {
-            caller_name: args.lock.caller_name.into_inner(),
+            caller_name: args.lock.caller_name,
             system_identifier: args.lock.system_identifier,
             exclusive: args.exclusive,
             offset: args.lock.lock_offset,

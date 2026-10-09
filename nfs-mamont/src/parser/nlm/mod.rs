@@ -5,10 +5,10 @@ use std::io::Read;
 use crate::consts::nlm;
 use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
 use crate::nlm::lock::Nlm4Lock;
-use crate::nlm::{Nlm4Stats, Name, OpaqueHandle};
+use crate::nlm::{Name, Nlm4Stats, OpaqueHandle};
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::u32;
-use crate::parser::primitive::{i32, string_max_size, u64, vector, vec_max_size};
+use crate::parser::primitive::{i32, string_max_size, u64, vec_max_size};
 use crate::parser::{Error, Result};
 
 pub mod cancel;

@@ -8,7 +8,6 @@ use crate::service::nlm::NlmService;
 
 impl Unlock for NlmService {
     async fn unlock(&self, args: Nlm4UnlockArgs, _cred: &Credential) -> Nlm4UnlockRes {
-        let mut registry = self.locks.write().await;
         let fh = args.lock.file_handle;
         let granted_locks = {
             let mut registry = self.locks.write().await;
@@ -16,7 +15,7 @@ impl Unlock for NlmService {
             if registry
                 .remove_by_owner(
                     &fh,
-                    &args.lock.caller_name,
+                    args.lock.caller_name.as_str(),
                     args.lock.system_identifier,
                     args.lock.lock_offset,
                     args.lock.lock_length,

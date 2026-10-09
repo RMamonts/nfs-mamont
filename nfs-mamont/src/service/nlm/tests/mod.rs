@@ -40,7 +40,7 @@ pub fn make_active_lock(
     opaque_value: u8,
 ) -> ActiveLock {
     ActiveLock {
-        caller_name: caller_name.to_string(),
+        caller_name: Name::new(caller_name.to_string()).unwrap(),
         system_identifier: pid,
         exclusive,
         offset,
