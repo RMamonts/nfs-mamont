@@ -10,5 +10,5 @@ use crate::vfs::file;
 /// Parses the arguments for an Unmount operation.
 pub fn unmount(src: &mut impl Read) -> Result<Args> {
     let path = string_max_size(src, MOUNT_DIRPATH_LEN)?;
-    Ok(Args { dirpath: file::Path::new(path).map_err(Error::IO)? })
+    Ok(Args { dirpath: file::Path::new(path).map_err(|_| Error::Malformed("invalid path"))? })
 }

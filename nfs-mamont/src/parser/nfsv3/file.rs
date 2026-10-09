@@ -2,7 +2,7 @@
 
 use std::io::Read;
 
-use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::consts::nfsv3::{NFS3_FHSIZE, NFS3_MAX_FHSIZE};
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
 use crate::parser::{Error, Result};
 use crate::vfs;
@@ -10,8 +10,16 @@ use crate::vfs::file::{Name, Path};
 use crate::vfs::{file, MAX_PATH_LEN};
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
+///
+/// A handle longer than [`NFS3_MAX_FHSIZE`] is malformed XDR
+/// ([`Error::MaxElemLimit`]); a well-formed handle of any size but
+/// [`NFS3_FHSIZE`] was not issued by this server ([`Error::BadFileHandle`]).
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
-    if u32_as_usize(src)? != NFS3_FHSIZE {
+    let size = u32_as_usize(src)?;
+    if size > NFS3_MAX_FHSIZE {
+        return Err(Error::MaxElemLimit);
+    }
+    if size != NFS3_FHSIZE {
         return Err(Error::BadFileHandle);
     }
     let array = array::<{ NFS3_FHSIZE }>(src)?;
@@ -71,11 +79,27 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 }
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
+///
+/// `filename3` is unbounded in XDR, so a name longer than [`vfs::MAX_NAME_LEN`]
+/// is a well-formed request this server rejects with [`Error::NameTooLong`].
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(Error::IO)
+    let name = string_max_size(src, vfs::MAX_NAME_LEN).map_err(name_too_long)?;
+    Name::new(name).map_err(|_| Error::Malformed("invalid file name"))
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
+///
+/// `nfspath3` is unbounded in XDR, so a path longer than [`MAX_PATH_LEN`]
+/// is a well-formed request this server rejects with [`Error::NameTooLong`].
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(Error::IO)
+    let path = string_max_size(src, MAX_PATH_LEN).map_err(name_too_long)?;
+    Path::new(path).map_err(|_| Error::Malformed("invalid path"))
+}
+
+/// Reports an exceeded name or path length limit as [`Error::NameTooLong`].
+fn name_too_long(error: Error) -> Error {
+    match error {
+        Error::MaxElemLimit => Error::NameTooLong,
+        other => other,
+    }
 }

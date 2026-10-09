@@ -16,6 +16,9 @@ pub(super) fn what(src: &mut impl Read) -> Result<mk_node::What> {
         4 => Ok(What::Char(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
         6 => Ok(What::Socket(new_attr(src)?)),
         7 => Ok(What::Fifo(new_attr(src)?)),
+        // NF3REG, NF3DIR and NF3LNK take the `default: void` arm of `mknoddata3`:
+        // valid XDR, but RFC 1813 requires NFS3ERR_BADTYPE for them.
+        1 | 2 | 5 => Err(Error::BadType),
         _ => Err(Error::EnumDiscMismatch),
     }
 }

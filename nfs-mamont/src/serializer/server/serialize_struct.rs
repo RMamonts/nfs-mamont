@@ -234,15 +234,32 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 match err {
                     Error::ImpossibleTypeCast
                     | Error::BadFileHandle
+                    | Error::NameTooLong
+                    | Error::BadType
+                    | Error::Malformed(_)
                     | Error::MessageTypeMismatch
                     | Error::EnumDiscMismatch
                     | Error::MaxElemLimit
                     | Error::IncorrectString(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
-                        // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
                         self.buffer.send_inner_buffer().await
+                    }
+                    Error::Nfs3Status { procedure, status } => {
+                        u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
+                        auth(&mut self.buffer, verifier)?;
+                        match NfsRes::<B>::failure(procedure, status) {
+                            Some(res) => {
+                                u32(&mut self.buffer, AcceptStat::Success as u32)?;
+                                self.process_nfs3(Box::new(res)).await
+                            }
+                            // NULL has no failed result; the parser never rejects it.
+                            None => {
+                                u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
+                                self.buffer.send_inner_buffer().await
+                            }
+                        }
                     }
                     Error::RpcVersionMismatch(vers) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;

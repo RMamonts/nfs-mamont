@@ -11,7 +11,9 @@ use crate::parser::parser_struct::{RpcParser, MAX_RECORD_SIZE};
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::{Error, ErrorWrapper, NfsArguments, ProcArguments};
+use crate::rpc::auth::AuthStat;
 use crate::rpc::AuthFlavor;
+use crate::vfs;
 
 /// Capacity of the parser buffer; smaller than some of the frames below, so
 /// skipping their rest also exercises reads straight from the socket.
@@ -121,21 +123,34 @@ async fn name_that_is_not_utf8_followed_by_more_arguments() {
 }
 
 #[tokio::test]
-async fn handle_of_foreign_size() {
+async fn handle_of_foreign_size_fails_with_nfs_status() {
     let error = reject_then_recover(nfs_call(1, GETATTR, &handle(32))).await;
 
-    assert!(matches!(error, Error::BadFileHandle));
+    assert!(matches!(
+        error,
+        Error::Nfs3Status { procedure: GETATTR, status: vfs::Error::BadFileHandle }
+    ));
 }
 
 #[tokio::test]
-async fn read_with_foreign_handle() {
+async fn handle_longer_than_xdr_limit_is_garbage() {
+    let error = reject_then_recover(nfs_call(1, GETATTR, &handle(65))).await;
+
+    assert!(matches!(error, Error::MaxElemLimit));
+}
+
+#[tokio::test]
+async fn read_with_foreign_handle_fails_with_nfs_status() {
     let mut args = handle(16);
     push_u64(&mut args, 0);
     push_u32(&mut args, 4096);
 
     let error = reject_then_recover(nfs_call(1, READ, &args)).await;
 
-    assert!(matches!(error, Error::BadFileHandle));
+    assert!(matches!(
+        error,
+        Error::Nfs3Status { procedure: READ, status: vfs::Error::BadFileHandle }
+    ));
 }
 
 #[tokio::test]
@@ -144,7 +159,10 @@ async fn write_with_foreign_handle_skips_its_payload() {
 
     let error = reject_then_recover(nfs_call(1, WRITE, &args)).await;
 
-    assert!(matches!(error, Error::BadFileHandle));
+    assert!(matches!(
+        error,
+        Error::Nfs3Status { procedure: WRITE, status: vfs::Error::BadFileHandle }
+    ));
 }
 
 #[tokio::test]
@@ -157,49 +175,52 @@ async fn write_that_cannot_be_allocated_skips_its_payload() {
 }
 
 #[tokio::test]
-async fn name_longer_than_server_limit() {
+async fn name_longer_than_server_limit_fails_with_nfs_status() {
     let error = reject_then_recover(nfs_call(1, LOOKUP, &dir_op(&[b'a'; 256]))).await;
 
-    assert!(matches!(error, Error::MaxElemLimit));
+    assert!(matches!(
+        error,
+        Error::Nfs3Status { procedure: LOOKUP, status: vfs::Error::NameTooLong }
+    ));
 }
 
 #[tokio::test]
-async fn mknod_of_regular_file() {
+async fn mknod_of_regular_file_fails_with_nfs_status() {
     let mut args = dir_op(b"file");
     push_u32(&mut args, 1); // NF3REG
 
     let error = reject_then_recover(nfs_call(1, MKNOD, &args)).await;
 
-    assert!(matches!(error, Error::EnumDiscMismatch));
+    assert!(matches!(error, Error::Nfs3Status { procedure: MKNOD, status: vfs::Error::BadType }));
 }
 
 #[tokio::test]
-async fn trailing_bytes() {
+async fn trailing_bytes_are_malformed() {
     let mut args = handle(9);
     push_u64(&mut args, 0xDEAD_BEEF_DEAD_BEEF);
 
     let error = reject_then_recover(nfs_call(1, GETATTR, &args)).await;
 
-    assert!(matches!(error, Error::IO(err) if err.kind() == ErrorKind::InvalidData));
+    assert!(matches!(error, Error::Malformed(_)));
 }
 
 #[tokio::test]
-async fn unknown_credential_flavor() {
+async fn unknown_credential_flavor_is_bad_credential() {
     // AUTH_TLS, sent by Linux clients mounting with `xprtsec=tls`.
     let frame = call(1, GETATTR, (7, &[]), AUTH_NONE, &handle(9));
 
     let error = reject_then_recover(frame).await;
 
-    assert!(matches!(error, Error::EnumDiscMismatch));
+    assert!(matches!(error, Error::Auth(AuthStat::BadCred)));
 }
 
 #[tokio::test]
-async fn oversized_verifier() {
+async fn oversized_verifier_is_bad_verifier() {
     let frame = call(1, GETATTR, AUTH_NONE, (0, &[0; 404]), &handle(9));
 
     let error = reject_then_recover(frame).await;
 
-    assert!(matches!(error, Error::MaxElemLimit));
+    assert!(matches!(error, Error::Auth(AuthStat::BadVerf)));
 }
 
 #[tokio::test]
