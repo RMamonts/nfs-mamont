@@ -3,7 +3,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
-use crate::nlm::OpaqueHandle;
+use crate::nlm::{Name, OpaqueHandle};
 use crate::service::nlm::lock_types::ActiveLock;
 use crate::service::nlm::LockRegistry;
 use crate::task::global::nlm::nlm_event::NlmEventHandler;
@@ -32,15 +32,21 @@ pub fn fill_opaque(value: u8) -> OpaqueHandle {
 }
 
 pub fn make_active_lock(
-    caller: &str,
+    caller_name: &str,
     pid: i32,
     exclusive: bool,
     offset: u64,
     length: u64,
     opaque_value: u8,
 ) -> ActiveLock {
-    ActiveLock::new(caller.into(), pid, exclusive, offset, length, fill_opaque(opaque_value))
-        .expect("Test caller_name must be valid")
+    ActiveLock {
+        caller_name: caller_name.to_string(),
+        system_identifier: pid,
+        exclusive,
+        offset,
+        length,
+        opaque_handle: fill_opaque(opaque_value),
+    }
 }
 
 pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, lock: ActiveLock) {
@@ -61,7 +67,7 @@ pub fn make_lock_args_without_block(
         block: false,
         exclusive,
         lock: Nlm4Lock {
-            caller_name: caller.into(),
+            caller_name: Name::new(caller.to_string()).unwrap(),
             file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(1),
             system_identifier: pid,
@@ -87,7 +93,7 @@ pub fn make_lock_args_with_block(
         block: true,
         exclusive,
         lock: Nlm4Lock {
-            caller_name: caller.into(),
+            caller_name: Name::new(caller.to_string()).unwrap(),
             file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(1),
             system_identifier: pid,
@@ -103,7 +109,7 @@ fn make_unlock_args(fh_value: u8, caller: &str, pid: i32, cookie_value: u64) -> 
     Nlm4UnlockArgs {
         cookie: Cookie::new(cookie_value),
         lock: Nlm4Lock {
-            caller_name: caller.into(),
+            caller_name: Name::new(caller.to_string()).unwrap(),
             file_handle: fill_fh(fh_value),
             opaque_handle: fill_opaque(2),
             system_identifier: pid,

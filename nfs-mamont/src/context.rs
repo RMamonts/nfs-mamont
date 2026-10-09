@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use crate::allocator::{Allocator, Buffer};
@@ -16,6 +17,7 @@ use crate::vfs::file::BackendId;
 /// # Example
 ///
 /// ```no_run
+/// use std::num::NonZeroUsize;
 /// use std::sync::Arc;
 ///
 /// use nfs_mamont::vfs::Vfs;
@@ -27,7 +29,9 @@ use crate::vfs::file::BackendId;
 ///     B: Buffer + 'static,
 ///     V: Vfs<B> + Send + Sync + 'static,
 /// {
-///     let context = ServerContext::new(allocator);
+///     // Run up to 64 procedures against the backends at the same time.
+///     let vfs_concurrency = NonZeroUsize::new(64).unwrap();
+///     let context = ServerContext::new(allocator, vfs_concurrency);
 ///     // Keep a registry handle before the context is moved into the server task.
 ///     let backends = context.backends();
 ///
@@ -41,7 +45,7 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    /// Pool dispatching NFS procedures against [`crate::vfs::Vfs`] to a single task.
+    /// Pool of workers executing NFS procedures against [`crate::vfs::Vfs`] backends.
     vfs_manager: VfsManager<B>,
     /// Allocator backing all user-data buffers: READ output buffers and WRITE
     /// payload buffers are served from this single pool.
@@ -57,9 +61,17 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     /// Creates a context with the given allocator and no backends attached.
-    pub fn new(allocator: Arc<A>) -> Self {
+    ///
+    /// `vfs_concurrency` is the maximum number of NFS procedures executed against the
+    /// backends at the same time; procedures beyond it wait in a queue. Set it to the
+    /// number of operations the backends can run in parallel (their queue depth).
+    ///
+    /// # Panics
+    ///
+    /// If called outside of tokio runtime context.
+    pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
         let backends = BackendRegistry::new();
-        let vfs_manager = VfsManager::new(backends.clone());
+        let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
 
         Self { vfs_manager, allocator, backends }
     }

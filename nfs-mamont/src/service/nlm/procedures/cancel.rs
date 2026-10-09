@@ -6,17 +6,14 @@ use crate::service::nlm::NlmService;
 
 impl Cancel for NlmService {
     async fn cancel(&self, args: Nlm4CancelArgs, _cred: &Credential) -> Nlm4CancelRes {
-        let target = match PendingLock::new(
-            args.lock.caller_name,
-            args.lock.system_identifier,
-            args.exclusive,
-            args.lock.lock_offset,
-            args.lock.lock_length,
-            args.lock.opaque_handle,
-            PendingGrant::new(None, args.cookie),
-        ) {
-            Ok(new_lock) => new_lock,
-            Err(_) => return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
+        let target = PendingLock {
+            caller_name: args.lock.caller_name.into_inner(),
+            system_identifier: args.lock.system_identifier,
+            exclusive: args.exclusive,
+            offset: args.lock.lock_offset,
+            length: args.lock.lock_length,
+            opaque_handle: args.lock.opaque_handle,
+            grant_notification: PendingGrant::new(None, args.cookie),
         };
 
         let mut registry = self.locks.write().await;
@@ -26,7 +23,7 @@ impl Cancel for NlmService {
             return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }
 
-        let request_as_active: ActiveLock = <&PendingLock>::into(&target);
+        let request_as_active: ActiveLock = (&target).into();
         if registry.has_active_lock(&fh, &request_as_active) {
             return Nlm4CancelRes { cookie: args.cookie, stat: Nlm4Stats::Granted };
         }

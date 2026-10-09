@@ -6,11 +6,12 @@
 use std::io;
 use std::io::Write;
 
+use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::{Nlm4Stats, OpaqueHandle};
 use crate::serializer::files::file_handle;
-use crate::serializer::{bool, i32, string, u64, variant, vector};
+use crate::serializer::{bool, i32, string, u32, u64, variant, vector};
 
 mod cancel;
 mod lock;
@@ -34,6 +35,14 @@ fn stat(dest: &mut impl Write, stat: Nlm4Stats) -> io::Result<()> {
     variant::<Nlm4Stats>(dest, stat)
 }
 
+fn holder(dest: &mut impl Write, holder: Nlm4Holder) -> io::Result<()> {
+    u32(dest, holder.exclusive as u32)
+        .and_then(|_| u32(dest, holder.system_identifier as u32))
+        .and_then(|_| vector(dest, holder.opaque_handle.as_bytes()))
+        .and_then(|_| u64(dest, holder.lock_offset))
+        .and_then(|_| u64(dest, holder.lock_length))
+}
+
 /// Serializes an [`OpaqueHandle`].
 fn opaque_handle(dest: &mut impl Write, opaque: OpaqueHandle) -> io::Result<()> {
     vector(dest, opaque.as_bytes())
@@ -41,7 +50,7 @@ fn opaque_handle(dest: &mut impl Write, opaque: OpaqueHandle) -> io::Result<()> 
 
 /// Serializes an [`Nlm4Lock`] as the XDR reply body.
 fn lock(dest: &mut impl Write, lock: Nlm4Lock) -> io::Result<()> {
-    string(dest, &lock.caller_name)?;
+    string(dest, &lock.caller_name.into_inner())?;
     file_handle(dest, lock.file_handle)?;
     opaque_handle(dest, lock.opaque_handle)?;
     i32(dest, lock.system_identifier)?;

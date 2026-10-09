@@ -1,7 +1,7 @@
 use async_channel::{Receiver, Sender};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
@@ -16,7 +16,7 @@ use crate::vfs::{self, NfsRes, Vfs};
 pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
 /// Sender to enqueue work in the queue.
 pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
-/// Receiver from the queue, consumed by the single VFS task.
+/// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
 type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
@@ -137,30 +137,45 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
     }
 }
 
-/// Manager that contains only one task that dispatching NFS procedures to a single task running them concurrently via
-/// [`FuturesUnordered`].
+/// Pool of [`VfsTask`] workers fed from a single unbounded command channel.
+///
+/// Every worker is a separate tokio task that executes one procedure at a time, so:
+/// - procedures run in parallel on all runtime worker threads: the CPU work done inside
+///   backend futures (copying data, checksums, synchronous syscalls, ...) is spread over
+///   the cores instead of being serialized in a single task;
+/// - at most as many procedures as there are workers are executed against the backends
+///   at the same time, the rest wait in the channel. The pool size is therefore the
+///   backend queue depth.
 pub struct VfsManager<B: Buffer> {
-    /// Sender to enqueue work in the vfs task for execution.
+    /// Sender to enqueue work in the pool for execution.
     sender: VfsCommandSender<B>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
-    /// Creates a new [`VfsManager`] backed by a single task.
+    /// Creates a new [`VfsManager`] with `concurrency` workers.
     ///
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
+    /// - `concurrency` --- number of workers, i.e. the maximum number of procedures
+    ///   executed against the backends at the same time
     ///
     /// # Returns
     ///
-    /// Creates new [`VfsTask`] and link to it that executes commands.
-    pub fn new<V>(backends: BackendRegistry<V>) -> Self
+    /// A new [`VfsManager`] whose workers are already running.
+    ///
+    /// # Panics
+    ///
+    /// If called outside of tokio runtime context.
+    pub fn new<V>(backends: BackendRegistry<V>, concurrency: NonZeroUsize) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
         let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
-        VfsTask::new(backends, rx).spawn();
+        (0..concurrency.get()).for_each(|_| {
+            VfsTask::new(backends.clone(), rx.clone()).spawn();
+        });
 
         Self { sender: tx }
     }
@@ -172,15 +187,14 @@ impl<B: Buffer + 'static> VfsManager<B> {
 }
 
 impl<B: Buffer> Drop for VfsManager<B> {
-    /// Closes the [`VfsTask`] sender so the task stops after the command stream is empty.
+    /// Closes the pool's sender so workers stop after the channel is empty.
     fn drop(&mut self) {
         self.sender.close();
     }
 }
 
-/// Task that executes NFS procedures against [`Vfs`] and sends the result to the writer pipeline.
-///
-/// All received commands are pushed into a [`FuturesUnordered`] and polled concurrently.
+/// Worker of [`VfsManager`]: executes NFS procedures against [`Vfs`] one at a time and
+/// sends the result to the writer pipeline.
 pub struct VfsTask<V, B>
 where
     B: Buffer,
@@ -188,7 +202,7 @@ where
 {
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
-    /// Receiver from the vfs task, consumed by this single task.
+    /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver<B>,
 }
 
@@ -197,12 +211,12 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    /// Builds a task that reads commands from the channel and executes them.
+    /// Builds a worker that reads commands from the pool and executes them.
     ///
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `command_receiver` --- receiver from the read task
+    /// - `command_receiver` --- shared receiver from the pool
     ///
     /// # Returns
     ///
@@ -220,35 +234,17 @@ where
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Consumes commands until the channel closes, executing each NFS op concurrently
+    /// Consumes commands until the channel is closed and empty, dispatching each NFS op
     /// and sending replies.
     async fn run(self) {
-        let backends = self.backends;
-        let command_receiver = self.command_receiver;
-
-        let mut commands = FuturesUnordered::new();
-
-        loop {
-            tokio::select! {
-                command = command_receiver.recv() => match command {
-                    Ok(command) => {
-                        commands.push(dispatch(backends.clone(), command));
-                    }
-                    Err(_) => break,
-                },
-                // Poll completed commands. The guard keeps
-                // select! from busy-spinning on an empty set.
-                _ = commands.next(), if !commands.is_empty() => {}
-            }
+        while let Ok(command) = self.command_receiver.recv().await {
+            dispatch(&self.backends, command).await;
         }
-
-        // The task is closed; drain in-flight commands before exiting.
-        while commands.next().await.is_some() {}
     }
 }
 
 /// Routes a single NFS procedure to the backend owning its file handle and sends the reply.
-async fn dispatch<V, B>(backends: BackendRegistry<V>, command: VfsCommand<B>)
+async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: VfsCommand<B>)
 where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,

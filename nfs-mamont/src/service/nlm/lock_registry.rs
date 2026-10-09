@@ -55,13 +55,13 @@ impl LockRegistry {
             if !ranges_overlap(lock.offset, lock.length, request.offset, request.length) {
                 continue;
             }
-            return Some(Nlm4Holder::new(
-                lock.exclusive,
-                lock.system_identifier,
-                lock.opaque_handle.clone(),
-                lock.offset,
-                lock.length,
-            ));
+            return Some(Nlm4Holder {
+                exclusive: lock.exclusive,
+                system_identifier: lock.system_identifier,
+                opaque_handle: lock.opaque_handle.clone(),
+                lock_offset: lock.offset,
+                lock_length: lock.length,
+            });
         }
         None
     }
@@ -103,7 +103,7 @@ impl LockRegistry {
             None => return Ok(()),
         };
 
-        drain_overlapping(active_locks, caller_name, system_identifier, offset, len)?;
+        drain_overlapping(active_locks, caller_name, system_identifier, offset, len);
 
         if active_locks.is_empty() {
             self.by_file.remove(file_handle);
@@ -129,7 +129,7 @@ impl LockRegistry {
             new_lock.system_identifier,
             new_lock.offset,
             new_lock.length,
-        )?;
+        );
         locks.push(new_lock);
         merge_adjacent(locks);
         Ok(())

@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use super::xdr;
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::nlm::Name;
 use crate::parser::nlm::unlock::unlock;
 
 #[test]
@@ -16,9 +17,10 @@ fn test_unlock() {
     data.extend(xdr::u64_val(0));
 
     let result = unlock(&mut Cursor::new(data)).unwrap();
+    let name = Name::new("nfs-client".to_string()).unwrap();
 
     assert_eq!(result.cookie.raw(), 42);
-    assert_eq!(result.lock.caller_name, "nfs-client");
+    assert_eq!(result.lock.caller_name, name);
     assert_eq!(result.lock.system_identifier, -1);
 }
 

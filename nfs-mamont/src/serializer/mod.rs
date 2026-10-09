@@ -119,7 +119,7 @@ pub fn string(dest: &mut impl Write, string: &str) -> io::Result<()> {
 pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
         ToPrimitive::to_u32(&val)
-            .ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
+            .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
 }
 
@@ -127,6 +127,6 @@ pub fn variant<T: ToPrimitive>(dest: &mut impl Write, val: T) -> io::Result<()> 
 #[inline]
 pub fn usize_as_u32(dest: &mut impl Write, n: usize) -> io::Result<()> {
     dest.write_u32::<BigEndian>(
-        n.to_u32().ok_or(Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
+        n.to_u32().ok_or_else(|| Error::new(ErrorKind::InvalidInput, "cannot convert to u32"))?,
     )
 }

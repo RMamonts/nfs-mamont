@@ -8,21 +8,13 @@ impl Test for NlmService {
     async fn test(&self, args: Nlm4TestArgs, _cred: &Credential) -> Nlm4TestRes {
         let registry = self.locks.read().await;
 
-        let request = match ActiveLock::new(
-            args.lock.caller_name,
-            args.lock.system_identifier,
-            args.exclusive,
-            args.lock.lock_offset,
-            args.lock.lock_length,
-            args.lock.opaque_handle,
-        ) {
-            Ok(new_lock) => new_lock,
-            Err(_) => {
-                return Nlm4TestRes {
-                    cookie: args.cookie,
-                    test_stat: Nlm4TestReply { stat: Nlm4Stats::Failed, holder: None },
-                }
-            }
+        let request = ActiveLock {
+            caller_name: args.lock.caller_name.into_inner(),
+            system_identifier: args.lock.system_identifier,
+            exclusive: args.exclusive,
+            offset: args.lock.lock_offset,
+            length: args.lock.lock_length,
+            opaque_handle: args.lock.opaque_handle,
         };
 
         let fh = args.lock.file_handle;

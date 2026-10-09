@@ -33,6 +33,7 @@ pub fn new<A, V, B>(
     B: Buffer + 'static,
     V: Vfs<B> + Send + Sync + 'static,
 {
+    let _ = socket.set_nodelay(true);
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {

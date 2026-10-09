@@ -12,7 +12,7 @@ use std::io;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::consts::nlm::{LM_MAXSTRLEN, OPAQUE_HANDLE_SIZE};
 use crate::nlm::procedures::granted::Nlm4GrantedRes;
 use crate::nlm::procedures::test::Nlm4TestArgs;
 use crate::nlm::procedures::{
@@ -81,16 +81,48 @@ pub struct OpaqueHandle(Vec<u8>);
 impl OpaqueHandle {
     /// Creates a new opaque lock owner identifier.
     #[inline]
-    pub fn new(oh: Vec<u8>) -> io::Result<Self> {
-        if oh.len() > OPAQUE_HANDLE_SIZE {
+    pub fn new(inner: Vec<u8>) -> io::Result<Self> {
+        if inner.len() > OPAQUE_HANDLE_SIZE {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
-        Ok(OpaqueHandle(oh))
+        Ok(OpaqueHandle(inner))
     }
 
     /// Returns the underlying bytes of the opaque handle.
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Name(String);
+
+impl Name {
+    /// Creates a new [`crate::vfs::file::Name`] after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `name.len() > MAX_NAME_LEN` or if `name` is empty.
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > LM_MAXSTRLEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        if name.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
+        }
+        Ok(Name(name))
+    }
+
+    /// Consumes the wrapper and returns the inner [`String`].
+    #[inline]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Returns the inner name as a string slice.
+    #[inline]
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }

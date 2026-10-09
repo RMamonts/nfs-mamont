@@ -38,7 +38,7 @@ use crate::consts::nlm::{
     NLMPROC4_CANCEL, NLMPROC4_GRANTED, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST,
     NLMPROC4_UNLOCK, NLM_PROGRAM, NLM_VERSION,
 };
-use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE};
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RPC_VERSION};
 use crate::consts::xdr::ALIGNMENT;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
@@ -56,7 +56,7 @@ use crate::parser::{
     ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::auth::{AuthStat, Credential};
-use crate::rpc::{AuthFlavor, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc::{AuthFlavor, RpcBody, VersionMismatch};
 use crate::vfs;
 
 /// Minimum buffer size, that could hold complete RPC message
