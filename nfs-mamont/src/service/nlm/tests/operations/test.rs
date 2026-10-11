@@ -43,9 +43,9 @@ async fn test_reports_granted_when_free() {
 async fn test_reports_denied_when_conflict() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res =
@@ -57,9 +57,9 @@ async fn test_reports_denied_when_conflict() {
 async fn test_denied_holder_matches_conflicting_lock() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res =
@@ -90,9 +90,9 @@ async fn test_preserves_cookie() {
 async fn test_reports_shared_compatible_as_granted() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, false, 0, 100, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0), &DEFAULT_CRED).await;

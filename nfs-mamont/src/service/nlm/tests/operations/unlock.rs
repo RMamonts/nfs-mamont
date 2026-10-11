@@ -15,17 +15,17 @@ use crate::task::{ProcCall, ProcMessage};
 async fn unlock_removes_lock_and_allows_new_lock() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     svc.unlock(make_unlock_args(FH_DEFAULT, "alice", 100, 1), &DEFAULT_CRED).await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -50,17 +50,17 @@ async fn unlock_auto_grants_pending_exclusive() {
     let svc = NlmService::new();
     // Alice holds [0, 100]
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     // Bob blocks on the same range
     let blocked = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);
@@ -69,9 +69,9 @@ async fn unlock_auto_grants_pending_exclusive() {
     // Charlie should be denied because Bob now holds the lock
     let denied = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "charlie", 300, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(denied.stat, Nlm4Stats::Denied);
@@ -83,17 +83,17 @@ async fn unlock_sends_granted_callback_via_channel() {
     let (tx, rx) = async_channel::unbounded::<ProcCall>();
 
     svc.lock(
-        NlmEventHandler::new(0, tx.clone()),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        NlmEventHandler::new(0, tx.clone()),
     )
     .await;
 
     let blocked = svc
         .lock(
-            NlmEventHandler::new(1, tx.clone()),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
             &DEFAULT_CRED,
+            NlmEventHandler::new(1, tx.clone()),
         )
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);
@@ -116,16 +116,16 @@ async fn unlock_no_callback_when_granted_tx_is_none() {
     let (tx, rx) = async_channel::unbounded::<Cookie>();
 
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let blocked = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 99),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(blocked.stat, Nlm4Stats::Blocked);

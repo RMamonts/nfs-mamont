@@ -14,9 +14,9 @@ async fn lock_grants_exclusive_lock() {
     let svc = NlmService::new();
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -26,16 +26,16 @@ async fn lock_grants_exclusive_lock() {
 async fn lock_denies_conflicting_exclusive() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -45,16 +45,16 @@ async fn lock_denies_conflicting_exclusive() {
 async fn lock_allows_shared_overlapping() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, false, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, false, 10, 20, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -64,16 +64,16 @@ async fn lock_allows_shared_overlapping() {
 async fn lock_denies_shared_against_exclusive() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, false, 10, 20, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -83,16 +83,16 @@ async fn lock_denies_shared_against_exclusive() {
 async fn lock_denies_exclusive_against_shared() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, false, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 10, 20, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -102,16 +102,16 @@ async fn lock_denies_exclusive_against_shared() {
 async fn lock_allows_different_files() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_OTHER, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -121,16 +121,16 @@ async fn lock_allows_different_files() {
 async fn lock_allows_non_overlapping_ranges() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, 50, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 50, 50, "test", 42, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -141,9 +141,9 @@ async fn lock_preserves_cookie() {
     let svc = NlmService::new();
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 42),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.cookie.raw(), 42);
@@ -153,16 +153,16 @@ async fn lock_preserves_cookie() {
 async fn lock_blocking_returns_blocked_on_conflict() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Blocked);
@@ -173,9 +173,9 @@ async fn lock_blocking_still_grants_when_free() {
     let svc = NlmService::new();
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 42),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -185,16 +185,16 @@ async fn lock_blocking_still_grants_when_free() {
 async fn lock_non_blocking_still_denies_on_conflict() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "other", 99, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Denied);
@@ -204,16 +204,16 @@ async fn lock_non_blocking_still_denies_on_conflict() {
 async fn lock_same_owner_re_request_is_granted() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -223,14 +223,13 @@ async fn lock_same_owner_re_request_is_granted() {
 async fn lock_reclaim_bypasses_conflict_check() {
     let svc = NlmService::new();
     svc.lock(
-        create_empty_event_handler(),
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "test", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
-            create_empty_event_handler(),
             Nlm4LockArgs {
                 reclaim: true,
                 ..make_lock_args_without_block(
@@ -244,6 +243,7 @@ async fn lock_reclaim_bypasses_conflict_check() {
                 )
             },
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);
@@ -254,9 +254,9 @@ async fn lock_unlock_lock_sequence_same_client() {
     let svc = NlmService::new();
     assert_eq!(
         svc.lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await
         .stat,
@@ -268,9 +268,9 @@ async fn lock_unlock_lock_sequence_same_client() {
     );
     assert_eq!(
         svc.lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "client1", 100, 3),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await
         .stat,
@@ -283,9 +283,9 @@ async fn multiple_clients_lock_different_ranges_on_same_file() {
     let svc = NlmService::new();
     assert_eq!(
         svc.lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 0, 50, "client1", 100, 1),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await
         .stat,
@@ -293,9 +293,9 @@ async fn multiple_clients_lock_different_ranges_on_same_file() {
     );
     assert_eq!(
         svc.lock(
-            create_empty_event_handler(),
             make_lock_args_without_block(FH_DEFAULT, true, 60, 50, "client2", 200, 2),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await
         .stat,

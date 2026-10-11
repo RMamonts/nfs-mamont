@@ -8,9 +8,9 @@ use crate::task::global::nlm::nlm_event::NlmEventHandler;
 impl Lock for NlmService {
     async fn lock(
         &self,
-        event_handler: NlmEventHandler,
         args: Nlm4LockArgs,
         _cred: &Credential,
+        event_handler: NlmEventHandler,
     ) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
