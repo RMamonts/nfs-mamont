@@ -1,5 +1,8 @@
 //! Constants defined by RPC protocol, RFC 5531
 
+/// Remote Procedure Call Protocol Version 2
+pub const RPC_VERSION: u32 = 2;
+
 pub const MAX_AUTH_SIZE: usize = 400;
 
 /// Maximum length of the `machinename` field in `AUTH_SYS` credentials (RFC 5531, appendix A).
