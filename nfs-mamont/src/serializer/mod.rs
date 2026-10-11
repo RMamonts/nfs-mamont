@@ -48,6 +48,7 @@ pub fn u64(dest: &mut impl Write, n: u64) -> io::Result<()> {
 }
 
 /// Serializes an XDR `signed hyper` (32-bit) in big-endian order.
+#[inline]
 pub fn i32(dest: &mut impl Write, n: i32) -> io::Result<()> {
     dest.write_i32::<BigEndian>(n)
 }
