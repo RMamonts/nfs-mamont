@@ -21,13 +21,13 @@ mlock = ["dep:libc"]
 
 [dependencies]
 # External dependencies
-tokio.workspace = true
+async-channel.workspace = true
 byteorder.workspace = true
+crossbeam-queue.workspace = true
+libc = { version = "0.2.186", optional = true }
 num-derive.workspace = true
 num-traits.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-async-channel.workspace = true
-crossbeam-queue.workspace = true
 trait-variant.workspace = true
-libc = { version = "0.2.186", optional = true }
