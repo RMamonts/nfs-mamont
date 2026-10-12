@@ -38,21 +38,35 @@ pub struct FrameReader<S: AsyncRead + Unpin> {
     end: usize,
     /// Bytes of the current frame body not yet consumed.
     frame_remaining: usize,
+    /// Size of the head window of a frame that does not fit into `buf`.
+    head: usize,
+    /// Whether the last frame did not fit into `buf`.
+    large_frame: bool,
 }
 
 impl<S: AsyncRead + Unpin> FrameReader<S> {
-    /// Creates a new `FrameReader` with the given buffer capacity.
+    /// Creates a new `FrameReader` with the given buffer capacity and the size
+    /// of the head window of frames that do not fit into the buffer.
     ///
-    /// The capacity bounds the head window of a frame: the arguments of every
+    /// A frame that fits into the buffer is buffered whole. Of a larger frame
+    /// only the first `min(head, capacity)` bytes are: the arguments of every
     /// procedure (except opaque `WRITE` data, which is streamed) must fit into
-    /// `capacity` bytes, otherwise parsing fails with `InvalidData`.
+    /// them, otherwise parsing fails with `InvalidData`.
     ///
     /// # Panics
     ///
     /// If `capacity` is less than the RMS header size (4 bytes).
-    pub fn new(capacity: usize, socket: S) -> FrameReader<S> {
+    pub fn new(capacity: usize, head: usize, socket: S) -> FrameReader<S> {
         assert!(capacity >= RMS_HEADER_SIZE, "capacity must hold at least an RMS header");
-        Self { socket, buf: vec![0u8; capacity], start: 0, end: 0, frame_remaining: 0 }
+        Self {
+            socket,
+            buf: vec![0u8; capacity],
+            start: 0,
+            end: 0,
+            frame_remaining: 0,
+            head: min(head, capacity),
+            large_frame: false,
+        }
     }
 
     /// Number of buffered unconsumed bytes.
@@ -67,15 +81,18 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
         self.frame_remaining
     }
 
-    /// Reads more data from the socket into the buffer, compacting it first
-    /// if the write area is exhausted.
-    async fn fill(&mut self) -> io::Result<usize> {
-        if self.end == self.buf.len() {
+    /// Reads at most `limit` more bytes from the socket into the buffer.
+    ///
+    /// The unconsumed bytes are moved to the front of the buffer first, so the
+    /// read can use all the free space instead of what is left at the tail.
+    async fn fill(&mut self, limit: usize) -> io::Result<usize> {
+        if self.start > 0 {
             self.buf.copy_within(self.start..self.end, 0);
             self.end -= self.start;
             self.start = 0;
         }
-        let bytes_read = self.socket.read(&mut self.buf[self.end..]).await?;
+        let stop = self.end.saturating_add(limit).min(self.buf.len());
+        let bytes_read = self.socket.read(&mut self.buf[self.end..stop]).await?;
         if bytes_read == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
         }
@@ -83,13 +100,18 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
         Ok(bytes_read)
     }
 
-    /// Fills the buffer until at least `n` unconsumed bytes are available.
+    /// Fills the buffer until at least `n` unconsumed bytes are available,
+    /// reading no further once `max` bytes are buffered.
     ///
-    /// `n` must not exceed the buffer capacity.
-    async fn ensure_buffered(&mut self, n: usize) -> io::Result<()> {
-        debug_assert!(n <= self.buf.len());
+    /// Reading ahead lets the frames that follow be buffered by the same
+    /// syscall; a `max` close to `n` keeps the data of a large frame out of the
+    /// buffer, so it can be read straight into its destination.
+    ///
+    /// `n` must not exceed `max` or the buffer capacity.
+    async fn ensure_buffered(&mut self, n: usize, max: usize) -> io::Result<()> {
+        debug_assert!(n <= max && n <= self.buf.len());
         while self.buffered() < n {
-            self.fill().await?;
+            self.fill(max - self.buffered()).await?;
         }
         Ok(())
     }
@@ -98,21 +120,35 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     ///
     /// The header is not part of the frame body and is not accounted for in
     /// [`FrameReader::frame_remaining`].
+    ///
+    /// Reads ahead as much as fits into the buffer, unless the last frame did
+    /// not fit into it: a client sending large `WRITE`s likely sends more, and
+    /// their data is better read straight into its destination.
     pub async fn read_frame_header(&mut self) -> io::Result<u32> {
-        self.ensure_buffered(RMS_HEADER_SIZE).await?;
+        let max = if self.large_frame { RMS_HEADER_SIZE + self.head } else { usize::MAX };
+        self.ensure_buffered(RMS_HEADER_SIZE, max).await?;
         let bytes: [u8; RMS_HEADER_SIZE] =
             self.buf[self.start..self.start + RMS_HEADER_SIZE].try_into().unwrap();
         self.start += RMS_HEADER_SIZE;
         Ok(u32::from_be_bytes(bytes))
     }
 
-    /// Starts a frame body of `size` bytes and buffers its head window
-    /// (`min(size, capacity)` bytes), so subsequent synchronous parsing does
-    /// not run out of data before the window is exhausted.
+    /// Starts a frame body of `size` bytes and buffers its head window, so
+    /// subsequent synchronous parsing does not run out of data before the
+    /// window is exhausted.
+    ///
+    /// A frame that fits into the buffer is buffered whole, reading ahead into
+    /// the frames that follow. Of a larger frame (a `WRITE` with big data) only
+    /// the head window is buffered, so the rest of it is read straight into its
+    /// destination rather than copied through the buffer.
     pub async fn begin_body(&mut self, size: usize) -> io::Result<()> {
         self.frame_remaining = size;
-        let head = min(size, self.buf.len());
-        self.ensure_buffered(head).await
+        self.large_frame = size > self.buf.len();
+        if self.large_frame {
+            self.ensure_buffered(self.head, self.head).await
+        } else {
+            self.ensure_buffered(size, usize::MAX).await
+        }
     }
 
     /// Reads exactly `dest.len()` bytes of the frame body, first from the

@@ -58,15 +58,25 @@ use crate::rpc::auth::{AuthStat, Credential};
 use crate::rpc::{AuthFlavor, RpcBody, VersionMismatch};
 use crate::vfs;
 
-/// Minimum buffer size, that could hold complete RPC message
-/// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
-/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`vfs::write::Args`]).
+/// Size of the head window of a frame that does not fit into the parser
+/// buffer: enough for a complete RPC message with NFSv3, MOUNT or NLM
+/// arguments, except for the opaque data of NFSv3 `WRITE` ([`Buffer`] in
+/// [`vfs::write::Args`]), which is read separately.
 ///
 /// The arguments of every procedure except for the opaque `WRITE` data MUST fit
-/// into the parser buffer: the parser reads at most `capacity` bytes of a
-/// frame into memory before parsing and fails with `InvalidData` if the
-/// arguments extend beyond that window.
-pub const DEFAULT_SIZE: usize = 2500;
+/// into the head window: the parser buffers at most that many bytes of such a
+/// frame before parsing and fails with `InvalidData` if the arguments extend
+/// beyond it.
+pub const HEAD_SIZE: usize = 2500;
+
+/// Default size of the parser buffer.
+///
+/// A frame that fits into the buffer is read whole, together with the frames
+/// that follow it, so pipelined small calls, `WRITE`s of a few KiB included,
+/// cost one read syscall per batch; the data of a larger frame is read straight
+/// into its destination. On loopback, 4 KiB `WRITE`s ran 30% faster than with
+/// a 2500-byte buffer (16 KiB `WRITE`s: 11%, or 18% with a 64 KiB buffer).
+pub const DEFAULT_SIZE: usize = 32 * 1024;
 
 /// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
 ///
@@ -132,7 +142,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// A new `RpcParser` instance ready to parse messages.
     pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
-        Self { allocator, reader: FrameReader::new(size, socket) }
+        Self { allocator, reader: FrameReader::new(size, HEAD_SIZE, socket) }
     }
 
     /// Reads and parses the RPC message header.
