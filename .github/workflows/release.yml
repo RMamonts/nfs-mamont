@@ -1,6 +1,8 @@
 name: Publish to crates.io
 
 on:
+  push:
+    tags: ["v*"]
   release:
     types: [published]
 
@@ -11,8 +13,21 @@ env:
 permissions: {}
 
 jobs:
+  create-release:
+    name: Create release from tag
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+
   publish:
     name: Publish
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     # Restricted to v* tags; tag creation is limited to org admins by ruleset.
     environment: crates-io
