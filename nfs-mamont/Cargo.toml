@@ -18,6 +18,7 @@ doctest = true
 [features]
 default = []
 mlock = ["dep:libc"]
+metrics = ["dep:metrics"]
 
 [dependencies]
 # External dependencies
@@ -27,7 +28,11 @@ crossbeam-queue.workspace = true
 libc = { version = "0.2.186", optional = true }
 num-derive.workspace = true
 num-traits.workspace = true
+metrics = { version = "0.24.6", optional = true }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 trait-variant.workspace = true
+
+[dev-dependencies]
+metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }

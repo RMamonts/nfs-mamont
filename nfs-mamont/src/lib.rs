@@ -4,6 +4,7 @@ mod allocator;
 mod backend;
 pub mod consts;
 mod context;
+pub mod metric;
 pub mod mount;
 #[allow(dead_code)]
 mod nlm;
@@ -16,7 +17,6 @@ mod task;
 pub mod vfs;
 
 use std::sync::Arc;
-
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
