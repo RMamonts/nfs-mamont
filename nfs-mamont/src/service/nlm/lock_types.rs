@@ -1,10 +1,10 @@
-use crate::nlm::{cookie::Cookie, OpaqueHandle};
+use crate::nlm::{cookie::Cookie, Name, OpaqueHandle};
 
 /// A held lock with full owner identity and state.
 #[derive(Clone)]
 pub struct ActiveLock {
     /// Name of the client host that owns the lock.
-    pub caller_name: String,
+    pub caller_name: Name,
     /// PID of the process on the client that owns the lock.
     pub system_identifier: i32,
     /// `true` for exclusive lock, `false` for shared lock.
@@ -33,7 +33,7 @@ impl PartialEq for ActiveLock {
 /// A blocked (pending) lock request waiting to be granted.
 pub struct PendingLock {
     /// Name of the client host that owns the lock.
-    pub caller_name: String,
+    pub caller_name: Name,
     /// PID of the process on the client that owns the lock.
     pub system_identifier: i32,
     /// `true` for exclusive lock, `false` for shared lock.
@@ -56,7 +56,7 @@ pub struct PendingLock {
 impl From<&PendingLock> for ActiveLock {
     fn from(lock: &PendingLock) -> Self {
         ActiveLock {
-            caller_name: lock.caller_name.to_string(),
+            caller_name: lock.caller_name.clone(),
             system_identifier: lock.system_identifier,
             exclusive: lock.exclusive,
             offset: lock.offset,
