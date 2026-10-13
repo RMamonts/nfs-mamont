@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn timer_is_16_bytes() {
-        assert_eq!(size_of::<Timer>(), 16);
+        assert_eq!(std::mem::size_of::<Timer>(), 16);
     }
 
     #[test]
