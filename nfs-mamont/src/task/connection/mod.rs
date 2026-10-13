@@ -53,8 +53,14 @@ pub fn new<A, V, B>(
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
-        .spawn();
+    read::ReadTask::<A, B>::new(
+        readhalf,
+        peer_addr,
+        context.get_allocator(),
+        command_senders,
+        context.metrics(),
+    )
+    .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, result_receiver, context.metrics()).spawn();
 }

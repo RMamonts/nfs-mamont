@@ -17,6 +17,8 @@ use std::sync::Arc;
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
+use crate::metric::AllocatorMetrics;
+
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
 
@@ -25,6 +27,7 @@ pub use slice::Slice;
 pub struct AllocatorState {
     pub pool: ArrayQueue<UnownedBuffer>,
     pub semaphore: Semaphore,
+    metrics: AllocatorMetrics,
     base_ptr: *mut u8,
     layout: Layout,
 }
@@ -106,6 +109,10 @@ impl Impl {
     ///
     /// - `size` --- size of each buffer to allocate
     /// - `count` --- number of buffers to allocate
+    ///
+    /// Metrics are registered here, so a `metrics` recorder (exporter) must be installed
+    /// before this call, otherwise nothing will be recorded.
+    // TODO(artemkhel): multiple allocs would write metrics into the same series
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());
@@ -140,7 +147,13 @@ impl Impl {
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
+            state: Arc::new(AllocatorState {
+                pool,
+                semaphore,
+                metrics: AllocatorMetrics::new(buffer_count),
+                base_ptr,
+                layout,
+            }),
             buffer_size: size,
             // `total_size` is a product of two non-zero values, checked above.
             capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
@@ -153,12 +166,14 @@ impl Allocator for Impl {
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
         if size > self.capacity {
+            self.state.metrics.rejected();
             return None;
         }
 
         let remain_size = size.get();
         let count_needed = remain_size.div_ceil(self.buffer_size.get());
 
+        let timer = self.state.metrics.start();
         let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
             Ok(p) => p,
             Err(_) => return None,
@@ -174,6 +189,7 @@ impl Allocator for Impl {
         }
 
         permit.forget();
+        self.state.metrics.allocated(timer, size.get(), count_needed);
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
     }

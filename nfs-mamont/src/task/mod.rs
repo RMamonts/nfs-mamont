@@ -4,6 +4,7 @@
 //! including connection-specific tasks and global task coordination.
 
 use crate::allocator::Buffer;
+use crate::metric::Timer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::Error;
@@ -23,4 +24,6 @@ pub enum ProcResult<B: Buffer> {
 pub struct ProcReply<B: Buffer> {
     pub xid: u32,
     pub proc_result: Result<ProcResult<B>, Error>,
+    /// Request timer, [`Timer::NONE`] for requests that are not measured.
+    pub timer: Timer,
 }
