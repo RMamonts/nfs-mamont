@@ -4,8 +4,6 @@
 //! grouped by file handle. The registry supports shared/exclusive semantics
 //! and range-based conflict detection.
 
-use crate::service::nlm::lock_registry::LockRegistry;
-
 mod lock_registry;
 mod lock_types;
 mod range_ops;
@@ -13,6 +11,8 @@ mod range_ops;
 mod procedures;
 #[cfg(test)]
 mod tests;
+
+use crate::service::nlm::lock_registry::LockRegistry;
 
 /// In-memory state backing the NLM v4 service implementation.
 ///
@@ -24,16 +24,9 @@ pub struct NlmService {
     locks: tokio::sync::RwLock<LockRegistry>,
 }
 
-impl Default for NlmService {
-    /// Creates an empty [`NlmService`] with no locks registered.
-    fn default() -> Self {
-        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
-    }
-}
-
 impl NlmService {
     /// Creates an empty [`NlmService`].
     pub fn new() -> Self {
-        Self::default()
+        NlmService { locks: tokio::sync::RwLock::new(LockRegistry::new()) }
     }
 }

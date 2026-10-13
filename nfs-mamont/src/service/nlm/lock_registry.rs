@@ -148,8 +148,8 @@ impl LockRegistry {
     /// the caller should send `NLMPROC4_GRANTED` for each one.
     pub fn grant_pending(&mut self, file_handle: &Handle) -> Result<Vec<Lock>, Error> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
-        let mut granted: Vec<Lock> = Vec::new();
-        let mut still_pending: Vec<Lock> = Vec::new();
+        let mut granted = Vec::new();
+        let mut still_pending = Vec::new();
 
         for request in pending_requests {
             if self.find_conflict(file_handle, &request).is_some() {
