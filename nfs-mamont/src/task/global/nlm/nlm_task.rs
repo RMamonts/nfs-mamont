@@ -121,7 +121,7 @@ async fn process_message<N: Nlm + Send + Sync + 'static>(
         NlmMessage::Null => Some(NlmRes::Null),
         NlmMessage::Lock(nlm4_lock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
-            let res = nlm_service.lock(event_handler, nlm4_lock_args, &header.cred).await;
+            let res = nlm_service.lock(nlm4_lock_args, &header.cred, event_handler).await;
             Some(NlmRes::Lock(res))
         }
         NlmMessage::Unlock(nlm4_unlock_args) => {
@@ -141,7 +141,7 @@ async fn process_message<N: Nlm + Send + Sync + 'static>(
         }
         NlmMessage::Granted(nlm4_granted_res) => {
             debug!(xid = header.xid, "nlm task: proc=NLM GRANTED");
-            nlm_service.granted(nlm4_granted_res).await;
+            nlm_service.granted(nlm4_granted_res, &header.cred).await;
             None
         }
     }
