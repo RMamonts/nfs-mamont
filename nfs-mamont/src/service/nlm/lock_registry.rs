@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::io::Error;
 
 use crate::nlm::holder::Nlm4Holder;
-use crate::service::nlm::lock_types::{ActiveLock, PendingLock};
+use crate::service::nlm::lock_types::Lock;
 use crate::service::nlm::range_ops::{drain_overlapping, merge_adjacent, ranges_overlap};
 use crate::vfs::file::Handle;
 
 /// In-memory collection of all active locks grouped by file handle.
 pub struct LockRegistry {
     /// Locks indexed by file handle for fast conflict checks.
-    pub by_file: HashMap<Handle, Vec<ActiveLock>>,
+    pub by_file: HashMap<Handle, Vec<Lock>>,
     /// Blocked lock requests awaiting grant.
-    pub pending: HashMap<Handle, Vec<PendingLock>>,
+    pub pending: HashMap<Handle, Vec<Lock>>,
 }
 
 impl LockRegistry {
@@ -25,7 +25,7 @@ impl LockRegistry {
     /// are skipped — a client re-requesting its own range is not a conflict.
     /// Returns `true` if there is an active lock from the same `(caller_name, system_identifier)`
     /// with the same `exclusive` mode and an overlapping range.
-    pub fn has_active_lock(&self, file_handle: &Handle, request: &ActiveLock) -> bool {
+    pub fn has_active_lock(&self, file_handle: &Handle, request: &Lock) -> bool {
         self.by_file.get(file_handle).is_some_and(|locks| {
             locks.iter().any(|lock| {
                 lock.caller_name == request.caller_name
@@ -39,7 +39,7 @@ impl LockRegistry {
     /// Looks for an existing lock that would conflict with `request`.
     /// Locks owned by the same `(caller_name, system_identifier, opaque_handle)`
     /// are skipped — a client re-requesting its own range is not a conflict.
-    pub fn find_conflict(&self, file_handle: &Handle, request: &ActiveLock) -> Option<Nlm4Holder> {
+    pub fn find_conflict(&self, file_handle: &Handle, request: &Lock) -> Option<Nlm4Holder> {
         let locks = self.by_file.get(file_handle)?;
         for lock in locks {
             let is_same_owner = lock.caller_name == request.caller_name
@@ -70,7 +70,7 @@ impl LockRegistry {
     /// Matching uses `PartialEq` (caller_name, system_identifier, exclusive,
     /// offset, length, opaque_handle — cookie is ignored).
     /// Returns `true` if a matching request was found and removed.
-    pub fn remove_pending(&mut self, file_handle: &Handle, target: &PendingLock) -> bool {
+    pub fn remove_pending(&mut self, file_handle: &Handle, target: &Lock) -> bool {
         let pending_requests = match self.pending.get_mut(file_handle) {
             Some(requests) => requests,
             None => return false,
@@ -117,15 +117,11 @@ impl LockRegistry {
     /// This prevents accumulation of duplicate or overlapping locks from the same client.
     /// A subsequent lock on the same range (e.g. upgrading from Shared to Exclusive)
     /// replaces the old entry instead of adding a second one.
-    pub fn push_or_replace(
-        &mut self,
-        file_handle: Handle,
-        new_lock: ActiveLock,
-    ) -> Result<(), Error> {
+    pub fn push_or_replace(&mut self, file_handle: Handle, new_lock: Lock) -> Result<(), Error> {
         let locks = self.by_file.entry(file_handle).or_default();
         drain_overlapping(
             locks,
-            &new_lock.caller_name.as_str(),
+            new_lock.caller_name.as_str(),
             new_lock.system_identifier,
             new_lock.offset,
             new_lock.length,
@@ -140,7 +136,7 @@ impl LockRegistry {
     /// Called after releasing an active lock (`remove_by_owner`) to check
     /// whether any previously blocked request can now be granted.
     ///
-    /// Each non-conflicting request is moved into `by_file` as an [`ActiveLock`]
+    /// Each non-conflicting request is moved into `by_file` as an [`Lock`]
     /// and included in the returned vector. Requests that still conflict are
     /// kept in the pending queue.
     ///
@@ -148,19 +144,18 @@ impl LockRegistry {
     /// * `file_handle` — file whose pending queue should be rechecked.
     ///
     /// ### Returns
-    /// A vector of [`PendingLock`]s that have been granted —
+    /// A vector of [`Lock`]s that have been granted —
     /// the caller should send `NLMPROC4_GRANTED` for each one.
-    pub fn grant_pending(&mut self, file_handle: &Handle) -> Result<Vec<PendingLock>, Error> {
+    pub fn grant_pending(&mut self, file_handle: &Handle) -> Result<Vec<Lock>, Error> {
         let pending_requests = self.pending.remove(file_handle).unwrap_or_default();
-        let mut granted: Vec<PendingLock> = Vec::new();
-        let mut still_pending: Vec<PendingLock> = Vec::new();
+        let mut granted: Vec<Lock> = Vec::new();
+        let mut still_pending: Vec<Lock> = Vec::new();
 
         for request in pending_requests {
-            let request_as_active: ActiveLock = (&request).into();
-            if self.find_conflict(file_handle, &request_as_active).is_some() {
+            if self.find_conflict(file_handle, &request).is_some() {
                 still_pending.push(request);
             } else {
-                self.push_or_replace((*file_handle).clone(), request_as_active)?;
+                self.push_or_replace((*file_handle).clone(), request.clone())?;
                 granted.push(request);
             }
         }

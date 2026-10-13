@@ -2,14 +2,14 @@ use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
 
-use crate::service::nlm::lock_types::{ActiveLock, PendingLock};
+use crate::service::nlm::lock_types;
 use crate::service::nlm::NlmService;
 
 impl Lock for NlmService {
     async fn lock(&self, args: Nlm4LockArgs, _cred: &Credential) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
-        let new_lock = PendingLock {
+        let new_lock = lock_types::Lock {
             caller_name: args.lock.caller_name,
             system_identifier: args.lock.system_identifier,
             exclusive: args.exclusive,
@@ -20,9 +20,8 @@ impl Lock for NlmService {
         };
 
         let fh = args.lock.file_handle;
-        let new_active_lock = ActiveLock::from(&new_lock);
-        if args.reclaim || registry.find_conflict(&fh, &new_active_lock).is_none() {
-            if registry.push_or_replace(fh, new_active_lock).is_err() {
+        if args.reclaim || registry.find_conflict(&fh, &new_lock).is_none() {
+            if registry.push_or_replace(fh, new_lock).is_err() {
                 return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed };
             }
 

@@ -4,7 +4,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::lock::Nlm4LockArgs;
 use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
 use crate::nlm::{Name, OpaqueHandle};
-use crate::service::nlm::lock_types::ActiveLock;
+use crate::service::nlm::lock_types::Lock;
 use crate::service::nlm::LockRegistry;
 use crate::vfs::file::Handle;
 
@@ -31,18 +31,20 @@ pub fn make_active_lock(
     offset: u64,
     length: u64,
     opaque_value: u8,
-) -> ActiveLock {
-    ActiveLock {
+    cookie: Cookie,
+) -> Lock {
+    Lock {
         caller_name: Name::new(caller_name.to_string()).unwrap(),
         system_identifier: pid,
         exclusive,
         offset,
         length,
         opaque_handle: fill_opaque(opaque_value),
+        cookie,
     }
 }
 
-pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, lock: ActiveLock) {
+pub fn push_lock(reg: &mut LockRegistry, fh_value: u8, lock: Lock) {
     reg.by_file.entry(fill_fh(fh_value)).or_default().push(lock);
 }
 
