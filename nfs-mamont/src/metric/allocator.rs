@@ -1,5 +1,7 @@
 //! Metrics of the built-in [`crate::allocator::Impl`].
 
+pub use allocator_metrics::*;
+
 #[cfg(feature = "metrics")]
 mod allocator_metrics {
     use std::fmt;
@@ -117,5 +119,3 @@ mod allocator_metrics {
         pub fn released(&self, _chunks: usize) {}
     }
 }
-
-pub use allocator_metrics::*;

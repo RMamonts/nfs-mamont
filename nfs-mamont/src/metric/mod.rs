@@ -9,6 +9,8 @@ pub(crate) mod test_helpers;
 
 pub use allocator::{AllocTimer, AllocatorMetrics};
 
+pub use nfs_metrics::*;
+
 /// Stage of an NFS request between the five timestamps of its pipeline:
 /// parsed (T0) → picked by a VFS worker (T1) → backend done (T2) →
 /// picked by the write task (T3) → reply written (T4).
@@ -233,8 +235,6 @@ mod nfs_metrics {
         }
     }
 }
-
-pub use nfs_metrics::*;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests {
