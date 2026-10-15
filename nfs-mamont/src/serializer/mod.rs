@@ -18,6 +18,9 @@ pub mod server;
 
 mod files;
 
+#[cfg(test)]
+mod tests;
+
 use std::io::{self, Error, ErrorKind, Write};
 
 use byteorder::{BigEndian, WriteBytesExt};
