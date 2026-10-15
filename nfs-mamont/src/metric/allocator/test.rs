@@ -5,10 +5,8 @@ use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 
 use crate::allocator::Allocator as _;
 use crate::allocator::Impl;
-use crate::metric::allocator::{
-    CHUNKS_CAPACITY, CHUNKS_IN_USE, REJECTED_TOTAL, REQUEST_BYTES, WAIT_SECONDS,
-};
-use crate::metric::test_helpers::{samples, snapshot, value};
+use crate::metric::allocator::allocator_metrics::{CHUNKS_CAPACITY, CHUNKS_IN_USE, REJECTED_TOTAL, REQUEST_BYTES, WAIT_SECONDS};
+use crate::metric::tests::test_helpers::{samples, snapshot, value};
 
 fn allocator(size: usize, count: usize) -> (Impl, Snapshotter) {
     let recorder = DebuggingRecorder::new();

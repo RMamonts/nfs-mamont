@@ -4,6 +4,8 @@
 mod allocator_metrics;
 #[cfg(feature = "metrics")]
 pub use allocator_metrics::*;
+#[cfg(all(test, feature = "metrics"))]
+mod test;
 
 #[cfg(not(feature = "metrics"))]
 mod noop;
