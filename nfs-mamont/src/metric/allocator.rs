@@ -12,11 +12,11 @@ mod allocator_metrics {
         Gauge, Histogram, Unit,
     };
 
-    pub(crate) const WAIT_SECONDS: &str = "nfs_mamont_allocator_wait_seconds";
-    pub(crate) const REQUEST_BYTES: &str = "nfs_mamont_allocator_request_bytes";
-    pub(crate) const REJECTED_TOTAL: &str = "nfs_mamont_allocator_rejected_total";
-    pub(crate) const CHUNKS_IN_USE: &str = "nfs_mamont_allocator_chunks_in_use";
-    pub(crate) const CHUNKS_CAPACITY: &str = "nfs_mamont_allocator_chunks_capacity";
+    pub(super) const WAIT_SECONDS: &str = "nfs_mamont_allocator_wait_seconds";
+    pub(super) const REQUEST_BYTES: &str = "nfs_mamont_allocator_request_bytes";
+    pub(super) const REJECTED_TOTAL: &str = "nfs_mamont_allocator_rejected_total";
+    pub(super) const CHUNKS_IN_USE: &str = "nfs_mamont_allocator_chunks_in_use";
+    pub(super) const CHUNKS_CAPACITY: &str = "nfs_mamont_allocator_chunks_capacity";
 
     /// Pre-registered allocator metric handles.
     ///

@@ -3,7 +3,7 @@
 //! With the `metrics` feature disabled, [`NfsMetrics`] and its helpers are zero-sized
 //! no-ops, so they should be compiled away.
 
-pub(crate) mod allocator;
+mod allocator;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;

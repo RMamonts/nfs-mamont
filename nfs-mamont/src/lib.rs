@@ -4,7 +4,7 @@ mod allocator;
 mod backend;
 pub mod consts;
 mod context;
-pub mod metric;
+mod metric;
 pub mod mount;
 #[allow(dead_code)]
 mod nlm;

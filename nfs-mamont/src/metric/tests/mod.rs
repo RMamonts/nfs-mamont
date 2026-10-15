@@ -4,7 +4,8 @@ use crate::metric::{NfsMetrics, Stage, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 
-pub(crate) mod test_helpers;
+mod test_helpers;
+
 fn metrics() -> (NfsMetrics, Snapshotter) {
     let recorder = DebuggingRecorder::new();
     let snapshotter = recorder.snapshotter();

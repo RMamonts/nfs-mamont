@@ -4,12 +4,12 @@ use metrics_util::debugging::{DebugValue, Snapshotter};
 use metrics_util::CompositeKey;
 
 /// Takes a snapshot of all metric values in debug recorder. Taking a snapshot resets the values
-pub(crate) fn snapshot(snapshotter: &Snapshotter) -> Vec<(CompositeKey, DebugValue)> {
+pub fn snapshot(snapshotter: &Snapshotter) -> Vec<(CompositeKey, DebugValue)> {
     snapshotter.snapshot().into_vec().into_iter().map(|(key, _, _, value)| (key, value)).collect()
 }
 
 /// Returns the value of metric `name` with exactly `labels`.
-pub(crate) fn value<'a>(
+pub fn value<'a>(
     snapshot: &'a [(CompositeKey, DebugValue)],
     name: &str,
     labels: &[(&str, &str)],
@@ -26,7 +26,7 @@ pub(crate) fn value<'a>(
 }
 
 /// Count samples in a histogram
-pub(crate) fn samples(value: &DebugValue) -> usize {
+pub fn samples(value: &DebugValue) -> usize {
     match value {
         DebugValue::Histogram(samples) => samples.len(),
         other => panic!("expected a histogram, got {other:?}"),
