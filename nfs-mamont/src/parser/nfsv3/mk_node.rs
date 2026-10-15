@@ -10,7 +10,7 @@ use crate::vfs::file::Device;
 use crate::vfs::mk_node;
 use crate::vfs::mk_node::What;
 
-pub(super) fn what(src: &mut impl Read) -> Result<mk_node::What> {
+pub fn what(src: &mut impl Read) -> Result<mk_node::What> {
     match u32(src)? {
         3 => Ok(What::Block(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
         4 => Ok(What::Char(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
