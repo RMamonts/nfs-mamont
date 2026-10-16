@@ -578,6 +578,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 ///
 /// Returns the parsed [`vfs::write::Args`] with the allocated data, or an error if:
 /// - Parsing fails
+/// - The declared data length differs from `count` or exceeds [`MAX_PAYLOAD_SIZE`]
 /// - The declared data length does not fit into the frame
 /// - Memory allocation fails
 /// - Reading the data fails
@@ -592,6 +593,15 @@ where
     // Parse arguments for the WRITE procedure.
     let part_arg = write::args(reader).map_err(map_eof)?;
     let size = u32_as_usize(reader).map_err(map_eof)?;
+
+    // RFC 1813 defines `count` as the number of bytes in `data`, so a call
+    // where they differ is malformed (Linux nfsd rejects it the same way).
+    if size != part_arg.size as usize {
+        return Err(Error::Malformed("WRITE count differs from data length"));
+    }
+    if size > MAX_PAYLOAD_SIZE {
+        return Err(Error::Malformed("WRITE data exceeds the largest NFS payload"));
+    }
 
     // Calculate the necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
