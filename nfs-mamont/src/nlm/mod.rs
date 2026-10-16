@@ -89,11 +89,11 @@ impl OpaqueHandle {
 pub struct Name(String);
 
 impl Name {
-    /// Creates a new [`crate::vfs::file::Name`] after validating its length.
+    /// Creates a new [`Name`] after validating its length.
     ///
     /// # Errors
     ///
-    /// Returns an error if `name.len() > MAX_NAME_LEN` or if `name` is empty.
+    /// Returns an error if `name.len() > LM_MAXSTRLEN` or if `name` is empty.
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > LM_MAXSTRLEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
