@@ -1,4 +1,4 @@
-use crate::service::nlm::lock_types::ActiveLock;
+use crate::service::nlm::lock_types::Lock;
 
 /// Length value that means "lock until end-of-file".
 /// The lock covers all bytes from `offset` to EOF.
@@ -26,7 +26,7 @@ pub fn calculate_end_of_interval(start: u64, len: u64) -> u64 {
 /// Returns an empty [`Vec`] when the unlock range fully covers the lock.
 /// Returns one element when the unlock trims the lock from one side only,
 /// and two elements when the unlock splits the lock in the middle.
-pub fn split_lock(lock: ActiveLock, unlock_start: u64, unlock_len: u64) -> Vec<ActiveLock> {
+pub fn split_lock(lock: Lock, unlock_start: u64, unlock_len: u64) -> Vec<Lock> {
     let lock_start = lock.offset;
     let lock_len = lock.length;
     let lock_end = calculate_end_of_interval(lock_start, lock_len);
@@ -35,25 +35,27 @@ pub fn split_lock(lock: ActiveLock, unlock_start: u64, unlock_len: u64) -> Vec<A
     let mut fragments = Vec::new();
 
     if lock_start < unlock_start {
-        fragments.push(ActiveLock {
+        fragments.push(Lock {
             caller_name: lock.caller_name.clone(),
             system_identifier: lock.system_identifier,
             exclusive: lock.exclusive,
             offset: lock_start,
             length: unlock_start - lock_start,
             opaque_handle: lock.opaque_handle.clone(),
+            cookie: lock.cookie,
         });
     }
 
     if unlock_end < lock_end {
         let right_len = if lock_len == 0 { 0 } else { lock_end - unlock_end };
-        fragments.push(ActiveLock {
+        fragments.push(Lock {
             caller_name: lock.caller_name,
             system_identifier: lock.system_identifier,
             exclusive: lock.exclusive,
             offset: unlock_end + 1,
             length: right_len,
             opaque_handle: lock.opaque_handle,
+            cookie: lock.cookie,
         });
     }
 
@@ -63,7 +65,7 @@ pub fn split_lock(lock: ActiveLock, unlock_start: u64, unlock_len: u64) -> Vec<A
 /// Removes locks owned by `(caller_name, system_identifier)` that overlap with
 /// `[start, start+len)` from `locks`, keeping the non-overlapping parts via [`split_lock`].
 pub fn drain_overlapping(
-    locks: &mut Vec<ActiveLock>,
+    locks: &mut Vec<Lock>,
     caller_name: &str,
     system_identifier: i32,
     start: u64,
@@ -71,7 +73,9 @@ pub fn drain_overlapping(
 ) {
     let mut i = 0;
     while i < locks.len() {
-        if locks[i].caller_name != caller_name || locks[i].system_identifier != system_identifier {
+        if locks[i].caller_name.as_str() != caller_name
+            || locks[i].system_identifier != system_identifier
+        {
             i += 1;
             continue;
         }
@@ -89,10 +93,11 @@ pub fn drain_overlapping(
 ///
 /// For example, `[0,5)` and `[5,10)` become `[0,10)`,
 /// and `[0,5)` with `[3,10)` also becomes `[0,10)`.
-pub fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
+pub fn merge_adjacent(locks: &mut Vec<Lock>) {
     locks.sort_by(|a, b| {
         a.caller_name
-            .cmp(&b.caller_name)
+            .as_str()
+            .cmp(b.caller_name.as_str())
             .then(a.system_identifier.cmp(&b.system_identifier))
             .then(a.exclusive.cmp(&b.exclusive))
             .then(a.offset.cmp(&b.offset))
