@@ -24,7 +24,7 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture)
 ### Quick start
 
-As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementaion
+As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation
 
 ## Safety & Requirements
 
@@ -40,7 +40,7 @@ with the following jobs:
 
 - **lint** — `rustfmt`, `clippy` (`-D warnings`), and `cargo check --locked`.
 - **test** — build and run the test suite across MSRV (`1.75.0`) and stable
-  (`1.95.0` - can be cahnged - look CI file `.github` folder).
+  (`1.99.0` - can be changed - look CI file `.github` folder).
 - **security** — `cargo audit` for known vulnerabilities in dependencies.
 - **docs** — build documentation with warnings-as-errors.
 - **udeps** — detect unused dependencies via `cargo-udeps`.
