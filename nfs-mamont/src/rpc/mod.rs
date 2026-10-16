@@ -5,6 +5,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use auth::AuthStat;
 
+use crate::vfs;
+
 pub mod auth;
 
 pub enum AcceptStat {
@@ -73,6 +75,21 @@ pub enum Error {
     ImpossibleTypeCast,
     /// A bad file handle was encountered.
     BadFileHandle,
+    /// A file name or path is longer than the server supports.
+    NameTooLong,
+    /// MKNOD was asked to create a regular file, a directory or a symbolic link.
+    BadType,
+    /// The call is malformed in a way no other variant describes, for example
+    /// its arguments end early or are followed by unparsed bytes.
+    Malformed(&'static str),
+    /// The NFSv3 call is well-formed but fails with `status` before reaching a
+    /// backend, for example because its file handle has a foreign size.
+    Nfs3Status {
+        /// Procedure whose failed result is sent.
+        procedure: u32,
+        /// Status of the failed result.
+        status: vfs::Error,
+    },
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.

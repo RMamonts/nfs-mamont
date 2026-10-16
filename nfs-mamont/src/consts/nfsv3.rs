@@ -31,6 +31,12 @@ pub const COMMIT: u32 = 21;
 /// the XDR alignment; padding is added by the serializer and skipped by the parser.
 pub const NFS3_FHSIZE: usize = 9;
 
+/// Maximum size of a file handle on the wire (`NFS3_FHSIZE` in RFC 1813).
+///
+/// A longer handle is malformed XDR. A handle that fits but differs from
+/// [`NFS3_FHSIZE`] is well-formed, it just cannot have been issued by this server.
+pub const NFS3_MAX_FHSIZE: usize = 64;
+
 pub const NFS3_COOKIEVERFSIZE: usize = 8;
 
 pub const NFS3_CREATEVERFSIZE: usize = 8;

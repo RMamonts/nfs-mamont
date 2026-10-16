@@ -74,6 +74,15 @@ fn test_nfs_fh3_badfh() {
 }
 
 #[test]
+fn test_nfs_fh3_longer_than_xdr_limit() {
+    const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x41];
+
+    let result = handle(&mut Cursor::new(DATA));
+
+    assert!(matches!(result, Err(Error::MaxElemLimit)));
+}
+
+#[test]
 fn test_type_regular() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x01];
 
@@ -142,31 +151,31 @@ fn test_file_name_success() {
 #[test]
 fn test_file_name_too_long_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x01, 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::MaxElemLimit)));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::NameTooLong)));
 }
 
 #[test]
 fn test_file_name_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]
 fn test_file_name_separator_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03, b'a', b'/', b'b', 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]
 fn test_file_path_too_long_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x04, 0x01];
-    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::MaxElemLimit)));
+    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::NameTooLong)));
 }
 
 #[test]
 fn test_file_path_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]

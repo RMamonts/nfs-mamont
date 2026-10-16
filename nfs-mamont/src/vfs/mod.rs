@@ -3,6 +3,10 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Buffer;
+use crate::consts::nfsv3::{
+    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, PATHCONF, READ,
+    READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, SETATTR, SYMLINK, WRITE,
+};
 
 pub mod access;
 pub mod commit;
@@ -232,6 +236,43 @@ pub enum NfsRes<B: Buffer> {
 }
 
 impl<B: Buffer> NfsRes<B> {
+    /// Builds the failed result of NFSv3 `procedure` with `error` and without
+    /// any attributes, for calls rejected before they reach a backend.
+    ///
+    /// Returns [`None`] for `NULL` and unknown procedures, which have no failed result.
+    pub(crate) fn failure(procedure: u32, error: Error) -> Option<Self> {
+        let wcc_data = || WccData { before: None, after: None };
+
+        Some(match procedure {
+            GETATTR => NfsRes::GetAttr(Err(get_attr::Fail { error })),
+            SETATTR => NfsRes::SetAttr(Err(set_attr::Fail { error, wcc_data: wcc_data() })),
+            LOOKUP => NfsRes::LookUp(Err(lookup::Fail { error, dir_attr: None })),
+            ACCESS => NfsRes::Access(Err(access::Fail { error, object_attr: None })),
+            READLINK => NfsRes::ReadLink(Err(read_link::Fail { error, symlink_attr: None })),
+            READ => NfsRes::Read(Err(read::Fail { error, file_attr: None })),
+            WRITE => NfsRes::Write(Err(write::Fail { error, wcc_data: wcc_data() })),
+            CREATE => NfsRes::Create(Err(create::Fail { error, wcc_data: wcc_data() })),
+            MKDIR => NfsRes::MkDir(Err(mk_dir::Fail { error, dir_wcc: wcc_data() })),
+            SYMLINK => NfsRes::SymLink(Err(symlink::Fail { error, dir_wcc: wcc_data() })),
+            MKNOD => NfsRes::MkNod(Err(mk_node::Fail { error, dir_wcc: wcc_data() })),
+            REMOVE => NfsRes::Remove(Err(remove::Fail { error, dir_wcc: wcc_data() })),
+            RMDIR => NfsRes::RmDir(Err(rm_dir::Fail { error, dir_wcc: wcc_data() })),
+            RENAME => NfsRes::Rename(Err(rename::Fail {
+                error,
+                from_dir_wcc: wcc_data(),
+                to_dir_wcc: wcc_data(),
+            })),
+            LINK => NfsRes::Link(Err(link::Fail { error, file_attr: None, dir_wcc: wcc_data() })),
+            READDIR => NfsRes::ReadDir(Err(read_dir::Fail { error, dir_attr: None })),
+            READDIRPLUS => NfsRes::ReadDirPlus(Err(read_dir_plus::Fail { error, dir_attr: None })),
+            FSSTAT => NfsRes::FsStat(Err(fs_stat::Fail { error, root_attr: None })),
+            FSINFO => NfsRes::FsInfo(Err(fs_info::Fail { error, root_attr: None })),
+            PATHCONF => NfsRes::PathConf(Err(path_conf::Fail { error, file_attr: None })),
+            COMMIT => NfsRes::Commit(Err(commit::Fail { error, file_wcc: wcc_data() })),
+            _ => return None,
+        })
+    }
+
     /// Returns the domain error when the NFS result variant is `Err`, if present.
     pub fn error_from_response(&self) -> Option<Error> {
         match self {

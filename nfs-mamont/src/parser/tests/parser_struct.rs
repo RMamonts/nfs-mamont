@@ -492,7 +492,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, .. } = result.err().unwrap();
-    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
+    assert!(matches!(error, Error::Malformed(_)));
 }
 
 #[tokio::test]

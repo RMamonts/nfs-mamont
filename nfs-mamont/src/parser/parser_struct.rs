@@ -76,22 +76,34 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// all: the connection is dropped instead of skipping up to 2 GiB of it.
 pub const MAX_RECORD_SIZE: usize = MAX_PAYLOAD_SIZE + 4096;
 
-/// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
+/// Maps an `UnexpectedEof` from synchronous argument parsing to [`Error::Malformed`].
 ///
 /// After [`FrameReader::begin_body`] the head window of the frame is fully
 /// buffered, so running out of data during synchronous parsing means either
 /// the frame is shorter than its arguments (truncated message) or the
 /// arguments do not fit into the parser buffer (legal only for `WRITE`
-/// payloads, which are streamed separately). Both cases are protocol
-/// violations rather than transient I/O conditions.
+/// payloads, which are streamed separately). Both cases are malformed calls
+/// rather than transient I/O conditions.
 fn map_eof(error: Error) -> Error {
     match error {
-        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "RPC message arguments exceed frame or buffer bounds",
-        )),
+        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => {
+            Error::Malformed("RPC message arguments exceed frame or buffer bounds")
+        }
         other => other,
     }
+}
+
+/// Turns argument errors that RFC 1813 reports through the NFSv3 status of the
+/// called procedure, rather than through an RPC-level failure, into
+/// [`Error::Nfs3Status`].
+fn nfs3_status(procedure: u32, error: Error) -> Error {
+    let status = match error {
+        Error::BadFileHandle => vfs::Error::BadFileHandle,
+        Error::NameTooLong => vfs::Error::NameTooLong,
+        Error::BadType => vfs::Error::BadType,
+        other => return other,
+    };
+    Error::Nfs3Status { procedure, status }
 }
 
 /// Parser for RPC messages over async streams.
@@ -247,9 +259,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials are
     /// accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`]. Any
-    /// other credential flavor is rejected with [`AuthStat::BadCred`]. For both
-    /// accepted flavors, the verifier must be `AUTH_NONE` with an empty body
-    /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
+    /// other credential flavor, as well as a credential that cannot be decoded,
+    /// is rejected with [`AuthStat::BadCred`]. For both accepted flavors, the
+    /// verifier must be `AUTH_NONE` with an empty body (RFC 5531 §8.2); anything
+    /// else is rejected with [`AuthStat::BadVerf`].
     ///
     /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
     ///
@@ -258,8 +271,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns the parsed [`Credential`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     fn parse_authentication(&mut self) -> Result<Credential> {
-        let cred = auth(&mut self.reader)?;
-        let verf = auth(&mut self.reader)?;
+        let cred = auth(&mut self.reader).map_err(|error| {
+            error!(error=?error, "rpc auth reject: malformed credential");
+            Error::Auth(AuthStat::BadCred)
+        })?;
+        let verf = auth(&mut self.reader).map_err(|error| {
+            error!(error=?error, "rpc auth reject: malformed verifier");
+            Error::Auth(AuthStat::BadVerf)
+        })?;
 
         let credential = match cred.flavor {
             AuthFlavor::None if cred.body.is_empty() => Credential::None,
@@ -307,10 +326,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 
     /// Parses NFSv3 procedure arguments from the current frame.
     ///
+    /// Well-formed calls the server must reject with an NFSv3 status (for
+    /// example, a file handle of a foreign size) are reported as
+    /// [`Error::Nfs3Status`].
+    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments<A::Buffer>> {
+        self.parse_nfs_args(procedure).await.map_err(|error| nfs3_status(procedure, error))
+    }
+
+    /// Decodes NFSv3 procedure arguments.
+    ///
     /// All arguments are parsed synchronously from the buffered head window,
     /// except for the opaque `WRITE` payload which is streamed via
     /// [`adapter_for_write`].
-    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments<A::Buffer>> {
+    async fn parse_nfs_args(&mut self, procedure: u32) -> Result<NfsArguments<A::Buffer>> {
         if procedure == WRITE {
             return Ok(NfsArguments::Write(
                 adapter_for_write(&self.allocator, &mut self.reader).await?,
@@ -402,7 +430,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_message_body(&mut self) -> Result<(Credential, ProcArguments<A::Buffer>)> {
         let rpc_header = self.parse_rpc_header()?;
         let proc = self.parse_next_message_with_header(&rpc_header).await?;
-        self.finalize_parsing().map_err(map_eof)?;
+        self.finalize_parsing()?;
         Ok((rpc_header.cred, proc))
     }
 
@@ -510,10 +538,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
         if self.reader.frame_remaining() != 0 {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Unparsed data remaining in frame",
-            )));
+            return Err(Error::Malformed("unparsed data remaining in frame"));
         }
         Ok(())
     }
@@ -574,12 +599,9 @@ where
     // The opaque data with its padding must lie within the current frame;
     // otherwise, the declared length is bogus and reading it would consume
     // bytes of the next message, misaligning the stream.
-    let bounds_error = || {
-        Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
-    };
-    let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
-    if padded > reader.frame_remaining() {
-        return Err(bounds_error());
+    let fits = size.checked_add(padding).is_some_and(|padded| padded <= reader.frame_remaining());
+    if !fits {
+        return Err(Error::Malformed("WRITE data length exceeds frame size"));
     }
 
     // Fill the allocated buffer chunk by chunk; `read_body_exact` consumes the

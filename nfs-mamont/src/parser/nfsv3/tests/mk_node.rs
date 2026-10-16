@@ -120,15 +120,24 @@ fn test_what_socket() {
 
 #[test]
 fn test_what_invalid_discriminants() {
-    for disc in [1_u32, 2, 5, 8] {
+    for disc in [0_u32, 8] {
         let bytes = disc.to_be_bytes();
         assert!(matches!(what(&mut Cursor::new(bytes)), Err(Error::EnumDiscMismatch)));
     }
 }
 
 #[test]
+fn test_what_types_mknod_cannot_create() {
+    // NF3REG, NF3DIR and NF3LNK are valid XDR but illegal for MKNOD.
+    for disc in [1_u32, 2, 5] {
+        let bytes = disc.to_be_bytes();
+        assert!(matches!(what(&mut Cursor::new(bytes)), Err(Error::BadType)));
+    }
+}
+
+#[test]
 fn test_args_invalid_what_discriminant() {
-    let data = wrap_what_with_args(&[0, 0, 0, 1]);
+    let data = wrap_what_with_args(&[0, 0, 0, 8]);
 
     assert!(matches!(args(&mut Cursor::new(data)), Err(Error::EnumDiscMismatch)));
 }
