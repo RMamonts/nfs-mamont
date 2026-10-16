@@ -5,7 +5,7 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::metric::{NfsMetrics, Stage, Timer};
+use crate::metric::{NfsMetrics, Queue, Stage, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcReply, ProcResult};
@@ -45,6 +45,9 @@ impl<B: Buffer> WriteTask<B> {
 
         while let Ok(mut reply) = result_receiver.recv().await {
             let mut timer = mem::replace(&mut reply.timer, Timer::NONE);
+            if timer.is_measured() {
+                self.metrics.dequeued(Queue::Reply);
+            }
             self.metrics.lap(&mut timer, Stage::ReplyQueue);
             let is_ok = timer.is_measured() // const false if metrics are disabled
                 && match &reply.proc_result {

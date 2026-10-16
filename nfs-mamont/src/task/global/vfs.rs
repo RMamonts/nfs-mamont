@@ -6,7 +6,7 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::metric::{NfsMetrics, Stage, Timer};
+use crate::metric::{NfsMetrics, Queue, Stage, Timer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
@@ -263,6 +263,7 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     let (wrapper, tx, mut timer) = command;
+    metrics.dequeued(Queue::Vfs);
     metrics.lap(&mut timer, Stage::VfsQueue);
     let _in_flight_guard = metrics.vfs_in_flight();
     let NfsArgWrapper { header, proc } = wrapper;
@@ -294,8 +295,17 @@ where
     let reply =
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))), timer };
 
+    // The write task dequeues exactly the replies carrying a measured timer.
+    let measured = reply.timer.is_measured();
+    if measured {
+        metrics.enqueued(Queue::Reply);
+    }
+
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
+        if measured {
+            metrics.dequeued(Queue::Reply);
+        }
         warn!("writer task closed, connection pipeline is done");
     }
 }

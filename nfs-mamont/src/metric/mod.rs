@@ -18,6 +18,7 @@ pub use nfs_metrics::*;
 /// picked by the write task (T3) → reply written (T4).
 #[derive(Clone, Copy)]
 pub enum Stage {
+    Read,
     /// T0 → T1: waiting in the VFS pool queue.
     VfsQueue,
     /// T1 → T2: executing in the VFS worker, backend included.
@@ -30,15 +31,39 @@ pub enum Stage {
 
 impl Stage {
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
-    const ALL: [Stage; 4] = [Stage::VfsQueue, Stage::Vfs, Stage::ReplyQueue, Stage::Write];
+    const ALL: [Stage; 5] =
+        [Stage::Read, Stage::VfsQueue, Stage::Vfs, Stage::ReplyQueue, Stage::Write];
 
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
     fn as_str(self) -> &'static str {
         match self {
+            Stage::Read => "read",
             Stage::VfsQueue => "vfs_queue",
             Stage::Vfs => "vfs",
             Stage::ReplyQueue => "reply_queue",
             Stage::Write => "write",
+        }
+    }
+}
+
+/// Pipeline queue whose depth is tracked.
+#[derive(Clone, Copy)]
+pub enum Queue {
+    /// Read tasks → VFS worker pool.
+    Vfs,
+    /// VFS workers → connection write tasks, summed over connections.
+    Reply,
+}
+
+impl Queue {
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    const ALL: [Queue; 2] = [Queue::Vfs, Queue::Reply];
+
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    fn as_str(self) -> &'static str {
+        match self {
+            Queue::Vfs => "vfs",
+            Queue::Reply => "reply",
         }
     }
 }
@@ -53,12 +78,13 @@ mod nfs_metrics {
         Gauge, Histogram, Unit,
     };
 
-    use super::Stage;
+    use super::{Queue, Stage};
 
     pub(super) const STAGE_SECONDS: &str = "nfs_mamont_rpc_stage_seconds";
     pub(super) const DURATION_SECONDS: &str = "nfs_mamont_rpc_duration_seconds";
     pub(super) const REQUESTS_TOTAL: &str = "nfs_mamont_rpc_requests_total";
     pub(super) const VFS_IN_FLIGHT: &str = "nfs_mamont_vfs_in_flight";
+    pub(super) const QUEUE_DEPTH: &str = "nfs_mamont_queue_depth";
 
     /// Pre-registered metric handles.
     ///
@@ -68,11 +94,13 @@ mod nfs_metrics {
         /// Reference point for [`Timer`] timestamps.
         epoch: Instant,
         /// Indexed by [`Stage`].
-        stage: [Histogram; 4],
+        stage: [Histogram; 5],
         duration: Histogram,
         requests_ok: Counter,
         requests_err: Counter,
         vfs_in_flight: Gauge,
+        /// Indexed by [`Queue`].
+        queue_depth: [Gauge; 2],
     }
 
     /// Request timestamps carried along with the request through the pipeline,
@@ -128,6 +156,7 @@ mod nfs_metrics {
                 Unit::Count,
                 "NFS requests executing in the VFS worker pool"
             );
+            describe_gauge!(QUEUE_DEPTH, Unit::Count, "NFS requests waiting in a pipeline queue");
 
             Self {
                 epoch: Instant::now(),
@@ -136,6 +165,7 @@ mod nfs_metrics {
                 requests_ok: counter!(REQUESTS_TOTAL, "status" => "ok"),
                 requests_err: counter!(REQUESTS_TOTAL, "status" => "error"),
                 vfs_in_flight: gauge!(VFS_IN_FLIGHT),
+                queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
             }
         }
 
@@ -181,6 +211,18 @@ mod nfs_metrics {
             self.vfs_in_flight.increment(1.0);
             InFlightGuard(&self.vfs_in_flight)
         }
+
+        /// Counts a request as waiting in `queue`; pair with [`NfsMetrics::dequeued`].
+        #[inline]
+        pub fn enqueued(&self, queue: Queue) {
+            self.queue_depth[queue as usize].increment(1.0);
+        }
+
+        /// Counts a request as no longer waiting in `queue`.
+        #[inline]
+        pub fn dequeued(&self, queue: Queue) {
+            self.queue_depth[queue as usize].decrement(1.0);
+        }
     }
 
     impl Default for NfsMetrics {
@@ -194,7 +236,7 @@ mod nfs_metrics {
 mod nfs_metrics {
     use std::marker::PhantomData;
 
-    use super::Stage;
+    use super::{Queue, Stage};
 
     /// No-op metrics: the `metrics` feature is disabled.
     #[derive(Default)]
@@ -235,5 +277,11 @@ mod nfs_metrics {
         pub fn vfs_in_flight(&self) -> InFlightGuard<'_> {
             InFlightGuard(PhantomData)
         }
+
+        #[inline]
+        pub fn enqueued(&self, _queue: Queue) {}
+
+        #[inline]
+        pub fn dequeued(&self, _queue: Queue) {}
     }
 }
