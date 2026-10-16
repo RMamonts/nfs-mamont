@@ -36,3 +36,9 @@ pub const NFS3_COOKIEVERFSIZE: usize = 8;
 pub const NFS3_CREATEVERFSIZE: usize = 8;
 
 pub const NFS3_WRITEVERFSIZE: usize = 8;
+
+/// Largest `READ` or `WRITE` payload a client sends, in bytes.
+///
+/// The Linux client caps `rsize`/`wsize` at 1 MiB, so no legitimate call
+/// carries more data.
+pub const MAX_PAYLOAD_SIZE: usize = 1 << 20;

@@ -30,9 +30,9 @@ use crate::consts::mount::{
     MOUNT_VERSION,
 };
 use crate::consts::nfsv3::{
-    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
-    NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
-    SETATTR, SYMLINK, WRITE,
+    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MAX_PAYLOAD_SIZE, MKDIR, MKNOD,
+    NFS_PROGRAM, NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME,
+    RMDIR, SETATTR, SYMLINK, WRITE,
 };
 use crate::consts::nlm::{
     NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
@@ -67,6 +67,14 @@ use crate::vfs;
 /// frame into memory before parsing and fails with `InvalidData` if the
 /// arguments extend beyond that window.
 pub const DEFAULT_SIZE: usize = 2500;
+
+/// Largest RPC record the parser accepts: a `WRITE` of [`MAX_PAYLOAD_SIZE`]
+/// bytes plus 4 KiB, more than the RPC header and the arguments of any call
+/// take besides `WRITE` data.
+///
+/// A larger record cannot come from a legitimate client. It is not read at
+/// all: the connection is dropped instead of skipping up to 2 GiB of it.
+pub const MAX_RECORD_SIZE: usize = MAX_PAYLOAD_SIZE + 4096;
 
 /// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
 ///
@@ -152,6 +160,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns the XID if the header was successfully parsed, or an error if:
     /// - The message is fragmented (not supported)
+    /// - The record is larger than [`MAX_RECORD_SIZE`]
     /// - An I/O error occurs
     async fn read_message_header(&mut self) -> Result<u32> {
         let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
@@ -162,6 +171,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             return Err(Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Frame size must include XID",
+            )));
+        }
+
+        if frame_size > MAX_RECORD_SIZE {
+            return Err(Error::IO(io::Error::new(
+                ErrorKind::InvalidData,
+                "RPC record exceeds the largest NFS call",
             )));
         }
 
@@ -362,6 +378,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// This is the generic entry point for call sites that do not know in advance
     /// whether the next frame contains NFSv3 or MOUNT data.
+    ///
+    /// Whatever goes wrong once the frame header is read, the unread rest of the
+    /// frame is skipped, so the next call starts at the next record boundary.
     pub async fn next_message(
         &mut self,
     ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
@@ -369,24 +388,22 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             Ok(xid) => xid,
             Err(error) => return Err(ErrorWrapper { xid: None, error }),
         };
-        let rpc_header = match self.parse_rpc_header() {
-            Ok(arg) => arg,
-            Err(err) => {
-                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+        match self.parse_message_body().await {
+            Ok((cred, proc)) => Ok(ArgWrapper { header: RpcHeader { xid, cred }, proc }),
+            Err(error) => {
+                let error = proc_nested_errors(error, self.discard_current_message()).await;
+                Err(ErrorWrapper { xid: Some(xid), error })
             }
-        };
-        let proc = match self.parse_next_message_with_header(&rpc_header).await {
-            Ok(arg) => arg,
-            Err(err) => {
-                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
-            }
-        };
-
-        // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
-        match self.finalize_parsing() {
-            Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
-            Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
         }
+    }
+
+    /// Parses the RPC call header and the procedure arguments of the current
+    /// frame, then checks that the frame holds nothing else.
+    async fn parse_message_body(&mut self) -> Result<(Credential, ProcArguments<A::Buffer>)> {
+        let rpc_header = self.parse_rpc_header()?;
+        let proc = self.parse_next_message_with_header(&rpc_header).await?;
+        self.finalize_parsing().map_err(map_eof)?;
+        Ok((rpc_header.cred, proc))
     }
 
     async fn parse_next_message_with_header(
@@ -501,36 +518,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    /// Handles errors by potentially discarding the current message.
-    ///
-    /// For certain protocol-level errors (version mismatches, auth errors, etc.),
-    /// this method discards the remaining message data to maintain stream alignment
-    /// for subsequent messages. For other errors, it returns them as-is.
-    ///
-    /// # Arguments
-    ///
-    /// * `error` - The error that occurred during parsing
-    ///
-    /// # Returns
-    ///
-    /// Returns the error, potentially after attempting to discard the message.
-    async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
-            proc_nested_errors(error, self.discard_current_message()).await
-        } else {
-            error
-        }
-    }
-
     /// Discards the remaining data in the current message frame.
     ///
-    /// This method is called after protocol-level errors to skip over the
+    /// This method is called after any error inside a frame to skip over the
     /// remaining bytes in the current message, ensuring the stream is aligned
     /// for parsing the next message.
     ///
