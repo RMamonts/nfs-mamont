@@ -14,18 +14,19 @@ pub use allocator::{AllocTimer, AllocatorMetrics};
 pub use nfs_metrics::*;
 
 /// Stage of an NFS request between the five timestamps of its pipeline:
-/// parsed (T0) → picked by a VFS worker (T1) → backend done (T2) →
-/// picked by the write task (T3) → reply written (T4).
+/// received (T0) → parsed (T1) → picked by a VFS worker (T2) → backend done (T3) →
+/// picked by the write task (T4) → reply written (T5).
 #[derive(Clone, Copy)]
 pub enum Stage {
+    /// T0 → T1: RPC parsing
     Read,
-    /// T0 → T1: waiting in the VFS pool queue.
+    /// T1 → T2: waiting in the VFS pool queue.
     VfsQueue,
-    /// T1 → T2: executing in the VFS worker, backend included.
+    /// T2 → T3: executing in the VFS worker, backend included.
     Vfs,
-    /// T2 → T3: waiting in the connection reply queue.
+    /// T3 → T4: waiting in the connection reply queue.
     ReplyQueue,
-    /// T3 → T4: serializing and writing the reply to the socket.
+    /// T4 → T5: serializing and writing the reply to the socket.
     Write,
 }
 
