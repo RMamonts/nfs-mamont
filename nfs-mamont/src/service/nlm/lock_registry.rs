@@ -125,7 +125,7 @@ impl LockRegistry {
         let locks = self.by_file.entry(file_handle).or_default();
         drain_overlapping(
             locks,
-            &new_lock.caller_name,
+            new_lock.caller_name.as_str(),
             new_lock.system_identifier,
             new_lock.offset,
             new_lock.length,

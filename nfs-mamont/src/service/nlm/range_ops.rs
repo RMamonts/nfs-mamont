@@ -71,7 +71,9 @@ pub fn drain_overlapping(
 ) {
     let mut i = 0;
     while i < locks.len() {
-        if locks[i].caller_name != caller_name || locks[i].system_identifier != system_identifier {
+        if locks[i].caller_name.as_str() != caller_name
+            || locks[i].system_identifier != system_identifier
+        {
             i += 1;
             continue;
         }
@@ -92,7 +94,8 @@ pub fn drain_overlapping(
 pub fn merge_adjacent(locks: &mut Vec<ActiveLock>) {
     locks.sort_by(|a, b| {
         a.caller_name
-            .cmp(&b.caller_name)
+            .as_str()
+            .cmp(b.caller_name.as_str())
             .then(a.system_identifier.cmp(&b.system_identifier))
             .then(a.exclusive.cmp(&b.exclusive))
             .then(a.offset.cmp(&b.offset))

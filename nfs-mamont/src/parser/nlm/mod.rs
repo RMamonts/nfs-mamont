@@ -11,6 +11,7 @@ use crate::parser::primitive::{i32, string_max_size, u64, vec_max_size};
 use crate::parser::{Error, Result};
 
 pub mod cancel;
+pub mod granted;
 pub mod lock;
 pub mod test;
 pub mod unlock;

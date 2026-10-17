@@ -6,6 +6,8 @@ use crate::nlm::procedures::unlock::Nlm4UnlockArgs;
 use crate::nlm::{Name, OpaqueHandle};
 use crate::service::nlm::lock_types::ActiveLock;
 use crate::service::nlm::LockRegistry;
+use crate::task::global::nlm::nlm_event::NlmEventHandler;
+use crate::task::ProcCall;
 use crate::vfs::file::Handle;
 
 pub const FH_DEFAULT: u8 = 1;
@@ -15,6 +17,11 @@ pub const LOCK_WHOLE_LENGTH: u64 = 100;
 mod operations;
 mod ranges;
 mod registry;
+
+fn create_empty_event_handler() -> NlmEventHandler {
+    let (message_sender_placeholder, _) = async_channel::unbounded::<ProcCall>();
+    NlmEventHandler::new(0, message_sender_placeholder)
+}
 
 pub fn fill_fh(value: u8) -> Handle {
     Handle([value; NFS3_FHSIZE])
@@ -33,7 +40,7 @@ pub fn make_active_lock(
     opaque_value: u8,
 ) -> ActiveLock {
     ActiveLock {
-        caller_name: caller_name.to_string(),
+        caller_name: Name::new(caller_name.to_string()).unwrap(),
         system_identifier: pid,
         exclusive,
         offset,

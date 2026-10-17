@@ -5,7 +5,8 @@ use crate::nlm::procedures::test::{Nlm4TestArgs, Test};
 use crate::nlm::{Name, Nlm4Stats};
 use crate::service::nlm::tests::operations::DEFAULT_CRED;
 use crate::service::nlm::tests::{
-    fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
+    create_empty_event_handler, fill_fh, fill_opaque, make_lock_args_without_block, FH_DEFAULT,
+    LOCK_WHOLE_LENGTH,
 };
 use crate::service::nlm::NlmService;
 
@@ -44,6 +45,7 @@ async fn test_reports_denied_when_conflict() {
     svc.lock(
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res =
@@ -57,6 +59,7 @@ async fn test_denied_holder_matches_conflicting_lock() {
     svc.lock(
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 42, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res =
@@ -89,6 +92,7 @@ async fn test_reports_shared_compatible_as_granted() {
     svc.lock(
         make_lock_args_without_block(FH_DEFAULT, false, 0, 100, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc.test(make_test_args(FH_DEFAULT, false, 10, 20, 0), &DEFAULT_CRED).await;

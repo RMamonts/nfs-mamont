@@ -85,7 +85,7 @@ fn remove_by_owner_removes_only_different_owner() {
     push_lock(&mut reg, FH_DEFAULT, make_active_lock("bob", 200, true, 60, 50, 2));
     reg.remove_by_owner(&fill_fh(FH_DEFAULT), "alice", 100, 0, 50).unwrap();
     assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap().len(), 1);
-    assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap()[0].caller_name, "bob");
+    assert_eq!(reg.by_file.get(&fill_fh(FH_DEFAULT)).unwrap()[0].caller_name.as_str(), "bob");
 }
 
 #[test]
