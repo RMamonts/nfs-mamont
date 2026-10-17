@@ -1,10 +1,12 @@
-use crate::metric::nfs_metrics::{DURATION_SECONDS, REQUESTS_TOTAL, STAGE_SECONDS, VFS_IN_FLIGHT};
+use crate::metric::nfs_metrics::{
+    DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS, VFS_IN_FLIGHT,
+};
 use crate::metric::tests::test_helpers::{samples, snapshot, value};
-use crate::metric::{NfsMetrics, Stage, Timer};
+use crate::metric::{NfsMetrics, Queue, Stage, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 
-mod test_helpers;
+pub mod test_helpers;
 
 fn metrics() -> (NfsMetrics, Snapshotter) {
     let recorder = DebuggingRecorder::new();
@@ -65,4 +67,25 @@ fn in_flight_guard_restores_gauge() {
     drop(dropped);
 
     assert_eq!(value(&snapshot(&snapshotter), VFS_IN_FLIGHT, &[]), &DebugValue::Gauge(1.0.into()));
+}
+
+#[tokio::test]
+async fn queue_depth_tracks_each_queue() {
+    let (metrics, snapshotter) = metrics();
+
+    metrics.enqueued(Queue::Vfs);
+    metrics.enqueued(Queue::Vfs);
+    metrics.enqueued(Queue::Vfs);
+
+    metrics.dequeued(Queue::Vfs);
+
+    metrics.enqueued(Queue::Reply);
+
+    let snapshot = snapshot(&snapshotter);
+
+    assert_eq!(value(&snapshot, QUEUE_DEPTH, &[("queue", "vfs")]), &DebugValue::Gauge(2.0.into()));
+    assert_eq!(
+        value(&snapshot, QUEUE_DEPTH, &[("queue", "reply")]),
+        &DebugValue::Gauge(1.0.into())
+    );
 }

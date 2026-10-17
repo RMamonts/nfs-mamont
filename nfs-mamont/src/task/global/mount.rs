@@ -5,6 +5,7 @@ use async_channel::{Receiver, Sender};
 use tracing::debug;
 
 use crate::allocator::Buffer;
+use crate::metric::Timer;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::{ProcReply, ProcResult};
@@ -118,6 +119,7 @@ where
                 .send(ProcReply {
                     xid: header.xid,
                     proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
+                    timer: Timer::NONE,
                 })
                 .await;
             debug!(xid = header.xid, "mount task: reply queued");

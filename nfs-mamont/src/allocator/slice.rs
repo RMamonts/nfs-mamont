@@ -80,6 +80,7 @@ impl Slice {
             }
             if count > 0 {
                 state.semaphore.add_permits(count);
+                state.metrics.released(count);
             }
         }
     }

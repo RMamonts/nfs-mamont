@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
+use crate::metric::NfsMetrics;
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
@@ -52,6 +53,8 @@ where
     allocator: Arc<A>,
     /// Filesystem implementations backing NFS operations, keyed by backend index.
     backends: BackendRegistry<V>,
+    /// Server metrics shared by all tasks.
+    metrics: Arc<NfsMetrics>,
 }
 
 impl<A, V, B> ServerContext<A, V, B>
@@ -66,14 +69,18 @@ where
     /// backends at the same time; procedures beyond it wait in a queue. Set it to the
     /// number of operations the backends can run in parallel (their queue depth).
     ///
+    /// Metrics are registered here, so a `metrics` recorder (exporter) must be installed
+    /// before this call, otherwise nothing will be recorded.
+    ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
     pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
         let backends = BackendRegistry::new();
-        let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
+        let metrics = Arc::new(NfsMetrics::new());
+        let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency, Arc::clone(&metrics));
 
-        Self { vfs_manager, allocator, backends }
+        Self { vfs_manager, allocator, backends, metrics }
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.
@@ -120,5 +127,11 @@ where
     #[inline]
     pub fn get_allocator(&self) -> Arc<A> {
         Arc::clone(&self.allocator)
+    }
+
+    /// Returns a clone of the shared server metrics.
+    #[inline]
+    pub fn metrics(&self) -> Arc<NfsMetrics> {
+        Arc::clone(&self.metrics)
     }
 }

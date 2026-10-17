@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
+use crate::metric::Timer;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
@@ -86,7 +87,11 @@ async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: 
     // - or retry with fail
     // * but don't stop task
     if let Err(e) = result_sender
-        .send(ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) })
+        .send(ProcReply {
+            xid,
+            proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))),
+            timer: Timer::NONE,
+        })
         .await
     {
         error!(xid = xid, "nlm task: failed to send reply: {}", e);
