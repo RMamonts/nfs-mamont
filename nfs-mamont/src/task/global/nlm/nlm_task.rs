@@ -4,7 +4,6 @@
 //! connection read tasks, forwards them to the [`Nlm`] service, and sends
 //! the serialized reply back to the appropriate write task.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender};
