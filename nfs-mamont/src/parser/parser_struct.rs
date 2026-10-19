@@ -358,6 +358,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(args)
     }
 
+    /// Waits until the next RPC message starts arriving, without consuming it.
+    pub async fn wait_message(&mut self) -> io::Result<()> {
+        self.reader.wait_frame_header().await
+    }
+
     /// Parses the next RPC message and returns typed arguments for its program.
     ///
     /// This is the generic entry point for call sites that do not know in advance

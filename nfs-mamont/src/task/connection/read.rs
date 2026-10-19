@@ -93,6 +93,7 @@ where
         let mut parser = RpcParser::new(self.readhalf, self.allocator);
 
         loop {
+            let _ = parser.wait_message().await; // read error will be handled by parser.next_message()
             let mut timer = self.metrics.start();
             match parser.next_message().await {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
