@@ -157,6 +157,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
         let last = header & (HEADER_MASK as u32) != 0;
         let frame_size = header as usize & MAX_FRAGMENT_SIZE;
+        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
 
         if frame_size < std::mem::size_of::<u32>() {
             return Err(Error::IO(io::Error::new(
@@ -175,7 +176,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             )));
         }
 
-        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
         u32(&mut self.reader).map_err(map_eof)
     }
 
@@ -367,7 +367,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
         let xid = match self.read_message_header().await {
             Ok(xid) => xid,
-            Err(error) => return Err(ErrorWrapper { xid: None, error }),
+            Err(error) => return Err(ErrorWrapper { xid: None, error: self.match_errors(error).await }),
         };
         let rpc_header = match self.parse_rpc_header() {
             Ok(arg) => arg,
