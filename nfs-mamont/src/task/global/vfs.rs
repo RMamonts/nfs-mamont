@@ -297,16 +297,13 @@ where
 
     // The write task dequeues exactly the replies carrying a measured timer.
     let measured = reply.timer.is_measured();
-    if measured {
-        metrics.enqueued(Queue::Reply);
-    }
-
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
-        if measured {
-            metrics.dequeued(Queue::Reply);
-        }
         warn!("writer task closed, connection pipeline is done");
+    } else {
+        if measured {
+            metrics.enqueued(Queue::Reply);
+        }
     }
 }
 
