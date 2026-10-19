@@ -385,7 +385,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
             Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
-            Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
+            Err(error) => {
+                Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(map_eof(error)).await })
+            }
         }
     }
 
@@ -501,11 +503,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    /// Handles errors by potentially discarding the current message.
+    /// Handles errors by discarding the current message.
     ///
-    /// For certain protocol-level errors (version mismatches, auth errors, etc.),
-    /// this method discards the remaining message data to maintain stream alignment
-    /// for subsequent messages. For other errors, it returns them as-is.
+    /// Discards the rest of the current frame after any error so the stream stays
+    /// aligned to the next record. If the frame is fully consumed (`frame_remaining`
+    /// is 0), discarding is a no-op.
     ///
     /// # Arguments
     ///
@@ -513,19 +515,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns the error, potentially after attempting to discard the message.
+    /// Returns the error, potentially replaced by an I/O error if discarding fails.
     async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
-            proc_nested_errors(error, self.discard_current_message()).await
-        } else {
-            error
-        }
+        proc_nested_errors(error, self.discard_current_message()).await
     }
 
     /// Discards the remaining data in the current message frame.
