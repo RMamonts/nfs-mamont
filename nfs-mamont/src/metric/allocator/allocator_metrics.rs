@@ -13,6 +13,7 @@ pub(super) const REQUEST_BYTES: &str = "nfs_mamont_allocator_request_bytes";
 pub(super) const REJECTED_TOTAL: &str = "nfs_mamont_allocator_rejected_total";
 pub(super) const CHUNKS_IN_USE: &str = "nfs_mamont_allocator_chunks_in_use";
 pub(super) const CHUNKS_CAPACITY: &str = "nfs_mamont_allocator_chunks_capacity";
+pub(super) const CHUNKS_SIZE: &str = "nfs_mamont_allocator_chunks_size";
 
 /// Pre-registered allocator metric handles.
 ///
@@ -28,7 +29,7 @@ pub struct AllocatorMetrics {
 pub struct AllocTimer(Instant);
 
 impl AllocatorMetrics {
-    pub fn new(chunks: usize) -> Self {
+    pub fn new(chunks: usize, size: usize) -> Self {
         describe_histogram!(
             WAIT_SECONDS,
             Unit::Seconds,
@@ -42,8 +43,10 @@ impl AllocatorMetrics {
         );
         describe_gauge!(CHUNKS_IN_USE, Unit::Count, "Allocator chunks lent out");
         describe_gauge!(CHUNKS_CAPACITY, Unit::Count, "Total allocator chunks");
+        describe_gauge!(CHUNKS_SIZE, Unit::Bytes, "Allocator chunk size");
 
         gauge!(CHUNKS_CAPACITY).set(chunks as f64);
+        gauge!(CHUNKS_SIZE).set(size as f64);
 
         Self {
             wait: histogram!(WAIT_SECONDS),

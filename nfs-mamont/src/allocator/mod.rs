@@ -150,7 +150,7 @@ impl Impl {
             state: Arc::new(AllocatorState {
                 pool,
                 semaphore,
-                metrics: AllocatorMetrics::new(buffer_count),
+                metrics: AllocatorMetrics::new(buffer_count, size.get()),
                 base_ptr,
                 layout,
             }),

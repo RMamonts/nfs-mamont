@@ -7,7 +7,7 @@ pub struct AllocatorMetrics;
 pub struct AllocTimer;
 
 impl AllocatorMetrics {
-    pub fn new(_chunks: usize) -> Self {
+    pub fn new(_chunks: usize, _size: usize) -> Self {
         Self
     }
 
