@@ -367,7 +367,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
         let xid = match self.read_message_header().await {
             Ok(xid) => xid,
-            Err(error) => return Err(ErrorWrapper { xid: None, error: self.match_errors(error).await }),
+            Err(error) => {
+                return Err(ErrorWrapper { xid: None, error: self.match_errors(error).await })
+            }
         };
         let rpc_header = match self.parse_rpc_header() {
             Ok(arg) => arg,

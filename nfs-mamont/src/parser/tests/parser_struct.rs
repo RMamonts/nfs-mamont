@@ -599,9 +599,7 @@ async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
     assert_eq!(xid, None);
-    assert!(
-        matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::Unsupported)
-    );
+    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::Unsupported));
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
