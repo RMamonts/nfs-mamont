@@ -33,51 +33,17 @@ As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) imple
 - **Platform:** Linux (`libc` is an optional dependency used only for the
   `mlock` feature, only needed if you are using our allocator implementation).
 
-## Development
-
-The repository uses a lightweight build setup and a GitHub Actions CI pipeline
-with the following jobs:
-
-- **lint** — `rustfmt`, `clippy` (`-D warnings`), and `cargo check --locked`.
-- **test** — build and run the test suite across MSRV (`1.75.0`) and stable
-  (`1.99.0` - can be changed - look CI file `.github` folder).
-- **security** — `cargo audit` for known vulnerabilities in dependencies.
-- **docs** — build documentation with warnings-as-errors.
-- **udeps** — detect unused dependencies via `cargo-udeps`.
-
-### Local commands
-
-```bash
-cargo build                      # build the library
-```
-
-```bash
-cargo test                       # run tests
-```
-
-```bash
-cargo clippy -- -D warnings      # static analysis
-```
-
-```bash
-cargo fmt --all --check          # formatting check
-```
-
-```bash
-cargo doc --no-deps              # build docs
-```
-
 ### Optional feature
 
 - `mlock` — enables the `libc`-based memory locking helpers.
 
 ## Contributing
 
-Contributions are welcome! Check the issues in the TODO column on our
-[Kanban board](https://github.com/orgs/RMamonts/projects/1/views/1).
-
-Please run the lint, test, and audit commands above before submitting a pull
-request, and follow existing code style (`rustfmt`).
+Contributions are welcome! See our [CONTRIBUTING](CONTRIBUTING.md) guide for
+detailed instructions on reporting issues, setting up the environment, code
+style, and the pull request workflow. Check the issues in the TODO column on
+our [Kanban board](https://github.com/orgs/RMamonts/projects/1/views/1) for
+tasks that are ready to be picked up.
 
 ## Roadmap
 
