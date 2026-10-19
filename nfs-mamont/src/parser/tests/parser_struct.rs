@@ -547,17 +547,67 @@ async fn parse_rejects_any_non_call_message_type() {
 /// Ensures the parser rejects fragments with size below XID width.
 #[tokio::test]
 async fn parse_rejects_frame_smaller_than_xid() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+
     #[rustfmt::skip]
-    let buf = vec![
+    let mut buf = vec![
         0x80, 0x00, 0x00, 0x03, // head with invalid frame size (less than 4)
+        0xAA, 0xBB, 0xCC,       // malformed body that must be discarded
     ];
+    buf.extend_from_slice(&second);
+
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
-    let ErrorWrapper { error, .. } = result.err().unwrap();
+    let ErrorWrapper { error, xid } = result.err().unwrap();
+    assert_eq!(xid, None);
     assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::InvalidData));
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+}
+
+#[tokio::test]
+async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+
+    #[rustfmt::skip]
+    let mut buf = vec![
+        0x00, 0x00, 0x00, 0x08, // non-last fragment with frame size 8
+        0xDE, 0xAD, 0xBE, 0xEF, // xid bytes that must be discarded
+        0xCA, 0xFE, 0xBA, 0xBE, // remaining body bytes that must be discarded
+    ];
+    buf.extend_from_slice(&second);
+
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.next_message().await;
+    let ErrorWrapper { error, xid } = result.err().unwrap();
+    assert_eq!(xid, None);
+    assert!(matches!(error, Error::IO(err) if err.kind() == std::io::ErrorKind::Unsupported));
+
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
 }
 
 /// Verifies the parser handles WRITE with zero opaque payload.
