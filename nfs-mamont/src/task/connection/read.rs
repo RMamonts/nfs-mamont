@@ -141,17 +141,16 @@ where
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
-                    self.metrics.enqueued(Queue::Vfs);
                     if let Err(err) = self
                         .command_senders
                         .pool_sender
                         .send((command, self.command_senders.result_sender.clone(), timer))
                         .await
                     {
-                        self.metrics.dequeued(Queue::Vfs);
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
                             .await;
                     }
+                    self.metrics.enqueued(Queue::Vfs);
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header })
