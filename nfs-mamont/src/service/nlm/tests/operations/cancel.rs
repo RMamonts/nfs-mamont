@@ -5,8 +5,8 @@ use crate::nlm::procedures::lock::Lock;
 use crate::nlm::{Name, Nlm4Stats};
 use crate::service::nlm::tests::operations::DEFAULT_CRED;
 use crate::service::nlm::tests::{
-    fill_fh, fill_opaque, make_lock_args_with_block, make_lock_args_without_block, FH_DEFAULT,
-    LOCK_WHOLE_LENGTH,
+    create_empty_event_handler, fill_fh, fill_opaque, make_lock_args_with_block,
+    make_lock_args_without_block, FH_DEFAULT, LOCK_WHOLE_LENGTH,
 };
 use crate::service::nlm::NlmService;
 
@@ -32,12 +32,14 @@ async fn cancel_removes_blocked_request() {
     svc.lock(
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc
         .lock(
             make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Blocked);
@@ -62,11 +64,13 @@ async fn cancel_preserves_cookie() {
     svc.lock(
         make_lock_args_without_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "alice", 100, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     svc.lock(
         make_lock_args_with_block(FH_DEFAULT, true, 0, LOCK_WHOLE_LENGTH, "bob", 200, 0),
         &DEFAULT_CRED,
+        create_empty_event_handler(),
     )
     .await;
     let res = svc.cancel(make_cancel_args(FH_DEFAULT, "bob", 200, 55), &DEFAULT_CRED).await;
@@ -80,6 +84,7 @@ async fn cancel_on_granted_lock_returns_granted() {
         .lock(
             make_lock_args_without_block(FH_DEFAULT, true, 0, 100, "alice", 100, 0),
             &DEFAULT_CRED,
+            create_empty_event_handler(),
         )
         .await;
     assert_eq!(res.stat, Nlm4Stats::Granted);

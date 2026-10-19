@@ -13,12 +13,12 @@ use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
     ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
-    NlmArgWrapper, NlmArguments, ProcArguments,
+    NlmMessage, NlmMessageWrapper, ProcArguments,
 };
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ProcCall, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
@@ -33,6 +33,9 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
     result_sender: Sender<ProcReply<B>>,
+    /// To pass into nlm task as part of message,
+    /// so nlm task can send result back to write task.
+    message_sender: Sender<ProcCall>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
@@ -41,8 +44,9 @@ impl<B: Buffer + 'static> CommandSenders<B> {
         nlm_sender: Sender<NlmCommand<B>>,
         pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
         result_sender: Sender<ProcReply<B>>,
+        message_sender: Sender<ProcCall>,
     ) -> Self {
-        Self { mount_sender, nlm_sender, pool_sender, result_sender }
+        Self { mount_sender, nlm_sender, pool_sender, result_sender, message_sender }
     }
 }
 
@@ -70,7 +74,7 @@ where
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self { readhalf, client_addr, allocator, command_senders }
+        Self { readhalf, client_addr, command_senders, allocator }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -110,7 +114,7 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
-                    if matches!(*proc, NlmArguments::Null) =>
+                    if matches!(*proc, NlmMessage::Null) =>
                 {
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
@@ -180,7 +184,8 @@ where
                     debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {
                         result_sender: self.command_senders.result_sender.clone(),
-                        args: NlmArgWrapper { header, proc },
+                        message_sender: self.command_senders.message_sender.clone(),
+                        message: NlmMessageWrapper { header, proc },
                     };
 
                     if let Err(err) = self.command_senders.nlm_sender.send(command).await {
