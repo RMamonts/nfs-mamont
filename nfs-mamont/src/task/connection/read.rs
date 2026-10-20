@@ -18,8 +18,8 @@ use crate::parser::{
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::{ProcReply, ProcResult};
 use crate::task::global::vfs::VfsCommand;
+use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
