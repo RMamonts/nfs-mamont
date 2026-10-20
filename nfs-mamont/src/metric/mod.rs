@@ -2,14 +2,13 @@
 //!
 //! With the `metrics` feature disabled, [`NfsMetrics`] and its helpers are zero-sized
 //! no-ops, so they should be compiled away.
-#![allow(dead_code, unused_imports)] // TODO(artemkhel): remove once it's wired
 
 mod allocator;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;
 
-pub use allocator::{AllocTimer, AllocatorMetrics};
+pub use allocator::AllocatorMetrics;
 
 pub use nfs_metrics::*;
 
