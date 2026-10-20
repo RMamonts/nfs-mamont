@@ -18,6 +18,7 @@ use crate::parser::{
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+use crate::task::global::vfs::VfsCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -27,8 +28,8 @@ pub struct CommandSenders<B: Buffer + 'static> {
     mount_sender: Sender<MountCommand<B>>,
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
-    /// To pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task.
-    pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+    /// To pass command into vfs task.
+    pool_sender: Sender<VfsCommand<B>>,
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
