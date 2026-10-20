@@ -1,44 +1,19 @@
-use std::cmp::min;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use tokio::net::tcp::OwnedReadHalf;
+use tokio::net::{TcpListener, TcpStream};
 
-use tokio::io::{AsyncRead, ReadBuf};
+/// Returns the read half of a connected TCP pair with `bytes` written into the
+/// peer, so the returned half behaves like a real socket that has already
+/// received the given frame payload.
+pub async fn read_half(bytes: &[u8]) -> OwnedReadHalf {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let client = TcpStream::connect(addr).await.unwrap();
+    let server = listener.accept().await.unwrap().0;
 
-const SEPARATE: usize = 15;
+    let (read_half, _write_half) = server.into_split();
 
-pub struct MockSocket {
-    data: Vec<u8>,
-    position: usize,
-}
+    client.try_write(bytes).unwrap();
+    drop(client);
 
-impl MockSocket {
-    pub fn new(buf: &[u8]) -> Self {
-        MockSocket { data: buf.to_vec(), position: 0 }
-    }
-}
-
-impl AsyncRead for MockSocket {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        let inner = self.get_mut();
-        if inner.position >= inner.data.len() {
-            return Poll::Ready(Ok(()));
-        }
-        let remaining_data = inner.data.len() - inner.position;
-
-        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
-
-        if to_read > 0 {
-            let start = inner.position;
-            let end = inner.position + to_read;
-            buf.put_slice(&inner.data[start..end]);
-
-            inner.position += to_read;
-        }
-
-        Poll::Ready(Ok(()))
-    }
+    read_half
 }

@@ -16,12 +16,11 @@
 //! buffered window are streamed from the socket directly into the allocated
 //! [`Buffer`].
 
-use std::cmp::min;
 use std::io::{self, ErrorKind};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::io::AsyncRead;
+use tokio::net::tcp::OwnedReadHalf;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Buffer};
@@ -98,24 +97,23 @@ fn map_eof(error: Error) -> Error {
 /// # Type Parameters
 ///
 /// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
-/// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
-pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
+pub struct RpcParser<A: Allocator> {
     allocator: Arc<A>,
-    reader: FrameReader<S>,
+    reader: FrameReader,
 }
 
-impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
+impl<A: Allocator> RpcParser<A> {
     /// Creates a new `RpcParser` with [`DEFAULT_SIZE`] buffer size.
     ///
     /// # Arguments
     ///
-    /// * `socket` - The async stream to read RPC messages from
+    /// * `socket` - The read half of the connection to read RPC messages from
     /// * `allocator` - The allocator to use for dynamic memory allocation
     ///
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn new(socket: S, allocator: Arc<A>) -> Self {
+    pub fn new(socket: OwnedReadHalf, allocator: Arc<A>) -> Self {
         Self::with_capacity(socket, allocator, DEFAULT_SIZE)
     }
 
@@ -131,7 +129,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// A new `RpcParser` instance ready to parse messages.
-    pub fn with_capacity(socket: S, allocator: Arc<A>, size: usize) -> Self {
+    pub fn with_capacity(socket: OwnedReadHalf, allocator: Arc<A>, size: usize) -> Self {
         Self { allocator, reader: FrameReader::new(size, socket) }
     }
 
@@ -566,27 +564,24 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 /// - The declared data length does not fit into the frame
 /// - Memory allocation fails
 /// - Reading the data fails
-async fn adapter_for_write<A, S>(
+async fn adapter_for_write<A>(
     alloc: &Arc<A>,
-    reader: &mut FrameReader<S>,
+    reader: &mut FrameReader,
 ) -> Result<vfs::write::Args<A::Buffer>>
 where
     A: Allocator,
-    S: AsyncRead + Unpin,
 {
     // Parse arguments for the WRITE procedure.
     let part_arg = write::args(reader).map_err(map_eof)?;
     let size = u32_as_usize(reader).map_err(map_eof)?;
 
-    // Calculate the necessary padding to maintain ALIGNMENT
-    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
-
-    // The opaque data with its padding must lie within the current frame;
-    // otherwise, the declared length is bogus and reading it would consume
-    // bytes of the next message, misaligning the stream.
+    // The opaque data with its trailing padding must lie within the current
+    // frame; otherwise, the declared length is bogus and reading it would
+    // consume bytes of the next message, misaligning the stream.
     let bounds_error = || {
         Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
     };
+    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
     let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
     if padded > reader.frame_remaining() {
         return Err(bounds_error());
@@ -601,24 +596,17 @@ where
         None => A::Buffer::empty(),
     };
 
-    let mut left = size;
-    for chunk in buffer_data.chunks_mut() {
-        if left == 0 {
-            break;
-        }
-        let take = min(chunk.len(), left);
-        reader.read_body_exact(&mut chunk[..take]).await.map_err(Error::IO)?;
-        left -= take;
-    }
-    if left != 0 {
+    if size > buffer_data.len() {
         return Err(Error::IO(io::Error::new(
             ErrorKind::InvalidInput,
             "allocated buffer is smaller than WRITE data",
         )));
     }
 
-    // Discard any trailing padding bytes after the data.
-    reader.discard_body(padding).await.map_err(Error::IO)?;
+    // Fill the whole buffer with the WRITE data and consume the trailing
+    // padding; reads from the buffered head window first and streams the
+    // remainder directly from the socket using vectored I/O.
+    reader.read_body_exact_vectored(&mut buffer_data, size).await.map_err(Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
@@ -646,13 +634,12 @@ where
 /// Returns the parsed [`vfs::read::Args`] together with the allocated output
 /// buffer, or an error if parsing fails or memory allocation fails. A zero-byte
 /// read yields an empty buffer without touching the allocator.
-async fn adapter_for_read<A, S>(
+async fn adapter_for_read<A>(
     alloc: &Arc<A>,
-    reader: &mut FrameReader<S>,
+    reader: &mut FrameReader,
 ) -> Result<(vfs::read::Args, A::Buffer)>
 where
     A: Allocator,
-    S: AsyncRead + Unpin,
 {
     let args = read::args(reader).map_err(map_eof)?;
 
