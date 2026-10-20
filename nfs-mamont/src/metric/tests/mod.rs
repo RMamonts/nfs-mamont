@@ -8,11 +8,11 @@ use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 
 pub mod test_helpers;
 
-fn metrics() -> (NfsMetrics, Snapshotter) {
+fn metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
     let recorder = DebuggingRecorder::new();
     let snapshotter = recorder.snapshotter();
     let metrics = with_local_recorder(&recorder, NfsMetrics::new);
-    (metrics, snapshotter)
+    (metrics, snapshotter, recorder)
 }
 
 #[test]
@@ -22,7 +22,7 @@ fn timer_is_16_bytes() {
 
 #[test]
 fn unmeasured_timer_records_nothing() {
-    let (metrics, snapshotter) = metrics();
+    let (metrics, snapshotter, _) = metrics();
 
     let mut timer = Timer::NONE;
     metrics.lap(&mut timer, Stage::Vfs);
@@ -37,7 +37,7 @@ fn unmeasured_timer_records_nothing() {
 
 #[test]
 fn laps_and_finish_are_recorded() {
-    let (metrics, snapshotter) = metrics();
+    let (metrics, snapshotter, _) = metrics();
 
     let mut timer = metrics.start();
     for stage in Stage::ALL {
@@ -60,18 +60,29 @@ fn laps_and_finish_are_recorded() {
 
 #[test]
 fn in_flight_guard_restores_gauge() {
-    let (metrics, snapshotter) = metrics();
+    let (metrics, snapshotter, recorder) = metrics();
 
-    let _held = metrics.vfs_in_flight();
-    let dropped = metrics.vfs_in_flight();
-    drop(dropped);
+    let _held = with_local_recorder(&recorder, || {
+        let held = metrics.vfs_in_flight(0);
+        let _dropped = metrics.vfs_in_flight(1);
+        held
+    });
 
-    assert_eq!(value(&snapshot(&snapshotter), VFS_IN_FLIGHT, &[]), &DebugValue::Gauge(1.0.into()));
+    let snapshot = snapshot(&snapshotter);
+
+    assert_eq!(
+        value(&snapshot, VFS_IN_FLIGHT, &[("backend", "0")]),
+        &DebugValue::Gauge(1.0.into())
+    );
+    assert_eq!(
+        value(&snapshot, VFS_IN_FLIGHT, &[("backend", "1")]),
+        &DebugValue::Gauge(0.0.into())
+    );
 }
 
 #[tokio::test]
 async fn queue_depth_tracks_each_queue() {
-    let (metrics, snapshotter) = metrics();
+    let (metrics, snapshotter, _) = metrics();
 
     metrics.enqueued(Queue::Vfs);
     metrics.enqueued(Queue::Vfs);

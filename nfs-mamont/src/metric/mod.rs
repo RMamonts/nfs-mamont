@@ -72,6 +72,7 @@ impl Queue {
 #[cfg(feature = "metrics")]
 mod nfs_metrics {
     use std::num::NonZeroU64;
+    use std::sync::OnceLock;
     use std::time::{Duration, Instant};
 
     use metrics::{
@@ -80,6 +81,7 @@ mod nfs_metrics {
     };
 
     use super::{Queue, Stage};
+    use crate::vfs::file::BackendId;
 
     pub(super) const STAGE_SECONDS: &str = "nfs_mamont_rpc_stage_seconds";
     pub(super) const DURATION_SECONDS: &str = "nfs_mamont_rpc_duration_seconds";
@@ -91,6 +93,7 @@ mod nfs_metrics {
     ///
     /// Handles are bound to the recorder installed when [`NfsMetrics::new`] is called,
     /// so the recorder must be installed before that.
+    /// Per-backend in-flight gauges are the exception: they are registered on first use, in the recorder installed at that time.
     pub struct NfsMetrics {
         /// Reference point for [`Timer`] timestamps.
         epoch: Instant,
@@ -99,7 +102,8 @@ mod nfs_metrics {
         duration: Histogram,
         requests_ok: Counter,
         requests_err: Counter,
-        vfs_in_flight: Gauge,
+        /// Indexed by [`BackendId`], registered on first use.
+        vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
         /// Indexed by [`Queue`].
         queue_depth: [Gauge; 2],
     }
@@ -152,11 +156,7 @@ mod nfs_metrics {
                 "NFS request time from parsed request to written reply"
             );
             describe_counter!(REQUESTS_TOTAL, Unit::Count, "Completed NFS requests by status");
-            describe_gauge!(
-                VFS_IN_FLIGHT,
-                Unit::Count,
-                "NFS requests executing in the VFS worker pool"
-            );
+            describe_gauge!(VFS_IN_FLIGHT, Unit::Count, "NFS requests executing in a VFS backend");
             describe_gauge!(QUEUE_DEPTH, Unit::Count, "NFS requests waiting in a pipeline queue");
 
             Self {
@@ -165,7 +165,7 @@ mod nfs_metrics {
                 duration: histogram!(DURATION_SECONDS),
                 requests_ok: counter!(REQUESTS_TOTAL, "status" => "ok"),
                 requests_err: counter!(REQUESTS_TOTAL, "status" => "error"),
-                vfs_in_flight: gauge!(VFS_IN_FLIGHT),
+                vfs_in_flight: std::array::from_fn(|_| OnceLock::new()),
                 queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
             }
         }
@@ -206,11 +206,13 @@ mod nfs_metrics {
             }
         }
 
-        /// Counts a request executing in the VFS pool until the guard is dropped.
+        /// Counts a request executing in `backend` until the guard is dropped.
         #[inline]
-        pub fn vfs_in_flight(&self) -> InFlightGuard<'_> {
-            self.vfs_in_flight.increment(1.0);
-            InFlightGuard(&self.vfs_in_flight)
+        pub fn vfs_in_flight(&self, backend: BackendId) -> InFlightGuard<'_> {
+            let gauge = self.vfs_in_flight[backend as usize]
+                .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.to_string()));
+            gauge.increment(1.0);
+            InFlightGuard(gauge)
         }
 
         /// Counts a request as waiting in `queue`; pair with [`NfsMetrics::dequeued`].
@@ -238,6 +240,7 @@ mod nfs_metrics {
     use std::marker::PhantomData;
 
     use super::{Queue, Stage};
+    use crate::vfs::file::BackendId;
 
     /// No-op metrics: the `metrics` feature is disabled.
     #[derive(Default)]
@@ -275,7 +278,7 @@ mod nfs_metrics {
         pub fn finish(&self, _timer: Timer, _is_ok: bool) {}
 
         #[inline]
-        pub fn vfs_in_flight(&self) -> InFlightGuard<'_> {
+        pub fn vfs_in_flight(&self, _backend: BackendId) -> InFlightGuard<'_> {
             InFlightGuard(PhantomData)
         }
 

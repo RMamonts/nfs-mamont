@@ -265,7 +265,6 @@ where
     let (wrapper, tx, mut timer) = command;
     metrics.dequeued(Queue::Vfs);
     metrics.lap(&mut timer, Stage::VfsQueue);
-    let _in_flight_guard = metrics.vfs_in_flight();
     let NfsArgWrapper { header, proc } = wrapper;
     let proc_name = proc.get_name();
 
@@ -273,7 +272,10 @@ where
         Target::None => NfsRes::Null,
         Target::Crossing => failed_response(&proc, vfs::Error::XDev),
         Target::Single(backend_id) => match backends.get(backend_id) {
-            Some(backend) => execute(*proc, backend, &header.cred).await,
+            Some(backend) => {
+                let _in_flight_guard = metrics.vfs_in_flight(backend_id);
+                execute(*proc, backend, &header.cred).await
+            }
             None => {
                 warn!(
                     xid = header.xid,
