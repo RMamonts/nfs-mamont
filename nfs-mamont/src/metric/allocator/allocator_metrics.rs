@@ -8,12 +8,12 @@ use metrics::{
     Gauge, Histogram, Unit,
 };
 
-pub(super) const WAIT_SECONDS: &str = "nfs_mamont_allocator_wait_seconds";
-pub(super) const REQUEST_BYTES: &str = "nfs_mamont_allocator_request_bytes";
-pub(super) const REJECTED_TOTAL: &str = "nfs_mamont_allocator_rejected_total";
-pub(super) const CHUNKS_IN_USE: &str = "nfs_mamont_allocator_chunks_in_use";
-pub(super) const CHUNKS_CAPACITY: &str = "nfs_mamont_allocator_chunks_capacity";
-pub(super) const CHUNKS_SIZE: &str = "nfs_mamont_allocator_chunks_size";
+pub(super) const WAIT_SECONDS: &str = "nfsmamont_allocator_wait_seconds";
+pub(super) const REQUEST_BYTES: &str = "nfsmamont_allocator_request_bytes";
+pub(super) const REJECTED_TOTAL: &str = "nfsmamont_allocator_rejected_total";
+pub(super) const CHUNKS_IN_USE: &str = "nfsmamont_allocator_chunks_in_use";
+pub(super) const CHUNKS_CAPACITY: &str = "nfsmamont_allocator_chunks_capacity";
+pub(super) const CHUNKS_SIZE: &str = "nfsmamont_allocator_chunks_size";
 
 /// Pre-registered allocator metric handles.
 ///

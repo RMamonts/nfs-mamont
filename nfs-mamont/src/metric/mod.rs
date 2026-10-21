@@ -82,11 +82,11 @@ mod nfs_metrics {
     use super::{Queue, Stage};
     use crate::vfs::file::BackendId;
 
-    pub(super) const STAGE_SECONDS: &str = "nfs_mamont_rpc_stage_seconds";
-    pub(super) const DURATION_SECONDS: &str = "nfs_mamont_rpc_duration_seconds";
-    pub(super) const REQUESTS_TOTAL: &str = "nfs_mamont_rpc_requests_total";
-    pub(super) const VFS_IN_FLIGHT: &str = "nfs_mamont_vfs_in_flight";
-    pub(super) const QUEUE_DEPTH: &str = "nfs_mamont_queue_depth";
+    pub(super) const STAGE_SECONDS: &str = "nfsmamont_rpc_stage_seconds";
+    pub(super) const DURATION_SECONDS: &str = "nfsmamont_rpc_duration_seconds";
+    pub(super) const REQUESTS_TOTAL: &str = "nfsmamont_rpc_requests_total";
+    pub(super) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
+    pub(super) const QUEUE_DEPTH: &str = "nfsmamont_queue_depth";
 
     /// Pre-registered metric handles.
     ///
