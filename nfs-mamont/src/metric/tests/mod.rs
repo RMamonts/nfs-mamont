@@ -4,7 +4,7 @@ use crate::metric::nfs_metrics::{
 use std::sync::Arc;
 
 use crate::metric::tests::test_helpers::{samples, snapshot, value};
-use crate::metric::{unbounded, NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{unbounded, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
@@ -23,8 +23,8 @@ fn timer_is_16_bytes() {
     assert_eq!(std::mem::size_of::<Timer>(), 16);
 }
 
-#[test]
-fn unmeasured_timer_records_nothing() {
+#[tokio::test]
+async fn unmeasured_timer_records_nothing() {
     let (metrics, snapshotter, _) = metrics();
 
     let mut timer = Timer::NONE;
@@ -38,8 +38,8 @@ fn unmeasured_timer_records_nothing() {
     assert_eq!(samples(value(&snapshot, STAGE_SECONDS, &[("stage", "vfs")])), 0);
 }
 
-#[test]
-fn laps_and_finish_are_recorded() {
+#[tokio::test]
+async fn laps_and_finish_are_recorded() {
     let (metrics, snapshotter, _) = metrics();
 
     let mut timer = metrics.start();
@@ -61,8 +61,8 @@ fn laps_and_finish_are_recorded() {
     }
 }
 
-#[test]
-fn in_flight_guard_restores_gauge() {
+#[tokio::test]
+async fn in_flight_guard_restores_gauge() {
     let (metrics, snapshotter, recorder) = metrics();
 
     let _held = with_local_recorder(&recorder, || {
@@ -123,4 +123,27 @@ async fn queue_depth_is_restored_without_receiver() {
     drop(rx_clone); // last rx dropped, gauge = -1
     assert!(tx.send(()).await.is_err()); // failed send doesn't count
     assert_eq!(depth(&snapshot(&snapshotter), "vfs"), -1.0);
+}
+
+#[tokio::test]
+async fn tokio_metrics_are_reported_per_task_kind() {
+    let (metrics, snapshotter, _) = metrics();
+
+    for kind in TaskKind::ALL {
+        metrics.instrument(kind, async {}).await;
+    }
+    // Lets the reporters, spawned in `NfsMetrics::new`, take their first sample.
+    tokio::task::yield_now().await;
+
+    let snapshot = snapshot(&snapshotter);
+
+    for kind in TaskKind::ALL {
+        assert_eq!(
+            value(&snapshot, "nfsmamont_tokio_task_instrumented_count", &[("task", kind.as_str())]),
+            &DebugValue::Gauge(1.0.into()),
+            "task {}",
+            kind.as_str()
+        );
+    }
+    value(&snapshot, "nfsmamont_tokio_workers_count", &[]);
 }

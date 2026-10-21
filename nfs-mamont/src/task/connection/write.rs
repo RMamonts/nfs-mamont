@@ -5,7 +5,7 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::metric::{CountedReceiver, NfsMetrics, Stage, Timer};
+use crate::metric::{CountedReceiver, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcReply, ProcResult};
@@ -36,7 +36,8 @@ impl<B: Buffer> WriteTask<B> {
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        let metrics = Arc::clone(&self.metrics);
+        tokio::spawn(metrics.instrument(TaskKind::Write, self.run()));
     }
 
     async fn run(self) {

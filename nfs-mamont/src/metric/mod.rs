@@ -70,18 +70,46 @@ impl Queue {
     }
 }
 
+/// Kind of work instrumented with its own tokio task monitor.
+#[derive(Clone, Copy)]
+pub enum TaskKind {
+    /// Connection read task, one per connection.
+    Read,
+    /// Connection write task, one per connection.
+    Write,
+    /// Single NFS request dispatched by a VFS worker.
+    Vfs,
+}
+
+impl TaskKind {
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    const ALL: [TaskKind; 3] = [TaskKind::Read, TaskKind::Write, TaskKind::Vfs];
+
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    fn as_str(self) -> &'static str {
+        match self {
+            TaskKind::Read => "read",
+            TaskKind::Write => "write",
+            TaskKind::Vfs => "vfs",
+        }
+    }
+}
+
 #[cfg(feature = "metrics")]
 mod nfs_metrics {
+    use std::future::Future;
     use std::num::NonZeroU64;
     use std::sync::OnceLock;
     use std::time::{Duration, Instant};
 
     use metrics::{
         counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram, Counter,
-        Gauge, Histogram, Unit,
+        Gauge, Histogram, Key, Unit,
     };
+    use tokio::task::AbortHandle;
+    use tokio_metrics::{RuntimeMetricsReporterBuilder, TaskMetricsReporterBuilder, TaskMonitor};
 
-    use super::{Queue, Stage};
+    use super::{Queue, Stage, TaskKind};
     use crate::vfs::file::BackendId;
 
     pub(super) const STAGE_SECONDS: &str = "nfsmamont_rpc_stage_seconds";
@@ -89,6 +117,9 @@ mod nfs_metrics {
     pub(super) const REQUESTS_TOTAL: &str = "nfsmamont_rpc_requests_total";
     pub(super) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
     pub(super) const QUEUE_DEPTH: &str = "nfsmamont_queue_depth";
+
+    /// How often tokio runtime and task metrics are sampled into the recorder.
+    const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
 
     /// Pre-registered metric handles.
     ///
@@ -107,6 +138,10 @@ mod nfs_metrics {
         vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
         /// Indexed by [`Queue`].
         queue_depth: [Gauge; 2],
+        /// Indexed by [`TaskKind`].
+        task_monitors: [TaskMonitor; 3],
+        /// Tokio runtime and task reporters, aborted on drop.
+        reporters: Vec<AbortHandle>,
     }
 
     /// Request timestamps carried along with the request through the pipeline,
@@ -144,7 +179,11 @@ mod nfs_metrics {
     }
 
     impl NfsMetrics {
-        /// Describes and registers all metrics in the currently installed recorder.
+        /// Describes and registers all metrics in the currently installed recorder and spawns the tokio metrics reporters.
+        ///
+        /// # Panics
+        ///
+        /// If called outside of tokio runtime context.
         pub fn new() -> Self {
             describe_histogram!(
                 STAGE_SECONDS,
@@ -160,6 +199,26 @@ mod nfs_metrics {
             describe_gauge!(VFS_IN_FLIGHT, Unit::Count, "NFS requests executing in a VFS backend");
             describe_gauge!(QUEUE_DEPTH, Unit::Count, "Requests waiting in a pipeline queue");
 
+            let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
+            let runtime_reporter = RuntimeMetricsReporterBuilder::default()
+                .with_interval(TOKIO_SAMPLING_INTERVAL)
+                .with_metrics_transformer(|name| {
+                    Key::from_name(name.replacen("tokio_", "nfsmamont_tokio_", 1))
+                })
+                .describe()
+                .build();
+            let mut reporters = vec![tokio::spawn(runtime_reporter.run()).abort_handle()];
+            for (kind, monitor) in TaskKind::ALL.into_iter().zip(&task_monitors) {
+                let reporter = TaskMetricsReporterBuilder::new(move |name| {
+                    let name = name.replacen("tokio_", "nfsmamont_tokio_task_", 1);
+                    Key::from_parts(name, &[("task", kind.as_str())])
+                })
+                .with_interval(TOKIO_SAMPLING_INTERVAL)
+                .describe()
+                .build_with_monitor(monitor.clone());
+                reporters.push(tokio::spawn(reporter.run()).abort_handle());
+            }
+
             Self {
                 epoch: Instant::now(),
                 stage: Stage::ALL.map(|stage| histogram!(STAGE_SECONDS, "stage" => stage.as_str())),
@@ -168,6 +227,8 @@ mod nfs_metrics {
                 requests_err: counter!(REQUESTS_TOTAL, "status" => "error"),
                 vfs_in_flight: std::array::from_fn(|_| OnceLock::new()),
                 queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
+                task_monitors,
+                reporters,
             }
         }
 
@@ -227,6 +288,22 @@ mod nfs_metrics {
         pub fn dequeued(&self, queue: Queue, count: usize) {
             self.queue_depth[queue as usize].decrement(count as f64);
         }
+
+        /// Instruments `fut` with the task monitor of `kind`.
+        #[inline]
+        pub fn instrument<F: Future>(
+            &self,
+            kind: TaskKind,
+            fut: F,
+        ) -> impl Future<Output = F::Output> {
+            self.task_monitors[kind as usize].instrument(fut)
+        }
+    }
+
+    impl Drop for NfsMetrics {
+        fn drop(&mut self) {
+            self.reporters.iter().for_each(AbortHandle::abort);
+        }
     }
 
     impl Default for NfsMetrics {
@@ -238,9 +315,10 @@ mod nfs_metrics {
 
 #[cfg(not(feature = "metrics"))]
 mod nfs_metrics {
+    use std::future::Future;
     use std::marker::PhantomData;
 
-    use super::Stage;
+    use super::{Queue, Stage, TaskKind};
     use crate::vfs::file::BackendId;
 
     /// No-op metrics: the `metrics` feature is disabled.
@@ -281,6 +359,17 @@ mod nfs_metrics {
         #[inline]
         pub fn vfs_in_flight(&self, _backend: BackendId) -> InFlightGuard<'_> {
             InFlightGuard(PhantomData)
+        }
+
+        #[inline]
+        pub fn enqueued(&self, _queue: Queue) {}
+
+        #[inline]
+        pub fn dequeued(&self, _queue: Queue) {}
+
+        #[inline]
+        pub fn instrument<F: Future>(&self, _kind: TaskKind, fut: F) -> F {
+            fut
         }
     }
 }

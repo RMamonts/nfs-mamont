@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{CountedSender, NfsMetrics, Stage, Timer};
+use crate::metric::{CountedSender, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -86,7 +86,8 @@ where
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        let metrics = Arc::clone(&self.metrics);
+        tokio::spawn(metrics.instrument(TaskKind::Read, self.run()));
     }
 
     async fn run(self) -> io::Result<()> {
