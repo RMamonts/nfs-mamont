@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use async_channel::Sender;
 
@@ -188,6 +188,15 @@ where
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
                             .await;
                     }
+                }
+
+                // The record is not a CALL at all (a REPLY sent to the server, or a
+                // bogus msg_type). RFC 5531 defines no reply to a reply, and answering
+                // one with a reply of our own could ping-pong with a confused peer, so
+                // the record is dropped silently. The parser has already skipped it,
+                // so the stream stays aligned.
+                Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
+                    warn!(client=%self.client_addr, xid, "rpc record is not a CALL, ignoring");
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {

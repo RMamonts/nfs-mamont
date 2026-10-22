@@ -232,6 +232,8 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             }
             Err(err) => {
                 match err {
+                    // `MessageTypeMismatch` never reaches the writer: the read task
+                    // drops records that are not calls instead of answering them.
                     Error::ImpossibleTypeCast
                     | Error::BadFileHandle
                     | Error::MessageTypeMismatch
