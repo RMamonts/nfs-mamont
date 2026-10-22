@@ -193,8 +193,7 @@ where
                 // The record is not a CALL at all (a REPLY sent to the server, or a
                 // bogus msg_type). RFC 5531 defines no reply to a reply, and answering
                 // one with a reply of our own could ping-pong with a confused peer, so
-                // the record is dropped silently. The parser has already skipped it,
-                // so the stream stays aligned.
+                // the record is dropped silently.
                 Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
                     warn!(client=%self.client_addr, xid, "rpc record is not a CALL, ignoring");
                 }
