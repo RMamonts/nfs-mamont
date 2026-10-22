@@ -73,6 +73,14 @@ pub enum Error {
     ImpossibleTypeCast,
     /// A bad file handle was encountered.
     BadFileHandle,
+    /// The call is well-formed XDR but its arguments violate the protocol in a
+    /// way no other variant describes: a name or path that is empty or
+    /// contains a separator, arguments that end before the frame does or run
+    /// past it, opaque data longer than the frame, and so on.
+    ///
+    /// Answered with `GARBAGE_ARGS`; unlike [`Error::IO`] it is the client's
+    /// fault, not a server or transport failure.
+    Malformed(&'static str),
     /// A message type mismatch occurred.
     MessageTypeMismatch,
     /// An RPC version mismatch occurred.

@@ -68,20 +68,19 @@ use crate::vfs;
 /// arguments extend beyond that window.
 pub const DEFAULT_SIZE: usize = 2500;
 
-/// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
+/// Maps an `UnexpectedEof` from synchronous argument parsing to [`Error::Malformed`].
 ///
 /// After [`FrameReader::begin_body`] the head window of the frame is fully
 /// buffered, so running out of data during synchronous parsing means either
 /// the frame is shorter than its arguments (truncated message) or the
 /// arguments do not fit into the parser buffer (legal only for `WRITE`
-/// payloads, which are streamed separately). Both cases are protocol
-/// violations rather than transient I/O conditions.
+/// payloads, which are streamed separately). Both cases are malformed calls
+/// (`GARBAGE_ARGS`) rather than transient I/O conditions.
 fn map_eof(error: Error) -> Error {
     match error {
-        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "RPC message arguments exceed frame or buffer bounds",
-        )),
+        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => {
+            Error::Malformed("RPC message arguments exceed frame or buffer bounds")
+        }
         other => other,
     }
 }
@@ -493,14 +492,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` if validation passes, or an error if unparsed data
-    /// remains in the frame (indicating a parsing bug or malformed message).
+    /// Returns `Ok(())` if validation passes, or [`Error::Malformed`] if unparsed
+    /// data remains in the frame (indicating a parsing bug or malformed message).
     fn finalize_parsing(&mut self) -> Result<()> {
         if self.reader.frame_remaining() != 0 {
-            return Err(Error::IO(io::Error::new(
-                ErrorKind::InvalidData,
-                "Unparsed data remaining in frame",
-            )));
+            return Err(Error::Malformed("unparsed data remaining in frame"));
         }
         Ok(())
     }
@@ -578,12 +574,9 @@ where
     // The opaque data with its padding must lie within the current frame;
     // otherwise, the declared length is bogus and reading it would consume
     // bytes of the next message, misaligning the stream.
-    let bounds_error = || {
-        Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
-    };
-    let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
-    if padded > reader.frame_remaining() {
-        return Err(bounds_error());
+    let fits = size.checked_add(padding).is_some_and(|padded| padded <= reader.frame_remaining());
+    if !fits {
+        return Err(Error::Malformed("WRITE data length exceeds frame size"));
     }
 
     // Fill the allocated buffer chunk by chunk; `read_body_exact` consumes the

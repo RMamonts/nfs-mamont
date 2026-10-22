@@ -234,6 +234,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 match err {
                     Error::ImpossibleTypeCast
                     | Error::BadFileHandle
+                    | Error::Malformed(_)
                     | Error::MessageTypeMismatch
                     | Error::EnumDiscMismatch
                     | Error::MaxElemLimit

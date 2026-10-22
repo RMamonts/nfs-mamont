@@ -148,13 +148,13 @@ fn test_file_name_too_long_error() {
 #[test]
 fn test_file_name_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]
 fn test_file_name_separator_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03, b'a', b'/', b'b', 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn test_file_path_too_long_error() {
 #[test]
 fn test_file_path_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::Malformed(_))));
 }
 
 #[test]
