@@ -5,7 +5,9 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::metric::{unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, TaskKind, Timer};
+use crate::metric::{
+    unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, TaskKind, Timer,
+};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};

@@ -4,9 +4,9 @@
 //! no-ops, so they should be compiled away.
 
 mod allocator;
-mod queue;
 #[cfg(feature = "metrics")]
 mod io;
+mod queue;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;
@@ -472,7 +472,7 @@ mod nfs_metrics {
     use std::future::Future;
     use std::marker::PhantomData;
 
-    use super::{Queue, Stage, TaskKind};
+    use super::{Stage, TaskKind};
     use crate::vfs::file::BackendId;
 
     /// No-op metrics: the `metrics` feature is disabled.
@@ -517,12 +517,6 @@ mod nfs_metrics {
         pub fn vfs_in_flight(&self, _backend: BackendId) -> InFlightGuard<'_> {
             InFlightGuard(PhantomData)
         }
-
-        #[inline]
-        pub fn enqueued(&self, _queue: Queue) {}
-
-        #[inline]
-        pub fn dequeued(&self, _queue: Queue) {}
 
         #[inline]
         pub fn instrument<F: Future>(&self, _kind: TaskKind, fut: F) -> F {
