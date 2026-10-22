@@ -1,6 +1,6 @@
 use crate::consts::nfsv3::GETATTR;
 use crate::metric::nfs_metrics::{
-    BYTES, CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS,
+    BYTES, BYTES_TOTAL, CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS,
     SYSCALL_SECONDS, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use crate::metric::{unbounded, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub mod test_helpers;
 
@@ -166,4 +166,22 @@ async fn write_reply() {
         assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
     }
     assert_eq!(value(&snapshot, BYTES, &labels), &DebugValue::Histogram(vec![4.0.into()]));
+}
+
+#[tokio::test]
+async fn read_call() {
+    let (metrics, snapshotter, _) = metrics();
+    let (mut socket, io) = metrics.io_timer(&b"unmeasuredabcd"[..]);
+    let mut buf = [0; 10];
+
+    metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await.unwrap();
+    metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(GETATTR)).await.unwrap();
+
+    let snapshot = snapshot(&snapshotter);
+    let labels = [("message", "call"), ("proc", "getattr")];
+
+    for name in [CPU_SECONDS, SYSCALL_SECONDS] {
+        assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
+    }
+    assert_eq!(value(&snapshot, BYTES_TOTAL, &[("message", "call")]), &DebugValue::Counter(14));
 }

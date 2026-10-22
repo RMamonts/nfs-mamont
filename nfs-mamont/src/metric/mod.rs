@@ -125,7 +125,9 @@ mod nfs_metrics {
     pub(super) const CPU_SECONDS: &str = "nfsmamont_rpc_cpu_seconds";
     pub(super) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
     pub(super) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
+    // TODO(artemkhel): naming
     pub(super) const BYTES: &str = "nfsmamont_rpc_bytes";
+    pub(super) const BYTES_TOTAL: &str = "nfsmamont_rpc_bytes_total";
 
     /// How often tokio runtime and task metrics are sampled into the recorder.
     const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
@@ -175,6 +177,21 @@ mod nfs_metrics {
         }
     }
 
+    /// Call metrics of one NFSv3 procedure.
+    struct CallMetrics {
+        cpu: Histogram,
+        syscall: Histogram,
+    }
+
+    impl CallMetrics {
+        fn new(proc: &'static str) -> Self {
+            Self {
+                cpu: histogram!(CPU_SECONDS, "message" => "call", "proc" => proc),
+                syscall: histogram!(SYSCALL_SECONDS, "message" => "call", "proc" => proc),
+            }
+        }
+    }
+
     /// Pre-registered metric handles.
     ///
     /// Handles are bound to the recorder installed when [`NfsMetrics::new`] is called,
@@ -194,6 +211,9 @@ mod nfs_metrics {
         queue_depth: [Gauge; 2],
         /// Indexed by NFSv3 procedure number.
         reply: [ReplyMetrics; 22],
+        /// Indexed by NFSv3 procedure number.
+        call: [CallMetrics; 22],
+        call_bytes: Counter,
         /// Indexed by [`TaskKind`].
         task_monitors: [TaskMonitor; 3],
         /// Tokio runtime and task reporters, aborted on drop.
@@ -270,6 +290,7 @@ mod nfs_metrics {
                 "Time a message waited for the socket to become ready"
             );
             describe_histogram!(BYTES, Unit::Bytes, "Size of an NFS message on the wire");
+            describe_counter!(BYTES_TOTAL, Unit::Bytes, "Bytes of RPC messages on the wire");
 
             let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
             let runtime_reporter = RuntimeMetricsReporterBuilder::default()
@@ -300,6 +321,8 @@ mod nfs_metrics {
                 vfs_in_flight: std::array::from_fn(|_| OnceLock::new()),
                 queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
                 reply: PROC_NAMES.map(ReplyMetrics::new),
+                call: PROC_NAMES.map(CallMetrics::new),
+                call_bytes: counter!(BYTES_TOTAL, "message" => "call"),
                 task_monitors,
                 reporters,
             }
@@ -372,8 +395,7 @@ mod nfs_metrics {
             self.task_monitors[kind as usize].instrument(fut)
         }
 
-        /// Wraps a connection socket, so that its I/O time can be attributed to
-        /// single messages with [`NfsMetrics::write_reply`].
+        /// Wraps a connection socket, so that its I/O time can be measured
         #[inline]
         pub fn io_timer<S>(&self, socket: S) -> (IoTimer<S>, Arc<IoStats>) {
             IoTimer::new(socket)
@@ -404,6 +426,30 @@ mod nfs_metrics {
             metrics.syscall.record(syscall);
             metrics.wait.record(future_metrics.total_idle_duration);
             metrics.bytes.record(bytes as f64);
+            output
+        }
+
+        /// Awaits `call`, which reads one call through the [`IoTimer`] behind `io`, and
+        /// records its CPU and syscall time under the procedure `procedure` returns for it.
+        /// Nothing but bytes is recorded for `None`.
+        ///
+        /// One read can buffer several pipelined calls, so the first of them carries
+        /// the syscall time and bytes of the rest.
+        pub async fn read_call<F: Future>(
+            &self,
+            io: &IoStats,
+            call: F,
+            procedure: impl FnOnce(&F::Output) -> Option<u32>,
+        ) -> F::Output {
+            let (output, future_metrics) = FutureMonitor::new().instrument(call).await;
+            let (syscall, bytes) = io.take();
+            self.call_bytes.increment(bytes);
+            if let Some(procedure) = procedure(&output) {
+                let metrics = &self.call[procedure as usize];
+                // Syscalls run inside polls; the rest of the poll time is deserialization
+                metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+                metrics.syscall.record(syscall);
+            }
             output
         }
     }
@@ -496,6 +542,16 @@ mod nfs_metrics {
             reply: F,
         ) -> F {
             reply
+        }
+
+        #[inline]
+        pub fn read_call<F: Future>(
+            &self,
+            _io: &IoStats,
+            call: F,
+            _procedure: impl FnOnce(&F::Output) -> Option<u32>,
+        ) -> F {
+            call
         }
     }
 }

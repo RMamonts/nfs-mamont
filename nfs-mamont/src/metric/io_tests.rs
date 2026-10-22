@@ -1,9 +1,20 @@
 use std::io::IoSlice;
 use std::time::Duration;
 
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::IoTimer;
+
+#[tokio::test]
+async fn read_bytes_are_counted() {
+    let (mut socket, stats) = IoTimer::new(&b"abc"[..]);
+
+    let mut buf = [0; 8];
+    let read = socket.read(&mut buf).await.unwrap();
+
+    assert_eq!(&buf[..read], b"abc");
+    assert_eq!(stats.take().1, 3);
+}
 
 #[tokio::test]
 async fn take_returns_written_bytes_and_resets() {

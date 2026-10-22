@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{CountedSender, NfsMetrics, Queue, Stage, TaskKind, Timer};
+use crate::metric::{CountedSender, NfsMetrics, Stage, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -91,12 +91,21 @@ where
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let (readhalf, io) = self.metrics.io_timer(self.readhalf);
+        let mut parser = RpcParser::new(readhalf, self.allocator);
 
         loop {
             let _ = parser.wait_message().await; // read error will be handled by parser.next_message()
             let mut timer = self.metrics.start();
-            match parser.next_message().await {
+            let message =
+                self.metrics.read_call(&io, parser.next_message(), |message| match message {
+                    Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
+                        Some(args.procedure())
+                    }
+
+                    _ => None,
+                });
+            match message.await {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {

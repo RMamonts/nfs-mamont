@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 #[cfg(test)]
 #[path = "io_tests.rs"]
@@ -49,6 +49,24 @@ impl<S> IoTimer<S> {
     pub fn new(inner: S) -> (Self, Arc<IoStats>) {
         let stats = Arc::new(IoStats::default());
         (Self { inner, stats: Arc::clone(&stats) }, stats)
+    }
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for IoTimer<S> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        let filled = buf.filled().len();
+        this.stats
+            .record(|| {
+                Pin::new(&mut this.inner)
+                    .poll_read(cx, buf)
+                    .map_ok(|()| buf.filled().len() - filled)
+            })
+            .map_ok(drop)
     }
 }
 
