@@ -1,4 +1,3 @@
-use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -6,7 +5,7 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::metric::{NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, Timer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
@@ -14,11 +13,11 @@ use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments, a channel to send the result, and the request timer.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>, Timer);
+pub type VfsCommand<B> = (NfsArgWrapper<B>, CountedSender<ProcReply<B>>, Timer);
 /// Sender to enqueue work in the queue.
-pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
+pub type VfsCommandSender<B> = CountedSender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
-type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
+type VfsCommandReceiver<B> = CountedReceiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -177,7 +176,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let (tx, rx) = unbounded::<VfsCommand<B>>(Arc::clone(&metrics), Queue::Vfs);
 
         (0..concurrency.get()).for_each(|_| {
             VfsTask::new(backends.clone(), rx.clone(), Arc::clone(&metrics)).spawn();
@@ -263,7 +262,6 @@ where
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
     let (wrapper, tx, mut timer) = command;
-    metrics.dequeued(Queue::Vfs);
     metrics.lap(&mut timer, Stage::VfsQueue);
     let NfsArgWrapper { header, proc } = wrapper;
     let proc_name = proc.get_name();
@@ -297,15 +295,9 @@ where
     let reply =
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))), timer };
 
-    // The write task dequeues exactly the replies carrying a measured timer.
-    let measured = reply.timer.is_measured();
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
         warn!("writer task closed, connection pipeline is done");
-    } else {
-        if measured {
-            metrics.enqueued(Queue::Reply);
-        }
     }
 }
 

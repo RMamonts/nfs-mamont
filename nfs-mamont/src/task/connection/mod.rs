@@ -13,6 +13,7 @@ use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
+use crate::metric::{unbounded, Queue};
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
@@ -43,7 +44,8 @@ pub fn new<A, V, B>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
+    let (result_sender, result_receiver) =
+        unbounded::<ProcReply<B>>(context.metrics(), Queue::Reply);
     // channel for request
 
     let command_senders = CommandSenders::<B>::new(

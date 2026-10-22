@@ -1,10 +1,13 @@
 use crate::metric::nfs_metrics::{
     DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS, VFS_IN_FLIGHT,
 };
+use std::sync::Arc;
+
 use crate::metric::tests::test_helpers::{samples, snapshot, value};
-use crate::metric::{NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{unbounded, NfsMetrics, Queue, Stage, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
+use metrics_util::CompositeKey;
 
 pub mod test_helpers;
 
@@ -80,23 +83,44 @@ fn in_flight_guard_restores_gauge() {
     );
 }
 
+fn depth(snapshot: &[(CompositeKey, DebugValue)], queue: &str) -> f64 {
+    match value(snapshot, QUEUE_DEPTH, &[("queue", queue)]) {
+        DebugValue::Gauge(depth) => depth.into_inner(),
+        _ => panic!("queue depth is not a gauge"),
+    }
+}
+
 #[tokio::test]
 async fn queue_depth_tracks_each_queue() {
     let (metrics, snapshotter, _) = metrics();
+    let metrics = Arc::new(metrics);
+    let (vfs_tx, vfs_rx) = unbounded(Arc::clone(&metrics), Queue::Vfs);
+    let (reply_tx, _reply_rx) = unbounded(metrics, Queue::Reply);
 
-    metrics.enqueued(Queue::Vfs);
-    metrics.enqueued(Queue::Vfs);
-    metrics.enqueued(Queue::Vfs);
-
-    metrics.dequeued(Queue::Vfs);
-
-    metrics.enqueued(Queue::Reply);
+    for i in 0..3 {
+        vfs_tx.send(i).await.unwrap();
+    }
+    vfs_rx.recv().await.unwrap();
+    reply_tx.send(()).await.unwrap();
 
     let snapshot = snapshot(&snapshotter);
 
-    assert_eq!(value(&snapshot, QUEUE_DEPTH, &[("queue", "vfs")]), &DebugValue::Gauge(2.0.into()));
-    assert_eq!(
-        value(&snapshot, QUEUE_DEPTH, &[("queue", "reply")]),
-        &DebugValue::Gauge(1.0.into())
-    );
+    assert_eq!(depth(&snapshot, "vfs"), 2.0);
+    assert_eq!(depth(&snapshot, "reply"), 1.0);
+}
+
+#[tokio::test]
+async fn queue_depth_is_restored_without_receiver() {
+    let (metrics, snapshotter, _) = metrics();
+    let (tx, rx) = unbounded(Arc::new(metrics), Queue::Vfs);
+    let rx_clone = rx.clone();
+
+    tx.send(()).await.unwrap();
+    drop(rx);
+    assert_eq!(depth(&snapshot(&snapshotter), "vfs"), 1.0);
+
+    // taking snapshot resets the gauge to 0
+    drop(rx_clone); // last rx dropped, gauge = -1
+    assert!(tx.send(()).await.is_err()); // failed send doesn't count
+    assert_eq!(depth(&snapshot(&snapshotter), "vfs"), -1.0);
 }

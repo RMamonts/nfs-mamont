@@ -4,11 +4,13 @@
 //! no-ops, so they should be compiled away.
 
 mod allocator;
+mod queue;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;
 
 pub use allocator::AllocatorMetrics;
+pub use queue::{unbounded, CountedReceiver, CountedSender};
 
 pub use nfs_metrics::*;
 
@@ -51,7 +53,7 @@ impl Stage {
 pub enum Queue {
     /// Read tasks → VFS worker pool.
     Vfs,
-    /// VFS workers → connection write tasks, summed over connections.
+    /// workers → connection write tasks, summed over connections.
     Reply,
 }
 
@@ -156,7 +158,7 @@ mod nfs_metrics {
             );
             describe_counter!(REQUESTS_TOTAL, Unit::Count, "Completed NFS requests by status");
             describe_gauge!(VFS_IN_FLIGHT, Unit::Count, "NFS requests executing in a VFS backend");
-            describe_gauge!(QUEUE_DEPTH, Unit::Count, "NFS requests waiting in a pipeline queue");
+            describe_gauge!(QUEUE_DEPTH, Unit::Count, "Requests waiting in a pipeline queue");
 
             Self {
                 epoch: Instant::now(),
@@ -220,10 +222,10 @@ mod nfs_metrics {
             self.queue_depth[queue as usize].increment(1.0);
         }
 
-        /// Counts a request as no longer waiting in `queue`.
+        /// Counts `count` requests as no longer waiting in `queue`.
         #[inline]
-        pub fn dequeued(&self, queue: Queue) {
-            self.queue_depth[queue as usize].decrement(1.0);
+        pub fn dequeued(&self, queue: Queue, count: usize) {
+            self.queue_depth[queue as usize].decrement(count as f64);
         }
     }
 
@@ -238,7 +240,7 @@ mod nfs_metrics {
 mod nfs_metrics {
     use std::marker::PhantomData;
 
-    use super::{Queue, Stage};
+    use super::Stage;
     use crate::vfs::file::BackendId;
 
     /// No-op metrics: the `metrics` feature is disabled.
@@ -280,11 +282,5 @@ mod nfs_metrics {
         pub fn vfs_in_flight(&self, _backend: BackendId) -> InFlightGuard<'_> {
             InFlightGuard(PhantomData)
         }
-
-        #[inline]
-        pub fn enqueued(&self, _queue: Queue) {}
-
-        #[inline]
-        pub fn dequeued(&self, _queue: Queue) {}
     }
 }

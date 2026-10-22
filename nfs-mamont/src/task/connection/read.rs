@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{CountedSender, NfsMetrics, Stage, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -34,7 +34,7 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
-    result_sender: Sender<ProcReply<B>>,
+    result_sender: CountedSender<ProcReply<B>>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
@@ -42,7 +42,7 @@ impl<B: Buffer + 'static> CommandSenders<B> {
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
         pool_sender: VfsCommandSender<B>,
-        result_sender: Sender<ProcReply<B>>,
+        result_sender: CountedSender<ProcReply<B>>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender, result_sender }
     }
@@ -151,7 +151,6 @@ where
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
                             .await;
                     }
-                    self.metrics.enqueued(Queue::Vfs);
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header })
@@ -220,7 +219,7 @@ where
 }
 
 async fn send_broken_pipe<B: Buffer + 'static>(
-    sender: &Sender<ProcReply<B>>,
+    sender: &CountedSender<ProcReply<B>>,
     xid: u32,
     err: impl std::fmt::Display,
 ) -> io::Result<()> {
