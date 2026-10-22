@@ -1,4 +1,3 @@
-use async_channel::{Receiver, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -6,18 +5,19 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
+use crate::metric::{unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, Timer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
-/// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
+/// One queued NFS procedure: parsed arguments, a channel to send the result, and the request timer.
+pub type VfsCommand<B> = (NfsArgWrapper<B>, CountedSender<ProcReply<B>>, Timer);
 /// Sender to enqueue work in the queue.
-pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
+pub type VfsCommandSender<B> = CountedSender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
-type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
+type VfsCommandReceiver<B> = CountedReceiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -159,6 +159,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// - `backends` --- registry of filesystem implementations, may be empty
     /// - `concurrency` --- number of workers, i.e. the maximum number of procedures
     ///   executed against the backends at the same time
+    /// - `metrics` --- metrics shared by the workers
     ///
     /// # Returns
     ///
@@ -167,14 +168,18 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn new<V>(backends: BackendRegistry<V>, concurrency: NonZeroUsize) -> Self
+    pub fn new<V>(
+        backends: BackendRegistry<V>,
+        concurrency: NonZeroUsize,
+        metrics: Arc<NfsMetrics>,
+    ) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let (tx, rx) = unbounded::<VfsCommand<B>>(Arc::clone(&metrics), Queue::Vfs);
 
         (0..concurrency.get()).for_each(|_| {
-            VfsTask::new(backends.clone(), rx.clone()).spawn();
+            VfsTask::new(backends.clone(), rx.clone(), Arc::clone(&metrics)).spawn();
         });
 
         Self { sender: tx }
@@ -204,6 +209,8 @@ where
     backends: BackendRegistry<V>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver<B>,
+    /// Metrics shared by all workers.
+    metrics: Arc<NfsMetrics>,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -217,12 +224,17 @@ where
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
     /// - `command_receiver` --- shared receiver from the pool
+    /// - `metrics` --- metrics shared by all workers
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backends, command_receiver }
+    pub fn new(
+        backends: BackendRegistry<V>,
+        command_receiver: VfsCommandReceiver<B>,
+        metrics: Arc<NfsMetrics>,
+    ) -> Self {
+        Self { backends, command_receiver, metrics }
     }
 
     /// Spawns a [`VfsTask`].
@@ -238,18 +250,19 @@ where
     /// and sending replies.
     async fn run(self) {
         while let Ok(command) = self.command_receiver.recv().await {
-            dispatch(&self.backends, command).await;
+            dispatch(&self.backends, &self.metrics, command).await;
         }
     }
 }
 
 /// Routes a single NFS procedure to the backend owning its file handle and sends the reply.
-async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: VfsCommand<B>)
+async fn dispatch<V, B>(backends: &BackendRegistry<V>, metrics: &NfsMetrics, command: VfsCommand<B>)
 where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (wrapper, tx) = command;
+    let (wrapper, tx, mut timer) = command;
+    metrics.lap(&mut timer, Stage::VfsQueue);
     let NfsArgWrapper { header, proc } = wrapper;
     let proc_name = proc.get_name();
 
@@ -257,7 +270,10 @@ where
         Target::None => NfsRes::Null,
         Target::Crossing => failed_response(&proc, vfs::Error::XDev),
         Target::Single(backend_id) => match backends.get(backend_id) {
-            Some(backend) => execute(*proc, backend, &header.cred).await,
+            Some(backend) => {
+                let _in_flight_guard = metrics.vfs_in_flight(backend_id);
+                execute(*proc, backend, &header.cred).await
+            }
             None => {
                 warn!(
                     xid = header.xid,
@@ -270,13 +286,14 @@ where
             }
         },
     };
+    metrics.lap(&mut timer, Stage::Vfs);
 
     if let Some(error) = response.error_from_response() {
         error!(xid=header.xid, proc=proc_name, error=?error, "nfs op failed");
     }
 
     let reply =
-        ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
+        ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))), timer };
 
     // Write task may already be closed; then this connection pipeline is done.
     if tx.send(reply).await.is_err() {
