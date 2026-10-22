@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::allocator::Buffer;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{
-    FSSTAT, GETATTR, MKDIR, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION, SYMLINK, WRITE,
+    FSSTAT, GETATTR, LOOKUP, MKDIR, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION, SYMLINK, WRITE,
 };
 use crate::consts::rpc::RPC_VERSION;
 use crate::parser::parser_struct::RpcParser;
@@ -494,7 +494,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, .. } = result.err().unwrap();
-    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
+    assert!(matches!(error, Error::Malformed(_)));
 }
 
 #[tokio::test]
@@ -850,11 +850,7 @@ async fn parse_extra_bytes_after_finalize_after_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
-    assert!(matches!(
-        result,
-        Err(ErrorWrapper { error: Error::IO(ref io_err), xid: Some(XID) })
-            if io_err.kind() == std::io::ErrorKind::InvalidData
-    ));
+    assert!(matches!(result, Err(ErrorWrapper { error: Error::Malformed(_), xid: Some(XID) })));
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
@@ -890,16 +886,41 @@ async fn parse_symlink_window_overflow_after_error() {
     let mut parser = RpcParser::with_capacity(socket, alloc, 200);
 
     let result = parser.next_message().await;
-    assert!(matches!(
-        result,
-        Err(ErrorWrapper { error: Error::IO(ref io_err), xid: Some(XID) })
-            if io_err.kind() == std::io::ErrorKind::InvalidData
-    ));
+    assert!(matches!(result, Err(ErrorWrapper { error: Error::Malformed(_), xid: Some(XID) })));
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
         result,
         &header,
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+}
+
+/// A name that is syntactically valid XDR but empty is the client's mistake:
+/// the call is answered with GARBAGE_ARGS (`Error::Malformed`), not with
+/// SYSTEM_ERR, and the stream stays aligned.
+#[tokio::test]
+async fn parse_empty_name_is_malformed_after_error() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let first = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, GETATTR, |buf| {
+        push_opaque(buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    });
+    let lookup = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, LOOKUP, |buf| {
+        push_opaque(buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        push_opaque(buf, b"");
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&lookup);
+    buf.extend_from_slice(&first);
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.next_message().await;
+    assert!(matches!(result, Err(ErrorWrapper { error: Error::Malformed(_), xid: Some(XID) })));
+
+    let result = parser.next_message().await.unwrap();
+    assert!(
+        matches!(result.proc, ProcArguments::Nfs3(ref args) if matches!(**args, NfsArguments::GetAttr(_)))
     );
 }
