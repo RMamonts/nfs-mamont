@@ -25,6 +25,7 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub fn new<A, V, B>(
     socket: TcpStream,
+    client_id: u64,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
@@ -53,8 +54,14 @@ pub fn new<A, V, B>(
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
-        .spawn();
+    read::ReadTask::<A, B>::new(
+        readhalf,
+        peer_addr,
+        client_id,
+        context.get_allocator(),
+        command_senders,
+    )
+    .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, client_id, result_receiver).spawn();
 }
