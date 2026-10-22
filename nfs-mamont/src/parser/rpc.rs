@@ -15,6 +15,10 @@ pub struct RpcMessage {
 }
 
 /// Reads a raw `opaque_auth` (flavor + opaque body) from the stream.
+///
+/// A flavor number this server does not know (for example `AUTH_KERB` or
+/// `RPCSEC_GSS` pseudo-flavors) fails with [`Error::EnumDiscMismatch`]; the RPC
+/// parser turns that into an `AUTH_ERROR` rejection.
 pub fn auth(src: &mut impl Read) -> Result<OpaqueAuth> {
     Ok(OpaqueAuth { flavor: variant::<AuthFlavor>(src)?, body: vec_max_size(src, MAX_AUTH_SIZE)? })
 }

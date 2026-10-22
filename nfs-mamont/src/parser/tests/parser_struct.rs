@@ -133,6 +133,34 @@ fn nfs_call_frame_wire(
     frame
 }
 
+/// Constructs an NFS FSSTAT call frame whose credential and verifier are given
+/// as raw wire values, so that flavor numbers unknown to the server can be sent.
+fn fsstat_frame_raw_auth(
+    cred_flavor: u32,
+    cred_body: &[u8],
+    verf_flavor: u32,
+    verf_body: &[u8],
+) -> Vec<u8> {
+    let mut payload = Vec::new();
+    push_u32(&mut payload, XID);
+    push_u32(&mut payload, RpcBody::Call as u32);
+    push_u32(&mut payload, RPC_VERSION);
+    push_u32(&mut payload, NFS_PROGRAM);
+    push_u32(&mut payload, NFS_VERSION);
+    push_u32(&mut payload, FSSTAT);
+    push_u32(&mut payload, cred_flavor);
+    push_opaque(&mut payload, cred_body);
+    push_u32(&mut payload, verf_flavor);
+    push_opaque(&mut payload, verf_body);
+    payload.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+
+    let mut frame = Vec::with_capacity(payload.len() + 4);
+    let payload_len: u32 = payload.len().try_into().unwrap();
+    push_u32(&mut frame, FRAGMENT_HEADER_MASK | payload_len);
+    frame.extend_from_slice(&payload);
+    frame
+}
+
 /// Constructs a complete NFS RPC call frame for a given procedure and arguments.
 /// Returns a serialized byte buffer suitable for testing the parser.
 fn nfs_call_frame(
@@ -902,4 +930,71 @@ async fn parse_symlink_window_overflow_after_error() {
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[0, 1, 2, 3, 4, 5, 6, 7, 8],
     );
+}
+
+/// `AUTH_KERB` (4) is a flavor this server does not know at all. RFC 5531 §9
+/// answers an unsupported credential with `AUTH_ERROR`/`AUTH_BADCRED`, not
+/// with `GARBAGE_ARGS`, so the client learns that its security flavor is the
+/// problem.
+#[tokio::test]
+async fn parse_rejects_unknown_cred_flavor_as_bad_cred() {
+    const AUTH_KERB: u32 = 4;
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let first = fsstat_frame_raw_auth(AUTH_KERB, &[1, 2, 3, 4], 0, &[]);
+    let second = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
+        buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+    });
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&first);
+    buf.extend_from_slice(&second);
+    let socket = MockSocket::new(buf.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadCred), xid: Some(XID) })
+    ));
+
+    // The stream stays aligned for the next call.
+    let result = parser.next_message().await.unwrap();
+    assert_arg_wrapper(
+        result,
+        &header,
+        |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+        &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+}
+
+/// A credential body longer than the 400 bytes XDR allows for `opaque_auth`
+/// is undecodable and therefore a bad credential.
+#[tokio::test]
+async fn parse_rejects_oversized_cred_body_as_bad_cred() {
+    let body = vec![0u8; crate::consts::rpc::MAX_AUTH_SIZE + 4];
+    let frame = fsstat_frame_raw_auth(AuthFlavor::Sys.to_u32().unwrap(), &body, 0, &[]);
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x400);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadCred), xid: Some(XID) })
+    ));
+}
+
+/// An undecodable verifier is reported as `AUTH_BADVERF`.
+#[tokio::test]
+async fn parse_rejects_unknown_verf_flavor_as_bad_verf() {
+    let frame = fsstat_frame_raw_auth(0, &[], 0xDEAD, &[]);
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper { error: Error::Auth(AuthStat::BadVerf), xid: Some(XID) })
+    ));
 }

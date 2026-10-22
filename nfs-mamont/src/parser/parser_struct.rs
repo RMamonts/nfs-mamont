@@ -231,9 +231,16 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials are
     /// accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`]. Any
-    /// other credential flavor is rejected with [`AuthStat::BadCred`]. For both
+    /// other credential flavor, known or not, as well as a credential that
+    /// cannot be decoded at all (unknown flavor number, body over the XDR
+    /// limit, truncated body) is rejected with [`AuthStat::BadCred`]. For both
     /// accepted flavors, the verifier must be `AUTH_NONE` with an empty body
     /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
+    ///
+    /// Rejecting an undecodable `opaque_auth` with `MSG_DENIED`/`AUTH_ERROR`
+    /// rather than `GARBAGE_ARGS` is what RFC 5531 §9 prescribes and what the
+    /// Linux server does; a client then knows that its security flavor, not
+    /// the procedure arguments, is the problem.
     ///
     /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
     ///
@@ -242,8 +249,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns the parsed [`Credential`] if authentication succeeds, or an error
     /// if authentication fails or an I/O error occurs.
     fn parse_authentication(&mut self) -> Result<Credential> {
-        let cred = auth(&mut self.reader)?;
-        let verf = auth(&mut self.reader)?;
+        let cred = auth(&mut self.reader).map_err(|error| {
+            error!(error=?error, "rpc auth reject: undecodable credential");
+            Error::Auth(AuthStat::BadCred)
+        })?;
+        let verf = auth(&mut self.reader).map_err(|error| {
+            error!(error=?error, "rpc auth reject: undecodable verifier");
+            Error::Auth(AuthStat::BadVerf)
+        })?;
 
         let credential = match cred.flavor {
             AuthFlavor::None if cred.body.is_empty() => Credential::None,
