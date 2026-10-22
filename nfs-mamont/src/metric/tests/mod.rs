@@ -1,5 +1,7 @@
+use crate::consts::nfsv3::GETATTR;
 use crate::metric::nfs_metrics::{
-    DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS, VFS_IN_FLIGHT,
+    BYTES, CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS,
+    SYSCALL_SECONDS, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use std::sync::Arc;
 
@@ -8,6 +10,7 @@ use crate::metric::{unbounded, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
+use tokio::io::AsyncWriteExt;
 
 pub mod test_helpers;
 
@@ -146,4 +149,21 @@ async fn tokio_metrics_are_reported_per_task_kind() {
         );
     }
     value(&snapshot, "nfsmamont_tokio_workers_count", &[]);
+}
+
+#[tokio::test]
+async fn write_reply() {
+    let (metrics, snapshotter, _) = metrics();
+    let (mut socket, io) = metrics.io_timer(Vec::new());
+
+    metrics.write_reply(None, &io, socket.write_all(b"unmeasured")).await.unwrap();
+    metrics.write_reply(Some(GETATTR), &io, socket.write_all(b"abcd")).await.unwrap();
+
+    let snapshot = snapshot(&snapshotter);
+    let labels = [("message", "reply"), ("proc", "getattr")];
+
+    for name in [CPU_SECONDS, SYSCALL_SECONDS, WAIT_SECONDS] {
+        assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
+    }
+    assert_eq!(value(&snapshot, BYTES, &labels), &DebugValue::Histogram(vec![4.0.into()]));
 }

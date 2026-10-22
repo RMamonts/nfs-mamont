@@ -3,6 +3,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::Buffer;
+use crate::consts::nfsv3;
 
 pub mod access;
 pub mod commit;
@@ -258,6 +259,34 @@ impl<B: Buffer> NfsRes<B> {
             NfsRes::PathConf(Err(err)) => Some(err.error),
             NfsRes::Commit(Err(err)) => Some(err.error),
             _ => None,
+        }
+    }
+
+    /// Returns the NFSv3 procedure number this is a result of.
+    pub(crate) fn procedure(&self) -> u32 {
+        match self {
+            NfsRes::Null => nfsv3::NULL,
+            NfsRes::GetAttr(_) => nfsv3::GETATTR,
+            NfsRes::SetAttr(_) => nfsv3::SETATTR,
+            NfsRes::LookUp(_) => nfsv3::LOOKUP,
+            NfsRes::Access(_) => nfsv3::ACCESS,
+            NfsRes::ReadLink(_) => nfsv3::READLINK,
+            NfsRes::Read(_) => nfsv3::READ,
+            NfsRes::Write(_) => nfsv3::WRITE,
+            NfsRes::Create(_) => nfsv3::CREATE,
+            NfsRes::MkDir(_) => nfsv3::MKDIR,
+            NfsRes::SymLink(_) => nfsv3::SYMLINK,
+            NfsRes::MkNod(_) => nfsv3::MKNOD,
+            NfsRes::Remove(_) => nfsv3::REMOVE,
+            NfsRes::RmDir(_) => nfsv3::RMDIR,
+            NfsRes::Rename(_) => nfsv3::RENAME,
+            NfsRes::Link(_) => nfsv3::LINK,
+            NfsRes::ReadDir(_) => nfsv3::READDIR,
+            NfsRes::ReadDirPlus(_) => nfsv3::READDIRPLUS,
+            NfsRes::FsStat(_) => nfsv3::FSSTAT,
+            NfsRes::FsInfo(_) => nfsv3::FSINFO,
+            NfsRes::PathConf(_) => nfsv3::PATHCONF,
+            NfsRes::Commit(_) => nfsv3::COMMIT,
         }
     }
 }

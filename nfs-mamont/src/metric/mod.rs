@@ -5,6 +5,8 @@
 
 mod allocator;
 mod queue;
+#[cfg(feature = "metrics")]
+mod io;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;
@@ -99,7 +101,7 @@ impl TaskKind {
 mod nfs_metrics {
     use std::future::Future;
     use std::num::NonZeroU64;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
     use std::time::{Duration, Instant};
 
     use metrics::{
@@ -107,8 +109,11 @@ mod nfs_metrics {
         Gauge, Histogram, Key, Unit,
     };
     use tokio::task::AbortHandle;
-    use tokio_metrics::{RuntimeMetricsReporterBuilder, TaskMetricsReporterBuilder, TaskMonitor};
+    use tokio_metrics::{
+        FutureMonitor, RuntimeMetricsReporterBuilder, TaskMetricsReporterBuilder, TaskMonitor,
+    };
 
+    use super::io::{IoStats, IoTimer};
     use super::{Queue, Stage, TaskKind};
     use crate::vfs::file::BackendId;
 
@@ -117,9 +122,58 @@ mod nfs_metrics {
     pub(super) const REQUESTS_TOTAL: &str = "nfsmamont_rpc_requests_total";
     pub(super) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
     pub(super) const QUEUE_DEPTH: &str = "nfsmamont_queue_depth";
+    pub(super) const CPU_SECONDS: &str = "nfsmamont_rpc_cpu_seconds";
+    pub(super) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
+    pub(super) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
+    pub(super) const BYTES: &str = "nfsmamont_rpc_bytes";
 
     /// How often tokio runtime and task metrics are sampled into the recorder.
     const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
+
+    /// `proc` label values, indexed by NFSv3 procedure number.
+    const PROC_NAMES: [&str; 22] = [
+        "null",
+        "getattr",
+        "setattr",
+        "lookup",
+        "access",
+        "readlink",
+        "read",
+        "write",
+        "create",
+        "mkdir",
+        "symlink",
+        "mknod",
+        "remove",
+        "rmdir",
+        "rename",
+        "link",
+        "readdir",
+        "readdirplus",
+        "fsstat",
+        "fsinfo",
+        "pathconf",
+        "commit",
+    ];
+
+    /// Reply metrics of one NFSv3 procedure.
+    struct ReplyMetrics {
+        cpu: Histogram,
+        syscall: Histogram,
+        wait: Histogram,
+        bytes: Histogram,
+    }
+
+    impl ReplyMetrics {
+        fn new(proc: &'static str) -> Self {
+            Self {
+                cpu: histogram!(CPU_SECONDS, "message" => "reply", "proc" => proc),
+                syscall: histogram!(SYSCALL_SECONDS, "message" => "reply", "proc" => proc),
+                wait: histogram!(WAIT_SECONDS, "message" => "reply", "proc" => proc),
+                bytes: histogram!(BYTES, "message" => "reply", "proc" => proc),
+            }
+        }
+    }
 
     /// Pre-registered metric handles.
     ///
@@ -138,6 +192,8 @@ mod nfs_metrics {
         vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
         /// Indexed by [`Queue`].
         queue_depth: [Gauge; 2],
+        /// Indexed by NFSv3 procedure number.
+        reply: [ReplyMetrics; 22],
         /// Indexed by [`TaskKind`].
         task_monitors: [TaskMonitor; 3],
         /// Tokio runtime and task reporters, aborted on drop.
@@ -198,6 +254,22 @@ mod nfs_metrics {
             describe_counter!(REQUESTS_TOTAL, Unit::Count, "Completed NFS requests by status");
             describe_gauge!(VFS_IN_FLIGHT, Unit::Count, "NFS requests executing in a VFS backend");
             describe_gauge!(QUEUE_DEPTH, Unit::Count, "Requests waiting in a pipeline queue");
+            describe_histogram!(
+                CPU_SECONDS,
+                Unit::Seconds,
+                "Time spent (de)serializing a message outside of socket syscalls"
+            );
+            describe_histogram!(
+                SYSCALL_SECONDS,
+                Unit::Seconds,
+                "Time spent in socket syscalls for a message"
+            );
+            describe_histogram!(
+                WAIT_SECONDS,
+                Unit::Seconds,
+                "Time a message waited for the socket to become ready"
+            );
+            describe_histogram!(BYTES, Unit::Bytes, "Size of an NFS message on the wire");
 
             let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
             let runtime_reporter = RuntimeMetricsReporterBuilder::default()
@@ -227,6 +299,7 @@ mod nfs_metrics {
                 requests_err: counter!(REQUESTS_TOTAL, "status" => "error"),
                 vfs_in_flight: std::array::from_fn(|_| OnceLock::new()),
                 queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
+                reply: PROC_NAMES.map(ReplyMetrics::new),
                 task_monitors,
                 reporters,
             }
@@ -298,6 +371,41 @@ mod nfs_metrics {
         ) -> impl Future<Output = F::Output> {
             self.task_monitors[kind as usize].instrument(fut)
         }
+
+        /// Wraps a connection socket, so that its I/O time can be attributed to
+        /// single messages with [`NfsMetrics::write_reply`].
+        #[inline]
+        pub fn io_timer<S>(&self, socket: S) -> (IoTimer<S>, Arc<IoStats>) {
+            IoTimer::new(socket)
+        }
+
+        /// Awaits `reply`, which writes one reply through the [`IoTimer`] behind `io`, and
+        /// records its CPU, syscall and socket wait times and reply size under `procedure`.
+        /// Nothing is recorded for `None`
+        pub async fn write_reply<F: Future>(
+            &self,
+            procedure: Option<u32>,
+            io: &IoStats,
+            reply: F,
+        ) -> F::Output {
+            let Some(procedure) = procedure else {
+                let output = reply.await;
+                // Reset the I/O of the unmeasured reply
+                io.take();
+                return output;
+            };
+
+            let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
+            let (syscall, bytes) = io.take();
+            let metrics = &self.reply[procedure as usize];
+            // IoTimer measures time inside socket's write polls ~= syscall time
+            // Total future poll duration - syscall time = serialization time
+            metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+            metrics.syscall.record(syscall);
+            metrics.wait.record(future_metrics.total_idle_duration);
+            metrics.bytes.record(bytes as f64);
+            output
+        }
     }
 
     impl Drop for NfsMetrics {
@@ -340,6 +448,9 @@ mod nfs_metrics {
     /// No-op in-flight guard.
     pub struct InFlightGuard<'a>(PhantomData<&'a ()>);
 
+    /// No-op I/O stats.
+    pub struct IoStats;
+
     impl NfsMetrics {
         pub fn new() -> Self {
             Self
@@ -370,6 +481,21 @@ mod nfs_metrics {
         #[inline]
         pub fn instrument<F: Future>(&self, _kind: TaskKind, fut: F) -> F {
             fut
+        }
+
+        #[inline]
+        pub fn io_timer<S>(&self, socket: S) -> (S, IoStats) {
+            (socket, IoStats)
+        }
+
+        #[inline]
+        pub fn write_reply<F: Future>(
+            &self,
+            _procedure: Option<u32>,
+            _io: &IoStats,
+            reply: F,
+        ) -> F {
+            reply
         }
     }
 }
