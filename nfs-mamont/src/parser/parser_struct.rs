@@ -237,11 +237,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// accepted flavors, the verifier must be `AUTH_NONE` with an empty body
     /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
     ///
-    /// Rejecting an undecodable `opaque_auth` with `MSG_DENIED`/`AUTH_ERROR`
-    /// rather than `GARBAGE_ARGS` is what RFC 5531 §9 prescribes and what the
-    /// Linux server does; a client then knows that its security flavor, not
-    /// the procedure arguments, is the problem.
-    ///
     /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
     ///
     /// # Returns
