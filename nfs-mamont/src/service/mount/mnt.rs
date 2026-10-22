@@ -42,7 +42,13 @@ impl Mnt for MountService {
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 
-        self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
+        self.mounts
+            .write()
+            .await
+            .by_client
+            .entry(client_addr.ip())
+            .or_default()
+            .insert(mount_entry);
 
         Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
     }
