@@ -603,10 +603,8 @@ where
         )));
     }
 
-    // Fill the whole buffer with the WRITE data and consume the trailing
-    // padding; reads from the buffered head window first and streams the
-    // remainder directly from the socket using vectored I/O.
     reader.read_body_exact_vectored(&mut buffer_data, size).await.map_err(Error::IO)?;
+
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,

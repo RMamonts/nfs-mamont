@@ -136,25 +136,18 @@ impl FrameReader {
         buffer: &mut B,
         count: usize,
     ) -> io::Result<()> {
-        // XDR pads opaque data to a multiple of ALIGNMENT bytes, exactly as the
-        // serializer does when sending a WRITE reply (see the serializer).
         let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
         let total = count + padding;
         if total > self.frame_remaining {
             return Err(io::Error::new(ErrorKind::InvalidData, "Read beyond frame bounds"));
         }
 
-        // The logical read destination is [payload (the first `count` bytes,
-        // spanning the buffer chunks) | padding (`padding` bytes of scratch)].
-        // Bytes already pulled into the head window are moved from it first;
-        // the remainder is read straight from the socket via vectored I/O.
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
         let mut padding_buf = PADDING_BYTES;
 
-        let mut consumed = 0usize;
+        let mut consumed = 0;
 
-        // Copy what is already buffered in the head window: the payload part
-        // into the front of the buffer, the padding part is skipped.
+        // Copy what is already buffered in the head window
         let from_window = min(total, self.buffered());
         if from_window > 0 {
             let payload_from_window = min(from_window, count);
@@ -170,21 +163,16 @@ impl FrameReader {
                     left -= take;
                 }
             }
-            // Skip the already-buffered padding bytes (they need no storage).
             self.start += from_window - payload_from_window;
             consumed += from_window;
             self.frame_remaining -= from_window;
         }
 
-        // Read the remainder directly from the socket into the unfilled suffix
-        // of the logical destination (payload chunks then padding scratch).
         let to_read = total - from_window;
-        let mut socket_read = 0usize;
+        let mut socket_read = 0;
         while socket_read < to_read {
-            // Skip the already-filled prefix and build mutable iovecs over the
-            // rest: the payload chunks, then the padding scratch.
             let mut to_skip = consumed + socket_read;
-            let mut iov: Vec<IoSliceMut<'_>> = Vec::new();
+            let mut iov = Vec::new();
             let mut payload_left = count;
             for chunk in buffer.chunks_mut() {
                 if payload_left == 0 {
@@ -206,15 +194,13 @@ impl FrameReader {
                 iov.push(IoSliceMut::new(&mut padding_buf[to_skip..padding]));
             }
 
-            // `try_read_vectored` is non-blocking, so wait for readiness and
-            // retry on transient `WouldBlock`.
             self.socket.readable().await?;
             match self.socket.try_read_vectored(&mut iov) {
                 Ok(n) if n > 0 => socket_read += n,
                 Ok(_) => {
                     return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
                 }
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
                 Err(e) => return Err(e),
             }
         }
