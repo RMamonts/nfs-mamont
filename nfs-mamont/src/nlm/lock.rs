@@ -2,7 +2,6 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
-
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
 
@@ -52,4 +51,3 @@ impl Arbitrary<'_> for Nlm4Lock {
         })
     }
 }
-

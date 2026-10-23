@@ -1,8 +1,8 @@
 //! Defines NFSv3 [`Access`] interface.
 
+use crate::rpc::auth::Credential;
 #[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
-use crate::rpc::auth::Credential;
 
 use super::{file, Error};
 

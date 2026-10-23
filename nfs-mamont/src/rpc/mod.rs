@@ -3,9 +3,12 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use auth::AuthStat;
 #[cfg(feature = "arbitrary")]
-use crate::consts::{nfsv3::NFS_VERSION, rpc::{MAX_AUTH_SIZE, RPC_VERSION}};
+use crate::consts::{
+    nfsv3::NFS_VERSION,
+    rpc::{MAX_AUTH_SIZE, RPC_VERSION},
+};
+use auth::AuthStat;
 
 pub mod auth;
 
@@ -57,7 +60,6 @@ impl arbitrary::Arbitrary<'_> for OpaqueAuth {
         Ok(Self { flavor: u.arbitrary::<AuthFlavor>()?, body })
     }
 }
-
 
 pub enum RejectedReply {
     RpcMismatch = 0,
