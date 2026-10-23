@@ -8,8 +8,8 @@
 //! `min(frame_size, capacity)` bytes of the frame body (the "head window") are
 //! buffered in memory, so procedure arguments are parsed synchronously via the
 //! [`Read`] implementation without any retries or awaits. Only opaque payloads
-//! that do not fit into the head window (NFSv3 `WRITE` data) are read from the
-//! socket directly via [`FrameReader::read_body_exact`].
+//! that do not fit into the head window (NFSv3 `WRITE` data) are streamed from
+//! the socket directly via [`FrameReader::read_body_exact_vectored`].
 //!
 //! Synchronous reads never cross the frame boundary: [`Read::read`] is limited
 //! by the number of unconsumed frame body bytes, so a parser can never consume
@@ -17,20 +17,23 @@
 //! refilling are consumed by the next [`FrameReader::read_frame_header`] call.
 
 use std::cmp::min;
-use std::io::{self, ErrorKind, Read};
+use std::io::{self, ErrorKind, IoSliceMut, Read};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncReadExt;
+use tokio::net::tcp::OwnedReadHalf;
 
+use crate::allocator::Buffer;
 use crate::consts::rpc::RMS_HEADER_SIZE;
+use crate::consts::xdr::ALIGNMENT;
 
 /// A buffered reader exposing RMS frame bodies of an async stream.
 ///
 /// The internal buffer holds a sliding window of unconsumed stream bytes.
-/// Invariant: direct socket reads ([`FrameReader::read_body_exact`],
+/// Invariant: direct socket reads ([`FrameReader::read_body_exact_vectored`],
 /// [`FrameReader::discard_body`]) are only performed when the buffer is empty,
 /// so stream bytes are always consumed in order.
-pub struct FrameReader<S: AsyncRead + Unpin> {
-    socket: S,
+pub struct FrameReader {
+    socket: OwnedReadHalf,
     buf: Vec<u8>,
     /// Start of the unconsumed bytes in `buf`.
     start: usize,
@@ -40,7 +43,7 @@ pub struct FrameReader<S: AsyncRead + Unpin> {
     frame_remaining: usize,
 }
 
-impl<S: AsyncRead + Unpin> FrameReader<S> {
+impl FrameReader {
     /// Creates a new `FrameReader` with the given buffer capacity.
     ///
     /// The capacity bounds the head window of a frame: the arguments of every
@@ -50,7 +53,7 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     /// # Panics
     ///
     /// If `capacity` is less than the RMS header size (4 bytes).
-    pub fn new(capacity: usize, socket: S) -> FrameReader<S> {
+    pub fn new(capacity: usize, socket: OwnedReadHalf) -> FrameReader {
         assert!(capacity >= RMS_HEADER_SIZE, "capacity must hold at least an RMS header");
         Self { socket, buf: vec![0u8; capacity], start: 0, end: 0, frame_remaining: 0 }
     }
@@ -115,27 +118,94 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
         self.ensure_buffered(head).await
     }
 
-    /// Reads exactly `dest.len()` bytes of the frame body, first from the
-    /// buffer, then directly from the socket.
+    /// Reads exactly `count` bytes of the frame body into the front of a
+    /// [`Buffer`], followed by its `(ALIGNMENT - count % ALIGNMENT) % ALIGNMENT`
+    /// trailing padding bytes, which are discarded.
     ///
-    /// Used for opaque payloads (NFSv3 `WRITE` data) that may not fit into
-    /// the buffered head window.
-    pub async fn read_body_exact(&mut self, dest: &mut [u8]) -> io::Result<()> {
-        if dest.len() > self.frame_remaining {
+    /// The buffered head window is consumed first and the remainder is streamed
+    /// directly from the socket via vectored I/O: the `count` payload bytes are
+    /// laid out sequentially across the buffer chunks and the padding is read
+    /// into scratch space, coalescing the socket reads into a single `readv`
+    /// syscall per readiness notification where possible (mirroring the payload
+    /// handling in the serializer). Used for opaque payloads (NFSv3 `WRITE`
+    /// data) that may not fit into the buffered head window.
+    ///
+    /// Both the data and its padding must lie within the current frame.
+    pub async fn read_body_exact_vectored<B: Buffer>(
+        &mut self,
+        buffer: &mut B,
+        count: usize,
+    ) -> io::Result<()> {
+        let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
+        let total = count + padding;
+        if total > self.frame_remaining {
             return Err(io::Error::new(ErrorKind::InvalidData, "Read beyond frame bounds"));
         }
-        let from_buf = min(dest.len(), self.buffered());
-        dest[..from_buf].copy_from_slice(&self.buf[self.start..self.start + from_buf]);
-        self.start += from_buf;
-        self.frame_remaining -= from_buf;
 
-        let rest = &mut dest[from_buf..];
-        if !rest.is_empty() {
-            // from_buf < dest.len() implies the buffer is empty, so a direct
-            // socket read preserves stream ordering.
-            self.socket.read_exact(rest).await?;
-            self.frame_remaining -= rest.len();
+        const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
+        let mut padding_buf = PADDING_BYTES;
+
+        let mut consumed = 0;
+
+        // Copy what is already buffered in the head window
+        let from_window = min(total, self.buffered());
+        if from_window > 0 {
+            let payload_from_window = min(from_window, count);
+            if payload_from_window > 0 {
+                let mut left = payload_from_window;
+                for chunk in buffer.chunks_mut() {
+                    if left == 0 {
+                        break;
+                    }
+                    let take = min(chunk.len(), left);
+                    chunk[..take].copy_from_slice(&self.buf[self.start..self.start + take]);
+                    self.start += take;
+                    left -= take;
+                }
+            }
+            self.start += from_window - payload_from_window;
+            consumed += from_window;
+            self.frame_remaining -= from_window;
         }
+
+        let to_read = total - from_window;
+        let mut socket_read = 0;
+        while socket_read < to_read {
+            let mut to_skip = consumed + socket_read;
+            let mut iov = Vec::new();
+            let mut payload_left = count;
+            for chunk in buffer.chunks_mut() {
+                if payload_left == 0 {
+                    break;
+                }
+                let take = payload_left.min(chunk.len());
+                let chunk = &mut chunk[..take];
+                payload_left -= take;
+                if to_skip >= chunk.len() {
+                    to_skip -= chunk.len();
+                } else if to_skip > 0 {
+                    iov.push(IoSliceMut::new(&mut chunk[to_skip..]));
+                    to_skip = 0;
+                } else if !chunk.is_empty() {
+                    iov.push(IoSliceMut::new(chunk));
+                }
+            }
+            if to_skip < padding {
+                iov.push(IoSliceMut::new(&mut padding_buf[to_skip..padding]));
+            }
+
+            self.socket.readable().await?;
+            match self.socket.try_read_vectored(&mut iov) {
+                Ok(n) if n > 0 => socket_read += n,
+                Ok(_) => {
+                    return Err(io::Error::new(ErrorKind::UnexpectedEof, "Connection closed"));
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        self.frame_remaining -= to_read;
+
         Ok(())
     }
 
@@ -172,7 +242,7 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     }
 }
 
-impl<S: AsyncRead + Unpin> Read for FrameReader<S> {
+impl Read for FrameReader {
     /// Reads buffered frame body bytes.
     ///
     /// The read is limited both by the buffered data and by the frame

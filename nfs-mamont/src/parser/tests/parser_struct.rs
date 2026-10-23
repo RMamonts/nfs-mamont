@@ -281,9 +281,9 @@ async fn parse_mount_call() {
     let frame = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 1, |buf| {
         push_opaque(buf, b"/mnt/vol");
     });
-    let socket = MockSocket::new(frame.as_slice());
+    let socket = MockSocket::new(frame).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await.unwrap();
 
@@ -307,9 +307,9 @@ async fn parse_mount_after_error() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x60);
 
     let first_result = parser.next_message().await;
     assert!(matches!(
@@ -339,9 +339,9 @@ async fn parse_two_correct() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x39);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x39);
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -374,9 +374,9 @@ async fn parse_after_error() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x50);
 
     let result = parser.next_message().await;
     assert!(result.is_err());
@@ -420,9 +420,9 @@ async fn parse_write() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0x24));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 76);
 
     let result = parser.next_message().await.unwrap();
 
@@ -465,9 +465,9 @@ async fn parse_write_after_error() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0x24));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 80);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 80);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -488,9 +488,9 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
         0x00, 0x00, 0x00, 0x00, // request
         0x00, 0x00, 0x00, 0x05, // invalid rpc version (must be 2)
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x20);
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, .. } = result.err().unwrap();
@@ -507,9 +507,9 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
         0x00, 0x00, 0x00, 0x05, // invalid rpc version to trigger discard path
     ];
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 32);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 32);
 
     let result = parser.next_message().await;
     assert!(matches!(result, Err(ErrorWrapper { error: Error::IO(_), xid: None })));
@@ -533,9 +533,9 @@ async fn parse_rejects_any_non_call_message_type() {
         0x00, 0x00, 0x00, 0x08, // nfs_fh3
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     ];
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x35);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -559,9 +559,9 @@ async fn parse_rejects_frame_smaller_than_xid() {
     ];
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
@@ -592,9 +592,9 @@ async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
     ];
     buf.extend_from_slice(&second);
 
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
@@ -631,9 +631,9 @@ async fn parse_write_with_empty_payload() {
 
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(2));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 76);
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
@@ -646,9 +646,9 @@ async fn parse_rejects_non_none_cred_auth() {
         nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
             buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
         });
-    let socket = MockSocket::new(frame.as_slice());
+    let socket = MockSocket::new(frame).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -665,9 +665,9 @@ async fn parse_rejects_non_none_verf_auth() {
         nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
             buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
         });
-    let socket = MockSocket::new(frame.as_slice());
+    let socket = MockSocket::new(frame).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -692,9 +692,9 @@ async fn parse_accepts_auth_sys_credentials() {
     let frame = nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, FSSTAT, |buf| {
         buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
     });
-    let socket = MockSocket::new(frame.as_slice());
+    let socket = MockSocket::new(frame).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x64);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x64);
 
     let result = parser.next_message().await.unwrap();
     assert_eq!(result.header, header);
@@ -715,9 +715,9 @@ async fn parse_rejects_truncated_auth_sys() {
         nfs_call_frame_wire(RpcBody::Call as u32, RPC_VERSION, XID, &cred, &verf, FSSTAT, |buf| {
             buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
         });
-    let socket = MockSocket::new(frame.as_slice());
+    let socket = MockSocket::new(frame).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x60);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -739,9 +739,9 @@ async fn parse_getattr_bad_file_handle_after_error() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     assert!(matches!(result, Err(ErrorWrapper { error: Error::BadFileHandle, xid: Some(XID) })));
@@ -781,9 +781,9 @@ async fn parse_write_out_of_memory_after_error() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(4));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x60);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -814,9 +814,9 @@ async fn parse_mkdir_incorrect_string_after_error() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x60);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -845,9 +845,9 @@ async fn parse_extra_bytes_after_finalize_after_error() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 0x40);
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -885,9 +885,9 @@ async fn parse_symlink_window_overflow_after_error() {
     let mut buf = Vec::new();
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
-    let socket = MockSocket::new(buf.as_slice());
+    let socket = MockSocket::new(buf).await;
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 200);
+    let mut parser = RpcParser::with_capacity(socket.into_inner(), alloc, 200);
 
     let result = parser.next_message().await;
     assert!(matches!(

@@ -1,44 +1,31 @@
-use std::cmp::min;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedReadHalf;
+use tokio::net::{TcpListener, TcpStream};
 
-use tokio::io::{AsyncRead, ReadBuf};
-
-const SEPARATE: usize = 15;
-
-pub struct MockSocket {
-    data: Vec<u8>,
-    position: usize,
-}
+pub struct MockSocket(OwnedReadHalf);
 
 impl MockSocket {
-    pub fn new(buf: &[u8]) -> Self {
-        MockSocket { data: buf.to_vec(), position: 0 }
+    const ADDRESS: &str = "127.0.0.1:0";
+    pub async fn new(bytes: Vec<u8>) -> MockSocket {
+        let listener = TcpListener::bind(Self::ADDRESS).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let listener_task = tokio::task::spawn(async move {
+            let (server, _) = listener.accept().await.unwrap();
+            let (read_half, _) = server.into_split();
+            read_half
+        });
+
+        let client_task = tokio::task::spawn(async move {
+            let mut client = TcpStream::connect(addr).await.unwrap();
+            client.write_all(&bytes).await.unwrap();
+        });
+
+        let (half, _) = tokio::join!(listener_task, client_task);
+        Self(half.unwrap())
     }
-}
 
-impl AsyncRead for MockSocket {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<std::io::Result<()>> {
-        let inner = self.get_mut();
-        if inner.position >= inner.data.len() {
-            return Poll::Ready(Ok(()));
-        }
-        let remaining_data = inner.data.len() - inner.position;
-
-        let to_read = min(SEPARATE, min(buf.remaining(), remaining_data));
-
-        if to_read > 0 {
-            let start = inner.position;
-            let end = inner.position + to_read;
-            buf.put_slice(&inner.data[start..end]);
-
-            inner.position += to_read;
-        }
-
-        Poll::Ready(Ok(()))
+    pub fn into_inner(self) -> OwnedReadHalf {
+        self.0
     }
 }
