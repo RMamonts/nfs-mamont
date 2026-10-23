@@ -8,6 +8,7 @@ use super::file;
 
 /// Identifies a point in the directory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Cookie(u64);
 
 impl Cookie {
@@ -46,6 +47,7 @@ impl Cookie {
 
 /// Verifies that point identified by [`Cookie`] is still valid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CookieVerifier([u8; NFS3_COOKIEVERFSIZE]);
 
 impl CookieVerifier {
@@ -83,6 +85,7 @@ impl CookieVerifier {
 }
 
 // not exactly as in RFC, but possible
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Entry {
     /// Since UNIX clients give a special meaning to the fileid
     /// value zero, UNIX clients should be careful to map zero
@@ -93,7 +96,8 @@ pub struct Entry {
     pub cookie: Cookie,
 }
 
-// Success result.
+/// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub dir_attr: Option<file::Attr>,
     /// The cookie verifier.
@@ -105,6 +109,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -113,6 +118,8 @@ pub struct Fail {
 }
 
 /// [`ReadDir::read_dir`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the directory to be read.
     pub dir: file::Handle,

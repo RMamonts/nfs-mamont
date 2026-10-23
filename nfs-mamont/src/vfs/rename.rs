@@ -4,6 +4,7 @@ use crate::rpc::auth::Credential;
 use crate::vfs;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Weak cache consistency data for the directory, `from_dir`.
     pub from_dir_wcc: vfs::WccData,
@@ -12,6 +13,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -22,6 +24,8 @@ pub struct Fail {
 }
 
 /// [`Rename::rename`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// A [`vfs::DirOpArgs`] structure identifying the source (the file
     /// system object to be re-named)

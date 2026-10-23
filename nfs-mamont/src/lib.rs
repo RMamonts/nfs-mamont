@@ -4,14 +4,15 @@ mod allocator;
 mod backend;
 pub mod consts;
 mod context;
+
+mod macros;
 pub mod mount;
-#[allow(dead_code)]
-mod nlm;
+pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
-pub mod service;
+mod service;
 mod task;
 pub mod vfs;
 
@@ -39,6 +40,65 @@ pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
 pub use vfs::file::BackendId;
+
+pub_use_if_feature!(
+    "arbitrary",
+    allocator::mock::alloc::MockAllocator,
+    allocator::mock::buffer::MockBuffers,
+    parser::parser_struct::RpcParser,
+    parser::parser_struct::DEFAULT_SIZE,
+    parser::parser_struct::RMS_HEADER_SIZE,
+    parser::MountArguments,
+    parser::NfsArguments,
+    parser::NlmArguments,
+    parser::ProcArguments,
+    parser::primitive::u32_as_usize,
+    parser::ArgWrapper,
+    parser::ErrorWrapper,
+    parser::nfsv3,
+    parser::mount as parser_mount,
+    parser::nlm as parser_nlm,
+    consts::nfsv3::NFS_PROGRAM,
+    consts::nfsv3::NFS_VERSION,
+    consts::nfsv3::NULL,
+    consts::nfsv3::GETATTR,
+    consts::nfsv3::SETATTR,
+    consts::nfsv3::LOOKUP,
+    consts::nfsv3::ACCESS,
+    consts::nfsv3::READLINK,
+    consts::nfsv3::READ,
+    consts::nfsv3::WRITE,
+    consts::nfsv3::CREATE,
+    consts::nfsv3::MKDIR,
+    consts::nfsv3::SYMLINK,
+    consts::nfsv3::MKNOD,
+    consts::nfsv3::REMOVE,
+    consts::nfsv3::RMDIR,
+    consts::nfsv3::RENAME,
+    consts::nfsv3::LINK,
+    consts::nfsv3::READDIR,
+    consts::nfsv3::READDIRPLUS,
+    consts::nfsv3::FSSTAT,
+    consts::nfsv3::FSINFO,
+    consts::nfsv3::PATHCONF,
+    consts::nfsv3::COMMIT,
+    consts::mount::MOUNT_PROGRAM,
+    consts::mount::MOUNT_VERSION,
+    consts::mount::MOUNT_NULL,
+    consts::mount::MOUNT_MNT,
+    consts::mount::MOUNT_DUMP,
+    consts::mount::MOUNT_UMNT,
+    consts::mount::MOUNT_UMNTALL,
+    consts::mount::MOUNT_EXPORT,
+    serializer::client::arguments,
+    serializer::server::serialize_struct::Serializer,
+    rpc::AuthFlavor,
+    rpc::Error,
+    rpc::OpaqueAuth,
+    rpc::RpcBody,
+    consts::rpc::RPC_VERSION,
+    task::ProcReply,
+);
 
 /// Initializes tracing logs.
 ///

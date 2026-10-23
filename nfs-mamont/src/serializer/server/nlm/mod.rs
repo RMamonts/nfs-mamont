@@ -23,7 +23,7 @@ pub use test::test_res;
 pub use unlock::unlock_res;
 
 /// Writes an NLM cookie as an XDR `hyper`.
-fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
+pub fn cookie(dest: &mut impl Write, cookie: crate::nlm::cookie::Cookie) -> io::Result<()> {
     u64(dest, cookie.raw())
 }
 

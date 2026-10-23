@@ -6,13 +6,15 @@ use crate::vfs;
 use super::file;
 
 /// Guard used by [`SetAttr::set_attr`].
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub struct Guard {
     pub ctime: file::Time,
 }
 
 /// Strategy for updating timestamps in [`SetAttr`].
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq))]
 pub enum SetTime {
     DontChange,
     ToServer,
@@ -20,6 +22,8 @@ pub enum SetTime {
 }
 
 /// Specifies which attribute to update via [`SetAttr::set_attr`].
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct NewAttr {
     pub mode: Option<u32>,
     pub uid: Option<u32>,
@@ -30,6 +34,8 @@ pub struct NewAttr {
 }
 
 /// [`SetAttr::set_attr`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the object.
     pub file: file::Handle,
@@ -40,11 +46,13 @@ pub struct Args {
 }
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     pub wcc_data: vfs::WccData,
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,

@@ -19,8 +19,8 @@ use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
-mod read;
-mod write;
+pub mod read;
+pub mod write;
 
 // Creates all connection tasks with their inner connections
 pub fn new<A, V, B>(

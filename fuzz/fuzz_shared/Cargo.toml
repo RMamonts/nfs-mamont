@@ -1,0 +1,10 @@
+[package]
+name = "fuzz-shared"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+nfs-mamont.workspace = true
+tokio.workspace = true
