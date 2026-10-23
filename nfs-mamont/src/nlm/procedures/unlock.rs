@@ -8,6 +8,7 @@ use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// Defines the information needed to remove a previously established lock.
 pub struct Nlm4UnlockArgs {
     /// Transaction identifier for matching request/response.
@@ -16,6 +17,7 @@ pub struct Nlm4UnlockArgs {
     pub lock: Nlm4Lock,
 }
 
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 /// NLM UNLOCK result.
 ///
 /// Returned by [`NLMPROC4_UNLOCK`](crate::consts::nlm::NLMPROC4_UNLOCK) procedure.

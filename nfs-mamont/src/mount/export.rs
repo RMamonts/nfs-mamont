@@ -7,6 +7,7 @@ use super::ExportEntry;
 use crate::rpc::auth::Credential;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// Vector of export entries, each containing an exported
     /// directory and a vector of clients that are allowed

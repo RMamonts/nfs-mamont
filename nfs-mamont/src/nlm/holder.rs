@@ -5,6 +5,7 @@
 use super::OpaqueHandle;
 
 /// This structure indicates the holder of a lock.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4Holder {
     /// Tells whether the holder has an exclusive lock or a shared lock.
     pub exclusive: bool,

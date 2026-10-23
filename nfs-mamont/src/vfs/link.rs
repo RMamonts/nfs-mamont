@@ -6,6 +6,7 @@ use crate::vfs;
 use super::file;
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The post-operation attributes of the file system object identified by `file`.
     pub file_attr: Option<file::Attr>,
@@ -14,6 +15,7 @@ pub struct Success {
 }
 
 /// Fail result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Fail {
     /// Error on failure.
     pub error: vfs::Error,
@@ -24,6 +26,8 @@ pub struct Fail {
 }
 
 /// [`Link::link`] arguments.
+#[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, PartialEq, Clone))]
 pub struct Args {
     /// The file handle for the existing file system object.
     pub file: file::Handle,
