@@ -1,19 +1,31 @@
+use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::{TcpListener, TcpStream};
 
-/// Returns the read half of a connected TCP pair with `bytes` written into the
-/// peer, so the returned half behaves like a real socket that has already
-/// received the given frame payload.
-pub async fn read_half(bytes: &[u8]) -> OwnedReadHalf {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let client = TcpStream::connect(addr).await.unwrap();
-    let server = listener.accept().await.unwrap().0;
+pub struct MockSocket(OwnedReadHalf);
 
-    let (read_half, _write_half) = server.into_split();
+impl MockSocket {
+    const ADDRESS: &str = "127.0.0.1:0";
+    pub async fn new(bytes: Vec<u8>) -> MockSocket {
+        let listener = TcpListener::bind(Self::ADDRESS).await.unwrap();
+        let addr = listener.local_addr().unwrap();
 
-    client.try_write(bytes).unwrap();
-    drop(client);
+        let listener_task = tokio::task::spawn(async move {
+            let (server, _) = listener.accept().await.unwrap();
+            let (read_half, _) = server.into_split();
+            read_half
+        });
 
-    read_half
+        let client_task = tokio::task::spawn(async move {
+            let mut client = TcpStream::connect(addr).await.unwrap();
+            client.write_all(&bytes).await.unwrap();
+        });
+
+        let (half, _) = tokio::join!(listener_task, client_task);
+        Self(half.unwrap())
+    }
+
+    pub fn into_inner(self) -> OwnedReadHalf {
+        self.0
+    }
 }
