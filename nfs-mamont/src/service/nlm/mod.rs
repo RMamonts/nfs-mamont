@@ -4,8 +4,6 @@
 //! grouped by file handle. The registry supports shared/exclusive semantics
 //! and range-based conflict detection.
 
-use crate::service::nlm::lock_registry::LockRegistry;
-
 mod lock_registry;
 mod lock_types;
 mod range_ops;
@@ -13,6 +11,8 @@ mod range_ops;
 mod procedures;
 #[cfg(test)]
 mod tests;
+
+use crate::service::nlm::lock_registry::LockRegistry;
 
 /// In-memory state backing the NLM v4 service implementation.
 ///

@@ -1,20 +1,21 @@
 use crate::nlm::procedures::test::{Nlm4TestArgs, Nlm4TestReply, Nlm4TestRes, Test};
 use crate::nlm::Nlm4Stats;
 use crate::rpc::auth::Credential;
-use crate::service::nlm::lock_types::ActiveLock;
+use crate::service::nlm::lock_types::Lock;
 use crate::service::nlm::NlmService;
 
 impl Test for NlmService {
     async fn test(&self, args: Nlm4TestArgs, _cred: &Credential) -> Nlm4TestRes {
         let registry = self.locks.read().await;
 
-        let request = ActiveLock {
-            caller_name: args.lock.caller_name.into_inner(),
+        let request = Lock {
+            caller_name: args.lock.caller_name,
             system_identifier: args.lock.system_identifier,
             exclusive: args.exclusive,
             offset: args.lock.lock_offset,
             length: args.lock.lock_length,
             opaque_handle: args.lock.opaque_handle,
+            cookie: args.cookie,
         };
 
         let fh = args.lock.file_handle;
