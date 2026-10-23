@@ -26,7 +26,13 @@ use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
-use crate::{mount::Mount, task::connection};
+use crate::{
+    consts::socket::{
+        ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
+    },
+    mount::Mount,
+    task::connection,
+};
 
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use backend::BackendRegistry;
@@ -85,7 +91,11 @@ where
                     Ok((socket, _)) => {
                         connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
-                    Err(err) => break Err(err),
+                    Err(err) if is_fatal_accept_error(&err) => break Err(err),
+                    Err(err) => {
+                        warn!(error = %err, "accept failed, retrying");
+                        tokio::time::sleep(ACCEPT_ERROR_BACKOFF).await;
+                    }
                 }
             }
             result = &mut shutdown => {
@@ -99,4 +109,16 @@ where
     let _ = rpcbind::unregister(port).await;
 
     accept_result
+}
+
+/// Returns `true` for `accept` errors after which the listener is unusable.
+fn is_fatal_accept_error(err: &std::io::Error) -> bool {
+    match err.raw_os_error() {
+        Some(errno) => {
+            errno == ACCEPT_ERROR_EBADF
+                || errno == ACCEPT_ERROR_EINVAL
+                || errno == ACCEPT_ERROR_ENOTSOCK
+        }
+        None => false,
+    }
 }
