@@ -173,9 +173,9 @@ impl<B: Buffer + 'static> VfsManager<B> {
     {
         let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
-        (0..concurrency.get()).for_each(|_| {
+        for _ in 0..concurrency.get() {
             VfsTask::new(backends.clone(), rx.clone()).spawn();
-        });
+        }
 
         Self { sender: tx }
     }

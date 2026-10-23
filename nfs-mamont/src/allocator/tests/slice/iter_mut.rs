@@ -484,15 +484,21 @@ fn write_all_three_buffers() {
 
     let first_slice = iter.next().unwrap();
     assert_eq!(first_slice, [1, 2, 3, 4, 5].as_mut_slice());
-    first_slice.iter_mut().for_each(|item| *item += 1);
+    for item in first_slice.iter_mut() {
+        *item += 1;
+    }
 
     let second_slice = iter.next().unwrap();
     assert_eq!(second_slice, [6, 7, 8].as_mut_slice());
-    second_slice.iter_mut().for_each(|item| *item += 2);
+    for item in second_slice.iter_mut() {
+        *item += 2;
+    }
 
     let third_slice = iter.next().unwrap();
     assert_eq!(third_slice, [9, 10, 11].as_mut_slice());
-    third_slice.iter_mut().for_each(|item| *item += 3);
+    for item in third_slice.iter_mut() {
+        *item += 3;
+    }
 
     check_iter_is_empty(&mut iter);
 
