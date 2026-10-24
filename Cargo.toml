@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont"]
+members = ["nfs-mamont", "mock-vfs"]
 resolver = "2"
 
 [workspace.package]
