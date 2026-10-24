@@ -26,6 +26,13 @@ Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-
 
 As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation
 
+### Benchmarking
+
+The workspace ships [`mock-vfs`](mock-vfs/README.md): an in-memory mock backend
+with a configurable response time, a standalone `mock-nfs-server` and the
+`nfs-bench` load generator, so the server pipeline can be measured without a
+real file system behind it.
+
 ## Safety & Requirements
 
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the
