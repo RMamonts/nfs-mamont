@@ -79,20 +79,17 @@ pub enum TaskKind {
     Read,
     /// Connection write task, one per connection.
     Write,
-    /// Single NFS request dispatched by a VFS worker.
-    Vfs,
 }
 
 impl TaskKind {
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
-    const ALL: [TaskKind; 3] = [TaskKind::Read, TaskKind::Write, TaskKind::Vfs];
+    const ALL: [TaskKind; 2] = [TaskKind::Read, TaskKind::Write];
 
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
     fn as_str(self) -> &'static str {
         match self {
             TaskKind::Read => "read",
             TaskKind::Write => "write",
-            TaskKind::Vfs => "vfs",
         }
     }
 }
@@ -215,7 +212,7 @@ mod nfs_metrics {
         call: [CallMetrics; 22],
         call_bytes: Counter,
         /// Indexed by [`TaskKind`].
-        task_monitors: [TaskMonitor; 3],
+        task_monitors: [TaskMonitor; 2],
         /// Tokio runtime and task reporters, aborted on drop.
         reporters: Vec<AbortHandle>,
     }

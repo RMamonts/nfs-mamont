@@ -5,9 +5,7 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::metric::{
-    unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, TaskKind, Timer,
-};
+use crate::metric::{unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, Timer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
@@ -252,8 +250,7 @@ where
     /// and sending replies.
     async fn run(self) {
         while let Ok(command) = self.command_receiver.recv().await {
-            let dispatch = dispatch(&self.backends, &self.metrics, command);
-            self.metrics.instrument(TaskKind::Vfs, dispatch).await;
+            dispatch(&self.backends, &self.metrics, command).await;
         }
     }
 }
