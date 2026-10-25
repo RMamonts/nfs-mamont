@@ -12,6 +12,7 @@ use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+mod io_tests;
 pub mod test_helpers;
 
 fn metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {

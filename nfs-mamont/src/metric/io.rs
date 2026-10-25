@@ -9,10 +9,6 @@ use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-#[cfg(test)]
-#[path = "io_tests.rs"]
-mod io_tests;
-
 /// Time spent in and bytes moved by the I/O calls of an [`IoTimer`] since the last [`IoStats::take`].
 #[derive(Default)]
 pub struct IoStats {
@@ -41,7 +37,7 @@ impl IoStats {
 
 /// Wraps a socket, adding the time spent in and bytes moved by its I/O calls to [`IoStats`].
 pub struct IoTimer<S> {
-    inner: S,
+    pub(super) inner: S,
     stats: Arc<IoStats>,
 }
 
