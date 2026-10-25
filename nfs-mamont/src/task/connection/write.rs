@@ -77,7 +77,6 @@ impl<B: Buffer> WriteTask<B> {
                 }
             };
 
-            self.metrics.lap(&mut timer, Stage::Write);
             self.metrics.finish(timer, is_ok && written);
         }
     }

@@ -19,33 +19,28 @@ pub use nfs_metrics::*;
 /// Stage of an NFS request between the five timestamps of its pipeline:
 /// received (T0) → parsed (T1) → picked by a VFS worker (T2) → backend done (T3) →
 /// picked by the write task (T4) → reply written (T5).
+///
+/// Parsing (T0 → T1) and writing (T4 → T5) is covered by the per-message metrics instead.
 #[derive(Clone, Copy)]
 pub enum Stage {
-    /// T0 → T1: RPC parsing
-    Read,
     /// T1 → T2: waiting in the VFS pool queue.
     VfsQueue,
     /// T2 → T3: executing in the VFS worker, backend included.
     Vfs,
     /// T3 → T4: waiting in the connection reply queue.
     ReplyQueue,
-    /// T4 → T5: serializing and writing the reply to the socket.
-    Write,
 }
 
 impl Stage {
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
-    const ALL: [Stage; 5] =
-        [Stage::Read, Stage::VfsQueue, Stage::Vfs, Stage::ReplyQueue, Stage::Write];
+    const ALL: [Stage; 3] = [Stage::VfsQueue, Stage::Vfs, Stage::ReplyQueue];
 
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
     fn as_str(self) -> &'static str {
         match self {
-            Stage::Read => "read",
             Stage::VfsQueue => "vfs_queue",
             Stage::Vfs => "vfs",
             Stage::ReplyQueue => "reply_queue",
-            Stage::Write => "write",
         }
     }
 }
@@ -198,7 +193,7 @@ mod nfs_metrics {
         /// Reference point for [`Timer`] timestamps.
         epoch: Instant,
         /// Indexed by [`Stage`].
-        stage: [Histogram; 5],
+        stage: [Histogram; 3],
         duration: Histogram,
         requests_ok: Counter,
         requests_err: Counter,

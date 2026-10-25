@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{CountedSender, NfsMetrics, Stage, TaskKind, Timer};
+use crate::metric::{CountedSender, NfsMetrics, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -95,8 +95,6 @@ where
         let mut parser = RpcParser::new(readhalf, self.allocator);
 
         loop {
-            let _ = parser.wait_message().await; // read error will be handled by parser.next_message()
-            let mut timer = self.metrics.start();
             let message =
                 self.metrics.read_call(&io, parser.next_message(), |message| match message {
                     Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
@@ -147,7 +145,7 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
-                    self.metrics.lap(&mut timer, Stage::Read);
+                    let timer = self.metrics.start();
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
