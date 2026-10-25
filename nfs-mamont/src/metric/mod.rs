@@ -390,8 +390,8 @@ mod nfs_metrics {
 
         /// Awaits `reply`, which writes one reply through the [`IoTimer`] behind `io`, and
         /// records its CPU, syscall and socket wait times and reply size under `procedure`.
-        /// Nothing is recorded for `None`
-        pub async fn write_reply<F: Future>(
+        /// Nothing is recorded for `None` or a failed write.
+        pub async fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
             &self,
             procedure: Option<u32>,
             io: &IoStats,
@@ -406,13 +406,15 @@ mod nfs_metrics {
 
             let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
             let (syscall, bytes) = io.take();
-            let metrics = &self.reply[procedure as usize];
-            // IoTimer measures time inside socket's write polls ~= syscall time
-            // Total future poll duration - syscall time = serialization time
-            metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
-            metrics.syscall.record(syscall);
-            metrics.wait.record(future_metrics.total_idle_duration);
-            metrics.bytes.record(bytes as f64);
+            if output.is_ok() {
+                let metrics = &self.reply[procedure as usize];
+                // IoTimer measures time inside socket's write polls ~= syscall time
+                // Total future poll duration - syscall time = serialization time
+                metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+                metrics.syscall.record(syscall);
+                metrics.wait.record(future_metrics.total_idle_duration);
+                metrics.bytes.record(bytes as f64);
+            }
             output
         }
 
@@ -515,7 +517,7 @@ mod nfs_metrics {
         }
 
         #[inline]
-        pub fn write_reply<F: Future>(
+        pub fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
             &self,
             _procedure: Option<u32>,
             _io: &IoStats,
