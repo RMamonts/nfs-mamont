@@ -111,7 +111,7 @@ where
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
-                        timer: Timer::NONE,
+                        timer: self.metrics.start(),
                     };
 
                     if let Err(err) = self.command_senders.result_sender.send(result).await {
