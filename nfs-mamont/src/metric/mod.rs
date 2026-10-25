@@ -2,6 +2,10 @@
 //!
 //! With the `metrics` feature disabled, [`NfsMetrics`] and its helpers are zero-sized
 //! no-ops, so they should be compiled away.
+//!
+//! Metrics, especially from tokio, rely heavily on timers, so clocksource matters.
+//! Kernel clocksource other than `tsc`  could increase the measurement overhead
+//! (check `/sys/devices/system/clocksource/clocksource0/current_clocksource`).
 
 mod allocator;
 #[cfg(feature = "metrics")]
