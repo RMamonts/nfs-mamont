@@ -63,8 +63,8 @@ impl<B: Buffer> WriteTask<B> {
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-            let reply = serializer.form_reply(reply, verifier);
-            let written = match self.metrics.write_reply(procedure, &io, reply).await {
+            let reply_future = serializer.form_reply(reply, verifier);
+            let written = match self.metrics.write_reply(procedure, &io, reply_future).await {
                 Ok(_) => {
                     // Reply successfully written to socket
                     true
