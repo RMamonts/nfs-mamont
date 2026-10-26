@@ -82,18 +82,6 @@ pub struct ArgWrapper<B: Buffer> {
     pub proc: ProcArguments<B>,
 }
 
-/// Wrapper for [`crate::rpc::Error`] to pass `xid` of procedure, this error
-/// is associated with.
-///
-/// The semantically validated (header-level) errors flow out of the parser as
-/// [`crate::rpc::Error`], while structural parse failures are converted to that
-/// type at the parser boundary.
-#[derive(Debug)]
-pub struct ErrorWrapper {
-    pub xid: Option<u32>,
-    pub error: crate::rpc::Error,
-}
-
 /// Parsed RPC message grouped by top-level RPC program.
 ///
 /// This is used by generic message consumers (for example, read tasks) that

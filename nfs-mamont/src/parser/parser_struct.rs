@@ -43,11 +43,13 @@ use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments,
-    NlmArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, Error, MountArguments, NfsArguments, NlmArguments,
+    ProcArguments, Result, RpcHeader,
 };
 use crate::rpc::auth::{AuthStat, Credential};
-use crate::rpc::{AuthFlavor, Error as RpcError, OpaqueAuth, RpcBody, VersionMismatch};
+use crate::rpc::{
+    AuthFlavor, Error as RpcError, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch,
+};
 use crate::vfs;
 
 /// Result type for the semantic (rpc-level) errors produced after header

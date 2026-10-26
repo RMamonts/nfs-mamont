@@ -8,11 +8,9 @@ use crate::consts::rpc::RPC_VERSION;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{
-    ArgWrapper, ErrorWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader,
-};
+use crate::parser::{ArgWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader};
 use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
-use crate::rpc::{AuthFlavor, Error, OpaqueAuth, RpcBody};
+use crate::rpc::{AuthFlavor, Error, ErrorWrapper, OpaqueAuth, RpcBody};
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
@@ -912,7 +910,7 @@ async fn parse_write_out_of_memory_after_error() {
     let result = parser.next_message().await;
     assert!(matches!(
         result,
-        Err(ErrorWrapper { error: Error::IO(ref io_err), xid: Some(XID) })
+        Err(ErrorWrapper { error: Error::IO(io_err), xid: Some(XID) })
             if io_err.kind() == std::io::ErrorKind::OutOfMemory
     ));
     let result = parser.next_message().await.unwrap();
@@ -1000,7 +998,7 @@ async fn parse_extra_bytes_after_finalize_after_error() {
     let result = parser.next_message().await;
     assert!(matches!(
         result,
-        Err(ErrorWrapper { error: Error::IO(ref io_err), xid: Some(XID) })
+        Err(ErrorWrapper { error: Error::IO(io_err), xid: Some(XID) })
             if io_err.kind() == std::io::ErrorKind::InvalidData
     ));
     let result = parser.next_message().await.unwrap();
@@ -1052,7 +1050,7 @@ async fn parse_symlink_window_overflow_after_error() {
     let result = parser.next_message().await;
     assert!(matches!(
         result,
-        Err(ErrorWrapper { error: Error::IO(ref io_err), xid: Some(XID) })
+        Err(ErrorWrapper { error: Error::IO(io_err), xid: Some(XID) })
             if io_err.kind() == std::io::ErrorKind::UnexpectedEof
     ));
     let result = parser.next_message().await.unwrap();
