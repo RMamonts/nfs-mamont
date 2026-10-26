@@ -94,6 +94,11 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
         Ok(())
     }
 
+    /// Waits until the next RMS frame header is buffered, without consuming it.
+    pub async fn wait_frame_header(&mut self) -> io::Result<()> {
+        self.ensure_buffered(RMS_HEADER_SIZE).await
+    }
+
     /// Reads the 4-byte RMS frame header from the stream.
     ///
     /// The header is not part of the frame body and is not accounted for in
