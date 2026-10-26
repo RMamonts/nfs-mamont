@@ -149,7 +149,6 @@ async fn tokio_metrics_are_reported_per_task_kind() {
             kind.as_str()
         );
     }
-    value(&snapshot, "nfsmamont_tokio_workers_count", &[]);
 }
 
 #[tokio::test]

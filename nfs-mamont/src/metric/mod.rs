@@ -105,9 +105,7 @@ mod nfs_metrics {
         Gauge, Histogram, Key, Unit,
     };
     use tokio::task::AbortHandle;
-    use tokio_metrics::{
-        FutureMonitor, RuntimeMetricsReporterBuilder, TaskMetricsReporterBuilder, TaskMonitor,
-    };
+    use tokio_metrics::{FutureMonitor, TaskMetricsReporterBuilder, TaskMonitor};
 
     use super::io::{IoStats, IoTimer};
     use super::{Queue, Stage, TaskKind};
@@ -123,7 +121,7 @@ mod nfs_metrics {
     pub(super) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
     pub(super) const REPLY_BYTES: &str = "nfsmamont_rpc_reply_bytes";
 
-    /// How often tokio runtime and task metrics are sampled into the recorder.
+    /// How often tokio task metrics are sampled into the recorder.
     const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
 
     /// `proc` label values, indexed by NFSv3 procedure number.
@@ -209,7 +207,7 @@ mod nfs_metrics {
         call: [CallMetrics; 22],
         /// Indexed by [`TaskKind`].
         task_monitors: [TaskMonitor; 2],
-        /// Tokio runtime and task reporters, aborted on drop.
+        /// Tokio task reporters, aborted on drop.
         reporters: Vec<AbortHandle>,
     }
 
@@ -248,7 +246,7 @@ mod nfs_metrics {
     }
 
     impl NfsMetrics {
-        /// Describes and registers all metrics in the currently installed recorder and spawns the tokio metrics reporters.
+        /// Describes and registers all metrics in the currently installed recorder and spawns the tokio task metrics reporters.
         ///
         /// # Panics
         ///
@@ -285,14 +283,7 @@ mod nfs_metrics {
             describe_histogram!(REPLY_BYTES, Unit::Bytes, "Size of reply messages");
 
             let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
-            let runtime_reporter = RuntimeMetricsReporterBuilder::default()
-                .with_interval(TOKIO_SAMPLING_INTERVAL)
-                .with_metrics_transformer(|name| {
-                    Key::from_name(name.replacen("tokio_", "nfsmamont_tokio_", 1))
-                })
-                .describe()
-                .build();
-            let mut reporters = vec![tokio::spawn(runtime_reporter.run()).abort_handle()];
+            let mut reporters = Vec::new();
             for (kind, monitor) in TaskKind::ALL.into_iter().zip(&task_monitors) {
                 let reporter = TaskMetricsReporterBuilder::new(move |name| {
                     let name = name.replacen("tokio_", "nfsmamont_tokio_task_", 1);
