@@ -114,7 +114,10 @@ The contribution workflow is:
 
 ### Building and testing
 
-The repository is a Cargo workspace with a single member crate, `nfs-mamont`.
+The repository is a Cargo workspace with two member crates: `nfs-mamont`, the
+library, and `mock-vfs`, the benchmark tooling (never published, see its
+[README](mock-vfs/README.md)). The commands below cover both; add
+`-p nfs-mamont` to restrict them to the library.
 
 ```bash
 # Build the library

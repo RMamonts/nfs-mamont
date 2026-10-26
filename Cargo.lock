@@ -152,6 +152,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-vfs"
+version = "0.1.1"
+dependencies = [
+ "libc",
+ "nfs-mamont",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "nfs-mamont"
 version = "0.2.0"
 dependencies = [
