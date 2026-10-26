@@ -23,21 +23,36 @@ impl Slice {
     ///
     /// # Panics
     ///
-    /// This function will panics if called if length range bound greater then length of `buffers`.
+    /// Panics if `range.start > range.end`, if `range.end` exceeds the total
+    /// length of `buffers`, or if any buffer is empty. All of these are bugs
+    /// in the caller.
     pub fn new(
         buffers: Vec<super::UnownedBuffer>,
         range: std::ops::Range<usize>,
         state: Option<Arc<super::AllocatorState>>,
     ) -> Self {
-        assert!(range.start <= range.end, "start should not be greater then end");
+        assert!(
+            range.start <= range.end,
+            "Slice::new: invalid range {}..{} (start > end); this is a bug in the caller",
+            range.start,
+            range.end
+        );
 
         let mut len = 0;
         for buffer in &buffers {
-            assert!(!buffer.is_empty());
+            assert!(
+                !buffer.is_empty(),
+                "Slice::new: zero-length buffer passed; this is a bug in the caller"
+            );
             len += buffer.len();
         }
-        assert!(range.start <= len, "cannot index list as slice from start");
-        assert!(range.end <= len, "cannot index list as slice to end");
+
+        assert!(
+            range.end <= len,
+            "Slice::new: range end {} exceeds total buffer length {}; this is a bug in the caller",
+            range.end,
+            len
+        );
 
         Self { buffers, range, state }
     }
