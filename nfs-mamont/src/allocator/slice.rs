@@ -38,16 +38,14 @@ impl Slice {
             range.end
         );
 
-        let len = buffers
-            .iter()
-            .map(|buffer| {
-                assert!(
-                    !buffer.is_empty(),
-                    "Slice::new: zero-length buffer passed; this is a bug in the caller"
-                );
-                buffer.len()
-            })
-            .sum();
+        let mut len = 0;
+        for buffer in &buffers {
+            assert!(
+                !buffer.is_empty(),
+                "Slice::new: zero-length buffer passed; this is a bug in the caller"
+            );
+            len += buffer.len();
+        }
 
         assert!(
             range.end <= len,
