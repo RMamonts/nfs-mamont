@@ -31,11 +31,11 @@ impl Slice {
     ) -> Self {
         assert!(range.start <= range.end, "start should not be greater then end");
 
+        let mut len = 0;
         for buffer in &buffers {
             assert!(!buffer.is_empty());
+            len += buffer.len();
         }
-        let len: usize = buffers.iter().map(super::UnownedBuffer::len).sum();
-
         assert!(range.start <= len, "cannot index list as slice from start");
         assert!(range.end <= len, "cannot index list as slice to end");
 
