@@ -1,5 +1,9 @@
 # NFS Mamont
 
+Enable the `metrics` Cargo feature for runtime and server metrics. The complete
+metric reference and Prometheus/Grafana setup are documented in
+[docs/metrics.md](docs/metrics.md).
+
 An asynchronous library to provide access to NFS protocol.
 
 NFS Mamont is a from-scratch, user-space implementation of the NFS protocol

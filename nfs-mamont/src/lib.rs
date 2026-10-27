@@ -13,8 +13,11 @@ mod rpcbind;
 mod serializer;
 pub mod service;
 mod task;
+mod telemetry;
 pub mod vfs;
 
+#[cfg(feature = "metrics")]
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
@@ -34,6 +37,33 @@ pub use context::ServerContext;
 pub use rpc::auth;
 pub use vfs::file::BackendId;
 
+/// Installs a Prometheus scrape endpoint for metrics emitted by this process.
+///
+/// Requires the `metrics` feature. Call this before creating allocators and server
+/// contexts. The application chooses the address to control endpoint reachability.
+#[cfg(feature = "metrics")]
+pub fn install_prometheus_exporter(
+    address: SocketAddr,
+) -> Result<(), metrics_exporter_prometheus::BuildError> {
+    metrics_exporter_prometheus::PrometheusBuilder::new()
+        .with_http_listener(address)
+        .set_buckets_for_metric(
+            metrics_exporter_prometheus::Matcher::Suffix("_seconds".into()),
+            telemetry::DURATION_BUCKETS,
+        )?
+        .install()
+}
+
+/// Publishes the current runtime/task samples and VFS queue depths immediately.
+///
+/// Call inside each monitored runtime after the workload has drained, then keep
+/// the runtime and exporter alive until Prometheus has scraped the final sample.
+/// This does not write a durable archive or force Prometheus to scrape.
+#[cfg(feature = "metrics")]
+pub fn flush_metrics() {
+    telemetry::flush();
+}
+
 /// Initializes tracing logs.
 ///
 /// In debug builds logs are enabled by default. In release builds this is a no-op.
@@ -45,6 +75,11 @@ pub fn init_tracing() {
 }
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
+///
+/// With the `metrics` feature, shutdown publishes the final metrics and keeps the
+/// runtime available for another 11 seconds before returning, allowing Prometheus
+/// to scrape them with the bundled five-second scrape interval. This grace period
+/// does not wait for independently spawned connection tasks to finish.
 pub async fn handle_forever<A, B, M, N, V>(
     listener: TcpListener,
     context: ServerContext<A, V, B>,
@@ -58,6 +93,8 @@ where
     N: Nlm + Send + Sync + 'static,
     V: Vfs<B> + Send + Sync + 'static,
 {
+    telemetry::start();
+
     let (mount_task, mount_sender) = MountTask::new(mount_service);
     mount_task.spawn();
 
@@ -97,6 +134,12 @@ where
     };
 
     let _ = rpcbind::unregister(port).await;
+    #[cfg(feature = "metrics")]
+    {
+        flush_metrics();
+        info!(grace_seconds = 11, "keeping metrics available for final Prometheus scrapes");
+        tokio::time::sleep(std::time::Duration::from_secs(11)).await;
+    }
 
     accept_result
 }

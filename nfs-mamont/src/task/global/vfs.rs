@@ -9,11 +9,12 @@ use crate::backend::BackendRegistry;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
+use crate::telemetry::{PoolMetrics, Timestamp, WorkerMetrics};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
+pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>, Timestamp);
 /// Sender to enqueue work in the queue.
 pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
@@ -172,9 +173,10 @@ impl<B: Buffer + 'static> VfsManager<B> {
         V: Vfs<B> + Send + Sync + 'static,
     {
         let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let metrics = PoolMetrics::new(&rx, concurrency.get());
 
-        (0..concurrency.get()).for_each(|_| {
-            VfsTask::new(backends.clone(), rx.clone()).spawn();
+        (0..concurrency.get()).for_each(|worker_id| {
+            VfsTask::new(backends.clone(), rx.clone(), metrics.worker(worker_id)).spawn();
         });
 
         Self { sender: tx }
@@ -204,6 +206,8 @@ where
     backends: BackendRegistry<V>,
     /// Shared receiver from the pool, each worker competes for the same command stream.
     command_receiver: VfsCommandReceiver<B>,
+    /// Cached metric handles identifying this pool and worker.
+    metrics: WorkerMetrics,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -217,12 +221,17 @@ where
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
     /// - `command_receiver` --- shared receiver from the pool
+    /// - `metrics` --- handles for this pool and worker
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backends, command_receiver }
+    pub fn new(
+        backends: BackendRegistry<V>,
+        command_receiver: VfsCommandReceiver<B>,
+        metrics: WorkerMetrics,
+    ) -> Self {
+        Self { backends, command_receiver, metrics }
     }
 
     /// Spawns a [`VfsTask`].
@@ -231,29 +240,39 @@ where
     ///
     /// If called outside of tokio runtime context.
     pub fn spawn(self) {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(crate::telemetry::instrument_vfs(async move { self.run().await }));
     }
 
     /// Consumes commands until the channel is closed and empty, dispatching each NFS op
     /// and sending replies.
-    async fn run(self) {
+    async fn run(mut self) {
         while let Ok(command) = self.command_receiver.recv().await {
-            dispatch(&self.backends, command).await;
+            dispatch(&self.backends, command, &mut self.metrics).await;
         }
     }
 }
 
 /// Routes a single NFS procedure to the backend owning its file handle and sends the reply.
-async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: VfsCommand<B>)
-where
+async fn dispatch<V, B>(
+    backends: &BackendRegistry<V>,
+    command: VfsCommand<B>,
+    metrics: &mut WorkerMetrics,
+) where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (wrapper, tx) = command;
+    let (wrapper, tx, queued_at) = command;
+    let _in_flight = metrics.begin(queued_at);
     let NfsArgWrapper { header, proc } = wrapper;
     let proc_name = proc.get_name();
+    let started = Timestamp::now();
+    let route = target(&proc);
+    let backend_id = match &route {
+        Target::Single(id) => Some(*id),
+        Target::None | Target::Crossing => None,
+    };
 
-    let response = match target(&proc) {
+    let response = match route {
         Target::None => NfsRes::Null,
         Target::Crossing => failed_response(&proc, vfs::Error::XDev),
         Target::Single(backend_id) => match backends.get(backend_id) {
@@ -274,6 +293,7 @@ where
     if let Some(error) = response.error_from_response() {
         error!(xid=header.xid, proc=proc_name, error=?error, "nfs op failed");
     }
+    metrics.record_request(proc_name, backend_id, started);
 
     let reply =
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };

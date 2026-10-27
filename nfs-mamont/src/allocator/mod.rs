@@ -27,6 +27,7 @@ pub struct AllocatorState {
     pub semaphore: Semaphore,
     base_ptr: *mut u8,
     layout: Layout,
+    metrics: crate::telemetry::AllocatorMetrics,
 }
 
 unsafe impl Send for AllocatorState {}
@@ -140,7 +141,13 @@ impl Impl {
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
+            state: Arc::new(AllocatorState {
+                pool,
+                semaphore,
+                base_ptr,
+                layout,
+                metrics: crate::telemetry::AllocatorMetrics::new(buffer_count),
+            }),
             buffer_size: size,
             // `total_size` is a product of two non-zero values, checked above.
             capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
@@ -158,8 +165,12 @@ impl Allocator for Impl {
 
         let remain_size = size.get();
         let count_needed = remain_size.div_ceil(self.buffer_size.get());
-
-        let permit = match self.state.semaphore.acquire_many(count_needed as u32).await {
+        let permit = match self
+            .state
+            .metrics
+            .acquire(self.state.semaphore.acquire_many(count_needed as u32))
+            .await
+        {
             Ok(p) => p,
             Err(_) => return None,
         };
@@ -174,6 +185,7 @@ impl Allocator for Impl {
         }
 
         permit.forget();
+        self.state.metrics.allocate(count_needed);
 
         Some(Slice::new(buffers, 0..size.get(), Some(Arc::clone(&self.state))))
     }

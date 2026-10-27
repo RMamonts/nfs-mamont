@@ -1,0 +1,840 @@
+{
+  "uid": "nfs-mamont-runtime",
+  "title": "NFS Mamont / Tokio runtime",
+  "schemaVersion": 39,
+  "version": 8,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 302,
+      "title": "Runtime · Live Tokio tasks",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 202,
+          "type": "text",
+          "title": "Live Tokio tasks",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 1,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Current Tokio task count on this runtime, including application and monitoring tasks. A task may be running, runnable, or waiting. Inline child futures are not separate tasks. Unit: tasks; sampled every 5 s.\n\n**Metrics:** `tokio_live_tasks_count`"
+          }
+        },
+        {
+          "id": 2,
+          "title": "tokio_live_tasks_count",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 5,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "tokio_live_tasks_count",
+              "legendFormat": "tasks"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Live Tokio tasks\n\nCurrent Tokio task count on this runtime, including application and monitoring tasks. A task may be running, runnable, or waiting. Inline child futures are not separate tasks. Unit: tasks; sampled every 5 s.\n\n**Metrics:** `tokio_live_tasks_count`\n\n**PromQL:**\n```promql\ntokio_live_tasks_count\n```"
+        }
+      ]
+    },
+    {
+      "id": 303,
+      "title": "Runtime · Runnable tasks in the global queue",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 203,
+          "type": "text",
+          "title": "Runnable tasks in the global queue",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 2,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Runnable tasks currently in the runtime global scheduler queue. Worker-local queues and tasks waiting for a wakeup are not included. Unit: tasks; sampled every 5 s.\n\n**Metrics:** `tokio_global_queue_depth`"
+          }
+        },
+        {
+          "id": 3,
+          "title": "tokio_global_queue_depth",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 6,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "tokio_global_queue_depth",
+              "legendFormat": "queued tasks"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Runnable tasks in the global queue\n\nRunnable tasks currently in the runtime global scheduler queue. Worker-local queues and tasks waiting for a wakeup are not included. Unit: tasks; sampled every 5 s.\n\n**Metrics:** `tokio_global_queue_depth`\n\n**PromQL:**\n```promql\ntokio_global_queue_depth\n```"
+        }
+      ]
+    },
+    {
+      "id": 304,
+      "title": "Runtime · Worker parks per second",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 204,
+          "type": "text",
+          "title": "Worker parks per second",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 3,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "rate(counter[1m]): how often workers enter the parked state, summed across workers. Unit: parks/s. This counts park events; it does not measure how long workers stay parked.\n\n**Metrics:** `tokio_total_park_count`"
+          }
+        },
+        {
+          "id": 4,
+          "title": "tokio_total_park_count → parks/s",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 7,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(tokio_total_park_count[1m])",
+              "legendFormat": "parks/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Worker parks per second\n\nrate(counter[1m]): how often workers enter the parked state, summed across workers. Unit: parks/s. This counts park events; it does not measure how long workers stay parked.\n\n**Metrics:** `tokio_total_park_count`\n\n**PromQL:**\n```promql\nrate(tokio_total_park_count[1m])\n```"
+        }
+      ]
+    },
+    {
+      "id": 305,
+      "title": "Tasks · Task polls per second",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 205,
+          "type": "text",
+          "title": "Task polls per second",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 4,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "rate(counter[1m]) for each task kind. Unit: polls/s. One poll may process multiple requests; a Pending return is also a poll.\n\n**Metrics:** `nfs_read_task_total_poll_count` · `nfs_write_task_total_poll_count` · `nfs_vfs_task_total_poll_count`"
+          }
+        },
+        {
+          "id": 5,
+          "title": "read / write / vfs · polls/s",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(nfs_read_task_total_poll_count[1m])",
+              "legendFormat": "read"
+            },
+            {
+              "expr": "rate(nfs_write_task_total_poll_count[1m])",
+              "legendFormat": "write"
+            },
+            {
+              "expr": "rate(nfs_vfs_task_total_poll_count[1m])",
+              "legendFormat": "vfs"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Task polls per second\n\nrate(counter[1m]) for each task kind. Unit: polls/s. One poll may process multiple requests; a Pending return is also a poll.\n\n**Metrics:** `nfs_read_task_total_poll_count` · `nfs_write_task_total_poll_count` · `nfs_vfs_task_total_poll_count`\n\n**PromQL:**\n```promql\nrate(nfs_read_task_total_poll_count[1m])\n```\n```promql\nrate(nfs_write_task_total_poll_count[1m])\n```\n```promql\nrate(nfs_vfs_task_total_poll_count[1m])\n```"
+        }
+      ]
+    },
+    {
+      "id": 309,
+      "title": "Tasks · Read tasks · mean wake-to-poll delay",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 209,
+          "type": "text",
+          "title": "Read tasks · mean wake-to-poll delay",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 5,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Weighted mean over 1 min: rate(duration) / rate(count). Time from wakeup until the task is next polled. High values suggest runnable tasks are waiting for worker time. Unit: µs.\n\n**Metrics:** `nfs_read_task_total_scheduled_duration` · `nfs_read_task_total_scheduled_count`"
+          }
+        },
+        {
+          "id": 9,
+          "title": "read · mean scheduled delay (µs)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 9,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(nfs_read_task_total_scheduled_duration[1m]) / rate(nfs_read_task_total_scheduled_count[1m])",
+              "legendFormat": "read"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs"
+            },
+            "overrides": []
+          },
+          "description": "Read tasks · mean wake-to-poll delay\n\nWeighted mean over 1 min: rate(duration) / rate(count). Time from wakeup until the task is next polled. High values suggest runnable tasks are waiting for worker time. Unit: µs.\n\n**Metrics:** `nfs_read_task_total_scheduled_duration` · `nfs_read_task_total_scheduled_count`\n\n**PromQL:**\n```promql\nrate(nfs_read_task_total_scheduled_duration[1m]) / rate(nfs_read_task_total_scheduled_count[1m])\n```"
+        }
+      ]
+    },
+    {
+      "id": 310,
+      "title": "Tasks · Write tasks · mean idle interval",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 210,
+          "type": "text",
+          "title": "Write tasks · mean idle interval",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 6,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Weighted mean over 1 min: rate(duration) / rate(count). Completed idle time from the end of a poll until a later wakeup; may include waiting for responses or socket readiness. Ongoing waits are not fully observed yet. Unit: µs.\n\n**Metrics:** `nfs_write_task_total_idle_duration` · `nfs_write_task_total_idled_count`"
+          }
+        },
+        {
+          "id": 10,
+          "title": "write · mean idle interval (µs)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 10,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(nfs_write_task_total_idle_duration[1m]) / rate(nfs_write_task_total_idled_count[1m])",
+              "legendFormat": "write"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs"
+            },
+            "overrides": []
+          },
+          "description": "Write tasks · mean idle interval\n\nWeighted mean over 1 min: rate(duration) / rate(count). Completed idle time from the end of a poll until a later wakeup; may include waiting for responses or socket readiness. Ongoing waits are not fully observed yet. Unit: µs.\n\n**Metrics:** `nfs_write_task_total_idle_duration` · `nfs_write_task_total_idled_count`\n\n**PromQL:**\n```promql\nrate(nfs_write_task_total_idle_duration[1m]) / rate(nfs_write_task_total_idled_count[1m])\n```"
+        }
+      ]
+    },
+    {
+      "id": 312,
+      "title": "Tasks · Task polls · mean duration",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 212,
+          "type": "text",
+          "title": "Task polls · mean duration",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 7,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Weighted mean over 1 min: rate(duration) / rate(count), with {task} = read, write, vfs. Wall time inside poll, including synchronous blocking and OS preemption. Unit: µs; this is not pure CPU time.\n\n**Metrics:** `nfs_{task}_task_total_poll_duration` · `nfs_{task}_task_total_poll_count`"
+          }
+        },
+        {
+          "id": 12,
+          "title": "read / write / vfs · mean poll duration (µs)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 11,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(nfs_read_task_total_poll_duration[1m]) / rate(nfs_read_task_total_poll_count[1m])",
+              "legendFormat": "read"
+            },
+            {
+              "expr": "rate(nfs_write_task_total_poll_duration[1m]) / rate(nfs_write_task_total_poll_count[1m])",
+              "legendFormat": "write"
+            },
+            {
+              "expr": "rate(nfs_vfs_task_total_poll_duration[1m]) / rate(nfs_vfs_task_total_poll_count[1m])",
+              "legendFormat": "vfs"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs"
+            },
+            "overrides": []
+          },
+          "description": "Task polls · mean duration\n\nWeighted mean over 1 min: rate(duration) / rate(count), with {task} = read, write, vfs. Wall time inside poll, including synchronous blocking and OS preemption. Unit: µs; this is not pure CPU time.\n\n**Metrics:** `nfs_{task}_task_total_poll_duration` · `nfs_{task}_task_total_poll_count`\n\n**PromQL:**\n```promql\nrate(nfs_read_task_total_poll_duration[1m]) / rate(nfs_read_task_total_poll_count[1m])\n```\n```promql\nrate(nfs_write_task_total_poll_duration[1m]) / rate(nfs_write_task_total_poll_count[1m])\n```\n```promql\nrate(nfs_vfs_task_total_poll_duration[1m]) / rate(nfs_vfs_task_total_poll_count[1m])\n```"
+        }
+      ]
+    },
+    {
+      "id": 306,
+      "title": "VFS handling time · mean / min / max",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 206,
+          "type": "text",
+          "title": "VFS handling time · mean / min / max",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "All procedures, backends and workers combined within each VFS pool. Exact mean, minimum and maximum of completed request durations in the latest reporter interval (normally 5 s). Empty intervals are gaps. Includes success and error responses; excludes queue wait, serialization and network delivery. Unit: seconds (auto-scaled).\n\n**Metrics:** `nfs_vfs_request_duration_seconds_mean` · `nfs_vfs_request_duration_seconds_min` · `nfs_vfs_request_duration_seconds_max`"
+          }
+        },
+        {
+          "id": 6,
+          "title": "nfs_vfs_request_duration_seconds · mean / min / max",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 12,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "nfs_vfs_request_duration_seconds_mean",
+              "legendFormat": "mean"
+            },
+            {
+              "refId": "B",
+              "expr": "nfs_vfs_request_duration_seconds_min",
+              "legendFormat": "min"
+            },
+            {
+              "refId": "C",
+              "expr": "nfs_vfs_request_duration_seconds_max",
+              "legendFormat": "max"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "spanNulls": false
+              }
+            },
+            "overrides": []
+          },
+          "description": "VFS handling time · mean / min / max\n\nAll procedures, backends and workers combined within each VFS pool. Exact mean, minimum and maximum of completed request durations in the latest reporter interval (normally 5 s). Empty intervals are gaps. Includes success and error responses; excludes queue wait, serialization and network delivery. Unit: seconds (auto-scaled).\n\n**Metrics:** `nfs_vfs_request_duration_seconds_mean` · `nfs_vfs_request_duration_seconds_min` · `nfs_vfs_request_duration_seconds_max`\n\n**PromQL:**\n```promql\nnfs_vfs_request_duration_seconds_mean\n```\n```promql\nnfs_vfs_request_duration_seconds_min\n```\n```promql\nnfs_vfs_request_duration_seconds_max\n```"
+        }
+      ]
+    },
+    {
+      "id": 307,
+      "title": "VFS · Shared VFS queue depth",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 207,
+          "type": "text",
+          "title": "Shared VFS queue depth",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 9,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Requests waiting in the shared channel, one series per pool. Sampled every 5 s independently of workers receiving requests. Short bursts between samples can be missed. Unit: queued requests.\n\n**Metrics:** `nfs_vfs_queue_depth`"
+          }
+        },
+        {
+          "id": 7,
+          "title": "nfs_vfs_queue_depth",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "nfs_vfs_queue_depth",
+              "legendFormat": "pool {{pool}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Shared VFS queue depth\n\nRequests waiting in the shared channel, one series per pool. Sampled every 5 s independently of workers receiving requests. Short bursts between samples can be missed. Unit: queued requests.\n\n**Metrics:** `nfs_vfs_queue_depth`\n\n**PromQL:**\n```promql\nnfs_vfs_queue_depth\n```"
+        }
+      ]
+    },
+    {
+      "id": 311,
+      "title": "VFS queue wait · overall p95 and worker spread",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 211,
+          "type": "text",
+          "title": "VFS queue wait · overall p95 and worker spread",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 10,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Overall: p95 of the combined queue-wait histogram over 5 min. Spread: largest worker p95 minus smallest worker p95 in the same window. Workers with no observed waits are excluded from the spread; an empty pool has a gap. Unit: seconds (auto-scaled).\n\n**Metric:** `nfs_vfs_queue_wait_duration_seconds`"
+          }
+        },
+        {
+          "id": 11,
+          "title": "nfs_vfs_queue_wait_duration_seconds · overall / spread",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 14,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m])))",
+              "legendFormat": "overall p95"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (instance, job, run, runtime, pool) ((histogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool, worker) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m]))) >= 0)) - min by (instance, job, run, runtime, pool) ((histogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool, worker) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m]))) >= 0))",
+              "legendFormat": "max − min (worker p95)"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "description": "VFS queue wait · overall p95 and worker spread\n\nOverall: p95 of the combined queue-wait histogram over 5 min. Spread: largest worker p95 minus smallest worker p95 in the same window. Workers with no observed waits are excluded from the spread; an empty pool has a gap. Unit: seconds (auto-scaled).\n\n**Metric:** `nfs_vfs_queue_wait_duration_seconds`\n\n**PromQL:**\n```promql\nhistogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m])))\n```\n```promql\nmax by (instance, job, run, runtime, pool) ((histogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool, worker) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m]))) >= 0)) - min by (instance, job, run, runtime, pool) ((histogram_quantile(0.95, sum by (le, instance, job, run, runtime, pool, worker) (rate(nfs_vfs_queue_wait_duration_seconds_bucket[5m]))) >= 0))\n```"
+        }
+      ]
+    },
+    {
+      "id": 315,
+      "title": "VFS · in-flight requests and worker spread",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 215,
+          "type": "text",
+          "title": "VFS · in-flight requests and worker spread",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 11,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Total: requests currently held by all workers in the pool, including handing replies to the writer. Spread: maximum minus minimum worker value. Each worker usually holds 0 or 1 request, so the spread is usually 0 or 1. Unit: requests.\n\n**Metric:** `nfs_vfs_requests_in_flight`"
+          }
+        },
+        {
+          "id": 15,
+          "title": "nfs_vfs_requests_in_flight · total / spread",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 15,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight)",
+              "legendFormat": "total"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight) - min by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight)",
+              "legendFormat": "max − min"
+            }
+          ],
+          "description": "VFS · in-flight requests and worker spread\n\nTotal: requests currently held by all workers in the pool, including handing replies to the writer. Spread: maximum minus minimum worker value. Each worker usually holds 0 or 1 request, so the spread is usually 0 or 1. Unit: requests.\n\n**Metric:** `nfs_vfs_requests_in_flight`\n\n**PromQL:**\n```promql\nsum by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight)\n```\n```promql\nmax by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight) - min by (instance, job, run, runtime, pool) (nfs_vfs_requests_in_flight)\n```"
+        }
+      ]
+    },
+    {
+      "id": 316,
+      "title": "VFS · throughput and worker spread",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 216,
+          "type": "text",
+          "title": "VFS · throughput and worker spread",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 12,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Total: completed requests/s across all workers, using a 1 min rate window. Spread: fastest worker rate minus slowest worker rate in that window. Workers with no completion series contribute zero. Includes success and error responses. Unit: requests/s.\n\n**Metric:** `nfs_vfs_requests_total`"
+          }
+        },
+        {
+          "id": 16,
+          "title": "nfs_vfs_requests_total · total requests/s / spread",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight)))",
+              "legendFormat": "total"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight))) - min by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight)))",
+              "legendFormat": "max − min"
+            }
+          ],
+          "description": "VFS · throughput and worker spread\n\nTotal: completed requests/s across all workers, using a 1 min rate window. Spread: fastest worker rate minus slowest worker rate in that window. Workers with no completion series contribute zero. Includes success and error responses. Unit: requests/s.\n\n**Metric:** `nfs_vfs_requests_total`\n\n**PromQL:**\n```promql\nsum by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight)))\n```\n```promql\nmax by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight))) - min by (instance, job, run, runtime, pool) ((sum by (instance, job, run, runtime, pool, worker) (rate(nfs_vfs_requests_total[1m])) or on (instance, job, run, runtime, pool, worker) (0 * nfs_vfs_requests_in_flight)))\n```"
+        }
+      ]
+    },
+    {
+      "id": 308,
+      "title": "Allocator blocks · used and capacity",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 208,
+          "type": "text",
+          "title": "Allocator blocks · used and capacity",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Current blocks held by buffers compared with total allocator capacity. One pair of series per allocator. Unit: blocks, not bytes. Capacity becomes zero after the allocator state is dropped.\n\n**Metrics:** `nfs_allocator_blocks_in_use` · `nfs_allocator_capacity_blocks`"
+          }
+        },
+        {
+          "id": 8,
+          "title": "blocks in use / capacity",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 17,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "nfs_allocator_blocks_in_use",
+              "legendFormat": "allocator {{allocator}} · used"
+            },
+            {
+              "expr": "nfs_allocator_capacity_blocks",
+              "legendFormat": "allocator {{allocator}} · capacity"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "description": "Allocator blocks · used and capacity\n\nCurrent blocks held by buffers compared with total allocator capacity. One pair of series per allocator. Unit: blocks, not bytes. Capacity becomes zero after the allocator state is dropped.\n\n**Metrics:** `nfs_allocator_blocks_in_use` · `nfs_allocator_capacity_blocks`\n\n**PromQL:**\n```promql\nnfs_allocator_blocks_in_use\n```\n```promql\nnfs_allocator_capacity_blocks\n```"
+        }
+      ]
+    },
+    {
+      "id": 313,
+      "title": "Allocator · current waiters",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 213,
+          "type": "text",
+          "title": "Allocator · current waiters",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 14,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "Acquisitions whose semaphore future returned Pending and has not completed or been cancelled. One series per allocator. Shows ongoing memory pressure before waits finish. Unit: waiting acquisitions.\n\n**Metrics:** `nfs_allocator_waiters`"
+          }
+        },
+        {
+          "id": 13,
+          "title": "nfs_allocator_waiters",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 18,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "nfs_allocator_waiters",
+              "legendFormat": "allocator {{allocator}}"
+            }
+          ],
+          "description": "Allocator · current waiters\n\nAcquisitions whose semaphore future returned Pending and has not completed or been cancelled. One series per allocator. Shows ongoing memory pressure before waits finish. Unit: waiting acquisitions.\n\n**Metrics:** `nfs_allocator_waiters`\n\n**PromQL:**\n```promql\nnfs_allocator_waiters\n```"
+        }
+      ]
+    },
+    {
+      "id": 314,
+      "title": "Allocator · waits started per second",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 214,
+          "type": "text",
+          "title": "Allocator · waits started per second",
+          "transparent": true,
+          "gridPos": {
+            "x": 0,
+            "y": 15,
+            "w": 24,
+            "h": 4
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "rate(counter[1m]): acquisitions entering an actual Pending wait for memory. Counted once on first Pending, including waits later cancelled. Unit: waits/s.\n\n**Metrics:** `nfs_allocator_waits_total`"
+          }
+        },
+        {
+          "id": 14,
+          "title": "nfs_allocator_waits_total → waits/s",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 19,
+            "w": 24,
+            "h": 14
+          },
+          "targets": [
+            {
+              "expr": "rate(nfs_allocator_waits_total[1m])",
+              "legendFormat": "allocator {{allocator}}"
+            }
+          ],
+          "description": "Allocator · waits started per second\n\nrate(counter[1m]): acquisitions entering an actual Pending wait for memory. Counted once on first Pending, including waits later cancelled. Unit: waits/s.\n\n**Metrics:** `nfs_allocator_waits_total`\n\n**PromQL:**\n```promql\nrate(nfs_allocator_waits_total[1m])\n```"
+        }
+      ]
+    }
+  ],
+  "description": "One large chart per collapsible row, with visible explanations. All charts start collapsed; expand only those you want to inspect."
+}

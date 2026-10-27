@@ -79,6 +79,7 @@ impl Slice {
                 let _ = state.pool.push(buffer);
             }
             if count > 0 {
+                state.metrics.release(count);
                 state.semaphore.add_permits(count);
             }
         }

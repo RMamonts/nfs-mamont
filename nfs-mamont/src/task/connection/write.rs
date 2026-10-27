@@ -30,7 +30,7 @@ impl<B: Buffer> WriteTask<B> {
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(crate::telemetry::instrument_write(async move { self.run().await }));
     }
 
     async fn run(self) {

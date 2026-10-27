@@ -18,6 +18,7 @@ use crate::parser::{
 use crate::rpc::Error;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+use crate::task::global::vfs::VfsCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -28,7 +29,7 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
     /// To pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task.
-    pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+    pool_sender: Sender<VfsCommand<B>>,
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
@@ -39,7 +40,7 @@ impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        pool_sender: Sender<VfsCommand<B>>,
         result_sender: Sender<ProcReply<B>>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender, result_sender }
@@ -82,14 +83,18 @@ where
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(crate::telemetry::instrument_read(async move { self.run().await }));
     }
 
     async fn run(self) -> io::Result<()> {
         let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let metrics = crate::telemetry::ReadMetrics::new();
 
         loop {
-            match parser.next_message().await {
+            let parsed = parser.next_message().await;
+            metrics.record_cycle();
+
+            match parsed {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
@@ -136,7 +141,11 @@ where
                     if let Err(err) = self
                         .command_senders
                         .pool_sender
-                        .send((command, self.command_senders.result_sender.clone()))
+                        .send((
+                            command,
+                            self.command_senders.result_sender.clone(),
+                            crate::telemetry::Timestamp::now(),
+                        ))
                         .await
                     {
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
