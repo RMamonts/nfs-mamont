@@ -24,7 +24,7 @@ pub struct Nlm4CancelArgs {
 
 /// NLM CANCEL result.
 ///
-/// Returned by [`NLMPROC4_CANCEL`](crate::consts::nlm::NLMPROC4_CANCEL) procedure.
+/// Returned by the [`NlmProc::Cancel`](crate::consts::nlm::NlmProc::Cancel) procedure.
 pub struct Nlm4CancelRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

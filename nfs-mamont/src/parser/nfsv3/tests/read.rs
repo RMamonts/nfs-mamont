@@ -29,5 +29,5 @@ fn test_read_insufficient_data() {
     ];
 
     let result = args(&mut Cursor::new(DATA));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::InvalidData)));
 }
