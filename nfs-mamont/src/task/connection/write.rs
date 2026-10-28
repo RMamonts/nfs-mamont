@@ -5,7 +5,7 @@ use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::metric::{CountedReceiver, NfsMetrics, Stage, Timer};
+use crate::metric::{CountedReceiver, NfsMetrics, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcReply, ProcResult};
@@ -36,28 +36,30 @@ impl<B: Buffer> WriteTask<B> {
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        let metrics = Arc::clone(&self.metrics);
+        tokio::spawn(metrics.instrument(TaskKind::Write, self.run()));
     }
 
     async fn run(self) {
         let result_receiver = self.result_receiver;
-        let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
+        let (writehalf, io) = self.metrics.io_timer(self.writehalf);
+        let mut serializer = serializer::server::serialize_struct::Serializer::new(writehalf);
 
         while let Ok(mut reply) = result_receiver.recv().await {
             let mut timer = mem::replace(&mut reply.timer, Timer::NONE);
             self.metrics.lap(&mut timer, Stage::ReplyQueue);
-            let is_ok = timer.is_measured() // const false if metrics are disabled
-                && match &reply.proc_result {
-                    Ok(ProcResult::Nfs3(res)) => res.error_from_response().is_none(),
-                    Ok(_) => true,
-                    Err(_) => false,
-                };
+            let is_ok = reply.proc_result.is_ok();
+            let procedure = match &reply.proc_result {
+                Ok(ProcResult::Nfs3(res)) => Some(res.procedure()),
+                _ => None,
+            };
 
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
-            let written = match serializer.form_reply(reply, verifier).await {
+            let reply_future = serializer.form_reply(reply, verifier);
+            let written = match self.metrics.write_reply(procedure, &io, reply_future).await {
                 Ok(_) => {
                     // Reply successfully written to socket
                     true
@@ -70,7 +72,6 @@ impl<B: Buffer> WriteTask<B> {
                 }
             };
 
-            self.metrics.lap(&mut timer, Stage::Write);
             self.metrics.finish(timer, is_ok && written);
         }
     }

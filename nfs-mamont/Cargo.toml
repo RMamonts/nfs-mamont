@@ -18,7 +18,7 @@ doctest = true
 [features]
 default = []
 mlock = ["dep:libc"]
-metrics = ["dep:metrics"]
+metrics = ["dep:metrics", "dep:tokio-metrics"]
 
 [dependencies]
 # External dependencies
@@ -30,6 +30,7 @@ num-derive.workspace = true
 num-traits.workspace = true
 metrics = { version = "0.24.6", optional = true }
 tokio.workspace = true
+tokio-metrics = { version = "0.5.2", features = ["metrics-rs-integration"], optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 trait-variant.workspace = true

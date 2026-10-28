@@ -14,6 +14,10 @@ mod tests;
 use std::future::Future;
 
 use crate::allocator::Buffer;
+use crate::consts::nfsv3::{
+    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NULL, PATHCONF,
+    READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, SETATTR, SYMLINK, WRITE,
+};
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
@@ -171,6 +175,34 @@ impl<B: Buffer> NfsArguments<B> {
             Self::FsInfo(_) => "FSINFO",
             Self::PathConf(_) => "PATHCONF",
             Self::Commit(_) => "COMMIT",
+        }
+    }
+
+    /// Returns the NFSv3 procedure number of the call.
+    pub(crate) fn procedure(&self) -> u32 {
+        match self {
+            Self::Null => NULL,
+            Self::GetAttr(_) => GETATTR,
+            Self::SetAttr(_) => SETATTR,
+            Self::LookUp(_) => LOOKUP,
+            Self::Access(_) => ACCESS,
+            Self::ReadLink(_) => READLINK,
+            Self::Read(..) => READ,
+            Self::Write(_) => WRITE,
+            Self::Create(_) => CREATE,
+            Self::MkDir(_) => MKDIR,
+            Self::SymLink(_) => SYMLINK,
+            Self::MkNod(_) => MKNOD,
+            Self::Remove(_) => REMOVE,
+            Self::RmDir(_) => RMDIR,
+            Self::Rename(_) => RENAME,
+            Self::Link(_) => LINK,
+            Self::ReadDir(_) => READDIR,
+            Self::ReadDirPlus(_) => READDIRPLUS,
+            Self::FsStat(_) => FSSTAT,
+            Self::FsInfo(_) => FSINFO,
+            Self::PathConf(_) => PATHCONF,
+            Self::Commit(_) => COMMIT,
         }
     }
 }

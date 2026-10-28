@@ -1,14 +1,18 @@
+use crate::consts::nfsv3::GETATTR;
 use crate::metric::nfs_metrics::{
-    DURATION_SECONDS, QUEUE_DEPTH, REQUESTS_TOTAL, STAGE_SECONDS, VFS_IN_FLIGHT,
+    CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS,
+    SYSCALL_SECONDS, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use std::sync::Arc;
 
 use crate::metric::tests::test_helpers::{samples, snapshot, value};
-use crate::metric::{unbounded, NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{unbounded, NfsMetrics, Queue, Stage, TaskKind, Timer};
 use metrics::with_local_recorder;
 use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+mod io_tests;
 pub mod test_helpers;
 
 fn metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
@@ -23,8 +27,8 @@ fn timer_is_16_bytes() {
     assert_eq!(std::mem::size_of::<Timer>(), 16);
 }
 
-#[test]
-fn unmeasured_timer_records_nothing() {
+#[tokio::test]
+async fn unmeasured_timer_records_nothing() {
     let (metrics, snapshotter, _) = metrics();
 
     let mut timer = Timer::NONE;
@@ -38,8 +42,8 @@ fn unmeasured_timer_records_nothing() {
     assert_eq!(samples(value(&snapshot, STAGE_SECONDS, &[("stage", "vfs")])), 0);
 }
 
-#[test]
-fn laps_and_finish_are_recorded() {
+#[tokio::test]
+async fn laps_and_finish_are_recorded() {
     let (metrics, snapshotter, _) = metrics();
 
     let mut timer = metrics.start();
@@ -61,8 +65,8 @@ fn laps_and_finish_are_recorded() {
     }
 }
 
-#[test]
-fn in_flight_guard_restores_gauge() {
+#[tokio::test]
+async fn in_flight_guard_restores_gauge() {
     let (metrics, snapshotter, recorder) = metrics();
 
     let _held = with_local_recorder(&recorder, || {
@@ -123,4 +127,60 @@ async fn queue_depth_is_restored_without_receiver() {
     drop(rx_clone); // last rx dropped, gauge = -1
     assert!(tx.send(()).await.is_err()); // failed send doesn't count
     assert_eq!(depth(&snapshot(&snapshotter), "vfs"), -1.0);
+}
+
+#[tokio::test]
+async fn tokio_metrics_are_reported_per_task_kind() {
+    let (metrics, snapshotter, _) = metrics();
+
+    for kind in TaskKind::ALL {
+        metrics.instrument(kind, async {}).await;
+    }
+    // Lets the reporters, spawned in `NfsMetrics::new`, take their first sample.
+    tokio::task::yield_now().await;
+
+    let snapshot = snapshot(&snapshotter);
+
+    for kind in TaskKind::ALL {
+        assert_eq!(
+            value(&snapshot, "nfsmamont_tokio_task_instrumented_count", &[("task", kind.as_str())]),
+            &DebugValue::Gauge(1.0.into()),
+            "task {}",
+            kind.as_str()
+        );
+    }
+}
+
+#[tokio::test]
+async fn write_reply() {
+    let (metrics, snapshotter, _) = metrics();
+    let (mut socket, io) = metrics.io_timer(Vec::new());
+
+    metrics.write_reply(None, &io, socket.write_all(b"unmeasured")).await.unwrap();
+    metrics.write_reply(Some(GETATTR), &io, socket.write_all(b"abcd")).await.unwrap();
+
+    let snapshot = snapshot(&snapshotter);
+    let labels = [("message", "reply"), ("proc", "getattr")];
+
+    for name in [CPU_SECONDS, SYSCALL_SECONDS, WAIT_SECONDS] {
+        assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
+    }
+    assert_eq!(value(&snapshot, REPLY_BYTES, &labels), &DebugValue::Histogram(vec![4.0.into()]));
+}
+
+#[tokio::test]
+async fn read_call() {
+    let (metrics, snapshotter, _) = metrics();
+    let (mut socket, io) = metrics.io_timer(&b"unmeasuredabcd"[..]);
+    let mut buf = [0; 10];
+
+    metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await.unwrap();
+    metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(GETATTR)).await.unwrap();
+
+    let snapshot = snapshot(&snapshotter);
+    let labels = [("message", "call"), ("proc", "getattr")];
+
+    for name in [CPU_SECONDS, SYSCALL_SECONDS] {
+        assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
+    }
 }
