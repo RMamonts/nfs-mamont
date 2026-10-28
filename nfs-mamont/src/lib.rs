@@ -40,6 +40,12 @@ pub use context::ServerContext;
 pub use rpc::auth;
 pub use vfs::file::BackendId;
 
+/// Client-side XDR serializers for NFSv3 and MOUNT request arguments.
+///
+/// Available only with the `client` cargo feature.
+#[cfg(feature = "client")]
+pub use serializer::client;
+
 /// Initializes tracing logs.
 ///
 /// In debug builds logs are enabled by default. In release builds this is a no-op.
