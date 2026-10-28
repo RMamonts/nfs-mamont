@@ -17,6 +17,8 @@ doctest = true
 
 [features]
 default = []
+# Client-side XDR argument serializers (see `serializer::client`).
+client = []
 mlock = ["dep:libc"]
 
 [dependencies]
