@@ -10,7 +10,7 @@
 //!
 //! # In-flight limit
 //!
-//! Every connection has a budget of [`DEFAULT_MAX_IN_FLIGHT`] requests that are
+//! Every connection has a budget of [`ServerContext::max_in_flight`] requests that are
 //! read from the socket but whose replies are not yet written back. The read task takes
 //! one [`limit::Token`] of the budget before it reads a request; the token travels with
 //! the request through the global MOUNT/NLM/VFS tasks, comes back to the write task
@@ -31,7 +31,6 @@ use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
 use crate::context::ServerContext;
 use crate::task::connection::limit::Budget;
 use crate::task::connection::read::CommandSenders;
@@ -70,7 +69,7 @@ pub fn new<A, V, B>(
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // channel for request
     // in-flight budget of the connection, see the module docs
-    let (budget, limiter) = Budget::new(DEFAULT_MAX_IN_FLIGHT);
+    let (budget, limiter) = Budget::new(context.max_in_flight());
 
     let command_senders = CommandSenders::<B>::new(
         mount_sender,
