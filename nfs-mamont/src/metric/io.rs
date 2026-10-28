@@ -76,7 +76,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for IoTimer<S> {
         this.stats.record(|| Pin::new(&mut this.inner).poll_write(cx, buf))
     }
 
-    // Must be forwarded: the default implemenation writes only the first buffer
+    // Must be forwarded: the default implementation writes only the first buffer
     fn poll_write_vectored(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
