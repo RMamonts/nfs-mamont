@@ -3,20 +3,23 @@ use std::io::Read;
 
 use crate::parser::nfsv3::create::new_attr;
 use crate::parser::nfsv3::file;
-use crate::parser::nfsv3::file::file_name;
-use crate::parser::primitive::u32;
+use crate::parser::nfsv3::file::{device, file_name};
+use crate::parser::primitive::variant;
 use crate::parser::{Error, Result};
-use crate::vfs::file::Device;
+use crate::vfs::file::Type;
 use crate::vfs::mk_node;
 use crate::vfs::mk_node::What;
 
+/// Parses a [`mk_node::What`] union from the provided `Read` source.
+///
+/// The discriminant is a [`Type`]; only the special-file types are valid here.
 pub fn what(src: &mut impl Read) -> Result<mk_node::What> {
-    match u32(src)? {
-        3 => Ok(What::Block(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
-        4 => Ok(What::Char(new_attr(src)?, Device { major: u32(src)?, minor: u32(src)? })),
-        6 => Ok(What::Socket(new_attr(src)?)),
-        7 => Ok(What::Fifo(new_attr(src)?)),
-        _ => Err(Error::EnumDiscMismatch),
+    match variant::<Type>(src)? {
+        Type::BlockDevice => Ok(What::Block(new_attr(src)?, device(src)?)),
+        Type::CharacterDevice => Ok(What::Char(new_attr(src)?, device(src)?)),
+        Type::Socket => Ok(What::Socket(new_attr(src)?)),
+        Type::Fifo => Ok(What::Fifo(new_attr(src)?)),
+        Type::Regular | Type::Directory | Type::Symlink => Err(Error::EnumDiscMismatch),
     }
 }
 

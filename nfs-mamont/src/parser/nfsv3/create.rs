@@ -3,12 +3,12 @@ use std::io::Read;
 
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
-use crate::parser::primitive::{array, option, u32, u64};
-use crate::parser::{Error, Result};
+use crate::parser::primitive::{array, option, u32, u64, variant};
+use crate::parser::Result;
 use crate::vfs::create;
-use crate::vfs::create::Verifier;
+use crate::vfs::create::{HowMode, Verifier};
 use crate::vfs::file::Time;
-use crate::vfs::set_attr::{NewAttr, SetTime};
+use crate::vfs::set_attr::{NewAttr, SetTime, SetTimeMode};
 
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 
@@ -26,11 +26,10 @@ pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
 
 /// Parses a [`SetTime`] enum from the provided `Read` source.
 pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
-    match u32(src)? {
-        0 => Ok(SetTime::DontChange),
-        1 => Ok(SetTime::ToServer),
-        2 => Ok(SetTime::ToClient(nfs_time(src)?)),
-        _ => Err(Error::EnumDiscMismatch),
+    match variant::<SetTimeMode>(src)? {
+        SetTimeMode::DontChange => Ok(SetTime::DontChange),
+        SetTimeMode::ToServer => Ok(SetTime::ToServer),
+        SetTimeMode::ToClient => Ok(SetTime::ToClient(nfs_time(src)?)),
     }
 }
 
@@ -41,11 +40,12 @@ pub fn nfs_time(src: &mut impl Read) -> Result<Time> {
 
 /// Parses a [`create::How`] enum from the provided `Read` source.
 pub fn how(src: &mut impl Read) -> Result<create::How> {
-    match u32(src)? {
-        0 => Ok(create::How::Unchecked(new_attr(src)?)),
-        1 => Ok(create::How::Guarded(new_attr(src)?)),
-        2 => Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?))),
-        _ => Err(Error::EnumDiscMismatch),
+    match variant::<HowMode>(src)? {
+        HowMode::Unchecked => Ok(create::How::Unchecked(new_attr(src)?)),
+        HowMode::Guarded => Ok(create::How::Guarded(new_attr(src)?)),
+        HowMode::Exclusive => {
+            Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?)))
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 //! Defines NFSv3 [`Create`] interface.
 
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::rpc::auth::Credential;
 use crate::vfs;
@@ -31,6 +33,8 @@ pub enum How {
 }
 
 /// Describes codes of [`How`] branches as integers.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive)]
 pub enum HowMode {
     Unchecked = 0,
     Guarded = 1,
