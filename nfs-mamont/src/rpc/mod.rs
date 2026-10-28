@@ -3,20 +3,19 @@ use std::string::FromUtf8Error;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use auth::AuthStat;
+
 #[cfg(feature = "arbitrary")]
 use crate::consts::nfsv3::NFS_VERSION;
+use crate::consts::rpc::MAX_AUTH_SIZE;
 
 pub const RPC_VERSION: u32 = 2;
 
-pub const MAX_AUTH_SIZE: usize = 400;
 
-/// Maximum length of the `machinename` field in `AUTH_SYS` credentials (RFC 5531, appendix A).
-pub const AUTH_SYS_MAX_MACHINE_NAME: usize = 255;
+pub mod auth;
 
-/// Maximum number of auxiliary GIDs in `AUTH_SYS` credentials (RFC 5531, appendix A).
-pub const AUTH_SYS_MAX_GIDS: usize = 16;
+pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(ToPrimitive, FromPrimitive)]
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -24,26 +23,6 @@ pub enum AcceptStat {
     ProcUnavail = 3,
     GarbageArgs = 4,
     SystemErr = 5,
-}
-
-#[derive(Debug, PartialEq, PartialOrd, ToPrimitive, FromPrimitive)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub enum AuthStat {
-    Ok = 0,
-    BadCred = 1,
-    RejectedCred = 2,
-    BadVerf = 3,
-    RejectedVerf = 4,
-    TooWeak = 5,
-    InvalidResp = 6,
-    Failed = 7,
-    KerbGeneric = 8,
-    TimeExpire = 9,
-    TktFile = 10,
-    Decode = 11,
-    NetAddr = 12,
-    RpcSecGssCredProblem = 13,
-    RpcSecGssCtxProblem = 14,
 }
 
 #[derive(ToPrimitive, FromPrimitive)]
@@ -85,37 +64,6 @@ impl arbitrary::Arbitrary<'_> for OpaqueAuth {
         Ok(Self { flavor: u.arbitrary::<AuthFlavor>()?, body })
     }
 }
-
-/// Parsed `AUTH_SYS` credential body (`authsys_parms`, RFC 5531 appendix A).
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct AuthSysParams {
-    /// Arbitrary ID the caller stamps on the credential; meaningful only to the caller.
-    pub stamp: u32,
-    /// Name of the caller's machine (at most [`AUTH_SYS_MAX_MACHINE_NAME`] bytes).
-    pub machine_name: String,
-    /// Effective user ID of the caller.
-    pub uid: u32,
-    /// Effective group ID of the caller.
-    pub gid: u32,
-    /// Auxiliary group IDs of the caller (at most [`AUTH_SYS_MAX_GIDS`] entries).
-    pub gids: Vec<u32>,
-}
-
-/// Authenticated caller identity extracted from an RPC credential.
-///
-/// Only the flavors the server accepts are represented: `AUTH_NONE` (anonymous)
-/// and `AUTH_SYS` (UNIX-style uid/gid). Any other flavor is rejected during
-/// parsing with [`AuthStat::BadCred`].
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum Credential {
-    /// `AUTH_NONE`: anonymous caller, no identity provided.
-    None,
-    /// `AUTH_SYS`: UNIX-style caller identity.
-    Sys(AuthSysParams),
-}
-
 pub enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,
@@ -128,6 +76,18 @@ pub enum RejectedReply {
 pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with.
+///
+/// The semantically validated (header-level) errors flow out of the parser as
+/// [`Error`], while structural parse failures are converted to that
+/// type at the parser boundary.
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 /// Errors that can occur during parsing.

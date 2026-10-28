@@ -10,9 +10,11 @@ pub mod share;
 
 use std::io;
 
+use arbitrary::Arbitrary;
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::consts::nlm::OPAQUE_HANDLE_SIZE;
+use crate::consts::nlm;
+use crate::consts::nlm::{LM_MAXSTRLEN, OPAQUE_HANDLE_SIZE};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
 };
@@ -29,7 +31,7 @@ pub enum Nlm4Stats {
     /// The call failed because the server could not allocate the necessary resources.
     DeniedNolocks = 2,
     /// The request is queued.
-    /// The server will issue an [`NLMPROC4_GRANTED`](crate::consts::nlm::NLMPROC4_GRANTED) callback
+    /// The server will issue an `NLMPROC4_GRANTED` callback
     /// to the client when the lock is granted.
     Blocked = 3,
     /// The call failed because the server is reestablishing old
@@ -74,11 +76,11 @@ pub struct OpaqueHandle(Vec<u8>);
 impl OpaqueHandle {
     /// Creates a new opaque lock owner identifier.
     #[inline]
-    pub fn new(oh: Vec<u8>) -> io::Result<Self> {
-        if oh.len() > OPAQUE_HANDLE_SIZE {
+    pub fn new(inner: Vec<u8>) -> io::Result<Self> {
+        if inner.len() > OPAQUE_HANDLE_SIZE {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "opaque handle too long"));
         }
-        Ok(OpaqueHandle(oh))
+        Ok(OpaqueHandle(inner))
     }
 
     /// Returns the underlying bytes of the opaque handle.
@@ -89,6 +91,49 @@ impl OpaqueHandle {
 
     pub fn into_inner(self) -> Vec<u8> {
         self.0
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Name(String);
+
+impl Name {
+    /// Creates a new [`Name`] after validating its length.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `name.len() > LM_MAXSTRLEN` or if `name` is empty.
+    pub fn new(name: String) -> io::Result<Self> {
+        if name.len() > LM_MAXSTRLEN {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
+        }
+        if name.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
+        }
+        Ok(Name(name))
+    }
+
+    /// Consumes the wrapper and returns the inner [`String`].
+    #[inline]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Returns the inner name as a string slice.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 

@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`MkNode`] interface.
 
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 use super::file;
@@ -58,5 +59,5 @@ pub trait MkNode {
     ///
     /// Otherwise, if the server does not support the target type the error,
     /// [`vfs::Error::BadType`], should be returned.
-    async fn mk_node(&self, args: Args) -> Result<Success, Fail>;
+    async fn mk_node(&self, args: Args, cred: &Credential) -> Result<Success, Fail>;
 }

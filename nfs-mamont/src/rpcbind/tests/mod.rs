@@ -28,7 +28,7 @@ fn test_encode_call_mapping() {
     let expected: &[u32] = &[
         XID,
         RpcBody::Call as u32,
-        crate::rpc::RPC_VERSION,
+        crate::consts::rpc::RPC_VERSION,
         PMAP_PROGRAM,
         PMAP_VERSION,
         PMAP_PROC_SET,

@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`Remove`] interface.
 
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 /// Success result.
@@ -29,5 +30,5 @@ pub struct Args {
 #[trait_variant::make(Send)]
 pub trait Remove {
     /// Removes (deletes) an entry from a directory.
-    async fn remove(&self, args: Args) -> Result<Success, Fail>;
+    async fn remove(&self, args: Args, cred: &Credential) -> Result<Success, Fail>;
 }

@@ -1,6 +1,7 @@
 //! NFS Mamont - A Network File System (NFS) server implementation in Rust.
 
 mod allocator;
+mod backend;
 pub mod consts;
 mod context;
 
@@ -24,12 +25,21 @@ use tracing_subscriber::EnvFilter;
 
 use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
-use crate::task::global::nlm::NlmTask;
+use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
-use crate::{mount::Mount, task::connection};
+use crate::{
+    consts::socket::{
+        ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
+    },
+    mount::Mount,
+    task::connection,
+};
 
 pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use rpc::auth;
+pub use vfs::file::BackendId;
 
 pub_use_if_feature!(
     "arbitrary",
@@ -44,42 +54,13 @@ pub_use_if_feature!(
     parser::ProcArguments,
     parser::primitive::u32_as_usize,
     parser::ArgWrapper,
-    parser::ErrorWrapper,
     parser::nfsv3,
     parser::mount as parser_mount,
     parser::nlm as parser_nlm,
     consts::nfsv3::NFS_PROGRAM,
     consts::nfsv3::NFS_VERSION,
-    consts::nfsv3::NULL,
-    consts::nfsv3::GETATTR,
-    consts::nfsv3::SETATTR,
-    consts::nfsv3::LOOKUP,
-    consts::nfsv3::ACCESS,
-    consts::nfsv3::READLINK,
-    consts::nfsv3::READ,
-    consts::nfsv3::WRITE,
-    consts::nfsv3::CREATE,
-    consts::nfsv3::MKDIR,
-    consts::nfsv3::SYMLINK,
-    consts::nfsv3::MKNOD,
-    consts::nfsv3::REMOVE,
-    consts::nfsv3::RMDIR,
-    consts::nfsv3::RENAME,
-    consts::nfsv3::LINK,
-    consts::nfsv3::READDIR,
-    consts::nfsv3::READDIRPLUS,
-    consts::nfsv3::FSSTAT,
-    consts::nfsv3::FSINFO,
-    consts::nfsv3::PATHCONF,
-    consts::nfsv3::COMMIT,
     consts::mount::MOUNT_PROGRAM,
     consts::mount::MOUNT_VERSION,
-    consts::mount::MOUNT_NULL,
-    consts::mount::MOUNT_MNT,
-    consts::mount::MOUNT_DUMP,
-    consts::mount::MOUNT_UMNT,
-    consts::mount::MOUNT_UMNTALL,
-    consts::mount::MOUNT_EXPORT,
     serializer::client::arguments,
     serializer::server::serialize_struct::Serializer,
     rpc::AuthFlavor,
@@ -139,9 +120,13 @@ where
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context).await;
+                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
-                    Err(err) => break Err(err),
+                    Err(err) if is_fatal_accept_error(&err) => break Err(err),
+                    Err(err) => {
+                        warn!(error = %err, "accept failed, retrying");
+                        tokio::time::sleep(ACCEPT_ERROR_BACKOFF).await;
+                    }
                 }
             }
             result = &mut shutdown => {
@@ -155,4 +140,16 @@ where
     let _ = rpcbind::unregister(port).await;
 
     accept_result
+}
+
+/// Returns `true` for `accept` errors after which the listener is unusable.
+fn is_fatal_accept_error(err: &std::io::Error) -> bool {
+    match err.raw_os_error() {
+        Some(errno) => {
+            errno == ACCEPT_ERROR_EBADF
+                || errno == ACCEPT_ERROR_EINVAL
+                || errno == ACCEPT_ERROR_ENOTSOCK
+        }
+        None => false,
+    }
 }

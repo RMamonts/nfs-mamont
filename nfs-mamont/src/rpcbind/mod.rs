@@ -26,9 +26,10 @@ use tracing::warn;
 use crate::consts::mount::{MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{NFS_PROGRAM, NFS_VERSION};
 use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION};
+use crate::consts::rpc::RPC_VERSION;
 use crate::parser::primitive;
 use crate::parser::rpc as parser_rpc;
-use crate::rpc::{AcceptStat, AuthFlavor, OpaqueAuth, ReplyBody, RpcBody, RPC_VERSION};
+use crate::rpc::{AcceptStat, AuthFlavor, OpaqueAuth, ReplyBody, RpcBody};
 use crate::serializer;
 
 /// Program number of the portmapper/`rpcbind` service itself.
@@ -332,7 +333,7 @@ async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     Ok(body)
 }
 
-/// Converts a parse error from the shared XDR parser into an `io::Error`.
+/// Converts a parse error into `io::Error`.
 ///
 /// # Parameters
 ///
@@ -341,14 +342,8 @@ async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
 /// # Returns
 ///
 /// The underlying I/O error, or `InvalidData` describing the malformed field.
-fn parse_error(err: crate::rpc::Error) -> io::Error {
-    match err {
-        crate::rpc::Error::IO(err) => err,
-        other => io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("malformed rpcbind reply: {other:?}"),
-        ),
-    }
+fn parse_error(err: crate::parser::error::Error) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, format!("malformed rpcbind reply: {err:?}"))
 }
 
 /// Validates an `rpcbind` reply body against the sent transaction id.
@@ -356,7 +351,7 @@ fn parse_error(err: crate::rpc::Error) -> io::Error {
 /// Checks that the reply carries the expected xid, reports `accept_stat ==
 /// SUCCESS` and a boolean result of `TRUE`. Decoding goes through the crate's
 /// XDR [`primitive`] parser, so the verifier is length-checked against
-/// [`crate::rpc::MAX_AUTH_SIZE`] and its XDR padding is consumed correctly.
+/// [`crate::consts::rpc::MAX_AUTH_SIZE`] and its XDR padding is consumed correctly.
 ///
 /// # Parameters
 ///

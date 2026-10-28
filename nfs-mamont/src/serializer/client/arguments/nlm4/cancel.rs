@@ -4,8 +4,8 @@ use std::io::Write;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::procedures::cancel;
 use crate::serializer::files::file_handle;
-use crate::serializer::server::nlm::{cookie, opaque_handle};
-use crate::serializer::{bool, string, u32, u64};
+use crate::serializer::server::nlm::{cookie};
+use crate::serializer::{bool, string, u32, u64, vector};
 
 /// Serializes the arguments [`cancel::Nlm4CancelArgs`] for a Mount `CANCEL` operation to the provided `Write` destination.
 pub fn cancel_args(dest: &mut impl Write, arg: cancel::Nlm4CancelArgs) -> io::Result<()> {
@@ -17,9 +17,9 @@ pub fn cancel_args(dest: &mut impl Write, arg: cancel::Nlm4CancelArgs) -> io::Re
 
 /// Serializes [`Nlm4Lock`] to the provided `Write` destination.
 pub fn nlm_lock(dest: &mut impl Write, arg: Nlm4Lock) -> io::Result<()> {
-    string(dest, &arg.caller_name)?;
+    string(dest, &arg.caller_name.as_str())?;
     file_handle(dest, arg.file_handle)?;
-    opaque_handle(dest, arg.opaque_handle)?;
+    vector(dest, arg.opaque_handle.as_bytes())?;
     u32(dest, arg.system_identifier as u32)?;
     u64(dest, arg.lock_offset)?;
     u64(dest, arg.lock_length)

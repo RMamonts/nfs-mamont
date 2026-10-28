@@ -1,7 +1,8 @@
 //! RPC message parser for NFS, MOUNT and NLM protocols.
 //!
-//! This module provides [`RpcParser`] struct, which parses XDR-encoded RPC messages
-//! according to RFC 5531 (RPC) and RFC 1813 (NFSv3). It handles:
+//! This module provides the [`RpcParser`] struct, which parses XDR-encoded RPC
+//! messages according to RFC 5531 (RPC) and RFC 1813 (NFSv3, MOUNT, NLM). It
+//! handles:
 //!
 //! - RPC message framing and headers
 //! - Authentication (AUTH_NONE and AUTH_SYS)
@@ -10,9 +11,9 @@
 //! - NLM procedure parsing
 //! - Error handling and message discarding on protocol errors
 //!
-//! The parser uses a [`FrameReader`] which buffers head window of every
-//! RMS frame, so headers and procedure arguments are parsed synchronously
-//! without retries. Only opaque `WRITE` payloads that do not fit into
+//! The parser uses a [`FrameReader`] which buffers the head window of every
+//! RPC frame, so headers and procedure arguments are parsed synchronously
+//! without retries. Only opaque `WRITE` payloads that do not fit into the
 //! buffered window are streamed from the socket directly into the allocated
 //! [`Buffer`].
 
@@ -22,24 +23,17 @@ use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use num_traits::FromPrimitive;
 use tokio::io::AsyncRead;
 use tracing::{debug, error, warn};
 
 use crate::allocator::{Allocator, Buffer};
-use crate::consts::mount::{
-    MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL, MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL,
-    MOUNT_VERSION,
-};
-use crate::consts::nfsv3::{
-    ACCESS, COMMIT, CREATE, FSINFO, FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, NFS_PROGRAM,
-    NFS_VERSION, NULL, PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR,
-    SETATTR, SYMLINK, WRITE,
-};
-use crate::consts::nlm::{
-    NLMPROC4_CANCEL, NLMPROC4_LOCK, NLMPROC4_NULL, NLMPROC4_TEST, NLMPROC4_UNLOCK, NLM_PROGRAM,
-    NLM_VERSION,
-};
+use crate::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
+use crate::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
+use crate::consts::nlm::{NlmProc, NLM_PROGRAM, NLM_VERSION};
+use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RPC_VERSION};
 use crate::consts::xdr::ALIGNMENT;
+use crate::parser;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -51,10 +45,12 @@ use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, ErrorWrapper, MountArguments, NfsArguments,
-    NlmArguments, ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+    RpcHeader,
 };
-use crate::rpc::{AuthFlavor, AuthStat, Credential, RpcBody, VersionMismatch, RPC_VERSION};
+use crate::rpc;
+use crate::rpc::auth::{AuthStat, Credential};
+use crate::rpc::{AuthFlavor, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch};
 use crate::vfs;
 
 pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
@@ -69,22 +65,40 @@ pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
 /// arguments extend beyond that window.
 pub const DEFAULT_SIZE: usize = 2500;
 
-/// Maps an `UnexpectedEof` from synchronous argument parsing to `InvalidData`.
-///
-/// After [`FrameReader::begin_body`] the head window of the frame is fully
-/// buffered, so running out of data during synchronous parsing means either
-/// the frame is shorter than its arguments (truncated message) or the
-/// arguments do not fit into the parser buffer (legal only for `WRITE`
-/// payloads, which are streamed separately). Both cases are protocol
-/// violations rather than transient I/O conditions.
-fn map_eof(error: Error) -> Error {
+/// Maps a structural parser error to the corresponding rpc-level error,
+/// converting it at the parser boundary so the rest of the server works with
+/// [`crate::rpc::Error`] only.
+fn map_parser_to_rpc(error: parser::Error) -> rpc::Error {
     match error {
-        Error::IO(err) if err.kind() == ErrorKind::UnexpectedEof => Error::IO(io::Error::new(
-            ErrorKind::InvalidData,
-            "RPC message arguments exceed frame or buffer bounds",
+        parser::Error::MaxElemLimit => rpc::Error::MaxElemLimit,
+        parser::Error::EnumDiscMismatch => rpc::Error::EnumDiscMismatch,
+        parser::Error::IncorrectString(err) => rpc::Error::IncorrectString(err),
+        parser::Error::ImpossibleTypeCast => rpc::Error::ImpossibleTypeCast,
+        parser::Error::BadFileHandle => rpc::Error::BadFileHandle,
+        parser::Error::InvalidData => rpc::Error::IO(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid data received with parsing failure",
         )),
-        other => other,
+        parser::Error::FormatMismatch => rpc::Error::IO(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Data does not match expected internal format",
+        )),
+        parser::Error::IO(err) => rpc::Error::IO(err),
     }
+}
+
+/// Raw RPC call header fields that follow `rpcvers`, read from the wire
+/// before any semantic validation is applied.
+///
+/// Carries the program, version and procedure words together with the raw
+/// credential and verifier opaques. [`RpcParser::validate_header`] turns this
+/// into a validated [`RpcMessage`], applying the authentication decisions.
+struct RawHeader {
+    program: u32,
+    version: u32,
+    procedure: u32,
+    credential: OpaqueAuth,
+    verifier: OpaqueAuth,
 }
 
 /// Parser for RPC messages over async streams.
@@ -154,207 +168,205 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns the XID if the header was successfully parsed, or an error if:
     /// - The message is fragmented (not supported)
     /// - An I/O error occurs
-    async fn read_message_header(&mut self) -> Result<u32> {
-        let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
-        let last = header & 0x8000_0000 != 0;
-        let frame_size = (header & 0x7FFF_FFFF) as usize;
+    async fn read_message_header(&mut self) -> parser::Result<u32> {
+        let header = self.reader.read_frame_header().await.map_err(parser::Error::IO)?;
+        let last = header & (HEADER_MASK as u32) != 0;
+        let frame_size = header as usize & MAX_FRAGMENT_SIZE;
+        self.reader.begin_body(frame_size).await.map_err(parser::Error::IO)?;
 
         if frame_size < std::mem::size_of::<u32>() {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Frame size must include XID",
             )));
         }
 
         //TODO("https://github.com/RMamonts/nfs-mamont/issues/124")
-
-        // this is a temporal check, apparently this will go into a separate object Validator
+        // Fragmented (multi-fragment) messages are not yet supported.
         if !last {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::Unsupported,
                 "Fragmented messages not supported",
             )));
         }
 
-        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
-        u32(&mut self.reader).map_err(map_eof)
+        u32(&mut self.reader)
     }
 
-    /// Parses the RPC call header.
+    /// Reads and validates the `msg_type` and `rpcvers` words that open a call.
     ///
-    /// The RPC header contains:
-    /// - Message type (must be CALL, not REPLY)
-    /// - RPC version (must match the expected version)
-    /// - Program number (NFS or MOUNT)
-    /// - Program version
-    /// - Procedure number
-    /// - Authentication information
-    ///
-    /// # Returns
-    ///
-    /// Returns a [`RpcMessage`] containing the program, version, and procedure,
-    /// or an error if:
-    /// - The message type is REPLY (not expected for incoming calls)
-    /// - The RPC version doesn't match
-    /// - Authentication fails
-    /// - The frame or the parser buffer is too small for the header
-    fn parse_rpc_header(&mut self) -> Result<RpcMessage> {
-        self.parse_rpc_header_inner().map_err(map_eof)
-    }
-
-    fn parse_rpc_header_inner(&mut self) -> Result<RpcMessage> {
-        let msg_type = u32(&mut self.reader)?;
+    /// Unlike the rest of the header, each of them is validated as soon as it
+    /// is read: `msg_type` is the discriminant of the `rpc_msg` union, so the
+    /// bytes after a `REPLY` are a `reply_body` rather than a call header, and
+    /// `rpcvers` defines the layout of the call that follows (RFC 5531 §9).
+    /// Decoding the rest of the header first would report such records as
+    /// structural errors, which the server answers, while a
+    /// [`rpc::Error::MessageTypeMismatch`] record is dropped by the read task.
+    fn read_call_prefix(&mut self) -> rpc::Result<()> {
+        let msg_type = u32(&mut self.reader).map_err(map_parser_to_rpc)?;
         if msg_type != RpcBody::Call as u32 {
             error!(msg_type, "rpc parse reject: unexpected msg_type");
-            return Err(Error::MessageTypeMismatch);
+            return Err(rpc::Error::MessageTypeMismatch);
         }
 
-        let rpc_version = u32(&mut self.reader)?;
+        let rpc_version = u32(&mut self.reader).map_err(map_parser_to_rpc)?;
         if rpc_version != RPC_VERSION {
             error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
-            return Err(Error::RpcVersionMismatch(VersionMismatch {
+            return Err(rpc::Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
         }
+        Ok(())
+    }
 
+    /// Structurally reads the raw RPC call header fields that follow
+    /// [`Self::read_call_prefix`] together with the raw credential and
+    /// verifier opaques, without applying any semantic validation.
+    ///
+    /// Errors returned by this function are parser-level ([`parser::Error`]) — an I/O
+    /// or XDR decode failure — as opposed to the semantic rpc errors that the
+    /// caller produces from the returned fields via [`Self::validate_header`].
+    fn read_rpc_header(&mut self) -> parser::Result<RawHeader> {
         let program = u32(&mut self.reader)?;
         let version = u32(&mut self.reader)?;
         let procedure = u32(&mut self.reader)?;
-        debug!(program, version, procedure, "rpc header parsed");
-
-        let cred = self.parse_authentication()?;
-
-        Ok(RpcMessage { program, procedure, version, cred })
+        let credential = auth(&mut self.reader)?;
+        let verifier = auth(&mut self.reader)?;
+        Ok(RawHeader { program, version, procedure, credential, verifier })
     }
 
-    /// Parses and validates RPC authentication, returning the caller identity.
+    /// Semantically validates the raw call header and authentication material
+    /// and builds a validated [`RpcMessage`].
     ///
-    /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials are
-    /// accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`]. Any
-    /// other credential flavor is rejected with [`AuthStat::BadCred`]. For both
-    /// accepted flavors, the verifier must be `AUTH_NONE` with an empty body
-    /// (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
+    /// The checks performed here turn raw wire values into the rpc-level errors
+    /// the server understands (`msg_type` and `rpcvers` are already validated
+    /// by [`Self::read_call_prefix`]):
+    /// - The credential/verifier pair must be acceptable ([`rpc::Error::Auth`])
     ///
-    /// [`AuthSysParams`]: crate::rpc::AuthSysParams
+    /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials
+    /// are accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`].
+    /// Any other credential flavor is rejected with [`AuthStat::BadCred`]. For
+    /// both accepted flavors, the verifier must be `AUTH_NONE` with an empty
+    /// body (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
     ///
-    /// # Returns
-    ///
-    /// Returns the parsed [`Credential`] if authentication succeeds, or an error
-    /// if authentication fails or an I/O error occurs.
-    fn parse_authentication(&mut self) -> Result<Credential> {
-        let cred = auth(&mut self.reader)?;
-        let verf = auth(&mut self.reader)?;
-
-        let credential = match cred.flavor {
-            AuthFlavor::None if cred.body.is_empty() => Credential::None,
-            AuthFlavor::Sys => {
-                // The AUTH_SYS parameters live inside the already-extracted
-                // opaque body, so parse over that slice and never past it.
-                match authsys_parms(&mut cred.body.as_slice()) {
-                    Ok(params) => Credential::Sys(params),
-                    Err(err) => {
-                        error!(
-                            cred_len=%cred.body.len(),
-                            error=?err,
-                            "rpc auth reject: malformed AUTH_SYS credential",
-                        );
-                        return Err(Error::Auth(AuthStat::BadCred));
-                    }
+    /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
+    fn validate_header(&self, raw: &RawHeader) -> rpc::Result<RpcMessage> {
+        let credential = match raw.credential.flavor {
+            AuthFlavor::None if raw.credential.body.is_empty() => Credential::None,
+            AuthFlavor::Sys => match authsys_parms(&mut raw.credential.body.as_slice()) {
+                Ok(params) => Credential::Sys(params),
+                Err(err) => {
+                    error!(
+                        cred_len=%raw.credential.body.len(),
+                        error=?err,
+                        "rpc auth reject: malformed AUTH_SYS credential",
+                    );
+                    return Err(rpc::Error::Auth(AuthStat::BadCred));
                 }
-            }
+            },
             _ => {
                 error!(
-                    cred_flavor=?cred.flavor,
-                    cred_len=%cred.body.len(),
+                    cred_flavor=?raw.credential.flavor,
+                    cred_len=%raw.credential.body.len(),
                     "rpc auth reject: unsupported credential flavor",
                 );
-                return Err(Error::Auth(AuthStat::BadCred));
+                return Err(rpc::Error::Auth(AuthStat::BadCred));
             }
         };
 
-        if !matches!(verf.flavor, AuthFlavor::None) || !verf.body.is_empty() {
+        if !matches!(raw.verifier.flavor, AuthFlavor::None) || !raw.verifier.body.is_empty() {
             error!(
-                verf_flavor=?verf.flavor,
-                verf_len=%verf.body.len(),
+                verf_flavor=?raw.verifier.flavor,
+                verf_len=%raw.verifier.body.len(),
                 "rpc auth reject: invalid verifier",
             );
-            return Err(Error::Auth(AuthStat::BadVerf));
+            return Err(rpc::Error::Auth(AuthStat::BadVerf));
         }
 
         debug!(
-            cred_flavor=?cred.flavor,
-            cred_len=%cred.body.len(),
-            "rpc auth accepted",
+            program = raw.program,
+            version = raw.version,
+            procedure = raw.procedure,
+            cred_flavor = ?raw.credential.flavor,
+            "rpc header parsed",
         );
-        Ok(credential)
+        Ok(RpcMessage {
+            program: raw.program,
+            procedure: raw.procedure,
+            version: raw.version,
+            cred: credential,
+        })
     }
 
     /// Parses NFSv3 procedure arguments from the current frame.
     ///
     /// All arguments are parsed synchronously from the buffered head window,
     /// except for the opaque `WRITE` payload which is streamed via
-    /// [`adapter_for_write`].
-    async fn parse_nfs_proc(&mut self, procedure: u32) -> Result<NfsArguments<A::Buffer>> {
-        if procedure == WRITE {
-            return Ok(NfsArguments::Write(
-                adapter_for_write(&self.allocator, &mut self.reader).await?,
-            ));
-        }
-        if procedure == READ {
-            let (args, data) = adapter_for_read(&self.allocator, &mut self.reader).await?;
-            return Ok(NfsArguments::Read(args, data));
-        }
+    /// [`adapter_for_write`]. Unknown procedures are rejected earlier as an
+    /// rpc-level [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    async fn parse_nfs_proc(
+        &mut self,
+        procedure: NfsProc,
+    ) -> parser::Result<NfsArguments<A::Buffer>> {
         let src = &mut self.reader;
         let args = match procedure {
-            NULL => NfsArguments::Null,
-            GETATTR => NfsArguments::GetAttr(get_attr::args(src).map_err(map_eof)?),
-            SETATTR => NfsArguments::SetAttr(set_attr::args(src).map_err(map_eof)?),
-            LOOKUP => NfsArguments::LookUp(lookup::args(src).map_err(map_eof)?),
-            ACCESS => NfsArguments::Access(access::args(src).map_err(map_eof)?),
-            READLINK => NfsArguments::ReadLink(read_link::args(src).map_err(map_eof)?),
-            CREATE => NfsArguments::Create(create::args(src).map_err(map_eof)?),
-            MKDIR => NfsArguments::MkDir(mk_dir::args(src).map_err(map_eof)?),
-            SYMLINK => NfsArguments::SymLink(symlink::args(src).map_err(map_eof)?),
-            MKNOD => NfsArguments::MkNod(mk_node::args(src).map_err(map_eof)?),
-            REMOVE => NfsArguments::Remove(remove::args(src).map_err(map_eof)?),
-            RMDIR => NfsArguments::RmDir(rm_dir::args(src).map_err(map_eof)?),
-            RENAME => NfsArguments::Rename(rename::args(src).map_err(map_eof)?),
-            LINK => NfsArguments::Link(link::args(src).map_err(map_eof)?),
-            READDIR => NfsArguments::ReadDir(read_dir::args(src).map_err(map_eof)?),
-            READDIRPLUS => NfsArguments::ReadDirPlus(read_dir_plus::args(src).map_err(map_eof)?),
-            FSSTAT => NfsArguments::FsStat(fs_stat::args(src).map_err(map_eof)?),
-            FSINFO => NfsArguments::FsInfo(fs_info::args(src).map_err(map_eof)?),
-            PATHCONF => NfsArguments::PathConf(path_conf::args(src).map_err(map_eof)?),
-            COMMIT => NfsArguments::Commit(commit::args(src).map_err(map_eof)?),
-            _ => return Err(Error::ProcedureMismatch),
+            NfsProc::Null => NfsArguments::Null,
+            NfsProc::GetAttr => NfsArguments::GetAttr(get_attr::args(src)?),
+            NfsProc::SetAttr => NfsArguments::SetAttr(set_attr::args(src)?),
+            NfsProc::LookUp => NfsArguments::LookUp(lookup::args(src)?),
+            NfsProc::Access => NfsArguments::Access(access::args(src)?),
+            NfsProc::ReadLink => NfsArguments::ReadLink(read_link::args(src)?),
+            NfsProc::Read => {
+                let (args, data) = adapter_for_read(&self.allocator, src).await?;
+                NfsArguments::Read(args, data)
+            }
+            NfsProc::Write => NfsArguments::Write(adapter_for_write(&self.allocator, src).await?),
+            NfsProc::Create => NfsArguments::Create(create::args(src)?),
+            NfsProc::MkDir => NfsArguments::MkDir(mk_dir::args(src)?),
+            NfsProc::SymLink => NfsArguments::SymLink(symlink::args(src)?),
+            NfsProc::MkNod => NfsArguments::MkNod(mk_node::args(src)?),
+            NfsProc::Remove => NfsArguments::Remove(remove::args(src)?),
+            NfsProc::RmDir => NfsArguments::RmDir(rm_dir::args(src)?),
+            NfsProc::Rename => NfsArguments::Rename(rename::args(src)?),
+            NfsProc::Link => NfsArguments::Link(link::args(src)?),
+            NfsProc::ReadDir => NfsArguments::ReadDir(read_dir::args(src)?),
+            NfsProc::ReadDirPlus => NfsArguments::ReadDirPlus(read_dir_plus::args(src)?),
+            NfsProc::FsStat => NfsArguments::FsStat(fs_stat::args(src)?),
+            NfsProc::FsInfo => NfsArguments::FsInfo(fs_info::args(src)?),
+            NfsProc::PathConf => NfsArguments::PathConf(path_conf::args(src)?),
+            NfsProc::Commit => NfsArguments::Commit(commit::args(src)?),
         };
         Ok(args)
     }
 
     /// Parses MOUNT procedure arguments from the current frame.
-    fn parse_mount_proc(&mut self, procedure: u32) -> Result<MountArguments> {
+    ///
+    /// Unknown procedures are rejected earlier as an rpc-level
+    /// [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    fn parse_mount_proc(&mut self, procedure: MountProc) -> parser::Result<MountArguments> {
         let args = match procedure {
-            MOUNT_NULL => MountArguments::Null,
-            MOUNT_MNT => MountArguments::Mount(mount(&mut self.reader).map_err(map_eof)?),
-            MOUNT_DUMP => MountArguments::Dump,
-            MOUNT_UMNT => MountArguments::Unmount(unmount(&mut self.reader).map_err(map_eof)?),
-            MOUNT_UMNTALL => MountArguments::UnmountAll,
-            MOUNT_EXPORT => MountArguments::Export,
-            _ => return Err(Error::ProcedureMismatch),
+            MountProc::Null => MountArguments::Null,
+            MountProc::Mnt => MountArguments::Mount(mount(&mut self.reader)?),
+            MountProc::Dump => MountArguments::Dump,
+            MountProc::Umnt => MountArguments::Unmount(unmount(&mut self.reader)?),
+            MountProc::UmntAll => MountArguments::UnmountAll,
+            MountProc::Export => MountArguments::Export,
         };
         Ok(args)
     }
 
     /// Parses NLM procedure arguments from the current frame.
-    fn parse_nlm_proc(&mut self, procedure: u32) -> Result<NlmArguments> {
+    ///
+    /// Unknown procedures are rejected earlier as an rpc-level
+    /// [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    fn parse_nlm_proc(&mut self, procedure: NlmProc) -> parser::Result<NlmArguments> {
         let args = match procedure {
-            NLMPROC4_NULL => NlmArguments::Null,
-            NLMPROC4_LOCK => NlmArguments::Lock(lock(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_UNLOCK => NlmArguments::Unlock(unlock(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_TEST => NlmArguments::Test(test(&mut self.reader).map_err(map_eof)?),
-            NLMPROC4_CANCEL => NlmArguments::Cancel(cancel(&mut self.reader).map_err(map_eof)?),
-            _ => return Err(Error::ProcedureMismatch),
+            NlmProc::Null => NlmArguments::Null,
+            NlmProc::Lock => NlmArguments::Lock(lock(&mut self.reader)?),
+            NlmProc::Unlock => NlmArguments::Unlock(unlock(&mut self.reader)?),
+            NlmProc::Test => NlmArguments::Test(test(&mut self.reader)?),
+            NlmProc::Cancel => NlmArguments::Cancel(cancel(&mut self.reader)?),
         };
         Ok(args)
     }
@@ -368,122 +380,115 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
         let xid = match self.read_message_header().await {
             Ok(xid) => xid,
-            Err(error) => return Err(ErrorWrapper { xid: None, error }),
+            Err(error) => {
+                let error = map_parser_to_rpc(error);
+                return Err(ErrorWrapper { xid: None, error: self.match_errors(error).await });
+            }
         };
-        let rpc_header = match self.parse_rpc_header() {
-            Ok(arg) => arg,
-            Err(err) => {
-                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+
+        if let Err(error) = self.read_call_prefix() {
+            return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(error).await });
+        }
+
+        let raw = match self.read_rpc_header() {
+            Ok(raw) => raw,
+            Err(error) => {
+                let error = map_parser_to_rpc(error);
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(error).await });
+            }
+        };
+
+        let rpc_header = match self.validate_header(&raw) {
+            Ok(header) => header,
+            Err(error) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(error).await })
             }
         };
         let proc = match self.parse_next_message_with_header(&rpc_header).await {
-            Ok(arg) => arg,
-            Err(err) => {
-                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(err).await })
+            Ok(proc) => proc,
+            Err(error) => {
+                return Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(error).await })
             }
         };
 
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
             Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
-            Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
+            Err(error) => {
+                let error = map_parser_to_rpc(error);
+                Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(error).await })
+            }
         }
     }
 
+    /// Dispatches the parsed header to the matching program parser and applies
+    /// the semantic program/version/procedure validation.
+    ///
+    /// The version is checked before the procedure: procedure numbers are only
+    /// defined within a program version (RFC 5531 §8.1), so a call to an
+    /// unsupported version gets [`rpc::Error::ProgramVersionMismatch`] with the
+    /// supported range rather than [`rpc::Error::ProcedureMismatch`].
     async fn parse_next_message_with_header(
         &mut self,
         head: &RpcMessage,
-    ) -> Result<ProcArguments<A::Buffer>> {
+    ) -> rpc::Result<ProcArguments<A::Buffer>> {
         match head.program {
             NFS_PROGRAM => {
-                let args = self.parse_nfs_message_with_header(head).await?;
+                if head.version != NFS_VERSION {
+                    error!(
+                        got = head.version,
+                        expected = NFS_VERSION,
+                        "rpc parse reject: nfs version mismatch",
+                    );
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
+                        low: NFS_VERSION,
+                        high: NFS_VERSION,
+                    }));
+                }
+                let procedure =
+                    NfsProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
+                let args = self.parse_nfs_proc(procedure).await.map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Nfs3(Box::new(args)))
             }
             MOUNT_PROGRAM => {
-                let args = self.parse_mount_message_with_header(head)?;
+                if head.version != MOUNT_VERSION {
+                    error!(
+                        got = head.version,
+                        expected = MOUNT_VERSION,
+                        "rpc parse reject: mount version mismatch",
+                    );
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
+                        low: MOUNT_VERSION,
+                        high: MOUNT_VERSION,
+                    }));
+                }
+                let procedure =
+                    MountProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
+                let args = self.parse_mount_proc(procedure).map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
             NLM_PROGRAM => {
-                let args = self.parse_nlm_message_with_header(head)?;
+                if head.version != NLM_VERSION {
+                    error!(
+                        got = head.version,
+                        expected = NLM_VERSION,
+                        "rpc parse reject: NLM version mismatch",
+                    );
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
+                        low: NLM_VERSION,
+                        high: NLM_VERSION,
+                    }));
+                }
+                let procedure =
+                    NlmProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
+                let args = self.parse_nlm_proc(procedure).map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Nlm4(Box::new(args)))
             }
             _ => {
                 warn!(program = head.program, "rpc parse reject: unknown program");
-                Err(Error::ProgramMismatch)
+                Err(rpc::Error::ProgramMismatch)
             }
         }
-    }
-
-    async fn parse_nfs_message_with_header(
-        &mut self,
-        head: &RpcMessage,
-    ) -> Result<NfsArguments<A::Buffer>> {
-        if head.program != NFS_PROGRAM {
-            error!(
-                got = head.program,
-                expected = NFS_PROGRAM,
-                "rpc parse reject: nfs parser got unexpected program",
-            );
-            return Err(Error::ProgramMismatch);
-        }
-        if head.version != NFS_VERSION {
-            error!(
-                got = head.version,
-                expected = NFS_VERSION,
-                "rpc parse reject: nfs version mismatch",
-            );
-            return Err(Error::ProgramVersionMismatch(VersionMismatch {
-                low: NFS_VERSION,
-                high: NFS_VERSION,
-            }));
-        }
-        self.parse_nfs_proc(head.procedure).await
-    }
-
-    fn parse_mount_message_with_header(&mut self, head: &RpcMessage) -> Result<MountArguments> {
-        if head.program != MOUNT_PROGRAM {
-            error!(
-                got = head.program,
-                expected = MOUNT_PROGRAM,
-                "rpc parse reject: mount parser got unexpected program",
-            );
-            return Err(Error::ProgramMismatch);
-        }
-        if head.version != MOUNT_VERSION {
-            error!(
-                got = head.version,
-                expected = MOUNT_VERSION,
-                "rpc parse reject: mount version mismatch",
-            );
-            return Err(Error::ProgramVersionMismatch(VersionMismatch {
-                low: MOUNT_VERSION,
-                high: MOUNT_VERSION,
-            }));
-        }
-        self.parse_mount_proc(head.procedure)
-    }
-
-    fn parse_nlm_message_with_header(&mut self, head: &RpcMessage) -> Result<NlmArguments> {
-        if head.program != NLM_PROGRAM {
-            error!(
-                got = head.program,
-                expected = NLM_PROGRAM,
-                "rpc parse reject: NLM parser got unexpected program",
-            );
-            return Err(Error::ProgramMismatch);
-        }
-        if head.version != NLM_VERSION {
-            error!(
-                got = head.version,
-                expected = NLM_VERSION,
-                "rpc parse reject: NLM version mismatch",
-            );
-            return Err(Error::ProgramVersionMismatch(VersionMismatch {
-                low: NLM_VERSION,
-                high: NLM_VERSION,
-            }));
-        }
-        self.parse_nlm_proc(head.procedure)
     }
 
     /// Finalizes parsing by validating that all frame data was consumed.
@@ -492,9 +497,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns `Ok(())` if validation passes, or an error if unparsed data
     /// remains in the frame (indicating a parsing bug or malformed message).
-    fn finalize_parsing(&mut self) -> Result<()> {
+    fn finalize_parsing(&mut self) -> parser::Result<()> {
         if self.reader.frame_remaining() != 0 {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
             )));
@@ -502,11 +507,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    /// Handles errors by potentially discarding the current message.
+    /// Handles errors by discarding the current message.
     ///
-    /// For certain protocol-level errors (version mismatches, auth errors, etc.),
-    /// this method discards the remaining message data to maintain stream alignment
-    /// for subsequent messages. For other errors, it returns them as-is.
+    /// Discards the rest of the current frame after any error so the stream stays
+    /// aligned to the next record. If the frame is fully consumed (`frame_remaining`
+    /// is 0), discarding is a no-op.
     ///
     /// # Arguments
     ///
@@ -514,19 +519,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns the error, potentially after attempting to discard the message.
-    async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
-            proc_nested_errors(error, self.discard_current_message()).await
-        } else {
-            error
-        }
+    /// Returns the error, potentially replaced by an I/O error if discarding fails.
+    async fn match_errors(&mut self, error: rpc::Error) -> rpc::Error {
+        proc_nested_errors(error, self.discard_current_message()).await
     }
 
     /// Discards the remaining data in the current message frame.
@@ -539,8 +534,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
-    async fn discard_current_message(&mut self) -> Result<()> {
-        self.reader.discard_rest_of_frame().await.map_err(Error::IO)
+    async fn discard_current_message(&mut self) -> rpc::Result<()> {
+        self.reader.discard_rest_of_frame().await.map_err(rpc::Error::IO)
     }
 }
 
@@ -570,14 +565,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 async fn adapter_for_write<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> Result<vfs::write::Args<A::Buffer>>
+) -> parser::Result<vfs::write::Args<A::Buffer>>
 where
     A: Allocator,
     S: AsyncRead + Unpin,
 {
     // Parse arguments for the WRITE procedure.
-    let part_arg = write::args(reader).map_err(map_eof)?;
-    let size = u32_as_usize(reader).map_err(map_eof)?;
+    let part_arg = write::args(reader)?;
+    let size = u32_as_usize(reader)?;
 
     // Calculate the necessary padding to maintain ALIGNMENT
     let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
@@ -586,7 +581,10 @@ where
     // otherwise, the declared length is bogus and reading it would consume
     // bytes of the next message, misaligning the stream.
     let bounds_error = || {
-        Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
+        parser::Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "WRITE data length exceeds frame size",
+        ))
     };
     let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
     if padded > reader.frame_remaining() {
@@ -597,7 +595,7 @@ where
     // buffered window first and reads the rest directly from the socket.
     let mut buffer_data = match NonZeroUsize::new(size) {
         Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+            parser::Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
         })?,
         None => A::Buffer::empty(),
     };
@@ -608,18 +606,18 @@ where
             break;
         }
         let take = min(chunk.len(), left);
-        reader.read_body_exact(&mut chunk[..take]).await.map_err(Error::IO)?;
+        reader.read_body_exact(&mut chunk[..take]).await.map_err(parser::Error::IO)?;
         left -= take;
     }
     if left != 0 {
-        return Err(Error::IO(io::Error::new(
+        return Err(parser::Error::IO(io::Error::new(
             ErrorKind::InvalidInput,
             "allocated buffer is smaller than WRITE data",
         )));
     }
 
     // Discard any trailing padding bytes after the data.
-    reader.discard_body(padding).await.map_err(Error::IO)?;
+    reader.discard_body(padding).await.map_err(parser::Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
@@ -635,7 +633,7 @@ where
 /// buffer allocated here is the server-side *output* buffer that the backend
 /// fills with the read result. Allocating it on the read side keeps a single
 /// allocator serving both READ and WRITE and removes the allocator from the
-/// VFS worker pool.
+/// VFS task.
 ///
 /// # Arguments
 ///
@@ -650,19 +648,19 @@ where
 async fn adapter_for_read<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> Result<(vfs::read::Args, A::Buffer)>
+) -> parser::Result<(vfs::read::Args, A::Buffer)>
 where
     A: Allocator,
     S: AsyncRead + Unpin,
 {
-    let args = read::args(reader).map_err(map_eof)?;
+    let args = read::args(reader)?;
 
     let data = if args.count == 0 {
         A::Buffer::empty()
     } else {
         let size = NonZeroUsize::new(args.count as usize).unwrap();
         alloc.allocate(size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+            parser::Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
         })?
     };
 

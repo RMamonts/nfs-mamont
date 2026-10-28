@@ -7,7 +7,8 @@ use std::net::SocketAddr;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::rpc::{AuthFlavor, Credential};
+use crate::rpc::auth::Credential;
+use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
 #[derive(Debug, ToPrimitive, FromPrimitive)]
@@ -52,6 +53,7 @@ pub struct Args {
     /// a server pathname of a directory
     pub dirpath: file::Path,
 }
+
 #[trait_variant::make(Send)]
 pub trait Mnt {
     /// Maps a pathname on the server to a NFS version 3 protocol file handle.
@@ -65,6 +67,6 @@ pub trait Mnt {
         &self,
         args: Args,
         client_addr: SocketAddr,
-        cred: Credential,
+        cred: &Credential,
     ) -> Result<Success, Fail>;
 }

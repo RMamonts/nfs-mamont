@@ -5,6 +5,8 @@
 
 use std::net::SocketAddr;
 
+use crate::rpc::auth::Credential;
+
 #[trait_variant::make(Send)]
 pub trait Umntall {
     /// Removes all of the mount entries for this client previously
@@ -12,5 +14,5 @@ pub trait Umntall {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umntall(&self, client_addr: SocketAddr);
+    async fn umntall(&self, client_addr: SocketAddr, cred: &Credential);
 }

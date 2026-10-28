@@ -6,6 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// Defines the information needed to request a lock on a server.
@@ -28,7 +29,7 @@ pub struct Nlm4LockArgs {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 /// NLM LOCK result.
 ///
-/// Returned by [`NLMPROC4_LOCK`](crate::consts::nlm::NLMPROC4_LOCK) procedure.
+/// Returned by the [`NlmProc::Lock`](crate::consts::nlm::NlmProc::Lock) procedure.
 pub struct Nlm4LockRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,
@@ -42,5 +43,5 @@ pub struct Nlm4LockRes {
 /// grant the lock (returning `Granted`) or deny it.
 #[trait_variant::make(Send)]
 pub trait Lock {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes;
+    async fn lock(&self, args: Nlm4LockArgs, cred: &Credential) -> Nlm4LockRes;
 }

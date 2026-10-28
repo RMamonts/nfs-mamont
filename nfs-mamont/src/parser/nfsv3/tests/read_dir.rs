@@ -1,0 +1,50 @@
+use std::io::Cursor;
+
+use crate::parser::nfsv3::read_dir::args;
+use crate::vfs::read_dir;
+
+#[test]
+fn test_readdir() {
+    #[rustfmt::skip]
+    const DATA: &[u8] = &[
+        // dir file handle length = 9
+        0x00, 0x00, 0x00, 0x09,
+        // dir file handle bytes: backend index + object payload
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        // xdr padding of the file handle
+        0x00, 0x00, 0x00,
+        // cookie = 4096 (u64, BE)
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+        // cookie_verifier = 8192 bytes marker
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00,
+        // count = 2048 (u32, BE)
+        0x00, 0x00, 0x08, 0x00,
+    ];
+
+    let result = args(&mut Cursor::new(DATA)).unwrap();
+
+    assert_eq!(result.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(result.cookie, read_dir::Cookie::new(4096));
+    assert_eq!(result.cookie_verifier, read_dir::CookieVerifier::new([0, 0, 0, 0, 0, 0, 0x20, 0]));
+    assert_eq!(result.count, 2048);
+}
+
+#[test]
+fn test_readdir_unaligned_after_fh() {
+    #[rustfmt::skip]
+    const DATA: &[u8] = &[
+        // dir file handle length = 8, which does not match NFS3_FHSIZE
+        0x00, 0x00, 0x00, 0x08,
+        // dir file handle bytes
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        // cookie = 4096 (u64, BE)
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+        // cookie_verifier = 8192 bytes marker
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00,
+        // count = 2048 (u32, BE) + one extra byte to keep malformed layout
+        0x00, 0x00, 0x08, 0x00, 0x00,
+    ];
+
+    let result = args(&mut Cursor::new(DATA));
+    assert!(result.is_err());
+}

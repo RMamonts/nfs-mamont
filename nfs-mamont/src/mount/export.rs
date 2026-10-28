@@ -4,6 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.5>.
 
 use super::ExportEntry;
+use crate::rpc::auth::Credential;
 
 /// Success result.
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
@@ -13,11 +14,12 @@ pub struct Success {
     /// to mount the specified directory.
     pub exports: Vec<ExportEntry>,
 }
+
 #[trait_variant::make(Send)]
 pub trait Export {
     /// Retrieves a vector of all the exported file systems and which clients
     /// are allowed to mount each one.
     ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn export(&self) -> Success;
+    async fn export(&self, cred: &Credential) -> Success;
 }

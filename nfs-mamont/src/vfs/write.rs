@@ -7,6 +7,7 @@ use num_traits::ToPrimitive;
 
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 use super::file;
@@ -118,5 +119,5 @@ pub trait Write<B: Buffer> {
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
     /// [`vfs::Error::InvalidArgument`] is returned.
-    async fn write(&self, args: Args<B>) -> Result<Success, Fail>;
+    async fn write(&self, args: Args<B>, cred: &Credential) -> Result<Success, Fail>;
 }

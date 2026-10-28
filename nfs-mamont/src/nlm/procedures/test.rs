@@ -7,6 +7,7 @@ use crate::nlm::cookie::Cookie;
 use crate::nlm::holder::Nlm4Holder;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// NLM TEST arguments.
@@ -23,7 +24,7 @@ pub struct Nlm4TestArgs {
 
 /// NLM TEST result.
 ///
-/// Returned by [`NLMPROC4_TEST`](crate::consts::nlm::NLMPROC4_TEST) procedure.
+/// Returned by the [`NlmProc::Test`](crate::consts::nlm::NlmProc::Test) procedure.
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4TestRes {
     /// Transaction identifier for matching request/response.
@@ -59,5 +60,5 @@ impl arbitrary::Arbitrary<'_> for Nlm4TestReply {
 /// `Denied` with details of the conflicting lock.
 #[trait_variant::make(Send)]
 pub trait Test {
-    async fn test(&self, args: Nlm4TestArgs) -> Nlm4TestRes;
+    async fn test(&self, args: Nlm4TestArgs, cred: &Credential) -> Nlm4TestRes;
 }

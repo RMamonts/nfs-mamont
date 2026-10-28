@@ -21,8 +21,7 @@ use std::io::{self, ErrorKind, Read};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-/// Size of an RMS frame header in bytes.
-const RMS_HEADER_SIZE: usize = 4;
+use crate::consts::rpc::RMS_HEADER_SIZE;
 
 /// A buffered reader exposing RMS frame bodies of an async stream.
 ///
@@ -52,7 +51,11 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     ///
     /// If `capacity` is less than the RMS header size (4 bytes).
     pub fn new(capacity: usize, socket: S) -> FrameReader<S> {
-        assert!(capacity >= RMS_HEADER_SIZE, "capacity must hold at least an RMS header");
+        assert!(
+            capacity >= RMS_HEADER_SIZE,
+            "FrameReader::new: capacity {capacity} is smaller than the RMS header \
+             ({RMS_HEADER_SIZE} bytes); pass a larger size to RpcParser::with_capacity"
+        );
         Self { socket, buf: vec![0u8; capacity], start: 0, end: 0, frame_remaining: 0 }
     }
 
@@ -88,7 +91,12 @@ impl<S: AsyncRead + Unpin> FrameReader<S> {
     ///
     /// `n` must not exceed the buffer capacity.
     async fn ensure_buffered(&mut self, n: usize) -> io::Result<()> {
-        debug_assert!(n <= self.buf.len());
+        debug_assert!(
+            n <= self.buf.len(),
+            "internal error: ensure_buffered({n}) exceeds buffer capacity {}; \
+             this is a bug in FrameReader",
+            self.buf.len()
+        );
         while self.buffered() < n {
             self.fill().await?;
         }

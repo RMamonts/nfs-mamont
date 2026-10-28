@@ -1,5 +1,6 @@
 //! Defines NFSv3 [`Symlink`] interface.
 
+use crate::rpc::auth::Credential;
 use crate::vfs;
 
 use super::file;
@@ -46,5 +47,5 @@ pub trait Symlink {
     /// created in a single atomic operation. That is, once the symbolic link is visible,
     /// there must not be a window where a [`super::read_link::ReadLink::read_link`] would fail or
     /// return incorrect data.
-    async fn symlink(&self, args: Args) -> Result<Success, Fail>;
+    async fn symlink(&self, args: Args, cred: &Credential) -> Result<Success, Fail>;
 }

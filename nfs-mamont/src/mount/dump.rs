@@ -4,6 +4,7 @@
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.2>.
 
 use super::MountEntry;
+use crate::rpc::auth::Credential;
 
 /// Success result.
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
@@ -14,10 +15,11 @@ pub struct Success {
     /// of clients that have requested file handles with the MNT procedure.
     pub mount_list: Vec<MountEntry>,
 }
+
 #[trait_variant::make(Send)]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.
     ///
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn dump(&self) -> Success;
+    async fn dump(&self, cred: &Credential) -> Success;
 }

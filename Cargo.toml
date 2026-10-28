@@ -3,20 +3,20 @@ members = ["nfs-mamont", "fuzz", "fuzz/fuzz_shared"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Rmamonts"]
 rust-version = "1.75.0"
 
 [workspace.dependencies]
 # External dependencies
-tokio = { version = "1.52", features = ["full", "time"] }
+async-channel = "2.3.0"
 byteorder = "1.5.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
+tokio = { version = "1.51", features = ["rt", "net", "io-util", "sync", "time", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-async-channel = "2.5.0"
 crossbeam-queue = "0.3.12"
 trait-variant = "0.1.2"
 

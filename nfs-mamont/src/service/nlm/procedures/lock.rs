@@ -1,23 +1,22 @@
 use crate::nlm::procedures::lock::{Lock, Nlm4LockArgs, Nlm4LockRes};
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
-use super::{ActiveLock, NlmService, PendingLock};
+use crate::service::nlm::lock_types::{ActiveLock, PendingLock};
+use crate::service::nlm::NlmService;
 
 impl Lock for NlmService {
-    async fn lock(&self, args: Nlm4LockArgs) -> Nlm4LockRes {
+    async fn lock(&self, args: Nlm4LockArgs, _cred: &Credential) -> Nlm4LockRes {
         let mut registry = self.locks.write().await;
 
-        let new_lock = match PendingLock::new(
-            args.lock.caller_name,
-            args.lock.system_identifier,
-            args.exclusive,
-            args.lock.lock_offset,
-            args.lock.lock_length,
-            args.lock.opaque_handle,
-            args.cookie,
-        ) {
-            Ok(new_lock) => new_lock,
-            Err(_) => return Nlm4LockRes { cookie: args.cookie, stat: Nlm4Stats::Failed },
+        let new_lock = PendingLock {
+            caller_name: args.lock.caller_name.into_inner(),
+            system_identifier: args.lock.system_identifier,
+            exclusive: args.exclusive,
+            offset: args.lock.lock_offset,
+            length: args.lock.lock_length,
+            opaque_handle: args.lock.opaque_handle,
+            cookie: args.cookie,
         };
 
         let fh = args.lock.file_handle;

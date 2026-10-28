@@ -6,6 +6,7 @@
 use crate::nlm::cookie::Cookie;
 use crate::nlm::lock::Nlm4Lock;
 use crate::nlm::Nlm4Stats;
+use crate::rpc::auth::Credential;
 
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone, Debug, PartialEq))]
 /// Defines the information needed to cancel an outstanding lock request.
@@ -24,7 +25,7 @@ pub struct Nlm4CancelArgs {
 
 /// NLM CANCEL result.
 ///
-/// Returned by [`NLMPROC4_CANCEL`](crate::consts::nlm::NLMPROC4_CANCEL) procedure.
+/// Returned by the [`NlmProc::Cancel`](crate::consts::nlm::NlmProc::Cancel) procedure.
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Nlm4CancelRes {
     /// Transaction identifier for matching request/response.
@@ -39,5 +40,5 @@ pub struct Nlm4CancelRes {
 /// that matches the given parameters.
 #[trait_variant::make(Send)]
 pub trait Cancel {
-    async fn cancel(&self, args: Nlm4CancelArgs) -> Nlm4CancelRes;
+    async fn cancel(&self, args: Nlm4CancelArgs, cred: &Credential) -> Nlm4CancelRes;
 }

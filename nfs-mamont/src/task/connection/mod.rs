@@ -13,8 +13,9 @@ use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
+use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::NlmCommand;
+use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
@@ -22,7 +23,7 @@ pub mod read;
 pub mod write;
 
 // Creates all connection tasks with their inner connections
-pub async fn new<A, V, B>(
+pub fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
@@ -32,6 +33,7 @@ pub async fn new<A, V, B>(
     B: Buffer + 'static,
     V: Vfs<B> + Send + Sync + 'static,
 {
+    let _ = socket.set_nodelay(true);
     let peer_addr = match socket.peer_addr() {
         Ok(addr) => addr,
         Err(err) => {
@@ -43,16 +45,16 @@ pub async fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
     // channel for request
-    read::ReadTask::<A, B>::new(
-        readhalf,
-        peer_addr,
+
+    let command_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
+        context.get_vfs_manager().sender(),
         result_sender.clone(),
-        context.get_allocator(),
-        context.get_vfs_pool().sender(),
-    )
-    .spawn();
+    );
+
+    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
+        .spawn();
 
     write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
 }
