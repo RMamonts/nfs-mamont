@@ -71,7 +71,6 @@ pub enum NlmRes {
 
 /// The unique identifier of the lock owner.
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct OpaqueHandle(Vec<u8>);
 
 impl OpaqueHandle {
@@ -92,6 +91,17 @@ impl OpaqueHandle {
 
     pub fn into_inner(self) -> Vec<u8> {
         self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for OpaqueHandle {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=OPAQUE_HANDLE_SIZE)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+
+        OpaqueHandle::new(bytes).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 

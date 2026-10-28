@@ -12,6 +12,7 @@ use nfs_mamont::arguments::nfsv3::{
 };
 use nfs_mamont::consts::mount::MountProc;
 use nfs_mamont::consts::nfsv3::NfsProc;
+use nfs_mamont::consts::nlm::{NlmProc, NLM_PROGRAM};
 
 use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 
@@ -34,7 +35,7 @@ pub struct RpcRequest {
 
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let prog = *u.choose(&[MOUNT_PROGRAM, NFS_PROGRAM])?;
+        let prog = *u.choose(&[MOUNT_PROGRAM, NFS_PROGRAM, NLM_PROGRAM])?;
         let (args, proc) = match prog {
             NFS_PROGRAM => match NfsProc::arbitrary(u)? {
                 NfsProc::Null => {
@@ -150,6 +151,27 @@ impl<'a> Arbitrary<'a> for RpcRequest {
                 MountProc::Export => (
                     ProcArguments::Mount(Box::new(MountArguments::Export)),
                     MountProc::Export as u32,
+                ),
+            },
+            NLM_PROGRAM => match NlmProc::arbitrary(u)? {
+                NlmProc::Null => {
+                    (ProcArguments::Nlm4(Box::new(NlmArguments::Null)), NlmProc::Null as u32)
+                }
+                NlmProc::Test => (
+                    ProcArguments::Nlm4(Box::new(NlmArguments::Test(u.arbitrary()?))),
+                    NlmProc::Test as u32,
+                ),
+                NlmProc::Lock => (
+                    ProcArguments::Nlm4(Box::new(NlmArguments::Lock(u.arbitrary()?))),
+                    NlmProc::Lock as u32,
+                ),
+                NlmProc::Cancel => (
+                    ProcArguments::Nlm4(Box::new(NlmArguments::Cancel(u.arbitrary()?))),
+                    NlmProc::Cancel as u32,
+                ),
+                NlmProc::Unlock => (
+                    ProcArguments::Nlm4(Box::new(NlmArguments::Unlock(u.arbitrary()?))),
+                    NlmProc::Unlock as u32,
                 ),
             },
             _ => unreachable!(),
@@ -281,7 +303,6 @@ impl ParserWrapper {
             MountArguments::Mount(mount) => {
                 arguments::mount::mnt::mount_args(tmp_buffer, mount).unwrap()
             }
-
             MountArguments::Unmount(unmount) => {
                 arguments::mount::unmnt::unmount_args(tmp_buffer, unmount).unwrap()
             }
