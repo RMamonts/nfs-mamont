@@ -10,6 +10,7 @@ pub const MOUNT_VERSION: u32 = 3;
 
 /// MOUNT protocol procedures (RFC 1813 §5.2) as a type-safe enum.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum MountProc {
     Null = 0,
     Mnt = 1,

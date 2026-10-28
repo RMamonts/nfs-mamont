@@ -5,6 +5,7 @@ pub const NFS_VERSION: u32 = 3;
 
 /// NFSv3 procedures (RFC 1813 §3.3) as a type-safe enum.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum NfsProc {
     Null = 0,
     GetAttr = 1,

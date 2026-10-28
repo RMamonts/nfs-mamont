@@ -2,11 +2,15 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
+
 use crate::vfs;
 
 use super::{Name, OpaqueHandle};
 
 /// This structure describes a lock request.
+#[cfg_attr(feature = "arbitrary", derive(Clone, Debug, PartialEq, Arbitrary))]
 pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
     pub caller_name: Name,

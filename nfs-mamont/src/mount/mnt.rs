@@ -12,6 +12,7 @@ use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
 #[derive(Debug, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Possible MOUNT errors
 pub enum Fail {
     /// Not owner
@@ -35,6 +36,7 @@ pub enum Fail {
 }
 
 /// Success result.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub struct Success {
     /// The file handle for the mounted directory.
     /// This file handle may be used in the NFS protocol.
@@ -45,8 +47,8 @@ pub struct Success {
 }
 
 /// Arguments for the Mount operation, containing the path to be mounted.
-#[cfg_attr(test, derive(Eq, PartialEq))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Clone))]
 pub struct Args {
     /// a server pathname of a directory
     pub dirpath: file::Path,

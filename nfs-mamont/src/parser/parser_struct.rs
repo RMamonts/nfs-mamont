@@ -19,6 +19,7 @@
 
 use std::cmp::min;
 use std::io::{self, ErrorKind};
+use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -51,6 +52,8 @@ use crate::rpc;
 use crate::rpc::auth::{AuthStat, Credential};
 use crate::rpc::{AuthFlavor, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch};
 use crate::vfs;
+
+pub const RMS_HEADER_SIZE: usize = size_of::<u32>();
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
@@ -109,7 +112,7 @@ struct RawHeader {
 ///
 /// # Type Parameters
 ///
-/// * `A` - An allocator type that implements [`Allocator`] for dynamic memory allocation
+/// * `A` - An allocator type that implements `Allocator` for dynamic memory allocation
 /// * `S` - An async stream type that implements [`AsyncRead`] and [`Unpin`]
 pub struct RpcParser<A: Allocator, S: AsyncRead + Unpin> {
     allocator: Arc<A>,

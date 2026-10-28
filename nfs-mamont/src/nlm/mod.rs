@@ -10,8 +10,11 @@ pub mod share;
 
 use std::io;
 
+#[cfg(feature = "arbitrary")]
+use arbitrary::Arbitrary;
 use num_derive::{FromPrimitive, ToPrimitive};
 
+use crate::consts::nlm;
 use crate::consts::nlm::{LM_MAXSTRLEN, OPAQUE_HANDLE_SIZE};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelRes, lock::Nlm4LockRes, test::Nlm4TestRes, unlock::Nlm4UnlockRes,
@@ -19,6 +22,7 @@ use crate::nlm::procedures::{
 
 /// `Nlm4Stats` indicates the success or failure of a call.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
     Granted = 0,
@@ -51,6 +55,7 @@ pub enum Nlm4Stats {
 }
 
 /// Wrapper for all supported NLMv4 procedure result types.
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary, Debug))]
 pub enum NlmRes {
     /// NLM NULL procedure — no data.
     Null,
@@ -65,7 +70,7 @@ pub enum NlmRes {
 }
 
 /// The unique identifier of the lock owner.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OpaqueHandle(Vec<u8>);
 
 impl OpaqueHandle {
@@ -82,6 +87,21 @@ impl OpaqueHandle {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for OpaqueHandle {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=OPAQUE_HANDLE_SIZE)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+
+        OpaqueHandle::new(bytes).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
@@ -114,6 +134,17 @@ impl Name {
     #[inline]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl Arbitrary<'_> for Name {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let size = u.int_in_range(1..=nlm::LM_MAXSTRLEN)?;
+        let mut bytes = vec![0u8; size];
+        u.fill_buffer(&mut bytes)?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        Name::new(s).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 

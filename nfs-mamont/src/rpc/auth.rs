@@ -10,6 +10,7 @@
 ///
 /// See RFC 5531, for the canonical descriptions.
 #[derive(Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AuthStat {
     /// The call succeeded and the credentials were accepted. `AUTH_OK`.
     Ok = 0,

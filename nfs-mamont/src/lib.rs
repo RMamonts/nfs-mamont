@@ -4,14 +4,15 @@ mod allocator;
 mod backend;
 pub mod consts;
 mod context;
+
+mod macros;
 pub mod mount;
-#[allow(dead_code)]
-mod nlm;
+pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
-pub mod service;
+mod service;
 mod task;
 pub mod vfs;
 
@@ -38,6 +39,37 @@ pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
 pub use vfs::file::BackendId;
+
+pub_use_if_feature!(
+    "arbitrary",
+    allocator::mock::alloc::MockAllocator,
+    allocator::mock::buffer::MockBuffers,
+    parser::parser_struct::RpcParser,
+    parser::parser_struct::DEFAULT_SIZE,
+    parser::parser_struct::RMS_HEADER_SIZE,
+    rpc::ErrorWrapper,
+    parser::MountArguments,
+    parser::NfsArguments,
+    parser::NlmArguments,
+    parser::ProcArguments,
+    parser::primitive::u32_as_usize,
+    parser::ArgWrapper,
+    parser::nfsv3,
+    parser::mount as parser_mount,
+    parser::nlm as parser_nlm,
+    consts::nfsv3::NFS_PROGRAM,
+    consts::nfsv3::NFS_VERSION,
+    consts::mount::MOUNT_PROGRAM,
+    consts::mount::MOUNT_VERSION,
+    serializer::client::arguments,
+    serializer::server::serialize_struct::Serializer,
+    rpc::AuthFlavor,
+    rpc::Error,
+    rpc::OpaqueAuth,
+    rpc::RpcBody,
+    rpc::RPC_VERSION,
+    task::ProcReply,
+);
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever<A, B, M, N, V>(
