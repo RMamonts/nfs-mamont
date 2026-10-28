@@ -40,7 +40,7 @@ impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
+        pool_sender: Sender<VfsCommand<B>>,
         result_sender: Sender<ProcReply<B>>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender, result_sender }
@@ -132,14 +132,12 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    let command = NfsArgWrapper { header, proc };
+                    let command = VfsCommand {
+                        args: NfsArgWrapper { header, proc },
+                        result_tx: self.command_senders.result_sender.clone(),
+                    };
 
-                    if let Err(err) = self
-                        .command_senders
-                        .pool_sender
-                        .send((command, self.command_senders.result_sender.clone()))
-                        .await
-                    {
+                    if let Err(err) = self.command_senders.pool_sender.send(command).await {
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
                             .await;
                     }
