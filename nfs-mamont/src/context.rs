@@ -3,16 +3,21 @@ use std::sync::Arc;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
+use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
 
-/// Shared server resources: vfs manager, buffer allocator, and backends.
+/// Shared server resources: vfs manager, buffer allocator, backends and the
+/// per-connection limits.
 ///
 /// Construct once at startup and share across connection handlers. The context is
 /// created **without** backends: they are attached at runtime with [`Self::add_backend`]
 /// and detached with [`Self::remove_backend`]. Procedures whose file handle points at a
 /// backend that is not attached fail with [`vfs::Error::StaleFile`].
+///
+/// The number of requests one connection may have in flight is set with
+/// [`Self::with_max_in_flight`].
 ///
 /// # Example
 ///
@@ -52,6 +57,8 @@ where
     allocator: Arc<A>,
     /// Filesystem implementations backing NFS operations, keyed by backend index.
     backends: BackendRegistry<V>,
+    /// Requests one connection may have read but not yet answered.
+    max_in_flight: NonZeroUsize,
 }
 
 impl<A, V, B> ServerContext<A, V, B>
@@ -73,7 +80,33 @@ where
         let backends = BackendRegistry::new();
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends }
+        Self { vfs_manager, allocator, backends, max_in_flight: DEFAULT_MAX_IN_FLIGHT }
+    }
+
+    /// Sets how many requests one connection may have read from the socket but not yet
+    /// answered. The default is [`DEFAULT_MAX_IN_FLIGHT`].
+    ///
+    /// While a connection has `max_in_flight` requests parsed whose replies are not yet
+    /// written to the socket, its read task does not read the next request: the server
+    /// stops acknowledging the client's data (TCP flow control) and the RPC slot table of
+    /// the client waits. Replies are never dropped, and a slow client never blocks the
+    /// shared VFS/MOUNT/NLM tasks, because no connection ever has more than
+    /// `max_in_flight` replies queued. The memory held by one connection is therefore
+    /// bounded by `max_in_flight × reply size`, and the global command queues by
+    /// `max_in_flight × open connections`.
+    ///
+    /// A client needs about `throughput × server latency` requests in flight to keep the
+    /// server busy, so a limit below that caps the throughput of one connection.
+    pub fn with_max_in_flight(mut self, max_in_flight: NonZeroUsize) -> Self {
+        self.max_in_flight = max_in_flight;
+        self
+    }
+
+    /// Returns how many requests one connection may have read but not yet answered,
+    /// see [`Self::with_max_in_flight`].
+    #[inline]
+    pub fn max_in_flight(&self) -> NonZeroUsize {
+        self.max_in_flight
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.

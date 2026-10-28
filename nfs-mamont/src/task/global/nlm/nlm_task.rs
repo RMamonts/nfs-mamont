@@ -10,7 +10,8 @@ use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::connection::limit::Token;
+use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
@@ -19,9 +20,12 @@ use crate::{
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_sender: Sender<ProcReply<B>>,
+    pub result_sender: Sender<InFlightReply<B>>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
+    /// In-flight slot of the request, returned by the write task after the reply is
+    /// written, see [`crate::task::connection`].
+    pub token: Token,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -70,59 +74,62 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args } = command;
+            let NlmCommand { result_sender, args, token } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
-            if let Some(result) = nlm_result {
-                send_reply(result_sender, result, xid).await;
-            }
+            send_reply(result_sender, nlm_result, xid, token).await;
         }
     }
 }
 
-async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: NlmRes, xid: u32) {
+async fn send_reply<B: Buffer>(
+    result_sender: Sender<InFlightReply<B>>,
+    nlm_result: NlmRes,
+    xid: u32,
+    token: Token,
+) {
     // TODO:
     // - some logs when occurred error
     // - or retry with fail
     // * but don't stop task
-    if let Err(e) = result_sender
-        .send(ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) })
-        .await
-    {
+    let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) };
+    if let Err(e) = result_sender.send(InFlightReply { reply, token }).await {
         error!(xid = xid, "nlm task: failed to send reply: {}", e);
     } else {
         debug!(xid = xid, "nlm task: reply queued");
     }
 }
 
+/// Runs the procedure against the NLM service; every procedure yields a reply, which
+/// carries the request's in-flight token back to the write task.
 async fn process_message<N: Nlm + Send + Sync + 'static>(
     args: NlmArgWrapper,
     nlm_service: Arc<N>,
-) -> Option<NlmRes> {
+) -> NlmRes {
     let NlmArgWrapper { header, proc } = args;
     debug!(xid = header.xid, "nlm task: command received");
 
     match *proc {
-        NlmArguments::Null => Some(NlmRes::Null),
+        NlmArguments::Null => NlmRes::Null,
         NlmArguments::Lock(nlm4_lock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM LOCK");
             let res = nlm_service.lock(nlm4_lock_args, &header.cred).await;
-            Some(NlmRes::Lock(res))
+            NlmRes::Lock(res)
         }
         NlmArguments::Unlock(nlm4_unlock_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM UNLOCK");
             let res = nlm_service.unlock(nlm4_unlock_args, &header.cred).await;
-            Some(NlmRes::Unlock(res))
+            NlmRes::Unlock(res)
         }
         NlmArguments::Test(nlm4_test_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM TEST");
             let res = nlm_service.test(nlm4_test_args, &header.cred).await;
-            Some(NlmRes::Test(Box::new(res)))
+            NlmRes::Test(Box::new(res))
         }
         NlmArguments::Cancel(nlm4_cancel_args) => {
             debug!(xid = header.xid, "nlm task: proc=NLM CANCEL");
             let res = nlm_service.cancel(nlm4_cancel_args, &header.cred).await;
-            Some(NlmRes::Cancel(res))
+            NlmRes::Cancel(res)
         }
     }
 }

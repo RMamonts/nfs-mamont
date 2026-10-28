@@ -8,12 +8,21 @@ use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::connection::limit::Token;
+use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
-/// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
+/// One queued NFS procedure.
+pub struct VfsCommand<B: Buffer> {
+    /// Parsed RPC header and procedure arguments.
+    pub args: NfsArgWrapper<B>,
+    /// Channel to the write task of the connection the reply goes to.
+    pub result_tx: Sender<InFlightReply<B>>,
+    /// In-flight slot of the request, returned by the write task after the reply is
+    /// written, see [`crate::task::connection`].
+    pub token: Token,
+}
 /// Sender to enqueue work in the queue.
 pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
@@ -137,7 +146,11 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
     }
 }
 
-/// Pool of [`VfsTask`] workers fed from a single unbounded command channel.
+/// Pool of [`VfsTask`] workers fed from a single command channel.
+///
+/// The channel is unbounded, but every queued command holds an in-flight token of its
+/// connection (see [`crate::task::connection`]), so the queue never holds more than
+/// `max_in_flight × open connections` commands.
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
@@ -249,8 +262,7 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (wrapper, tx) = command;
-    let NfsArgWrapper { header, proc } = wrapper;
+    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, token } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
@@ -279,7 +291,7 @@ where
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
 
     // Write task may already be closed; then this connection pipeline is done.
-    if tx.send(reply).await.is_err() {
+    if result_tx.send(InFlightReply { reply, token }).await.is_err() {
         warn!("writer task closed, connection pipeline is done");
     }
 }
