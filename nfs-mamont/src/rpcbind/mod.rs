@@ -333,7 +333,7 @@ async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     Ok(body)
 }
 
-/// Converts a parse error from the shared XDR parser into an `io::Error`.
+/// Converts a parse error into `io::Error`.
 ///
 /// # Parameters
 ///

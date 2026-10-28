@@ -85,7 +85,7 @@ pub struct ArgWrapper<B: Buffer> {
 /// Parsed RPC message grouped by top-level RPC program.
 ///
 /// This is used by generic message consumers (for example, read tasks) that
-/// accept both NFSv3 and MOUNT calls from the same connection.
+/// accept NFSv3, MOUNT and NLM calls from the same connection.
 pub enum ProcArguments<B: Buffer> {
     Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),

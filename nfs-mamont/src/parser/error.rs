@@ -9,7 +9,7 @@ use std::string::FromUtf8Error;
 /// Errors that can occur during structural parsing of RPC-related data.
 #[derive(Debug)]
 pub enum Error {
-    /// Failed to pase data
+    /// Failed to parse data.
     InvalidData,
     /// Parsed successfully, but failed to pass internal consistency checks for type
     FormatMismatch,
