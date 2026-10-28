@@ -42,6 +42,8 @@ use crate::vfs::Vfs;
 
 pub mod limit;
 mod read;
+#[cfg(test)]
+mod tests;
 mod write;
 
 // Creates all connection tasks with their inner connections
