@@ -6,8 +6,8 @@
 use std::io;
 use std::io::Write;
 
-use crate::nlm::{Nlm4Stats};
 use crate::nlm::holder::Nlm4Holder;
+use crate::nlm::Nlm4Stats;
 use crate::serializer::{u32, u64, variant, vector};
 
 mod cancel;

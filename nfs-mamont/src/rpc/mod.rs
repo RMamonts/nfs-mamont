@@ -11,7 +11,6 @@ use crate::consts::rpc::MAX_AUTH_SIZE;
 
 pub const RPC_VERSION: u32 = 2;
 
-
 pub mod auth;
 
 pub type Result<T> = core::result::Result<T, Error>;

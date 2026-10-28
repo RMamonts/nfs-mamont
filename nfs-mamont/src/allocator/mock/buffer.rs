@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+#[cfg(feature = "arbitrary")]
 use arbitrary::Unstructured;
 
 use crate::Buffer;
@@ -111,6 +112,7 @@ impl Buffer for MockBuffers {
     }
 }
 
+#[cfg(feature = "arbitrary")]
 impl arbitrary::Arbitrary<'_> for MockBuffers {
     fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
         let block_amounts = u.int_in_range(1..=MAX_BLOCK_AMOUNT)?;

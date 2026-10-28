@@ -15,7 +15,7 @@ static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static SERIALIZER: OnceLock<Mutex<TestSerializer>> = OnceLock::new();
 
 fn get_runtime() -> &'static Runtime {
-    RUNTIME.get_or_init(|| Runtime::new().unwrap())
+    RUNTIME.get_or_init(|| tokio::runtime::Builder::new_current_thread().build().unwrap())
 }
 
 fn get_serializer() -> &'static Mutex<TestSerializer> {

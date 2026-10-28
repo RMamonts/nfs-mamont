@@ -2,7 +2,9 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
+#[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
+
 use crate::vfs;
 
 use super::{Name, OpaqueHandle};
@@ -23,4 +25,3 @@ pub struct Nlm4Lock {
     /// Length of the blocking region. An l_len of 0 means "to end of file".
     pub lock_length: u64,
 }
-

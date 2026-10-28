@@ -48,6 +48,7 @@ pub_use_if_feature!(
     parser::parser_struct::RpcParser,
     parser::parser_struct::DEFAULT_SIZE,
     parser::parser_struct::RMS_HEADER_SIZE,
+    rpc::ErrorWrapper,
     parser::MountArguments,
     parser::NfsArguments,
     parser::NlmArguments,

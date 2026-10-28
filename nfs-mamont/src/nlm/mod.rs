@@ -10,6 +10,7 @@ pub mod share;
 
 use std::io;
 
+#[cfg(feature = "arbitrary")]
 use arbitrary::Arbitrary;
 use num_derive::{FromPrimitive, ToPrimitive};
 

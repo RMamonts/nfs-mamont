@@ -1,24 +1,21 @@
 use arbitrary::{Arbitrary, Unstructured};
 
 use nfs_mamont::{
-    arguments, ArgWrapper, ErrorWrapper, MockAllocator, MockBuffers, MountArguments, NfsArguments,
-    NlmArguments, ProcArguments, RpcBody, RpcParser, ACCESS, COMMIT, CREATE, DEFAULT_SIZE, FSINFO,
-    FSSTAT, GETATTR, LINK, LOOKUP, MKDIR, MKNOD, MOUNT_DUMP, MOUNT_EXPORT, MOUNT_MNT, MOUNT_NULL,
-    MOUNT_PROGRAM, MOUNT_UMNT, MOUNT_UMNTALL, MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, NULL,
-    PATHCONF, READ, READDIR, READDIRPLUS, READLINK, REMOVE, RENAME, RMDIR, RMS_HEADER_SIZE,
-    RPC_VERSION, SETATTR, SYMLINK, WRITE,
+    arguments, consts, ArgWrapper, ErrorWrapper, MockAllocator, MockBuffers, MountArguments,
+    NfsArguments, NlmArguments, ProcArguments, RpcBody, RpcParser, DEFAULT_SIZE, MOUNT_PROGRAM,
+    MOUNT_VERSION, NFS_PROGRAM, NFS_VERSION, RMS_HEADER_SIZE, RPC_VERSION,
 };
 
 use nfs_mamont::arguments::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
+use nfs_mamont::consts::mount::MountProc;
+use nfs_mamont::consts::nfsv3::NfsProc;
 
 use crate::read_socket::{FuzzMockSocket, FuzzSocketHandler};
 
 type TestParser = RpcParser<MockAllocator, FuzzMockSocket>;
-const FAULT_VERSION: u32 = 7;
-const FAULT_PROGRAM: u32 = 1;
 
 #[derive(Clone, Debug)]
 pub struct RpcRequest {
@@ -37,101 +34,135 @@ pub struct RpcRequest {
 
 impl<'a> Arbitrary<'a> for RpcRequest {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let prog = *u.choose(&[MOUNT_PROGRAM, NFS_PROGRAM, FAULT_PROGRAM])?;
-        let proc = match prog {
-            NFS_PROGRAM => u.int_in_range(0..=22)?,
-            MOUNT_PROGRAM => u.int_in_range(0..=6)?,
-            FAULT_PROGRAM => u.int_in_range(0..=22)?,
-            _ => u.int_in_range(0..=22)?,
-        };
-        let args = match (prog, proc) {
-            (NFS_PROGRAM, NULL) => ProcArguments::Nfs3(Box::new(NfsArguments::Null)),
-            (NFS_PROGRAM, GETATTR) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::GetAttr(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, SETATTR) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::SetAttr(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, LOOKUP) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::LookUp(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, ACCESS) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Access(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, READLINK) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, READ) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Read(u.arbitrary()?, u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, WRITE) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, CREATE) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Create(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, MKDIR) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::MkDir(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, SYMLINK) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::SymLink(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, MKNOD) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::MkNod(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, REMOVE) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Remove(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, RMDIR) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::RmDir(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, RENAME) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Rename(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, LINK) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Link(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, READDIR) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::ReadDir(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, READDIRPLUS) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::ReadDirPlus(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, FSSTAT) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::FsStat(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, FSINFO) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::FsInfo(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, PATHCONF) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::PathConf(u.arbitrary()?)))
-            }
-            (NFS_PROGRAM, COMMIT) => {
-                ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?)))
-            }
-            (MOUNT_PROGRAM, MOUNT_NULL) => ProcArguments::Mount(Box::new(MountArguments::Null)),
-            (MOUNT_PROGRAM, MOUNT_MNT) => {
-                ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?)))
-            }
-            (MOUNT_PROGRAM, MOUNT_DUMP) => ProcArguments::Mount(Box::new(MountArguments::Dump)),
-            (MOUNT_PROGRAM, MOUNT_UMNT) => {
-                ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?)))
-            }
-            (MOUNT_PROGRAM, MOUNT_UMNTALL) => {
-                ProcArguments::Mount(Box::new(MountArguments::UnmountAll))
-            }
-            (MOUNT_PROGRAM, MOUNT_EXPORT) => ProcArguments::Mount(Box::new(MountArguments::Export)),
-            _ => u.arbitrary::<ProcArguments<MockBuffers>>()?,
+        let prog = *u.choose(&[MOUNT_PROGRAM, NFS_PROGRAM])?;
+        let (args, proc) = match prog {
+            NFS_PROGRAM => match NfsProc::arbitrary(u)? {
+                NfsProc::Null => {
+                    (ProcArguments::Nfs3(Box::new(NfsArguments::Null)), NfsProc::Null as u32)
+                }
+                NfsProc::GetAttr => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::GetAttr(u.arbitrary()?))),
+                    NfsProc::GetAttr as u32,
+                ),
+                NfsProc::SetAttr => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::SetAttr(u.arbitrary()?))),
+                    NfsProc::SetAttr as u32,
+                ),
+                NfsProc::LookUp => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::LookUp(u.arbitrary()?))),
+                    NfsProc::LookUp as u32,
+                ),
+                NfsProc::Access => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Access(u.arbitrary()?))),
+                    NfsProc::Access as u32,
+                ),
+                NfsProc::ReadLink => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::ReadLink(u.arbitrary()?))),
+                    NfsProc::ReadLink as u32,
+                ),
+                NfsProc::Read => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Read(
+                        u.arbitrary()?,
+                        u.arbitrary()?,
+                    ))),
+                    NfsProc::Read as u32,
+                ),
+                NfsProc::Write => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Write(u.arbitrary()?))),
+                    NfsProc::Write as u32,
+                ),
+                NfsProc::Create => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Create(u.arbitrary()?))),
+                    NfsProc::Create as u32,
+                ),
+                NfsProc::MkDir => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::MkDir(u.arbitrary()?))),
+                    NfsProc::MkDir as u32,
+                ),
+                NfsProc::SymLink => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::SymLink(u.arbitrary()?))),
+                    NfsProc::SymLink as u32,
+                ),
+                NfsProc::MkNod => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::MkNod(u.arbitrary()?))),
+                    NfsProc::MkNod as u32,
+                ),
+                NfsProc::Remove => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Remove(u.arbitrary()?))),
+                    NfsProc::Remove as u32,
+                ),
+                NfsProc::RmDir => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::RmDir(u.arbitrary()?))),
+                    NfsProc::RmDir as u32,
+                ),
+                NfsProc::Rename => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Rename(u.arbitrary()?))),
+                    NfsProc::Rename as u32,
+                ),
+                NfsProc::Link => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Link(u.arbitrary()?))),
+                    NfsProc::Link as u32,
+                ),
+                NfsProc::ReadDir => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::ReadDir(u.arbitrary()?))),
+                    NfsProc::ReadDir as u32,
+                ),
+                NfsProc::ReadDirPlus => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::ReadDirPlus(u.arbitrary()?))),
+                    NfsProc::ReadDirPlus as u32,
+                ),
+                NfsProc::FsStat => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::FsStat(u.arbitrary()?))),
+                    NfsProc::FsStat as u32,
+                ),
+                NfsProc::FsInfo => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::FsInfo(u.arbitrary()?))),
+                    NfsProc::FsInfo as u32,
+                ),
+                NfsProc::PathConf => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::PathConf(u.arbitrary()?))),
+                    NfsProc::PathConf as u32,
+                ),
+                NfsProc::Commit => (
+                    ProcArguments::Nfs3(Box::new(NfsArguments::Commit(u.arbitrary()?))),
+                    NfsProc::Commit as u32,
+                ),
+            },
+            MOUNT_PROGRAM => match consts::mount::MountProc::arbitrary(u)? {
+                MountProc::Null => {
+                    (ProcArguments::Mount(Box::new(MountArguments::Null)), MountProc::Null as u32)
+                }
+                MountProc::Mnt => (
+                    ProcArguments::Mount(Box::new(MountArguments::Mount(u.arbitrary()?))),
+                    MountProc::Mnt as u32,
+                ),
+                MountProc::Dump => {
+                    (ProcArguments::Mount(Box::new(MountArguments::Dump)), MountProc::Dump as u32)
+                }
+                MountProc::Umnt => (
+                    ProcArguments::Mount(Box::new(MountArguments::Unmount(u.arbitrary()?))),
+                    MountProc::Umnt as u32,
+                ),
+                MountProc::UmntAll => (
+                    ProcArguments::Mount(Box::new(MountArguments::UnmountAll)),
+                    MountProc::UmntAll as u32,
+                ),
+                MountProc::Export => (
+                    ProcArguments::Mount(Box::new(MountArguments::Export)),
+                    MountProc::Export as u32,
+                ),
+            },
+            _ => unreachable!(),
         };
         Ok(Self {
             xid: u.arbitrary()?,
             request: *u.choose(&[RpcBody::Call as u32, RpcBody::Reply as u32])?,
             //so there would be RpcVersionMismatch
-            rpc_version: *u.choose(&[RPC_VERSION, FAULT_VERSION])?,
+            rpc_version: *u.choose(&[RPC_VERSION])?,
             //so there would be ProgramMismatch
             prog,
             //so there would be ProgramVersionMismatch
-            version: *u.choose(&[MOUNT_VERSION, NFS_VERSION, FAULT_VERSION])?,
+            version: *u.choose(&[MOUNT_VERSION, NFS_VERSION])?,
             //so there would be ProcedureMismatch (nfsv3 has 21 proc)
             proc,
             auth: 0,
@@ -186,6 +217,7 @@ impl ParserWrapper {
         let size = ((pos - RMS_HEADER_SIZE) as u32 | 0x8000_0000).to_be_bytes();
         tmp_buffer[..RMS_HEADER_SIZE].copy_from_slice(size.as_slice());
         // there should be sending to mpsc
+        assert_eq!(pos, tmp_buffer.len());
         self.sender.send_data(tmp_buffer);
     }
     pub async fn parse_message(&mut self) -> Result<ArgWrapper<MockBuffers>, ErrorWrapper> {

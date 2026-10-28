@@ -5,6 +5,7 @@ pub const NLM_VERSION: u32 = 4;
 
 /// NLMv4 procedures (RFC 1813 §6.2, Appendix II) as a type-safe enum.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum NlmProc {
     Null = 0,
     Test = 1,

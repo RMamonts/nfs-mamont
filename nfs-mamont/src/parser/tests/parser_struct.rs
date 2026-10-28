@@ -356,7 +356,7 @@ async fn parse_two_correct() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::empty());
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x39);
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -579,7 +579,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::empty());
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x10);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
@@ -833,7 +833,7 @@ async fn parse_write_out_of_memory_after_error() {
     buf.extend_from_slice(&first);
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
-    let alloc = Arc::new(MockAllocator::new(4));
+    let alloc = Arc::new(MockAllocator::empty());
     let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
 
     let result = parser.next_message().await;
