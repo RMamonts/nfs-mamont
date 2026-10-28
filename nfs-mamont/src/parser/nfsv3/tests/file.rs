@@ -24,7 +24,7 @@ fn test_device_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x01];
     let mut src = Cursor::new(DATA);
 
-    assert!(matches!(device(&mut src), Err(Error::IO(_))));
+    assert!(matches!(device(&mut src), Err(Error::InvalidData)));
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn test_nfstime_success() {
 fn test_nfstime_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x01];
 
-    assert!(matches!(time(&mut Cursor::new(&DATA)), Err(Error::IO(_))));
+    assert!(matches!(time(&mut Cursor::new(&DATA)), Err(Error::InvalidData)));
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_file_path_success() {
 #[test]
 fn test_file_path_padding_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x02, b'f', b'i', 0x00];
-    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::InvalidData)));
 }
 
 #[test]
@@ -148,13 +148,13 @@ fn test_file_name_too_long_error() {
 #[test]
 fn test_file_name_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::FormatMismatch)));
 }
 
 #[test]
 fn test_file_name_separator_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x03, b'a', b'/', b'b', 0x00];
-    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_name(&mut Cursor::new(DATA)), Err(Error::FormatMismatch)));
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn test_file_path_too_long_error() {
 #[test]
 fn test_file_path_empty_error() {
     const DATA: &[u8] = &[0x00, 0x00, 0x00, 0x00];
-    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::IO(_))));
+    assert!(matches!(file_path(&mut Cursor::new(DATA)), Err(Error::FormatMismatch)));
 }
 
 #[test]
