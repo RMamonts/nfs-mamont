@@ -17,5 +17,4 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 tokio = { version = "1.51", features = ["rt", "net", "io-util", "sync", "time", "macros", "signal"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 trait-variant = "0.1.2"
