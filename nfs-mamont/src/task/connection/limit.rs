@@ -75,6 +75,12 @@ impl Limiter {
             self.notify.notify_one();
         }
     }
+
+    /// Returns the number of slots freed so far.
+    #[cfg(test)]
+    pub fn released(&self) -> u64 {
+        self.released.load(Ordering::SeqCst)
+    }
 }
 
 /// Read-task side of the budget: issues tokens and waits while all slots are taken.
