@@ -1,7 +1,6 @@
 use std::io::Cursor;
 
-use crate::parser::nfsv3::create::set_time;
-use crate::parser::nfsv3::set_attr::{args, new_attr};
+use crate::parser::nfsv3::set_attr::{args, new_attr, set_time};
 use crate::parser::Error;
 use crate::vfs::file;
 use crate::vfs::set_attr;

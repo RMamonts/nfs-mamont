@@ -1,9 +1,9 @@
 //! Implements parsing for [`mk_node::Args`] structure.
 use std::io::Read;
 
-use crate::parser::nfsv3::create::new_attr;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
+use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::primitive::u32;
 use crate::parser::{Error, Result};
 use crate::vfs::file::Device;
