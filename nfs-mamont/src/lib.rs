@@ -21,7 +21,6 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
 
 use crate::nlm::Nlm;
 use crate::task::global::mount::MountTask;
@@ -71,16 +70,6 @@ pub_use_if_feature!(
     rpc::RPC_VERSION,
     task::ProcReply,
 );
-
-/// Initializes tracing logs.
-///
-/// In debug builds logs are enabled by default. In release builds this is a no-op.
-pub fn init_tracing() {
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("nfs_mamont=debug"));
-
-    let _ = tracing_subscriber::fmt().with_env_filter(env_filter).try_init();
-}
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever<A, B, M, N, V>(
