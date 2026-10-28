@@ -37,12 +37,12 @@ pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
-pub use vfs::file::BackendId;
 /// Client-side XDR serializers for NFSv3 and MOUNT request arguments.
 ///
 /// Available only with the `client` cargo feature.
 #[cfg(feature = "client")]
 pub use serializer::client;
+pub use vfs::file::BackendId;
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever<A, B, M, N, V>(
