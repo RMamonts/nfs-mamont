@@ -137,5 +137,5 @@ fn test_args_invalid_what_discriminant() {
 fn test_args_truncated_after_what() {
     let data = wrap_what_with_args(&[0, 0, 0, 7]);
 
-    assert!(matches!(args(&mut Cursor::new(data)), Err(Error::IO(_))));
+    assert!(matches!(args(&mut Cursor::new(data)), Err(Error::InvalidData)));
 }

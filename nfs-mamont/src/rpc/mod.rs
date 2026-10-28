@@ -7,6 +7,8 @@ use auth::AuthStat;
 
 pub mod auth;
 
+pub type Result<T> = core::result::Result<T, Error>;
+
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -56,6 +58,18 @@ pub enum RejectedReply {
 pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with.
+///
+/// The semantically validated (header-level) errors flow out of the parser as
+/// [`Error`], while structural parse failures are converted to that
+/// type at the parser boundary.
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 /// Errors that can occur during parsing.

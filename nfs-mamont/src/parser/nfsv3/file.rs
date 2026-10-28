@@ -72,10 +72,10 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(Error::IO)
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::FormatMismatch)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(Error::IO)
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::FormatMismatch)
 }
