@@ -228,12 +228,6 @@ mod nfs_metrics {
     impl Timer {
         /// Timer of a request that is not measured.
         pub const NONE: Self = Self(None);
-
-        /// Whether the request is measured.
-        #[inline]
-        pub fn is_measured(&self) -> bool {
-            self.0.is_some()
-        }
     }
 
     /// Decrements the in-flight gauge on drop.
@@ -467,11 +461,6 @@ mod nfs_metrics {
 
     impl Timer {
         pub const NONE: Self = Self;
-
-        #[inline]
-        pub const fn is_measured(&self) -> bool {
-            false
-        }
     }
 
     /// No-op in-flight guard.
