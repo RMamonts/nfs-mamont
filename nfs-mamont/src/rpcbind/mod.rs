@@ -343,13 +343,7 @@ async fn read_record(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
 ///
 /// The underlying I/O error, or `InvalidData` describing the malformed field.
 fn parse_error(err: crate::parser::error::Error) -> io::Error {
-    match err {
-        crate::parser::error::Error::IO(err) => err,
-        other => io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("malformed rpcbind reply: {other:?}"),
-        ),
-    }
+    io::Error::new(io::ErrorKind::InvalidData, format!("malformed rpcbind reply: {err:?}"))
 }
 
 /// Validates an `rpcbind` reply body against the sent transaction id.

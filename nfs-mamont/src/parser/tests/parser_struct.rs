@@ -4,13 +4,18 @@ use std::sync::Arc;
 use crate::allocator::Buffer;
 use crate::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
+use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::RPC_VERSION;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
 use crate::parser::{ArgWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader};
 use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
-use crate::rpc::{AuthFlavor, Error, ErrorWrapper, OpaqueAuth, RpcBody};
+use crate::rpc::{
+    AcceptStat, AuthFlavor, Error, ErrorWrapper, OpaqueAuth, RejectedReply, ReplyBody, RpcBody,
+    VersionMismatch,
+};
+use crate::vfs;
 use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
@@ -545,9 +550,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, .. } = result.err().unwrap();
-    assert!(
-        matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::UnexpectedEof)
-    );
+    assert!(matches!(error, Error::IO(io_err) if io_err.kind() == std::io::ErrorKind::InvalidData));
 }
 
 #[tokio::test]
@@ -1051,7 +1054,7 @@ async fn parse_symlink_window_overflow_after_error() {
     assert!(matches!(
         result,
         Err(ErrorWrapper { error: Error::IO(io_err), xid: Some(XID) })
-            if io_err.kind() == std::io::ErrorKind::UnexpectedEof
+            if io_err.kind() == std::io::ErrorKind::InvalidData
     ));
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -1060,4 +1063,124 @@ async fn parse_symlink_window_overflow_after_error() {
         |proc, opaque| assert_fsstat_proc_result(proc, opaque),
         &[0, 1, 2, 3, 4, 5, 6, 7, 8],
     );
+}
+
+/// Builds a single-fragment record whose body is the given 32-bit words.
+fn record(words: &[u32]) -> Vec<u8> {
+    let mut frame = Vec::new();
+    let body_len: u32 = (words.len() * 4).try_into().unwrap();
+    push_u32(&mut frame, FRAGMENT_HEADER_MASK | body_len);
+    for word in words {
+        push_u32(&mut frame, *word);
+    }
+    frame
+}
+
+/// Test: Real REPLY records are rejected with `MessageTypeMismatch` before their
+/// `reply_body` is decoded as a call header, so the read task drops them instead
+/// of answering, and the next call is still parsed.
+#[tokio::test]
+async fn parse_rejects_reply_records_before_decoding_call_body() {
+    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let reply = RpcBody::Reply as u32;
+    let accepted = ReplyBody::MsgAccepted as u32;
+    let none = AuthFlavor::None as u32;
+    let success = AcceptStat::Success as u32;
+    let replies = [
+        // NULL reply: AUTH_NONE verifier, SUCCESS, no results
+        record(&[XID, reply, accepted, none, 0, success]),
+        // RPC_MISMATCH reply: supported RPC versions 2..2
+        record(&[XID, reply, ReplyBody::MsgDenied as u32, RejectedReply::RpcMismatch as u32, 2, 2]),
+        // GETATTR reply: AUTH_NONE verifier, SUCCESS, NFS3ERR_STALE
+        record(&[XID, reply, accepted, none, 0, success, vfs::Error::StaleFile as u32]),
+    ];
+    let next = nfs_call_frame(
+        RpcBody::Call as u32,
+        RPC_VERSION,
+        &header,
+        NfsProc::FsStat.to_u32().unwrap(),
+        |buf| {
+            buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+        },
+    );
+
+    for reply in replies {
+        let mut buf = reply;
+        buf.extend_from_slice(&next);
+        let socket = MockSocket::new(buf.as_slice());
+        let alloc = Arc::new(MockAllocator::new(0));
+        let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+
+        let result = parser.next_message().await;
+        assert!(matches!(
+            result,
+            Err(ErrorWrapper { error: Error::MessageTypeMismatch, xid: Some(XID) })
+        ));
+        let result = parser.next_message().await.unwrap();
+        assert_arg_wrapper(
+            result,
+            &header,
+            |proc, opaque| assert_fsstat_proc_result(proc, opaque),
+            &[0, 1, 2, 3, 4, 5, 6, 7, 8],
+        );
+    }
+}
+
+/// Test: An RPC version mismatch is reported as soon as `rpcvers` is read, even
+/// if the record ends right after it.
+#[tokio::test]
+async fn parse_rejects_rpc_version_before_decoding_call_body() {
+    let frame = record(&[XID, RpcBody::Call as u32, RPC_VERSION + 1]);
+    let socket = MockSocket::new(frame.as_slice());
+    let alloc = Arc::new(MockAllocator::new(0));
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+    let result = parser.next_message().await;
+    assert!(matches!(
+        result,
+        Err(ErrorWrapper {
+            error: Error::RpcVersionMismatch(VersionMismatch {
+                low: RPC_VERSION,
+                high: RPC_VERSION
+            }),
+            xid: Some(XID),
+        })
+    ));
+}
+
+/// Test: The program version is checked before the procedure number, so a call
+/// to an unsupported version gets `ProgramVersionMismatch` even when its
+/// procedure does not exist in the supported version.
+#[tokio::test]
+async fn parse_checks_program_version_before_procedure() {
+    let call = RpcBody::Call as u32;
+    let none = AuthFlavor::None as u32;
+    let cases = [
+        // NFSv2 call of a procedure past NFSv3 COMMIT
+        (NFS_PROGRAM, NFS_VERSION - 1, 22, NFS_VERSION),
+        // MOUNT v1 call of a procedure past MOUNT EXPORT
+        (MOUNT_PROGRAM, MOUNT_VERSION - 2, 6, MOUNT_VERSION),
+        // NLMv3 call of NLM_GRANTED_MSG, which is not a supported NLMv4 procedure
+        (NLM_PROGRAM, NLM_VERSION - 1, 10, NLM_VERSION),
+    ];
+
+    for (program, version, procedure, supported) in cases {
+        let frame =
+            record(&[XID, call, RPC_VERSION, program, version, procedure, none, 0, none, 0]);
+        let socket = MockSocket::new(frame.as_slice());
+        let alloc = Arc::new(MockAllocator::new(0));
+        let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+
+        let result = parser.next_message().await;
+        assert!(
+            matches!(
+                result,
+                Err(ErrorWrapper {
+                    error: Error::ProgramVersionMismatch(VersionMismatch { low, high }),
+                    xid: Some(XID),
+                }) if low == supported && high == supported
+            ),
+            "program {program} version {version} procedure {procedure}"
+        );
+    }
 }

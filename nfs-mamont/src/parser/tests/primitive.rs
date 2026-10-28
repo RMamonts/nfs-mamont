@@ -41,7 +41,7 @@ fn test_u8_array_padding_error() {
         src.write_u8(*i).unwrap();
     }
     let result = array::<3>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::InvalidData)));
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn test_u8_array_miss_elements() {
     let mut src = Vec::new();
     let _ = init.map(|i| src.write_u8(i).unwrap());
     let result = array::<4>(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::InvalidData)));
 }
 
 #[test]
@@ -104,5 +104,5 @@ fn test_read_error() {
     let mut src = Vec::new();
     src.write_u32::<BigEndian>(10).unwrap();
     let result = vector(&mut Cursor::new(src));
-    assert!(matches!(result, Err(Error::IO(_))));
+    assert!(matches!(result, Err(Error::InvalidData)));
 }
