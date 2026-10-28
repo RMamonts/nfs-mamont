@@ -81,6 +81,12 @@ impl Limiter {
     pub fn released(&self) -> u64 {
         self.released.load(Ordering::SeqCst)
     }
+
+    /// Returns whether [`Self::close`] was called.
+    #[cfg(test)]
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
 }
 
 /// Read-task side of the budget: issues tokens and waits while all slots are taken.
