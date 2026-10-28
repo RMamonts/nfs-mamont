@@ -17,7 +17,7 @@ pub enum NfsProc {
     Create = 8,
     MkDir = 9,
     SymLink = 10,
-    MkNode = 11,
+    MkNod = 11,
     Remove = 12,
     RmDir = 13,
     Rename = 14,

@@ -32,6 +32,7 @@ use crate::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::nlm::{NlmProc, NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RPC_VERSION};
 use crate::consts::xdr::ALIGNMENT;
+use crate::parser;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
 use crate::parser::nfsv3::{
@@ -43,18 +44,13 @@ use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, Error, MountArguments, NfsArguments, NlmArguments,
-    ProcArguments, Result, RpcHeader,
+    proc_nested_errors, ArgWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+    RpcHeader,
 };
+use crate::rpc;
 use crate::rpc::auth::{AuthStat, Credential};
-use crate::rpc::{
-    AuthFlavor, Error as RpcError, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch,
-};
+use crate::rpc::{AuthFlavor, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch};
 use crate::vfs;
-
-/// Result type for the semantic (rpc-level) errors produced after header
-/// validation, as opposed to [`Result`] which carries structural parser errors.
-type RpcResult<T> = std::result::Result<T, RpcError>;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
@@ -69,21 +65,22 @@ pub const DEFAULT_SIZE: usize = 2500;
 /// Maps a structural parser error to the corresponding rpc-level error,
 /// converting it at the parser boundary so the rest of the server works with
 /// [`crate::rpc::Error`] only.
-fn map_parser_to_rpc(error: Error) -> RpcError {
+fn map_parser_to_rpc(error: parser::Error) -> rpc::Error {
     match error {
-        Error::MaxElemLimit => RpcError::MaxElemLimit,
-        Error::EnumDiscMismatch => RpcError::EnumDiscMismatch,
-        Error::IncorrectString(err) => RpcError::IncorrectString(err),
-        Error::ImpossibleTypeCast => RpcError::ImpossibleTypeCast,
-        Error::BadFileHandle => RpcError::BadFileHandle,
-        Error::InvalidData => {
-            RpcError::IO(io::Error::new(io::ErrorKind::InvalidData, "failed to parse data"))
-        }
-        Error::FormatMismatch => RpcError::IO(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "failed to pass internal checks",
+        parser::Error::MaxElemLimit => rpc::Error::MaxElemLimit,
+        parser::Error::EnumDiscMismatch => rpc::Error::EnumDiscMismatch,
+        parser::Error::IncorrectString(err) => rpc::Error::IncorrectString(err),
+        parser::Error::ImpossibleTypeCast => rpc::Error::ImpossibleTypeCast,
+        parser::Error::BadFileHandle => rpc::Error::BadFileHandle,
+        parser::Error::InvalidData => rpc::Error::IO(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid data received with parsing failure",
         )),
-        Error::IO(err) => RpcError::IO(err),
+        parser::Error::FormatMismatch => rpc::Error::IO(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Data does not match expected internal format",
+        )),
+        parser::Error::IO(err) => rpc::Error::IO(err),
     }
 }
 
@@ -93,7 +90,6 @@ fn map_parser_to_rpc(error: Error) -> RpcError {
 /// Carries the program, version and procedure words together with the raw
 /// credential and verifier opaques. [`RpcParser::validate_header`] turns this
 /// into a validated [`RpcMessage`], applying the authentication decisions.
-#[cfg_attr(test, derive(Debug, PartialEq))]
 struct RawHeader {
     program: u32,
     version: u32,
@@ -169,14 +165,14 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Returns the XID if the header was successfully parsed, or an error if:
     /// - The message is fragmented (not supported)
     /// - An I/O error occurs
-    async fn read_message_header(&mut self) -> Result<u32> {
-        let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
+    async fn read_message_header(&mut self) -> parser::Result<u32> {
+        let header = self.reader.read_frame_header().await.map_err(parser::Error::IO)?;
         let last = header & (HEADER_MASK as u32) != 0;
         let frame_size = header as usize & MAX_FRAGMENT_SIZE;
-        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
+        self.reader.begin_body(frame_size).await.map_err(parser::Error::IO)?;
 
         if frame_size < std::mem::size_of::<u32>() {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Frame size must include XID",
             )));
@@ -185,7 +181,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         //TODO("https://github.com/RMamonts/nfs-mamont/issues/124")
         // Fragmented (multi-fragment) messages are not yet supported.
         if !last {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::Unsupported,
                 "Fragmented messages not supported",
             )));
@@ -202,18 +198,18 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// `rpcvers` defines the layout of the call that follows (RFC 5531 §9).
     /// Decoding the rest of the header first would report such records as
     /// structural errors, which the server answers, while a
-    /// [`RpcError::MessageTypeMismatch`] record is dropped by the read task.
-    fn read_call_prefix(&mut self) -> RpcResult<()> {
+    /// [`rpc::Error::MessageTypeMismatch`] record is dropped by the read task.
+    fn read_call_prefix(&mut self) -> rpc::Result<()> {
         let msg_type = u32(&mut self.reader).map_err(map_parser_to_rpc)?;
         if msg_type != RpcBody::Call as u32 {
             error!(msg_type, "rpc parse reject: unexpected msg_type");
-            return Err(RpcError::MessageTypeMismatch);
+            return Err(rpc::Error::MessageTypeMismatch);
         }
 
         let rpc_version = u32(&mut self.reader).map_err(map_parser_to_rpc)?;
         if rpc_version != RPC_VERSION {
             error!(rpc_version, expected = RPC_VERSION, "rpc parse reject: rpc_version mismatch");
-            return Err(RpcError::RpcVersionMismatch(VersionMismatch {
+            return Err(rpc::Error::RpcVersionMismatch(VersionMismatch {
                 low: RPC_VERSION,
                 high: RPC_VERSION,
             }));
@@ -225,10 +221,10 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// [`Self::read_call_prefix`] together with the raw credential and
     /// verifier opaques, without applying any semantic validation.
     ///
-    /// Errors returned by this function are parser-level ([`Error`]) — an I/O
+    /// Errors returned by this function are parser-level ([`parser::Error`]) — an I/O
     /// or XDR decode failure — as opposed to the semantic rpc errors that the
     /// caller produces from the returned fields via [`Self::validate_header`].
-    fn read_rpc_header(&mut self) -> Result<RawHeader> {
+    fn read_rpc_header(&mut self) -> parser::Result<RawHeader> {
         let program = u32(&mut self.reader)?;
         let version = u32(&mut self.reader)?;
         let procedure = u32(&mut self.reader)?;
@@ -243,7 +239,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// The checks performed here turn raw wire values into the rpc-level errors
     /// the server understands (`msg_type` and `rpcvers` are already validated
     /// by [`Self::read_call_prefix`]):
-    /// - The credential/verifier pair must be acceptable ([`RpcError::Auth`])
+    /// - The credential/verifier pair must be acceptable ([`rpc::Error::Auth`])
     ///
     /// Both `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX uid/gid) credentials
     /// are accepted; the `AUTH_SYS` body is decoded into an [`AuthSysParams`].
@@ -252,7 +248,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// body (RFC 5531 §8.2); anything else is rejected with [`AuthStat::BadVerf`].
     ///
     /// [`AuthSysParams`]: crate::rpc::auth::AuthSysParams
-    fn validate_header(&self, raw: &RawHeader) -> RpcResult<RpcMessage> {
+    fn validate_header(&self, raw: &RawHeader) -> rpc::Result<RpcMessage> {
         let credential = match raw.credential.flavor {
             AuthFlavor::None if raw.credential.body.is_empty() => Credential::None,
             AuthFlavor::Sys => match authsys_parms(&mut raw.credential.body.as_slice()) {
@@ -263,7 +259,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         error=?err,
                         "rpc auth reject: malformed AUTH_SYS credential",
                     );
-                    return Err(RpcError::Auth(AuthStat::BadCred));
+                    return Err(rpc::Error::Auth(AuthStat::BadCred));
                 }
             },
             _ => {
@@ -272,7 +268,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                     cred_len=%raw.credential.body.len(),
                     "rpc auth reject: unsupported credential flavor",
                 );
-                return Err(RpcError::Auth(AuthStat::BadCred));
+                return Err(rpc::Error::Auth(AuthStat::BadCred));
             }
         };
 
@@ -282,7 +278,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                 verf_len=%raw.verifier.body.len(),
                 "rpc auth reject: invalid verifier",
             );
-            return Err(RpcError::Auth(AuthStat::BadVerf));
+            return Err(rpc::Error::Auth(AuthStat::BadVerf));
         }
 
         debug!(
@@ -305,8 +301,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// All arguments are parsed synchronously from the buffered head window,
     /// except for the opaque `WRITE` payload which is streamed via
     /// [`adapter_for_write`]. Unknown procedures are rejected earlier as an
-    /// rpc-level [`RpcError::ProcedureMismatch`], so this match is exhaustive.
-    async fn parse_nfs_proc(&mut self, procedure: NfsProc) -> Result<NfsArguments<A::Buffer>> {
+    /// rpc-level [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    async fn parse_nfs_proc(
+        &mut self,
+        procedure: NfsProc,
+    ) -> parser::Result<NfsArguments<A::Buffer>> {
         let src = &mut self.reader;
         let args = match procedure {
             NfsProc::Null => NfsArguments::Null,
@@ -323,7 +322,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             NfsProc::Create => NfsArguments::Create(create::args(src)?),
             NfsProc::MkDir => NfsArguments::MkDir(mk_dir::args(src)?),
             NfsProc::SymLink => NfsArguments::SymLink(symlink::args(src)?),
-            NfsProc::MkNode => NfsArguments::MkNod(mk_node::args(src)?),
+            NfsProc::MkNod => NfsArguments::MkNod(mk_node::args(src)?),
             NfsProc::Remove => NfsArguments::Remove(remove::args(src)?),
             NfsProc::RmDir => NfsArguments::RmDir(rm_dir::args(src)?),
             NfsProc::Rename => NfsArguments::Rename(rename::args(src)?),
@@ -341,8 +340,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Parses MOUNT procedure arguments from the current frame.
     ///
     /// Unknown procedures are rejected earlier as an rpc-level
-    /// [`RpcError::ProcedureMismatch`], so this match is exhaustive.
-    fn parse_mount_proc(&mut self, procedure: MountProc) -> Result<MountArguments> {
+    /// [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    fn parse_mount_proc(&mut self, procedure: MountProc) -> parser::Result<MountArguments> {
         let args = match procedure {
             MountProc::Null => MountArguments::Null,
             MountProc::Mnt => MountArguments::Mount(mount(&mut self.reader)?),
@@ -357,8 +356,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// Parses NLM procedure arguments from the current frame.
     ///
     /// Unknown procedures are rejected earlier as an rpc-level
-    /// [`RpcError::ProcedureMismatch`], so this match is exhaustive.
-    fn parse_nlm_proc(&mut self, procedure: NlmProc) -> Result<NlmArguments> {
+    /// [`rpc::Error::ProcedureMismatch`], so this match is exhaustive.
+    fn parse_nlm_proc(&mut self, procedure: NlmProc) -> parser::Result<NlmArguments> {
         let args = match procedure {
             NlmProc::Null => NlmArguments::Null,
             NlmProc::Lock => NlmArguments::Lock(lock(&mut self.reader)?),
@@ -424,12 +423,12 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// The version is checked before the procedure: procedure numbers are only
     /// defined within a program version (RFC 5531 §8.1), so a call to an
-    /// unsupported version gets [`RpcError::ProgramVersionMismatch`] with the
-    /// supported range rather than [`RpcError::ProcedureMismatch`].
+    /// unsupported version gets [`rpc::Error::ProgramVersionMismatch`] with the
+    /// supported range rather than [`rpc::Error::ProcedureMismatch`].
     async fn parse_next_message_with_header(
         &mut self,
         head: &RpcMessage,
-    ) -> RpcResult<ProcArguments<A::Buffer>> {
+    ) -> rpc::Result<ProcArguments<A::Buffer>> {
         match head.program {
             NFS_PROGRAM => {
                 if head.version != NFS_VERSION {
@@ -438,13 +437,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         expected = NFS_VERSION,
                         "rpc parse reject: nfs version mismatch",
                     );
-                    return Err(RpcError::ProgramVersionMismatch(VersionMismatch {
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
                         low: NFS_VERSION,
                         high: NFS_VERSION,
                     }));
                 }
                 let procedure =
-                    NfsProc::from_u32(head.procedure).ok_or(RpcError::ProcedureMismatch)?;
+                    NfsProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
                 let args = self.parse_nfs_proc(procedure).await.map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Nfs3(Box::new(args)))
             }
@@ -455,13 +454,13 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         expected = MOUNT_VERSION,
                         "rpc parse reject: mount version mismatch",
                     );
-                    return Err(RpcError::ProgramVersionMismatch(VersionMismatch {
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
                         low: MOUNT_VERSION,
                         high: MOUNT_VERSION,
                     }));
                 }
                 let procedure =
-                    MountProc::from_u32(head.procedure).ok_or(RpcError::ProcedureMismatch)?;
+                    MountProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
                 let args = self.parse_mount_proc(procedure).map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Mount(Box::new(args)))
             }
@@ -472,19 +471,19 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
                         expected = NLM_VERSION,
                         "rpc parse reject: NLM version mismatch",
                     );
-                    return Err(RpcError::ProgramVersionMismatch(VersionMismatch {
+                    return Err(rpc::Error::ProgramVersionMismatch(VersionMismatch {
                         low: NLM_VERSION,
                         high: NLM_VERSION,
                     }));
                 }
                 let procedure =
-                    NlmProc::from_u32(head.procedure).ok_or(RpcError::ProcedureMismatch)?;
+                    NlmProc::from_u32(head.procedure).ok_or(rpc::Error::ProcedureMismatch)?;
                 let args = self.parse_nlm_proc(procedure).map_err(map_parser_to_rpc)?;
                 Ok(ProcArguments::Nlm4(Box::new(args)))
             }
             _ => {
                 warn!(program = head.program, "rpc parse reject: unknown program");
-                Err(RpcError::ProgramMismatch)
+                Err(rpc::Error::ProgramMismatch)
             }
         }
     }
@@ -495,9 +494,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns `Ok(())` if validation passes, or an error if unparsed data
     /// remains in the frame (indicating a parsing bug or malformed message).
-    fn finalize_parsing(&mut self) -> Result<()> {
+    fn finalize_parsing(&mut self) -> parser::Result<()> {
         if self.reader.frame_remaining() != 0 {
-            return Err(Error::IO(io::Error::new(
+            return Err(parser::Error::IO(io::Error::new(
                 ErrorKind::InvalidData,
                 "Unparsed data remaining in frame",
             )));
@@ -518,7 +517,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     /// # Returns
     ///
     /// Returns the error, potentially replaced by an I/O error if discarding fails.
-    async fn match_errors(&mut self, error: RpcError) -> RpcError {
+    async fn match_errors(&mut self, error: rpc::Error) -> rpc::Error {
         proc_nested_errors(error, self.discard_current_message()).await
     }
 
@@ -532,8 +531,8 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// Returns `Ok(())` if the message was successfully discarded, or an error
     /// if an I/O error occurs while discarding.
-    async fn discard_current_message(&mut self) -> RpcResult<()> {
-        self.reader.discard_rest_of_frame().await.map_err(RpcError::IO)
+    async fn discard_current_message(&mut self) -> rpc::Result<()> {
+        self.reader.discard_rest_of_frame().await.map_err(rpc::Error::IO)
     }
 }
 
@@ -563,7 +562,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 async fn adapter_for_write<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> Result<vfs::write::Args<A::Buffer>>
+) -> parser::Result<vfs::write::Args<A::Buffer>>
 where
     A: Allocator,
     S: AsyncRead + Unpin,
@@ -579,7 +578,10 @@ where
     // otherwise, the declared length is bogus and reading it would consume
     // bytes of the next message, misaligning the stream.
     let bounds_error = || {
-        Error::IO(io::Error::new(ErrorKind::InvalidData, "WRITE data length exceeds frame size"))
+        parser::Error::IO(io::Error::new(
+            ErrorKind::InvalidData,
+            "WRITE data length exceeds frame size",
+        ))
     };
     let padded = size.checked_add(padding).ok_or_else(bounds_error)?;
     if padded > reader.frame_remaining() {
@@ -590,7 +592,7 @@ where
     // buffered window first and reads the rest directly from the socket.
     let mut buffer_data = match NonZeroUsize::new(size) {
         Some(non_zero_size) => alloc.allocate(non_zero_size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+            parser::Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
         })?,
         None => A::Buffer::empty(),
     };
@@ -601,18 +603,18 @@ where
             break;
         }
         let take = min(chunk.len(), left);
-        reader.read_body_exact(&mut chunk[..take]).await.map_err(Error::IO)?;
+        reader.read_body_exact(&mut chunk[..take]).await.map_err(parser::Error::IO)?;
         left -= take;
     }
     if left != 0 {
-        return Err(Error::IO(io::Error::new(
+        return Err(parser::Error::IO(io::Error::new(
             ErrorKind::InvalidInput,
             "allocated buffer is smaller than WRITE data",
         )));
     }
 
     // Discard any trailing padding bytes after the data.
-    reader.discard_body(padding).await.map_err(Error::IO)?;
+    reader.discard_body(padding).await.map_err(parser::Error::IO)?;
     Ok(vfs::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
@@ -643,7 +645,7 @@ where
 async fn adapter_for_read<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> Result<(vfs::read::Args, A::Buffer)>
+) -> parser::Result<(vfs::read::Args, A::Buffer)>
 where
     A: Allocator,
     S: AsyncRead + Unpin,
@@ -655,7 +657,7 @@ where
     } else {
         let size = NonZeroUsize::new(args.count as usize).unwrap();
         alloc.allocate(size).await.ok_or_else(|| {
-            Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
+            parser::Error::IO(io::Error::new(ErrorKind::OutOfMemory, "cannot allocate memory"))
         })?
     };
 

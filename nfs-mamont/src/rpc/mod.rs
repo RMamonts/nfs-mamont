@@ -7,6 +7,8 @@ use auth::AuthStat;
 
 pub mod auth;
 
+pub type Result<T> = core::result::Result<T, Error>;
+
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
