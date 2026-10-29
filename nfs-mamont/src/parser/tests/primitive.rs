@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use byteorder::{BigEndian, WriteBytesExt};
 
+use crate::consts::xdr::padding_len;
 use crate::parser::primitive::{array, string, string_max_size, vector};
 use crate::parser::Error;
 
@@ -13,8 +14,7 @@ fn test_vec_u8() {
     for i in &init {
         src.write_u8(*i).unwrap();
     }
-    let padding_len = (4 - (init.len() % 4)) % 4;
-    src.extend(vec![0u8; padding_len]);
+    src.extend(vec![0u8; padding_len(init.len())]);
 
     let result = vector(&mut Cursor::new(src)).unwrap();
     assert_eq!(result, init);
@@ -92,8 +92,7 @@ fn test_string_with_max_len_too_long() {
 
     src.write_u32::<BigEndian>(test_string.len() as u32).unwrap();
     src.extend_from_slice(test_string.as_bytes());
-    let padding_len = (4 - (test_string.len() % 4)) % 4;
-    src.extend(vec![0u8; padding_len]);
+    src.extend(vec![0u8; padding_len(test_string.len())]);
 
     let result = string_max_size(&mut Cursor::new(src), 10);
     assert!(matches!(result, Err(Error::MaxElemLimit)));
