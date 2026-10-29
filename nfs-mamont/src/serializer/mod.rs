@@ -9,9 +9,15 @@
 //!   big-endian (network byte order)
 //! - **4-byte alignment**: All data structures are aligned to 4-byte boundaries
 //!   with padding bytes inserted as needed
+//!
+//! Two sets of serializers are provided:
+//!
+//! - [`server`] — serializers for building NFS/MOUNT/NLM **replies** (used by the
+//!   server implementation, always available).
+//! - [`client`] — serializers for building **request arguments** for the NFS/MOUNT
+//!   client side, enabled with the `client` cargo feature.
 
-#[allow(dead_code)]
-#[cfg(test)]
+#[cfg(feature = "client")]
 pub mod client;
 
 pub mod server;
