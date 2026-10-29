@@ -4,20 +4,21 @@ use std::io::Read;
 use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::nfsv3::set_attr::new_attr;
-use crate::parser::primitive::{array, u32};
-use crate::parser::{Error, Result};
+use crate::parser::primitive::{array, variant};
+use crate::parser::Result;
 use crate::vfs::create;
-use crate::vfs::create::Verifier;
+use crate::vfs::create::{HowMode, Verifier};
 
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 
 /// Parses a [`create::How`] enum from the provided `Read` source.
 pub fn how(src: &mut impl Read) -> Result<create::How> {
-    match u32(src)? {
-        0 => Ok(create::How::Unchecked(new_attr(src)?)),
-        1 => Ok(create::How::Guarded(new_attr(src)?)),
-        2 => Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?))),
-        _ => Err(Error::EnumDiscMismatch),
+    match variant::<HowMode>(src)? {
+        HowMode::Unchecked => Ok(create::How::Unchecked(new_attr(src)?)),
+        HowMode::Guarded => Ok(create::How::Guarded(new_attr(src)?)),
+        HowMode::Exclusive => {
+            Ok(create::How::Exclusive(Verifier(array::<{ NFS3_CREATEVERFSIZE }>(src)?)))
+        }
     }
 }
 

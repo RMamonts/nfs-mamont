@@ -9,6 +9,7 @@ pub mod auth;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+#[repr(u32)]
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -18,18 +19,21 @@ pub enum AcceptStat {
     SystemErr = 5,
 }
 
+#[repr(u32)]
 #[derive(ToPrimitive, FromPrimitive)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
 
+#[repr(u32)]
 pub enum ReplyBody {
     MsgAccepted = 0,
     MsgDenied = 1,
 }
 
 /// Authentication flavors.
+#[repr(u32)]
 #[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum AuthFlavor {
@@ -47,6 +51,7 @@ pub struct OpaqueAuth {
     pub body: Vec<u8>,
 }
 
+#[repr(u32)]
 pub enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,

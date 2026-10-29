@@ -131,6 +131,7 @@ impl Path {
 }
 
 /// Type of file.
+#[repr(u32)]
 #[derive(Clone, Copy, FromPrimitive, ToPrimitive)]
 pub enum Type {
     /// Regular file.

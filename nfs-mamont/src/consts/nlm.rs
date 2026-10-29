@@ -4,6 +4,7 @@ pub const NLM_PROGRAM: u32 = 100021;
 pub const NLM_VERSION: u32 = 4;
 
 /// NLMv4 procedures (RFC 1813 §6.2, Appendix II) as a type-safe enum.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum NlmProc {
     Null = 0,

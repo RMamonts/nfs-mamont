@@ -3,10 +3,10 @@
 use std::io::Read;
 
 use crate::parser::nfsv3::file;
-use crate::parser::primitive::{bool, option, u32, u64};
-use crate::parser::{Error, Result};
+use crate::parser::primitive::{bool, option, u32, u64, variant};
+use crate::parser::Result;
 use crate::vfs::set_attr;
-use crate::vfs::set_attr::{Guard, NewAttr, SetTime};
+use crate::vfs::set_attr::{Guard, NewAttr, SetTime, SetTimeMode};
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
@@ -22,11 +22,10 @@ pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {
 
 /// Parses a [`SetTime`] enum from the provided `Read` source.
 pub fn set_time(src: &mut impl Read) -> Result<SetTime> {
-    match u32(src)? {
-        0 => Ok(SetTime::DontChange),
-        1 => Ok(SetTime::ToServer),
-        2 => Ok(SetTime::ToClient(file::time(src)?)),
-        _ => Err(Error::EnumDiscMismatch),
+    match variant::<SetTimeMode>(src)? {
+        SetTimeMode::DontChange => Ok(SetTime::DontChange),
+        SetTimeMode::ToServer => Ok(SetTime::ToServer),
+        SetTimeMode::ToClient => Ok(SetTime::ToClient(file::time(src)?)),
     }
 }
 

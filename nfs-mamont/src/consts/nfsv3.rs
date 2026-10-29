@@ -4,6 +4,7 @@ pub const NFS_PROGRAM: u32 = 100003;
 pub const NFS_VERSION: u32 = 3;
 
 /// NFSv3 procedures (RFC 1813 §3.3) as a type-safe enum.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum NfsProc {
     Null = 0,
