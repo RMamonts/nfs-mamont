@@ -18,6 +18,7 @@ use crate::nlm::procedures::{
 };
 
 /// `Nlm4Stats` indicates the success or failure of a call.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.

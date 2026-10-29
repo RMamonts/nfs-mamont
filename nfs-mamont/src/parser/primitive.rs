@@ -6,13 +6,13 @@ use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use super::{Error, Result};
-use crate::consts::xdr::ALIGNMENT;
+use crate::consts::xdr::{padding_len, ALIGNMENT};
 
 /// Reads and discards padding bytes to ensure XDR alignment.
 #[inline]
 pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
-    let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
+    let padding = padding_len(n);
     src.read_exact(&mut buf[..padding]).map_err(|_| Error::InvalidData)
 }
 

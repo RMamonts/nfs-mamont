@@ -6,6 +6,7 @@ use crate::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::nlm::{NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::RPC_VERSION;
+use crate::consts::xdr::padding_len;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
@@ -57,8 +58,7 @@ pub fn push_bytes(buf: &mut Vec<u8>, bytes: &[u8]) {
 /// * `buf` - The buffer to pad.
 /// * `content_len` - Length of the newly appended content that may require padding.
 fn pad_to_alignment(buf: &mut Vec<u8>, content_len: usize) {
-    let padding_needed = (4 - (content_len & 3)) & 3;
-    buf.extend(std::iter::repeat(0).take(padding_needed));
+    buf.extend(std::iter::repeat(0).take(padding_len(content_len)));
 }
 
 /// Appends an XDR opaque field: 4-byte length prefix, data, then padding for 4-byte alignment.

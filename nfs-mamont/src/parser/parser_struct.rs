@@ -31,7 +31,7 @@ use crate::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
 use crate::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::nlm::{NlmProc, NLM_PROGRAM, NLM_VERSION};
 use crate::consts::rpc::{HEADER_MASK, MAX_FRAGMENT_SIZE, RPC_VERSION};
-use crate::consts::xdr::ALIGNMENT;
+use crate::consts::xdr::padding_len;
 use crate::parser;
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
@@ -571,8 +571,8 @@ where
     let part_arg = write::args(reader)?;
     let size = u32_as_usize(reader)?;
 
-    // Calculate the necessary padding to maintain ALIGNMENT
-    let padding = (ALIGNMENT - (size % ALIGNMENT)) % ALIGNMENT;
+    // Calculate the necessary padding to maintain XDR alignment.
+    let padding = padding_len(size);
 
     // The opaque data with its padding must lie within the current frame;
     // otherwise, the declared length is bogus and reading it would consume
