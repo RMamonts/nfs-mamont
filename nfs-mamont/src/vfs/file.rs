@@ -11,7 +11,27 @@ use crate::consts::nfsv3::NFS3_FHSIZE;
 ///
 /// Encoded in the first byte of every [`Handle`], which limits the server to
 /// [`BackendId::MAX`] + 1 simultaneously attached backends.
-pub type BackendId = u8;
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BackendId(u8);
+
+impl BackendId {
+    /// The lowest backend index that can be assigned.
+    pub const MIN: Self = Self(u8::MIN);
+    /// The highest backend index that can be assigned.
+    pub const MAX: Self = Self(u8::MAX);
+
+    /// Builds a backend id from its raw index.
+    #[inline]
+    pub fn new(id: u8) -> BackendId {
+        BackendId(id)
+    }
+
+    /// Returns the raw index of the backend id.
+    #[inline]
+    pub fn raw(&self) -> u8 {
+        self.0
+    }
+}
 
 /// Size of the backend-specific part of a [`Handle`], in bytes.
 pub const PAYLOAD_SIZE: usize = NFS3_FHSIZE - 1;
@@ -30,7 +50,7 @@ impl Handle {
     /// Builds a handle owned by `backend` from a backend-specific `payload`.
     pub fn new(backend: BackendId, payload: [u8; PAYLOAD_SIZE]) -> Self {
         let mut raw = [0u8; NFS3_FHSIZE];
-        raw[0] = backend;
+        raw[0] = backend.raw();
         raw[1..].copy_from_slice(&payload);
         Handle(raw)
     }
@@ -38,7 +58,7 @@ impl Handle {
     /// Returns the index of the backend that owns the object behind this handle.
     #[inline]
     pub fn backend_id(&self) -> BackendId {
-        self.0[0]
+        BackendId(self.0[0])
     }
 
     /// Returns the backend-specific part of the handle.
@@ -50,29 +70,22 @@ impl Handle {
     }
 
     /// Returns the raw bytes of the handle.
+    #[cfg(test)]
     #[inline]
-    pub fn as_bytes(&self) -> &[u8; NFS3_FHSIZE] {
+    pub(crate) fn as_bytes(&self) -> &[u8; NFS3_FHSIZE] {
         &self.0
     }
 
     /// Consumes the handle and returns its raw bytes.
     #[inline]
-    pub fn into_bytes(self) -> [u8; NFS3_FHSIZE] {
+    pub(crate) fn into_bytes(self) -> [u8; NFS3_FHSIZE] {
         self.0
     }
 
     /// Builds a handle from raw bytes as received from the NFS client.
     #[inline]
-    pub fn from_bytes(bytes: [u8; NFS3_FHSIZE]) -> Self {
+    pub(crate) fn from_bytes(bytes: [u8; NFS3_FHSIZE]) -> Self {
         Handle(bytes)
-    }
-
-    /// Builds a handle owned by the same backend as `self` but with a new
-    /// backend-specific `payload`.
-    #[inline]
-    pub fn make_child(&self, payload: [u8; PAYLOAD_SIZE]) -> Self {
-        let backend_id = self.backend_id();
-        Handle::new(backend_id, payload)
     }
 }
 

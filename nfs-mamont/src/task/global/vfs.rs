@@ -262,7 +262,7 @@ where
                 warn!(
                     xid = header.xid,
                     proc = %proc_name,
-                    backend = backend_id,
+                    backend = backend_id.raw(),
                     "no backend attached for this file handle"
                 );
 
@@ -323,11 +323,11 @@ mod tests {
     use super::{failed_response, target, Target};
     use crate::allocator::Slice;
     use crate::parser::NfsArguments;
-    use crate::vfs::file::{Handle, PAYLOAD_SIZE};
+    use crate::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
     use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
 
     fn handle(backend: u8) -> Handle {
-        Handle::new(backend, [0x01; PAYLOAD_SIZE])
+        Handle::new(BackendId::new(backend), [0x01; PAYLOAD_SIZE])
     }
 
     fn name() -> vfs::file::Name {
@@ -345,7 +345,7 @@ mod tests {
     fn backend_is_taken_from_the_handle() {
         let proc = NfsArguments::<Slice>::GetAttr(get_attr::Args { file: handle(3) });
 
-        assert!(matches!(target(&proc), Target::Single(3)));
+        assert!(matches!(target(&proc), Target::Single(id) if id == BackendId::new(3)));
     }
 
     #[test]
@@ -355,7 +355,7 @@ mod tests {
             to: DirOpArgs { dir: handle(2), name: name() },
         });
 
-        assert!(matches!(target(&proc), Target::Single(2)));
+        assert!(matches!(target(&proc), Target::Single(id) if id == BackendId::new(2)));
     }
 
     #[test]
