@@ -23,7 +23,7 @@ fn test_set_attr() {
 
     let args = args(&mut Cursor::new(DATA)).unwrap();
 
-    assert_eq!(args.file.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(*args.file.as_bytes(), [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
     assert_eq!(args.new_attr.mode, Some(256));
     assert_eq!(args.new_attr.uid, Some(1));
     assert_eq!(args.new_attr.gid, Some(2));

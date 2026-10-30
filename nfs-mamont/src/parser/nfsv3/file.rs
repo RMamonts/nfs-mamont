@@ -15,7 +15,7 @@ pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
         return Err(Error::BadFileHandle);
     }
     let array = array::<{ NFS3_FHSIZE }>(src)?;
-    Ok(file::Handle(array))
+    Ok(file::Handle::from_bytes(array))
 }
 
 /// Parses a [`file::Type`] from the provided `Read` source.

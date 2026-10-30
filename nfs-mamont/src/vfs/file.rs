@@ -24,7 +24,7 @@ pub const PAYLOAD_SIZE: usize = NFS3_FHSIZE - 1;
 /// remaining [`PAYLOAD_SIZE`] bytes are opaque to the server and interpreted only
 /// by that backend.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Handle(pub [u8; NFS3_FHSIZE]);
+pub struct Handle([u8; NFS3_FHSIZE]);
 
 impl Handle {
     /// Builds a handle owned by `backend` from a backend-specific `payload`.
@@ -47,6 +47,32 @@ impl Handle {
         let mut payload = [0u8; PAYLOAD_SIZE];
         payload.copy_from_slice(&self.0[1..]);
         payload
+    }
+
+    /// Returns the raw bytes of the handle.
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8; NFS3_FHSIZE] {
+        &self.0
+    }
+
+    /// Consumes the handle and returns its raw bytes.
+    #[inline]
+    pub fn into_bytes(self) -> [u8; NFS3_FHSIZE] {
+        self.0
+    }
+
+    /// Builds a handle from raw bytes as received from the NFS client.
+    #[inline]
+    pub fn from_bytes(bytes: [u8; NFS3_FHSIZE]) -> Self {
+        Handle(bytes)
+    }
+
+    /// Builds a handle owned by the same backend as `self` but with a new
+    /// backend-specific `payload`.
+    #[inline]
+    pub fn make_child(&self, payload: [u8; PAYLOAD_SIZE]) -> Self {
+        let backend_id = self.backend_id();
+        Handle::new(backend_id, payload)
     }
 }
 

@@ -131,7 +131,7 @@ mod tests {
     use crate::vfs::file;
 
     fn handle(byte: u8) -> file::Handle {
-        file::Handle([byte; NFS3_FHSIZE])
+        file::Handle::from_bytes([byte; NFS3_FHSIZE])
     }
 
     fn path(name: &str) -> file::Path {
