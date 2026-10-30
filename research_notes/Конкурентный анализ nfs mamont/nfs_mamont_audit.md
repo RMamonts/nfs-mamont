@@ -115,7 +115,7 @@ nfs-mamont построен как конвейер tokio-задач без со
 
 ### Cited Findings
 - **Устройство трейта.** `pub trait Vfs<B: Buffer>` = `GetAttr + SetAttr + Lookup + Access + ReadLink + Read<B> + Write<B> + Create + MkDir + Symlink + MkNode + Remove + RmDir + Rename + Link + ReadDir + ReadDirPlus + FsStat + FsInfo + PathConf + Commit`, плюс blanket-impl. У самого `Vfs` нет doc-комментария. Источник: `nfs-mamont/src/vfs/mod.rs:157-207`.
-- **Стиль под-трейтов.** Каждый выглядит как `#[trait_variant::make(Send)] pub trait X { async fn x(&self, args: Args, cred: &Credential) -> Result<Success, Fail>; }`. Пример: `nfs-mamont/src/vfs/read.rs:51-62`, `vfs/write.rs:92-102`, `vfs/commit.rs:36-40`. По grep все 29 `async fn` в трейтах `vfs/`, `mount/`, `nlm/procedures/` объявлены без тела по умолчанию.
+- **Стиль под-трейтов.** Каждый выглядит как `#[trait_variant::make(Send)] pub trait X { async fn x(&self, args: Args, cred: &Credential) -> Result<Success, Fail>; }`. Пример: `nfs-mamont/src/vfs/read.rs:51-62`, `vfs/write.rs:92-102`, `vfs/commit.rs:36-40`. По grep все 30 `async fn` в трейтах `vfs/` (21), `mount/` (5) и `nlm/procedures/` (4) объявлены без тела по умолчанию: 29 однострочных объявлений и многострочная сигнатура `mnt`.
 - **Что приходит в метод.** Только `args` и `&Credential`, адреса клиента нет. MOUNT, напротив, получает `client_addr: SocketAddr`. Источник: `nfs-mamont/src/vfs/read.rs:61`, `mount/mnt.rs:65-70`.
 - **Ошибки.** `vfs::Error` повторяет `nfsstat3` (Permission=1 … JUKEBOX=10008, `#[repr(u32)]`). Каждый `Fail` несёт post-op атрибуты или WCC, `NfsRes<B>` оборачивает все результаты. Источник: `nfs-mamont/src/vfs/mod.rs:42-137, 139-143, 209-264`.
 - **Контракт READ.** Буфер под данные выделяет сервер. Бэкенд заполняет его и обязан обеспечить `count <= data.len()`, иначе «server will not be able to send a reply». Источник: `nfs-mamont/src/vfs/read.rs:51-61`, `serializer/server/serialize_struct.rs:361-367`. WRITE получает `Args<B>` с буфером данных и отдельным полем `size`. Источник: `nfs-mamont/src/vfs/write.rs:53-70`.
@@ -197,7 +197,7 @@ nfs-mamont построен как конвейер tokio-задач без со
 - нет крейт-уровневых lint-атрибутов, конфигурация минимальна.
 
 ### Cited Findings
-- **`unsafe`:** 14 вхождений, все в `allocator/` — `unsafe impl Send/Sync` для `AllocatorState` и `UnownedBuffer`, `alloc_zeroed`, `dealloc`, `mlock`/`munlock`, `ptr.add`, `slice::from_raw_parts(_mut)`, `pub unsafe fn from_raw_parts`. Источник: `nfs-mamont/src/allocator/mod.rs:32-33, 39-42, 120, 129, 137-139`, `allocator/buffer.rs:18, 31-32, 38, 44`.
+- **`unsafe`:** 13 строк, все в `allocator/` — `unsafe impl Send/Sync` для `AllocatorState` и `UnownedBuffer`, `alloc_zeroed`, `dealloc`, `mlock`/`munlock`, `ptr.add`, `slice::from_raw_parts(_mut)`, `pub unsafe fn from_raw_parts`. Источник: `nfs-mamont/src/allocator/mod.rs:32-33, 39-42, 120, 129, 137-139`, `allocator/buffer.rs:18, 31-32, 38, 44`.
   - Раздел `# Safety` есть только у `UnownedBuffer::from_raw_parts` (`allocator/buffer.rs:10-17`); комментариев `// SAFETY:` у блоков нет.
   - Сам `UnownedBuffer` с `pub unsafe fn` реэкспортирован наружу (`lib.rs:36`).
 - **Паники в нетестовом коде: 12 мест** (собственный скрипт, без тестовых модулей):
@@ -267,7 +267,7 @@ nfs-mamont построен как конвейер tokio-задач без со
   - `udeps`: nightly `cargo-udeps`.
   - Тулчейны закреплены, а не `stable`; README обещает «current stable». nextest закомментирован. Покрытия и macOS/Windows-раннеров нет.
   - Источник: `.github/workflows/rust-ci.yml:16-143`, `README.md:46-47`.
-- **Статистика CI-запусков.** `rust-ci.yml`: всего 1124 запуска. Из последних 100 — 80 success, 19 failure, 1 action_required. Последние 19 запусков на `main` все success (2026-10-30). Источник: https://api.github.com/repos/RMamonts/nfs-mamont/actions/workflows/rust-ci.yml/runs.
+- **Статистика CI-запусков.** `rust-ci.yml`: всего 1124 запуска. Из последних 100 — 80 success, 19 failure (все не на `main`, то есть на ветках PR), 1 action_required. На `main` из этих 100 пришлось 19 запусков, и все они success (2026-10-30). Источник: https://api.github.com/repos/RMamonts/nfs-mamont/actions/workflows/rust-ci.yml/runs.
 - **Релиз.** `release.yml` срабатывает на `release: published`, использует environment `crates-io`, проверяет совпадение тега с версией (`v$version`), делает `cargo publish --dry-run`, затем `rust-lang/crates-io-auth-action@v1` (OIDC) и `cargo publish --locked`. Запусков три: v0.1.1 сначала failure, затем success; v0.2.0 success. Источник: `.github/workflows/release.yml:1-51`, https://api.github.com/repos/RMamonts/nfs-mamont/actions/workflows/release.yml/runs.
   - Крейт создан на crates.io 2026-10-09 12:31 UTC, раньше GitHub-релиза v0.1.0 (20:58 UTC). По-видимому, 0.1.0 опубликован вручную. Источник: https://crates.io/api/v1/crates/nfs-mamont, https://api.github.com/repos/RMamonts/nfs-mamont/releases.
 - **Защита веток и тегов** (rulesets API, 2026-10-30):
@@ -276,7 +276,7 @@ nfs-mamont построен как конвейер tokio-задач без со
   - Ruleset «Copilot review» отключён.
   - Источник: https://api.github.com/repos/RMamonts/nfs-mamont/rulesets.
 - **Dependabot** только для `github-actions` (weekly). Обновлений `cargo` нет. Источник: `.github/dependabot.yml:1-6`.
-- **Конформанс.** Упоминаний pjdfstest, cthon, pynfs, xfstests, «conformance», macOS, Windows, FreeBSD, UDP, RPCSEC нет ни в коде, ни в телах всех 440 issue и PR, ни в 370 комментариях (поиск 2026-10-30 по выгрузке https://api.github.com/repos/RMamonts/nfs-mamont/issues?state=all и /issues/comments).
+- **Конформанс.** В телах всех 440 issue и PR и в 370 комментариях нет упоминаний pjdfstest, cthon, pynfs, xfstests, «conformance», macOS, Windows, FreeBSD, UDP и RPCSEC (поиск 2026-10-30 по выгрузке https://api.github.com/repos/RMamonts/nfs-mamont/issues?state=all и /issues/comments). В коде, конфигах CI и wiki нет ни этих наборов, ни упоминаний macOS, Windows, FreeBSD и UDP; RPCSEC_GSS встречается только как значения enum `AuthFlavor::RpcSecGss` и `AuthStat` (`nfs-mamont/src/rpc/mod.rs:44`, `rpc/auth.rs:48-53`).
 - **Реальный клиент ядра используется только вручную:**
   - fio по смонтированному Linux-клиентом экспорту (PR #100);
   - логи монтирования ядром Linux в issue #430;
