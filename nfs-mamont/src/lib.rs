@@ -73,12 +73,14 @@ where
     // TODO: will be replaced with other solution in future
     let mut shutdown = Box::pin(signal::ctrl_c());
 
+    let mut client_id = 0;
     let accept_result = loop {
         tokio::select! {
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
+                        connection::new(socket, client_id, mount_sender.clone(), nlm_sender.clone(), &context);
+                        client_id += 1;
                     }
                     Err(err) if is_fatal_accept_error(&err) => break Err(err),
                     Err(err) => {

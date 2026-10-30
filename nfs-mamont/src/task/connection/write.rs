@@ -9,6 +9,7 @@ use crate::task::ProcReply;
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
+    client_id: u64,
     result_receiver: async_channel::Receiver<ProcReply<B>>,
 }
 
@@ -16,9 +17,10 @@ impl<B: Buffer> WriteTask<B> {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: OwnedWriteHalf,
+        client_id: u64,
         result_receiver: async_channel::Receiver<ProcReply<B>>,
     ) -> Self {
-        Self { writehalf, result_receiver }
+        Self { writehalf, client_id, result_receiver }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.

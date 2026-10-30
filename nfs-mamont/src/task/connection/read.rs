@@ -55,6 +55,7 @@ pub struct ReadTask<
 > {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
+    client_id: u64,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
 }
@@ -68,10 +69,11 @@ where
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
+        client_id: u64,
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self { readhalf, client_addr, allocator, command_senders }
+        Self { readhalf, client_addr, client_id, allocator, command_senders }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
