@@ -31,7 +31,10 @@ fn test_mknod_fifo() {
     let data = wrap_what_with_args(&[[0, 0, 0, 7].as_slice(), EMPTY_NEW_ATTR].concat());
     let result = args(&mut Cursor::new(data)).unwrap();
 
-    assert_eq!(result.object.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(
+        *result.object.dir.as_bytes(),
+        [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+    );
     assert_eq!(result.object.name.as_str(), "node");
     assert!(matches!(
         result.what,
