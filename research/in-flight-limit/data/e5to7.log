@@ -1,0 +1,15 @@
+===== e5 =====
+E5 getattr  main                           accepted    5535232  RSS final   1633.1 MiB  HWM   1633.1 MiB  timeline [135, 508, 871, 1230, 1463, 1633]
+E5 getattr  branch                         accepted      95180  RSS final      4.4 MiB  HWM      4.4 MiB  timeline [4, 4, 4, 4, 4, 4]
+E5 getattr  branch --max-in-flight 32      accepted      95180  RSS final      4.1 MiB  HWM      4.1 MiB  timeline [4, 4, 4, 4, 4, 4]
+E5 null     main                           accepted   10212096  RSS final   2988.0 MiB  HWM   2988.0 MiB  timeline [303, 1405, 1851, 2276, 2679, 2988]
+E5 null     branch                         accepted     229853  RSS final      4.3 MiB  HWM      4.3 MiB  timeline [4, 4, 4, 4, 4, 4]
+E5 null     branch --max-in-flight 32      accepted     229853  RSS final      4.2 MiB  HWM      4.2 MiB  timeline [4, 4, 4, 4, 4, 4]
+===== e6 =====
+E6 main                           victim read:4k alone    57120 ops/s, next to a READ-1M hog        0 ops/s stalled: no result within 15s
+E6 branch                         victim read:4k alone    62894 ops/s, next to a READ-1M hog        0 ops/s stalled: no result within 15s
+E6 branch --max-in-flight 32      victim read:4k alone    58854 ops/s, next to a READ-1M hog    59173 ops/s 
+===== e7 =====
+E7 main                           heavy    55386 ops/s (p50 35.84ms), light depth-1 client:     27 ops/s p50 35.84ms p99 43.01ms
+E7 branch                         heavy    56989 ops/s (p50 34.82ms), light depth-1 client:    213 ops/s p50 4.48ms p99 7.04ms
+E7 branch --max-in-flight 64      heavy    47541 ops/s (p50 41.98ms), light depth-1 client:    701 ops/s p50 1.28ms p99 2.94ms

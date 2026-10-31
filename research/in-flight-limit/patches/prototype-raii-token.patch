@@ -1,0 +1,74 @@
+diff --git a/nfs-mamont/src/task/connection/limit.rs b/nfs-mamont/src/task/connection/limit.rs
+index 173f426..bc300c6 100644
+--- a/nfs-mamont/src/task/connection/limit.rs
++++ b/nfs-mamont/src/task/connection/limit.rs
+@@ -7,13 +7,12 @@
+ //! are taken, [`Budget::acquire`] waits, so the socket stays unread and TCP flow control
+ //! holds the client back.
+ //!
+-//! The budget is counted rather than reference-counted to keep the hot path cheap: the
+-//! read task increments a local counter and compares it with the write task's progress,
+-//! which it re-reads only when it runs out of slots, and the write task does one atomic
+-//! increment per reply. The price is that a slot is freed only by returning its token:
+-//! a command dropped inside a closed global channel (server shutdown) keeps its slot,
+-//! and a read task parked on an exhausted budget then waits until the write task stops
+-//! ([`Limiter::close`]) or the runtime is dropped.
++//! The budget is counted to keep the hot path cheap: the read task increments a local
++//! counter and compares it with the write task's progress, which it re-reads only when
++//! it runs out of slots, and every returned token does one atomic increment. A token
++//! holds an `Arc` of the [`Limiter`] and frees its slot when dropped, so a command
++//! dropped anywhere on its way (a panicking worker, a closed global channel) cannot
++//! leak a slot of its connection.
+ 
+ use std::num::NonZeroUsize;
+ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+@@ -24,9 +23,18 @@ use tokio::sync::Notify;
+ /// Proof that one slot of a connection's budget is taken.
+ ///
+ /// Returned with [`Limiter::release`] after the reply is written, or with
+-/// [`Budget::cancel`] when the record gets no reply. Dropping it keeps the slot taken.
+-#[must_use = "a dropped token keeps its in-flight slot taken"]
+-pub struct Token(());
++/// [`Budget::cancel`] when the record gets no reply. Dropping it anywhere (a panicking
++/// worker, a closed channel) also frees the slot, so a slot can never leak.
++#[must_use = "dropping a token frees its in-flight slot"]
++pub struct Token {
++    limiter: Arc<Limiter>,
++}
++
++impl Drop for Token {
++    fn drop(&mut self) {
++        self.limiter.release_slot();
++    }
++}
+ 
+ /// Part of the budget shared with the write task.
+ pub struct Limiter {
+@@ -43,7 +51,10 @@ pub struct Limiter {
+ impl Limiter {
+     /// Frees the slot of `token`: its reply was handed to the socket.
+     pub fn release(&self, token: Token) {
+-        let Token(()) = token;
++        drop(token);
++    }
++
++    fn release_slot(&self) {
+         // `SeqCst` pairs with the loads in `Budget::acquire`: either the read task sees
+         // this increment, or this load sees the read task waiting and wakes it.
+         self.released.fetch_add(1, Ordering::SeqCst);
+@@ -129,13 +140,12 @@ impl Budget {
+         }
+         self.issued += 1;
+ 
+-        Some(Token(()))
++        Some(Token { limiter: Arc::clone(&self.limiter) })
+     }
+ 
+     /// Gives `token` back for a record that gets no reply.
+     pub fn cancel(&mut self, token: Token) {
+-        let Token(()) = token;
+-        self.issued -= 1;
++        drop(token);
+     }
+ 
+     fn has_slot(&self) -> bool {

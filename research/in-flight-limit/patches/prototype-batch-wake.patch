@@ -1,0 +1,68 @@
+diff --git a/nfs-mamont/src/task/connection/limit.rs b/nfs-mamont/src/task/connection/limit.rs
+index 173f426..297acdb 100644
+--- a/nfs-mamont/src/task/connection/limit.rs
++++ b/nfs-mamont/src/task/connection/limit.rs
+@@ -32,8 +32,9 @@ pub struct Token(());
+ pub struct Limiter {
+     /// Tokens returned so far.
+     released: AtomicU64,
+-    /// Set by the read task while it waits for a token to be returned.
+-    waiting: AtomicBool,
++    /// `released` value at which the parked read task wants to be woken, `u64::MAX`
++    /// while it is not parked.
++    wake_at: AtomicU64,
+     /// Set once the write task is gone.
+     closed: AtomicBool,
+     /// Wakes the read task after a release or on close.
+@@ -46,8 +47,8 @@ impl Limiter {
+         let Token(()) = token;
+         // `SeqCst` pairs with the loads in `Budget::acquire`: either the read task sees
+         // this increment, or this load sees the read task waiting and wakes it.
+-        self.released.fetch_add(1, Ordering::SeqCst);
+-        if self.waiting.load(Ordering::SeqCst) {
++        let released = self.released.fetch_add(1, Ordering::SeqCst) + 1;
++        if released >= self.wake_at.load(Ordering::SeqCst) {
+             self.notify.notify_one();
+         }
+     }
+@@ -81,6 +82,8 @@ pub struct Budget {
+     issued: u64,
+     /// Last value of `Limiter::released` seen, refreshed only when the slots run out.
+     released: u64,
++    /// Free slots a parked read task waits for before it is woken.
++    batch: u64,
+ }
+ 
+ impl Budget {
+@@ -89,12 +92,13 @@ impl Budget {
+     pub fn new(limit: NonZeroUsize) -> (Self, Arc<Limiter>) {
+         let limiter = Arc::new(Limiter {
+             released: AtomicU64::new(0),
+-            waiting: AtomicBool::new(false),
++            wake_at: AtomicU64::new(u64::MAX),
+             closed: AtomicBool::new(false),
+             notify: Notify::new(),
+         });
+         let limit = u64::try_from(limit.get()).expect("usize fits into u64");
+-        let budget = Self { limiter: Arc::clone(&limiter), limit, issued: 0, released: 0 };
++        let batch = (limit / 8).clamp(1, 32);
++        let budget = Self { limiter: Arc::clone(&limiter), limit, issued: 0, released: 0, batch };
+ 
+         (budget, limiter)
+     }
+@@ -120,12 +124,13 @@ impl Budget {
+             // after its increment, so a release missed by this look finds the flag set
+             // and wakes us. A notification stored before `notified()` is created still
+             // completes it, and a stale one only costs another trip through the loop.
+-            self.limiter.waiting.store(true, Ordering::SeqCst);
++            let wake_at = self.issued - self.limit + self.batch;
++            self.limiter.wake_at.store(wake_at, Ordering::SeqCst);
+             self.refresh();
+             if !self.has_slot() && !self.limiter.closed.load(Ordering::SeqCst) {
+                 self.limiter.notify.notified().await;
+             }
+-            self.limiter.waiting.store(false, Ordering::SeqCst);
++            self.limiter.wake_at.store(u64::MAX, Ordering::SeqCst);
+         }
+         self.issued += 1;
+ 

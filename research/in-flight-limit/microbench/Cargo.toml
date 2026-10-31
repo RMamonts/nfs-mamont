@@ -1,0 +1,12 @@
+[package]
+name = "limit-microbench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+tokio = { version = "=1.53.1", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
+async-channel = "=2.5.0"
+
+[profile.release]
+debug = 1

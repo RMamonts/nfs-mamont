@@ -1,0 +1,12 @@
+K1 4conn depth64 (below limit)     main    ops/s median    276522  (min   269987 max   291739)  p50     864us  p99    2370us  server CPU/op  6.22us
+K1 4conn depth64 (below limit)     branch  ops/s median    286080  (min   242559 max   288344)  p50     832us  p99    2240us  server CPU/op  6.08us
+K1 4conn depth64 (below limit)     raii    ops/s median    285932  (min   263391 max   289216)  p50     832us  p99    2300us  server CPU/op  5.99us
+K1 4conn depth64 (below limit)     batch   ops/s median    272480  (min   259330 max   281170)  p50     864us  p99    2500us  server CPU/op  6.30us
+K2 4conn depth512 (above limit)    main    ops/s median    283757  (min   255667 max   289768)  p50    6910us  p99   13060us  server CPU/op  6.11us
+K2 4conn depth512 (above limit)    branch  ops/s median    333451  (min   298575 max   350563)  p50    5500us  p99   13310us  server CPU/op  5.54us
+K2 4conn depth512 (above limit)    raii    ops/s median    330823  (min   326545 max   355798)  p50    5500us  p99   13060us  server CPU/op  5.65us
+K2 4conn depth512 (above limit)    batch   ops/s median    323602  (min   315802 max   342389)  p50    5760us  p99   13310us  server CPU/op  5.76us
+K3 1conn depth1024 (above limit)   main    ops/s median     89277  (min    83607 max    96201)  p50   10500us  p99   19970us  server CPU/op 13.55us
+K3 1conn depth1024 (above limit)   branch  ops/s median    143856  (min   135960 max   150187)  p50    6140us  p99   12030us  server CPU/op  8.53us
+K3 1conn depth1024 (above limit)   raii    ops/s median    138092  (min   132670 max   143737)  p50    6400us  p99   12540us  server CPU/op  8.76us
+K3 1conn depth1024 (above limit)   batch   ops/s median    150227  (min   130162 max   158977)  p50    6020us  p99   12030us  server CPU/op  8.11us

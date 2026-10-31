@@ -1,0 +1,250 @@
+diff -ruN '--exclude=target' bench/mock-vfs/src/bin/mock-nfs-server.rs wt-main/mock-vfs/src/bin/mock-nfs-server.rs
+--- bench/mock-vfs/src/bin/mock-nfs-server.rs	2026-10-24 16:23:55.000000000 +0000
++++ wt-main/mock-vfs/src/bin/mock-nfs-server.rs	2026-10-31 11:51:14.364620718 +0000
+@@ -56,6 +56,24 @@
+ 
+ #[tokio::main]
+ async fn main() -> ExitCode {
++    std::thread::spawn(|| {
++        use std::sync::atomic::Ordering::Relaxed;
++        use nfs_mamont::probe::*;
++        let start = std::time::Instant::now();
++        loop {
++            std::thread::sleep(std::time::Duration::from_secs(1));
++            eprintln!(
++                "probe t={:.3} polls={} pending={} ready={} bytes={} msgs={} parks={}",
++                start.elapsed().as_secs_f64(),
++                READ_POLLS.load(Relaxed),
++                READ_PENDING.load(Relaxed),
++                READ_READY.load(Relaxed),
++                READ_BYTES.load(Relaxed),
++                MESSAGES.load(Relaxed),
++                BUDGET_PARKS.load(Relaxed),
++            );
++        }
++    });
+     let config = match parse_args(Args::from_env()) {
+         Ok(Command::Run(config)) => config,
+         Ok(Command::Help) => {
+diff -ruN '--exclude=target' bench/mock-vfs/src/bin/nfs-bench.rs wt-main/mock-vfs/src/bin/nfs-bench.rs
+--- bench/mock-vfs/src/bin/nfs-bench.rs	2026-10-24 16:23:55.000000000 +0000
++++ wt-main/mock-vfs/src/bin/nfs-bench.rs	2026-10-31 11:15:38.854671510 +0000
+@@ -20,10 +20,19 @@
+ use tokio::net::TcpStream;
+ use tokio::sync::Semaphore;
+ 
+-use nfs_mamont::consts::nfsv3::{
+-    ACCESS, COMMIT, CREATE, GETATTR, LOOKUP, NFS_PROGRAM, NFS_VERSION, NULL, READ, READDIR,
+-    READDIRPLUS, REMOVE, WRITE,
+-};
++use nfs_mamont::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
++
++const ACCESS: u32 = NfsProc::Access as u32;
++const COMMIT: u32 = NfsProc::Commit as u32;
++const CREATE: u32 = NfsProc::Create as u32;
++const GETATTR: u32 = NfsProc::GetAttr as u32;
++const LOOKUP: u32 = NfsProc::LookUp as u32;
++const NULL: u32 = NfsProc::Null as u32;
++const READ: u32 = NfsProc::Read as u32;
++const READDIR: u32 = NfsProc::ReadDir as u32;
++const READDIRPLUS: u32 = NfsProc::ReadDirPlus as u32;
++const REMOVE: u32 = NfsProc::Remove as u32;
++const WRITE: u32 = NfsProc::Write as u32;
+ 
+ use mock_vfs::cli::{self, Args};
+ use mock_vfs::client::{self, mount, nfs, Connection};
+@@ -449,7 +458,8 @@
+ ) -> Result<WorkerStats, client::Error> {
+     let stream = TcpStream::connect(shared.addr).await?;
+     let _ = stream.set_nodelay(true);
+-    let (mut reader, mut writer) = stream.into_split();
++    let (reader, mut writer) = stream.into_split();
++    let mut reader = tokio::io::BufReader::with_capacity(256 * 1024, reader);
+ 
+     let mut requests = Requests::new(&shared, index);
+     let mut rng = Rng::new(seed);
+@@ -458,14 +468,38 @@
+ 
+     let send = async {
+         let mut xid: u32 = SENTINEL_XID + 1;
++        // Requests that can be sent right away are coalesced into one write, so the
++        // client spends one syscall per batch instead of one per request.
++        let mut batch: Vec<u8> = Vec::with_capacity(64 * 1024);
+         while !shared.stop.load(Ordering::Relaxed) {
+             slots.acquire().await.expect("the semaphore is never closed").forget();
+-            let (op, record) = requests.next(shared.phase.op, shared.rwmix, &mut rng, xid);
+-            lock(&inflight).insert(xid, Inflight { start: Instant::now(), op });
+-            writer.write_all(record).await?;
+-            xid = xid.wrapping_add(1);
+-            if xid == SENTINEL_XID {
+-                xid += 1;
++            loop {
++                let (op, record) = requests.next(shared.phase.op, shared.rwmix, &mut rng, xid);
++                lock(&inflight).insert(xid, Inflight { start: Instant::now(), op });
++                if record.len() > 16 * 1024 {
++                    if !batch.is_empty() {
++                        writer.write_all(&batch).await?;
++                        batch.clear();
++                    }
++                    writer.write_all(record).await?;
++                } else {
++                    batch.extend_from_slice(record);
++                }
++                xid = xid.wrapping_add(1);
++                if xid == SENTINEL_XID {
++                    xid += 1;
++                }
++                if batch.len() >= 60 * 1024 || shared.stop.load(Ordering::Relaxed) {
++                    break;
++                }
++                match slots.try_acquire() {
++                    Ok(permit) => permit.forget(),
++                    Err(_) => break,
++                }
++            }
++            if !batch.is_empty() {
++                writer.write_all(&batch).await?;
++                batch.clear();
+             }
+         }
+         // The sentinel tells the receiver that no request follows: once everything
+diff -ruN '--exclude=target' bench/mock-vfs/src/bin/slow-reader.rs wt-main/mock-vfs/src/bin/slow-reader.rs
+--- bench/mock-vfs/src/bin/slow-reader.rs	1970-01-01 00:00:00.000000000 +0000
++++ wt-main/mock-vfs/src/bin/slow-reader.rs	2026-10-31 11:17:09.789737908 +0000
+@@ -0,0 +1,96 @@
++//! A misbehaving client for back-pressure experiments: it pipelines requests as fast
++//! as the server accepts them and never reads a single reply.
++//!
++//! ```text
++//! slow-reader --target 127.0.0.1:2049 --op getattr|null|read --block 1M --duration 20s
++//! ```
++//!
++//! Prints, once per second, how many requests the server has accepted so far (bytes
++//! that `write` managed to push into the socket).
++
++use std::net::SocketAddr;
++use std::time::{Duration, Instant};
++
++use tokio::io::AsyncWriteExt;
++use tokio::net::TcpStream;
++
++use mock_vfs::cli::{self, Args};
++use mock_vfs::client::{self, mount, nfs, Connection};
++use nfs_mamont::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
++
++#[tokio::main(flavor = "current_thread")]
++async fn main() {
++    let mut args = Args::from_env();
++    let mut target: SocketAddr = "127.0.0.1:2049".parse().unwrap();
++    let mut op = "getattr".to_string();
++    let mut block: u64 = 1 << 20;
++    let mut duration = Duration::from_secs(20);
++    let mut connections: usize = 1;
++    while let Some(flag) = args.next_flag() {
++        match flag.as_str() {
++            "--target" => target = args.parse(&flag).unwrap(),
++            "--op" => op = args.value(&flag).unwrap(),
++            "--block" => block = args.parse_with(&flag, cli::parse_size).unwrap(),
++            "--duration" => duration = args.parse_with(&flag, cli::parse_duration).unwrap(),
++            "--connections" => connections = args.parse(&flag).unwrap(),
++            other => panic!("unknown flag {other}"),
++        }
++    }
++
++    let mut conn = Connection::connect(target).await.expect("connect");
++    let root = mount::mount(&mut conn, "/").await.expect("MNT");
++    let file = nfs::lookup(&mut conn, &root, "file_0").await.expect("LOOKUP").handle;
++
++    let (procedure, payload) = match op.as_str() {
++        "null" => (NfsProc::Null as u32, Vec::new()),
++        "getattr" => (NfsProc::GetAttr as u32, nfs::args::getattr(&file)),
++        "read" => (NfsProc::Read as u32, nfs::args::read(&file, 0, block as u32)),
++        other => panic!("unknown op {other}"),
++    };
++    let record = client::call_record(NFS_PROGRAM, NFS_VERSION, procedure, 1, &payload);
++    // 256 requests per write
++    let batch: Vec<u8> = (0..256).flat_map(|_| record.iter().copied()).collect();
++
++    let start = Instant::now();
++    let mut tasks = Vec::new();
++    for _ in 0..connections {
++        let batch = batch.clone();
++        let record_len = record.len() as u64;
++        tasks.push(tokio::spawn(async move {
++            let stream = TcpStream::connect(target).await.expect("connect");
++            let _ = stream.set_nodelay(true);
++            // keep the read half open but never read from it
++            let (_reader, mut writer) = stream.into_split();
++            let mut sent: u64 = 0;
++            let mut pos = 0usize;
++            let mut next_report = Duration::from_secs(1);
++            while start.elapsed() < duration {
++                // `write` is cancel-safe, `write_all` is not: a timed-out partial
++                // write must not break the record stream.
++                let write = writer.write(&batch[pos..]);
++                match tokio::time::timeout(Duration::from_millis(200), write).await {
++                    Ok(Ok(n)) => {
++                        sent += n as u64;
++                        pos = (pos + n) % batch.len();
++                    }
++                    Ok(Err(err)) => {
++                        eprintln!("write error: {err}");
++                        break;
++                    }
++                    Err(_) => {} // the server stopped reading: back-pressure
++                }
++                if start.elapsed() >= next_report {
++                    let accepted = sent / record_len;
++                    println!("t={:>4.1}s accepted_requests={accepted}", start.elapsed().as_secs_f64());
++                    next_report += Duration::from_secs(1);
++                }
++            }
++            sent / record_len
++        }));
++    }
++    let mut total = 0;
++    for t in tasks {
++        total += t.await.unwrap();
++    }
++    println!("total_accepted_requests={total}");
++}
+diff -ruN '--exclude=target' bench/mock-vfs/src/client/mount.rs wt-main/mock-vfs/src/client/mount.rs
+--- bench/mock-vfs/src/client/mount.rs	2026-10-24 16:23:55.000000000 +0000
++++ wt-main/mock-vfs/src/client/mount.rs	2026-10-31 11:01:59.015962758 +0000
+@@ -1,6 +1,8 @@
+ //! MOUNT v3 `MNT` request and reply (RFC 1813, section 5).
+ 
+-use nfs_mamont::consts::mount::{MOUNT_MNT, MOUNT_PROGRAM, MOUNT_VERSION};
++use nfs_mamont::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
++
++const MOUNT_MNT: u32 = MountProc::Mnt as u32;
+ 
+ use super::xdr::{put_str, Reader};
+ use super::{Connection, Error};
+diff -ruN '--exclude=target' bench/mock-vfs/src/client/nfs.rs wt-main/mock-vfs/src/client/nfs.rs
+--- bench/mock-vfs/src/client/nfs.rs	2026-10-24 16:23:55.000000000 +0000
++++ wt-main/mock-vfs/src/client/nfs.rs	2026-10-31 11:01:59.017384999 +0000
+@@ -1,9 +1,19 @@
+ //! NFSv3 requests and replies (RFC 1813).
+ 
+-use nfs_mamont::consts::nfsv3::{
+-    ACCESS, COMMIT, CREATE, FSINFO, GETATTR, LOOKUP, NFS_PROGRAM, NFS_VERSION, NULL, READ, READDIR,
+-    READDIRPLUS, REMOVE, WRITE,
+-};
++use nfs_mamont::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
++
++const NULL: u32 = NfsProc::Null as u32;
++const GETATTR: u32 = NfsProc::GetAttr as u32;
++const LOOKUP: u32 = NfsProc::LookUp as u32;
++const ACCESS: u32 = NfsProc::Access as u32;
++const READ: u32 = NfsProc::Read as u32;
++const WRITE: u32 = NfsProc::Write as u32;
++const CREATE: u32 = NfsProc::Create as u32;
++const REMOVE: u32 = NfsProc::Remove as u32;
++const READDIR: u32 = NfsProc::ReadDir as u32;
++const READDIRPLUS: u32 = NfsProc::ReadDirPlus as u32;
++const FSINFO: u32 = NfsProc::FsInfo as u32;
++const COMMIT: u32 = NfsProc::Commit as u32;
+ 
+ use super::xdr::{opaque_size, put_bool, put_opaque, put_str, put_u32, put_u64, Reader};
+ use super::{Connection, Error};
