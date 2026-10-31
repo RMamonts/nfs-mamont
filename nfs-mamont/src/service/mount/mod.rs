@@ -88,7 +88,10 @@ impl ExportRegistry {
 ///
 /// Keyed by IP address only: `MNT`, `UMNT` and `UMNTALL` for one host arrive
 /// over different TCP connections with different source ports, so a key that
-/// included the port would never match an existing entry.
+/// included the port would never match an existing entry. Addresses are stored
+/// in canonical form ([`IpAddr::to_canonical`]): a dual-stack listener reports
+/// IPv4 peers as IPv4-mapped IPv6 (`::ffff:a.b.c.d`), which is folded back to
+/// plain IPv4 so one host always has one key.
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
@@ -220,6 +223,29 @@ mod tests {
         service.umnt(umnt::Args { dirpath: path("/initial") }, other_host, &Credential::None).await;
 
         assert_eq!(mounted_dirs(&service).await, vec![path("/initial")]);
+    }
+
+    /// A dual-stack listener reports IPv4 peers as IPv4-mapped IPv6 addresses;
+    /// they must be the same host as the plain IPv4 form.
+    #[tokio::test]
+    async fn ipv4_mapped_client_is_the_same_host_as_plain_ipv4() {
+        let service = service();
+        let mapped = SocketAddr::new(Ipv4Addr::new(10, 0, 0, 7).to_ipv6_mapped().into(), 1000);
+
+        service
+            .mnt(mnt::Args { dirpath: path("/initial") }, mapped, &Credential::None)
+            .await
+            .unwrap();
+
+        let mount_list = service.dump(&Credential::None).await.mount_list;
+        assert_eq!(mount_list.len(), 1);
+        assert_eq!(mount_list[0].hostname.as_str(), "10.0.0.7");
+
+        service
+            .umnt(umnt::Args { dirpath: path("/initial") }, client(2000), &Credential::None)
+            .await;
+
+        assert!(mounted_dirs(&service).await.is_empty());
     }
 
     fn service() -> MountService {

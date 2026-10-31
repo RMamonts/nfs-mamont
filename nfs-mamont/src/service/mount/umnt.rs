@@ -9,7 +9,7 @@ use super::MountService;
 impl Umnt for MountService {
     async fn umnt(&self, args: Args, client_addr: SocketAddr, _cred: &Credential) {
         let mut mounts = self.mounts.write().await;
-        let client = client_addr.ip();
+        let client = client_addr.ip().to_canonical();
 
         if let Some(entries) = mounts.by_client.get_mut(&client) {
             entries.retain(|entry| entry.directory != args.dirpath);
