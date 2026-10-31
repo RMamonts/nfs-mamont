@@ -1,9 +1,11 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
-use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
+use crate::consts::connection::{DEFAULT_MAX_IN_FLIGHT, IN_FLIGHT_PER_VFS_WORKER};
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
@@ -57,6 +59,8 @@ where
     allocator: Arc<A>,
     /// Filesystem implementations backing NFS operations, keyed by backend id.
     backends: BackendRegistry<V>,
+    /// Number of VFS workers, i.e. procedures executed against the backends at once.
+    vfs_concurrency: NonZeroUsize,
     /// Requests one connection may have read but not yet answered.
     max_in_flight: NonZeroUsize,
 }
@@ -73,18 +77,25 @@ where
     /// backends at the same time; procedures beyond it wait in a queue. Set it to the
     /// number of operations the backends can run in parallel (their queue depth).
     ///
+    /// The per-connection in-flight limit defaults to the larger of
+    /// [`DEFAULT_MAX_IN_FLIGHT`] and [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`,
+    /// so that a single connection can keep the whole pool busy; see
+    /// [`Self::with_max_in_flight`].
+    ///
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
     pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
         let backends = BackendRegistry::new();
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
+        let max_in_flight = default_max_in_flight(vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends, max_in_flight: DEFAULT_MAX_IN_FLIGHT }
+        Self { vfs_manager, allocator, backends, vfs_concurrency, max_in_flight }
     }
 
     /// Sets how many requests one connection may have read from the socket but not yet
-    /// answered. The default is [`DEFAULT_MAX_IN_FLIGHT`].
+    /// answered. The default is the larger of [`DEFAULT_MAX_IN_FLIGHT`] and
+    /// [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`, see [`Self::new`].
     ///
     /// While a connection has `max_in_flight` requests parsed whose replies are not yet
     /// written to the socket, its read task does not read the next request: the server
@@ -96,8 +107,19 @@ where
     /// `max_in_flight × open connections`.
     ///
     /// A client needs about `throughput × server latency` requests in flight to keep the
-    /// server busy, so a limit below that caps the throughput of one connection.
+    /// server busy, so a limit below that caps the throughput of one connection at
+    /// `max_in_flight / latency`. A limit below `vfs_concurrency` in particular leaves
+    /// part of the VFS pool idle for a single client; it is accepted, since it may be
+    /// meant to share the pool between many connections, but logged as a warning.
     pub fn with_max_in_flight(mut self, max_in_flight: NonZeroUsize) -> Self {
+        if max_in_flight < self.vfs_concurrency {
+            warn!(
+                max_in_flight,
+                vfs_concurrency = self.vfs_concurrency,
+                "in-flight limit is below the VFS pool size: one connection cannot keep \
+                 all VFS workers busy"
+            );
+        }
         self.max_in_flight = max_in_flight;
         self
     }
@@ -154,5 +176,40 @@ where
     #[inline]
     pub fn get_allocator(&self) -> Arc<A> {
         Arc::clone(&self.allocator)
+    }
+}
+
+/// Returns the default in-flight limit for a pool of `vfs_concurrency` workers, see
+/// [`ServerContext::new`].
+fn default_max_in_flight(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
+    DEFAULT_MAX_IN_FLIGHT.max(vfs_concurrency.saturating_mul(IN_FLIGHT_PER_VFS_WORKER))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use super::default_max_in_flight;
+    use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
+
+    fn nonzero(value: usize) -> NonZeroUsize {
+        NonZeroUsize::new(value).unwrap()
+    }
+
+    #[test]
+    fn small_pools_get_the_default_limit() {
+        assert_eq!(default_max_in_flight(nonzero(1)), DEFAULT_MAX_IN_FLIGHT);
+        assert_eq!(default_max_in_flight(nonzero(128)), DEFAULT_MAX_IN_FLIGHT);
+    }
+
+    #[test]
+    fn large_pools_get_two_requests_per_worker() {
+        assert_eq!(default_max_in_flight(nonzero(129)), nonzero(258));
+        assert_eq!(default_max_in_flight(nonzero(1024)), nonzero(2048));
+    }
+
+    #[test]
+    fn the_default_limit_saturates() {
+        assert_eq!(default_max_in_flight(nonzero(usize::MAX)), nonzero(usize::MAX));
     }
 }
