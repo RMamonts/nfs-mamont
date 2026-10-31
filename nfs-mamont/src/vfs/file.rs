@@ -7,42 +7,68 @@ use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
 
-/// Index of a backend registered in [`crate::BackendRegistry`].
+/// Identifier of a backend registered in [`crate::BackendRegistry`].
 ///
-/// Encoded in the first byte of every [`Handle`], which limits the server to
-/// [`BackendId::MAX`] + 1 simultaneously attached backends.
+/// Consists of the registry slot the backend occupies and the generation of that slot.
+/// The generation changes every time a slot is freed, so file handles issued by a
+/// detached backend never resolve to a backend later attached to the same slot.
+///
+/// Encoded in the first two bytes of every [`Handle`], which limits the server to
+/// [`BackendId::SLOTS`] simultaneously attached backends.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BackendId(u8);
+pub struct BackendId {
+    slot: u8,
+    generation: u8,
+}
 
 impl BackendId {
-    /// The lowest backend index that can be assigned.
-    pub const MIN: Self = Self(u8::MIN);
-    /// The highest backend index that can be assigned.
-    pub const MAX: Self = Self(u8::MAX);
+    /// Number of backends that can be attached at the same time.
+    pub const SLOTS: usize = u8::MAX as usize + 1;
 
-    /// Builds a backend id from its raw index.
+    /// Builds a backend id from its slot and generation.
     #[inline]
-    pub fn new(id: u8) -> BackendId {
-        BackendId(id)
+    pub fn new(slot: u8, generation: u8) -> BackendId {
+        BackendId { slot, generation }
     }
 
-    /// Returns the raw index of the backend id.
+    /// Returns the registry slot occupied by the backend.
     #[inline]
-    pub fn raw(&self) -> u8 {
-        self.0
+    pub fn slot(&self) -> u8 {
+        self.slot
+    }
+
+    /// Returns the generation of the slot at the time the backend was attached.
+    #[inline]
+    pub fn generation(&self) -> u8 {
+        self.generation
+    }
+
+    /// Returns the on-wire representation stored at the start of a [`Handle`].
+    #[inline]
+    pub(crate) fn to_bytes(self) -> [u8; BACKEND_ID_SIZE] {
+        [self.slot, self.generation]
+    }
+
+    /// Builds a backend id from the first bytes of a [`Handle`].
+    #[inline]
+    pub(crate) fn from_bytes([slot, generation]: [u8; BACKEND_ID_SIZE]) -> BackendId {
+        BackendId { slot, generation }
     }
 }
 
+/// Size of the [`BackendId`] part of a [`Handle`], in bytes.
+const BACKEND_ID_SIZE: usize = 2;
+
 /// Size of the backend-specific part of a [`Handle`], in bytes.
-pub const PAYLOAD_SIZE: usize = NFS3_FHSIZE - 1;
+pub const PAYLOAD_SIZE: usize = NFS3_FHSIZE - BACKEND_ID_SIZE;
 
 /// Unique file identifier.
 ///
 /// Corresponds to the file handle from RFC 1813.
 ///
-/// The first byte is the [`BackendId`] of the backend that owns the object; the
-/// remaining [`PAYLOAD_SIZE`] bytes are opaque to the server and interpreted only
-/// by that backend.
+/// The first two bytes are the [`BackendId`] (slot, then generation) of the backend
+/// that owns the object; the remaining [`PAYLOAD_SIZE`] bytes are opaque to the server
+/// and interpreted only by that backend.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Handle([u8; NFS3_FHSIZE]);
 
@@ -50,22 +76,22 @@ impl Handle {
     /// Builds a handle owned by `backend` from a backend-specific `payload`.
     pub fn new(backend: BackendId, payload: [u8; PAYLOAD_SIZE]) -> Self {
         let mut raw = [0u8; NFS3_FHSIZE];
-        raw[0] = backend.raw();
-        raw[1..].copy_from_slice(&payload);
+        raw[..BACKEND_ID_SIZE].copy_from_slice(&backend.to_bytes());
+        raw[BACKEND_ID_SIZE..].copy_from_slice(&payload);
         Handle(raw)
     }
 
-    /// Returns the index of the backend that owns the object behind this handle.
+    /// Returns the id of the backend that owns the object behind this handle.
     #[inline]
     pub fn backend_id(&self) -> BackendId {
-        BackendId(self.0[0])
+        BackendId::from_bytes([self.0[0], self.0[1]])
     }
 
     /// Returns the backend-specific part of the handle.
     #[inline]
     pub fn payload(&self) -> [u8; PAYLOAD_SIZE] {
         let mut payload = [0u8; PAYLOAD_SIZE];
-        payload.copy_from_slice(&self.0[1..]);
+        payload.copy_from_slice(&self.0[BACKEND_ID_SIZE..]);
         payload
     }
 

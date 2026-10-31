@@ -50,7 +50,7 @@ where
     /// Allocator backing all user-data buffers: READ output buffers and WRITE
     /// payload buffers are served from this single pool.
     allocator: Arc<A>,
-    /// Filesystem implementations backing NFS operations, keyed by backend index.
+    /// Filesystem implementations backing NFS operations, keyed by backend id.
     backends: BackendRegistry<V>,
 }
 
@@ -80,8 +80,9 @@ where
     ///
     /// # Returns
     ///
-    /// The index the backend was registered under --- the same index the backend must
-    /// encode into the file handles it returns --- or [`None`] if no free slot is left.
+    /// The id (slot and generation) the backend was registered under --- the same id the
+    /// backend must encode into the file handles it returns --- or [`None`] if no free
+    /// slot is left.
     pub fn add_backend(&self, backend: Arc<V>) -> Option<BackendId> {
         self.backends.add(backend)
     }
