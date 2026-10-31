@@ -37,7 +37,7 @@ impl<V> BackendRegistry<V> {
     /// The index the backend is registered under, or [`None`] if all
     /// [`BackendId::MAX`] + 1 slots are taken.
     pub fn add(&self, backend: Arc<V>) -> Option<BackendId> {
-        let mut backends = self.write();
+        let mut backends = self.backends.write().unwrap();
         let id = (BackendId::MIN.raw()..=BackendId::MAX.raw())
             .find(|&id| !backends.contains_key(&BackendId::new(id)))
             .map(BackendId::new)?;
@@ -55,17 +55,17 @@ impl<V> BackendRegistry<V> {
     ///
     /// The detached backend, or [`None`] if `id` was not registered.
     pub fn remove(&self, id: BackendId) -> Option<Arc<V>> {
-        self.write().remove(&id)
+        self.backends.write().unwrap().remove(&id)
     }
 
     /// Returns the backend registered under `id`, if any.
     pub fn get(&self, id: BackendId) -> Option<Arc<V>> {
-        self.read().get(&id).map(Arc::clone)
+        self.backends.read().unwrap().get(&id).map(Arc::clone)
     }
 
     /// Returns the indices of all attached backends, in ascending order.
     pub fn ids(&self) -> Vec<BackendId> {
-        let mut ids = self.read().keys().copied().collect::<Vec<_>>();
+        let mut ids = self.backends.read().unwrap().keys().copied().collect::<Vec<_>>();
         ids.sort_unstable();
 
         ids
@@ -73,22 +73,12 @@ impl<V> BackendRegistry<V> {
 
     /// Returns the number of attached backends.
     pub fn len(&self) -> usize {
-        self.read().len()
+        self.backends.read().unwrap().len()
     }
 
     /// Returns `true` when no backend is attached.
     pub fn is_empty(&self) -> bool {
-        self.read().is_empty()
-    }
-
-    /// Takes the read lock, recovering the map if a previous holder panicked.
-    fn read(&self) -> std::sync::RwLockReadGuard<'_, HashMap<BackendId, Arc<V>>> {
-        self.backends.read().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Takes the write lock, recovering the map if a previous holder panicked.
-    fn write(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<BackendId, Arc<V>>> {
-        self.backends.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.backends.read().unwrap().is_empty()
     }
 }
 
