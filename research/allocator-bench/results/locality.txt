@@ -1,0 +1,34 @@
+upstream Impl(64K x 2048) = 128 MiB          ring=  1 chunks= 1 cold=  3.17 GB/s warm= 11.05 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 2048)                    ring=  1 chunks= 1 cold= 34.55 GB/s warm= 34.53 GB/s  rss_growth=    0.2 MiB thp=   0.0 MiB
+buddy+cache(128 MiB)                         ring=  1 chunks= 1 cold= 31.07 GB/s warm= 30.38 GB/s  rss_growth=    0.2 MiB thp=   0.0 MiB
+upstream Impl(1024K x 2048) = 2048 MiB       ring=  1 chunks= 1 cold=  3.23 GB/s warm= 11.66 GB/s  rss_growth=  136.1 MiB thp=   0.0 MiB
+buddy+cache(2048 MiB)                        ring=  1 chunks= 1 cold= 29.66 GB/s warm= 33.59 GB/s  rss_growth=    0.2 MiB thp=   0.0 MiB
+upstream Impl(64K x 8192) = 512 MiB          ring=  1 chunks= 1 cold=  3.39 GB/s warm= 13.09 GB/s  rss_growth=  512.0 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 8192)                    ring=  1 chunks= 1 cold= 32.06 GB/s warm= 32.98 GB/s  rss_growth=    0.3 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 8192) +THP               ring=  1 chunks= 1 cold= 23.41 GB/s warm= 33.98 GB/s  rss_growth=    2.1 MiB thp=   2.0 MiB
+upstream Impl(1024K x 2048) = 2048 MiB       ring=  1 chunks= 1 cold=  0.55 GB/s warm= 10.51 GB/s  rss_growth= 2049.0 MiB thp=   0.0 MiB
+lockfree LIFO(1024K x 2048)                  ring=  1 chunks= 1 cold= 13.53 GB/s warm= 14.48 GB/s  rss_growth=    3.0 MiB thp=   0.0 MiB
+lockfree LIFO(1024K x 2048) +THP             ring=  1 chunks= 1 cold= 13.88 GB/s warm= 13.01 GB/s  rss_growth=    3.0 MiB thp=   2.0 MiB
+upstream Impl(64K x 2048) = 128 MiB          ring= 32 chunks= 1 cold=  3.02 GB/s warm= 13.24 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 2048)                    ring= 32 chunks= 1 cold= 24.38 GB/s warm= 25.74 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+buddy+cache(128 MiB)                         ring= 32 chunks= 1 cold= 26.22 GB/s warm= 26.60 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+upstream Impl(1024K x 2048) = 2048 MiB       ring= 32 chunks= 1 cold=  2.83 GB/s warm= 11.13 GB/s  rss_growth=  136.1 MiB thp=   0.0 MiB
+buddy+cache(2048 MiB)                        ring= 32 chunks= 1 cold= 25.41 GB/s warm= 29.30 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+upstream Impl(64K x 8192) = 512 MiB          ring= 32 chunks= 1 cold=  3.09 GB/s warm= 13.55 GB/s  rss_growth=  512.1 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 8192)                    ring= 32 chunks= 1 cold= 25.50 GB/s warm= 28.35 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+lockfree LIFO(64K x 8192) +THP               ring= 32 chunks= 1 cold= 25.78 GB/s warm= 28.29 GB/s  rss_growth=    4.1 MiB thp=   4.0 MiB
+upstream Impl(1024K x 2048) = 2048 MiB       ring= 32 chunks= 1 cold=  1.09 GB/s warm= 11.66 GB/s  rss_growth= 2049.1 MiB thp=   0.0 MiB
+lockfree LIFO(1024K x 2048)                  ring= 32 chunks= 1 cold= 12.69 GB/s warm= 14.62 GB/s  rss_growth=   34.1 MiB thp=   0.0 MiB
+lockfree LIFO(1024K x 2048) +THP             ring= 32 chunks= 1 cold= 12.03 GB/s warm= 13.25 GB/s  rss_growth=   35.1 MiB thp=  34.0 MiB
+control FIFO(64K x 2048) +0B                 ring=  1 chunks= 1 cold=  3.68 GB/s warm= 12.17 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+control FIFO(64K x 2048) +16B                ring=  1 chunks= 1 cold=  3.28 GB/s warm= 13.93 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+control LIFO(64K x 2048) +0B                 ring=  1 chunks= 1 cold= 32.43 GB/s warm= 32.84 GB/s  rss_growth=    0.2 MiB thp=   0.0 MiB
+control LIFO(64K x 2048) +16B                ring=  1 chunks= 1 cold= 25.84 GB/s warm= 35.57 GB/s  rss_growth=    0.2 MiB thp=   0.0 MiB
+control FIFO(64K x 8192) +0B                 ring=  1 chunks= 1 cold=  3.23 GB/s warm= 15.42 GB/s  rss_growth=  512.1 MiB thp=   0.0 MiB
+control FIFO(64K x 8192) +0B +THP            ring=  1 chunks= 1 cold=  6.71 GB/s warm= 14.25 GB/s  rss_growth=  512.1 MiB thp= 512.0 MiB
+control FIFO(64K x 2048) +0B                 ring= 32 chunks= 1 cold=  3.14 GB/s warm= 11.41 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+control FIFO(64K x 2048) +16B                ring= 32 chunks= 1 cold=  2.41 GB/s warm= 10.68 GB/s  rss_growth=  128.1 MiB thp=   0.0 MiB
+control LIFO(64K x 2048) +0B                 ring= 32 chunks= 1 cold= 26.10 GB/s warm= 27.07 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+control LIFO(64K x 2048) +16B                ring= 32 chunks= 1 cold= 21.53 GB/s warm= 21.72 GB/s  rss_growth=    2.1 MiB thp=   0.0 MiB
+control FIFO(64K x 8192) +0B                 ring= 32 chunks= 1 cold=  3.76 GB/s warm= 14.43 GB/s  rss_growth=  512.1 MiB thp=   0.0 MiB
+control FIFO(64K x 8192) +0B +THP            ring= 32 chunks= 1 cold=  4.81 GB/s warm= 14.26 GB/s  rss_growth=  512.1 MiB thp= 512.0 MiB

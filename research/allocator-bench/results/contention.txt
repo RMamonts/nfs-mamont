@@ -1,0 +1,38 @@
+
+# loop: Mops/s, request 64 KiB, 4 workers (median of 3)
+allocator \ tasks                       1          4         16         64
+upstream Impl(64K)                   1.90       2.84       2.99       2.90
+upstream Impl(4K)                    0.67       0.58       0.53       0.52
+fixed-lifo(64K)                      1.90       1.81       2.03       1.92
+fixed-lifo(4K)                       1.99       1.45       1.62       1.78
+buddy(4K pages)                      1.48       1.27       1.28       1.38
+
+# pipeline (alloc on producer, drop on consumer): Mops/s, request 64 KiB
+allocator \ pairs                       1          2          4
+upstream Impl(64K)                   2.28       2.95       3.04
+upstream Impl(4K)                    0.97       1.01       0.58
+fixed-lifo(64K)                      2.15       1.42       1.30
+fixed-lifo(4K)                       1.70       1.35       1.22
+buddy(4K pages)                      1.68       1.14       0.98
+
+# loop: Mops/s, request 4 KiB, 4 workers (median of 3)
+allocator \ tasks                       1          4         16         64
+upstream Impl(64K)                   2.10       2.92       3.01       3.01
+upstream Impl(4K)                    2.13       2.96       3.03       2.94
+fixed-lifo(64K)                      2.13       1.82       2.08       1.85
+fixed-lifo(4K)                       1.43       1.79       1.75       1.79
+buddy(4K pages)                      0.84       1.28       1.26       1.30
+
+# pipeline (alloc on producer, drop on consumer): Mops/s, request 4 KiB
+allocator \ pairs                       1          2          4
+upstream Impl(64K)                   2.46       2.82       3.01
+upstream Impl(4K)                    2.18       2.63       2.99
+fixed-lifo(64K)                      1.86       1.59       1.41
+fixed-lifo(4K)                       2.11       1.38       1.35
+buddy(4K pages)                      2.02       1.22       0.98
+
+# starved: pool = 64 x 64 KiB, 256 tasks, request 64 KiB, hold = 1 yield
+allocator                          Mops/s     p50 us     p99 us
+upstream Impl(64K)                   0.90      216.9      271.5
+fixed-lifo(64K)                      0.96      197.4      274.3
+buddy(4K pages)                      0.80      238.0      332.5

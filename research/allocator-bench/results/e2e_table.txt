@@ -1,0 +1,68 @@
+op       size mode     allocator        ops/s  cpu us/op  vs up64k  bad
+read    65536 mem      upstream64k      57415      39.30     +0.0%  0
+read    65536 mem      upstream1m       58537      39.14     -0.4%  0
+read    65536 mem      upstream4k       54836      42.76     +8.8%  0
+read    65536 mem      lockfree64k      63857      33.37    -15.1%  0
+read    65536 mem      lockfree4k       43253      38.01     -3.3%  0
+read    65536 mem      buddy            66537      33.03    -16.0%  0
+
+read    65536 pread    upstream64k      51814      45.74     +0.0%  0
+read    65536 pread    upstream1m       53901      44.65     -2.4%  0
+read    65536 pread    upstream4k       50989      48.75     +6.6%  0
+read    65536 pread    lockfree64k      60064      36.83    -19.5%  0
+read    65536 pread    lockfree4k       58785      39.93    -12.7%  0
+read    65536 pread    buddy            59862      37.00    -19.1%  0
+
+read    65536 preadv   upstream64k      53899      44.07     +0.0%  0
+read    65536 preadv   upstream1m       54248      43.63     -1.0%  0
+read    65536 preadv   upstream4k       49900      47.76     +8.4%  0
+read    65536 preadv   lockfree64k      59543      37.31    -15.3%  0
+read    65536 preadv   lockfree4k       61220      37.39    -15.2%  0
+read    65536 preadv   buddy            62480      35.70    -19.0%  0
+
+read    65536 blocking upstream64k      35049      73.91     +0.0%  0
+read    65536 blocking upstream1m       34729      73.59     -0.4%  0
+read    65536 blocking upstream4k        4680     492.33   +566.1%  0
+read    65536 blocking lockfree64k      36959      65.79    -11.0%  0
+read    65536 blocking lockfree4k        5046     442.89   +499.2%  0
+read    65536 blocking buddy            38430      61.26    -17.1%  0
+
+read     4096 mem      upstream64k     147503      14.40     +0.0%  0
+read     4096 mem      upstream1m      144215      14.44     +0.3%  0
+read     4096 mem      upstream4k      147912      14.11     -2.0%  0
+read     4096 mem      lockfree4k      137505      14.27     -0.9%  0
+read     4096 mem      buddy           137224      13.98     -2.9%  0
+
+write   65536 mem      upstream64k      32704      50.89     +0.0%  0
+write   65536 mem      upstream1m       30774      54.08     +6.3%  0
+write   65536 mem      upstream4k       30239      70.58    +38.7%  0
+write   65536 mem      lockfree64k      37125      44.26    -13.0%  0
+write   65536 mem      lockfree4k       35274      56.48    +11.0%  0
+write   65536 mem      buddy            35617      44.83    -11.9%  0
+
+write   65536 pread    upstream64k      35616      54.15     +0.0%  0
+write   65536 pread    upstream1m       32627      57.06     +5.4%  0
+write   65536 pread    upstream4k       28500      82.48    +52.3%  0
+write   65536 pread    lockfree64k      35169      50.82     -6.1%  0
+write   65536 pread    lockfree4k       34328      67.04    +23.8%  0
+write   65536 pread    buddy            35956      50.65     -6.5%  0
+
+write   65536 preadv   upstream64k      35026      55.28     +0.0%  0
+write   65536 preadv   upstream1m       32346      58.85     +6.5%  0
+write   65536 preadv   upstream4k       26966      82.80    +49.8%  0
+write   65536 preadv   lockfree64k      34860      51.20     -7.4%  0
+write   65536 preadv   lockfree4k       35413      58.86     +6.5%  0
+write   65536 preadv   buddy            36325      50.57     -8.5%  0
+
+write   65536 blocking upstream64k      30336      74.15     +0.0%  0
+write   65536 blocking upstream1m       29316      75.95     +2.4%  0
+write   65536 blocking upstream4k        4535     521.90   +603.8%  0
+write   65536 blocking lockfree64k      32505      66.43    -10.4%  0
+write   65536 blocking lockfree4k        4749     488.28   +558.5%  0
+write   65536 blocking buddy            33665      63.15    -14.8%  0
+
+write    4096 mem      upstream64k     110686      18.63     +0.0%  0
+write    4096 mem      upstream1m      114392      18.03     -3.2%  0
+write    4096 mem      upstream4k      116815      17.69     -5.0%  0
+write    4096 mem      lockfree4k      122349      16.53    -11.3%  0
+write    4096 mem      buddy           116523      17.17     -7.8%  0

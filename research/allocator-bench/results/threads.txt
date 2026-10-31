@@ -1,0 +1,44 @@
+
+# loop (ring=8): Mops/s total, request 64 KiB, median of 5
+allocator \ threads               1        2        4
+upstream Impl(64K)             7.29     3.12     3.13
+upstream Impl(4K)              1.66     0.82     0.54
+fixed-lifo(64K)                7.44     2.46     1.86
+fixed-lifo(4K)                 6.51     2.04     1.59
+lockfree(64K)                  6.59     2.29     1.92
+lockfree(4K)                   5.63     2.09     1.78
+buddy                          6.59     1.64     1.37
+buddy+cache                    7.47     2.27     1.73
+
+# pipeline (alloc on producer thread, drop on consumer): Mops/s, request 64 KiB
+allocator \ pairs                 1        2
+upstream Impl(64K)             1.62     2.84
+upstream Impl(4K)              0.49     0.70
+fixed-lifo(64K)                1.57     1.44
+fixed-lifo(4K)                 1.51     1.32
+lockfree(64K)                  1.84     1.95
+lockfree(4K)                   1.28     1.55
+buddy                          1.09     1.02
+buddy+cache                    1.49     1.36
+
+# loop (ring=8): Mops/s total, request 4 KiB, median of 5
+allocator \ threads               1        2        4
+upstream Impl(64K)             7.21     3.03     3.09
+upstream Impl(4K)              6.67     3.03     3.11
+fixed-lifo(64K)                7.42     1.79     1.57
+fixed-lifo(4K)                 7.16     1.71     1.57
+lockfree(64K)                  6.34     2.49     1.83
+lockfree(4K)                   6.75     2.12     1.84
+buddy                          7.28     1.61     1.35
+buddy+cache                    7.44     2.00     1.48
+
+# pipeline (alloc on producer thread, drop on consumer): Mops/s, request 4 KiB
+allocator \ pairs                 1        2
+upstream Impl(64K)             1.74     2.69
+upstream Impl(4K)              1.67     2.57
+fixed-lifo(64K)                1.64     1.40
+fixed-lifo(4K)                 1.48     1.45
+lockfree(64K)                  1.70     2.15
+lockfree(4K)                   1.75     2.14
+buddy                          1.08     1.31
+buddy+cache                    1.83     1.43

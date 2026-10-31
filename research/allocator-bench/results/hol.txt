@@ -1,0 +1,6 @@
+pool = 256 x 64 KiB = 16 MiB; 32 tasks allocate 64 KiB, hold 100 us
+scenario                                          small/s     p50 us     p99 us
+no greedy request                                  302864        0.3        0.7
+greedy READ count = 1 MiB (clamped to rtmax)       303577        0.3        0.7
+greedy READ count = whole pool (16 MiB)            103045        0.3     3322.0
+ALLDONE

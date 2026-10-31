@@ -1,0 +1,22 @@
+[package]
+name = "allocator-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Benchmarks and prototypes for the nfs-mamont buffer allocator research"
+
+# Standalone workspace: keeps this research crate out of the main workspace,
+# so it does not affect `cargo build/test/clippy` of nfs-mamont itself.
+[workspace]
+
+[dependencies]
+nfs-mamont = { path = "../../nfs-mamont" }
+async-channel = "2.3.0"
+crossbeam-queue = "0.3.12"
+libc = "0.2"
+tokio = { version = "1.51", features = ["rt", "rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
+
+[profile.release]
+debug = 1
+codegen-units = 1
+lto = "thin"

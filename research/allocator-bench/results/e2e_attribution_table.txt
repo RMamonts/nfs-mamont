@@ -1,0 +1,21 @@
+op       size mode     allocator        ops/s  cpu us/op  vs up64k  bad
+read    65536 mem      upstream64k      61741      36.75     +0.0%  0
+read    65536 mem      fifo64k+16       59304      38.40     +4.5%  0
+read    65536 mem      fifo64k          61057      37.00     +0.7%  0
+read    65536 mem      lifo64k+16       63652      33.50     -8.8%  0
+read    65536 mem      fixed64k         62161      34.67     -5.7%  0
+read    65536 mem      lockfree64k      62917      34.34     -6.6%  0
+
+read    65536 pread    upstream64k      53751      44.09     +0.0%  0
+read    65536 pread    fifo64k+16       55247      42.86     -2.8%  0
+read    65536 pread    fifo64k          52355      44.93     +1.9%  0
+read    65536 pread    lifo64k+16       61348      35.99    -18.4%  0
+read    65536 pread    fixed64k         63235      35.36    -19.8%  0
+read    65536 pread    lockfree64k      61761      36.17    -18.0%  0
+
+write   65536 mem      upstream64k      32147      51.21     +0.0%  0
+write   65536 mem      fifo64k+16       32133      51.00     -0.4%  0
+write   65536 mem      fifo64k          31991      51.21     +0.0%  0
+write   65536 mem      lifo64k+16       37804      42.49    -17.0%  0
+write   65536 mem      fixed64k         39099      41.27    -19.4%  0
+write   65536 mem      lockfree64k      37704      44.06    -14.0%  0
