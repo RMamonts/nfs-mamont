@@ -26,6 +26,21 @@ Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-
 
 As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation
 
+The library does not install a global `tracing` subscriber — that is the responsibility
+of the application. In your `main()`, initialize `tracing` yourself, for example:
+
+```rust
+tracing_subscriber::fmt()
+    .with_env_filter(
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("nfs_mamont=debug")),
+    )
+    .init();
+```
+
+This requires `tracing-subscriber` (with the `env-filter` feature) as a dependency of your
+application, not of the library.
+
 ## Safety & Requirements
 
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the

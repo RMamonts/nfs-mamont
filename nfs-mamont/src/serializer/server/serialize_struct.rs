@@ -16,15 +16,15 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBody};
 
-use crate::consts::xdr::ALIGNMENT;
+use crate::consts::xdr::{padding_len, ALIGNMENT};
 use crate::serializer::{u32, usize_as_u32};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
 use super::nfs::{
-    access, commit, create, error, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node,
-    path_conf, read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink,
+    access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
+    read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, status, symlink,
     write,
 };
 use super::nlm;
@@ -43,7 +43,7 @@ macro_rules! nfs_result {
                 $ok_fn(&mut $self.buffer, ok)?;
             }
             Err(err) => {
-                error(&mut $self.buffer, err.error)?;
+                status(&mut $self.buffer, err.error)?;
                 $fail_fn(&mut $self.buffer, err)?;
             }
         };
@@ -103,7 +103,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                     self.buffer.send_inner_with_buffer(ok.data, count).await
                 }
                 Err(err) => {
-                    error(&mut self.buffer, err.error)?;
+                    status(&mut self.buffer, err.error)?;
                     read::result_fail(&mut self.buffer, err)?;
                     self.buffer.send_inner_buffer().await
                 }
@@ -376,7 +376,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         // so we need to pass size of buffer before actual opaque data
         u32(&mut self.buf, count as u32)?;
 
-        let padding = (ALIGNMENT - count % ALIGNMENT) % ALIGNMENT;
+        let padding = padding_len(count);
         self.append_fragment_size(
             self.buf.len().saturating_sub(RMS_HEADER_SIZE) + count + padding,
         )?;

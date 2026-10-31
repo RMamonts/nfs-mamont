@@ -3,7 +3,7 @@
 use std::io::Read;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
-use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64};
+use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64, variant};
 use crate::parser::{Error, Result};
 use crate::vfs;
 use crate::vfs::file::{Name, Path};
@@ -20,18 +20,7 @@ pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
 
 /// Parses a [`file::Type`] from the provided `Read` source.
 pub fn r#type(src: &mut impl Read) -> Result<file::Type> {
-    use file::Type::*;
-
-    Ok(match u32(src)? {
-        1 => Regular,
-        2 => Directory,
-        3 => BlockDevice,
-        4 => CharacterDevice,
-        5 => Symlink,
-        6 => Socket,
-        7 => Fifo,
-        _ => return Err(Error::EnumDiscMismatch),
-    })
+    variant::<file::Type>(src)
 }
 
 /// Parses a [`file::Attr`] structure from the provided `Read` source.
@@ -72,10 +61,10 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(Error::IO)
+    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::FormatMismatch)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.
 pub fn file_path(src: &mut impl Read) -> Result<file::Path> {
-    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(Error::IO)
+    Path::new(string_max_size(src, MAX_PATH_LEN)?).map_err(|_| Error::FormatMismatch)
 }
