@@ -33,7 +33,7 @@ use crate::{
     task::connection,
 };
 
-pub use allocator::{Allocator, Buffer, PoolAllocator, Slice, UnownedBuffer};
+pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;

@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use super::Buffer;
+use crate::allocator::Buffer;
 
 /// Represents bounded by custom range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,
     range: std::ops::Range<usize>,
-    state: Option<Arc<super::PoolState>>,
+    state: Option<Arc<super::state::PoolState>>,
 }
 
 impl Slice {
@@ -29,7 +29,7 @@ impl Slice {
     pub fn new(
         buffers: Vec<super::UnownedBuffer>,
         range: std::ops::Range<usize>,
-        state: Option<Arc<super::PoolState>>,
+        state: Option<Arc<super::state::PoolState>>,
     ) -> Self {
         assert!(
             range.start <= range.end,

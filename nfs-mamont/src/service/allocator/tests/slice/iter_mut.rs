@@ -1,7 +1,7 @@
-//! Defines tests for [`crate::allocator::slice::Slice::iter_mut`] interface.
+//! Defines tests for [`crate::service::allocator::Slice::iter_mut`] interface.
 
 use super::test_helpers::SliceGuard;
-use crate::allocator::Slice;
+use crate::service::allocator::Slice;
 
 const FIRST_BUFFER: &[u8] = &[1, 2, 3, 4, 5];
 const SECOND_BUFFER: &[u8] = &[6, 7, 8];

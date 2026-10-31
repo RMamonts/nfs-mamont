@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::allocator::{Slice, UnownedBuffer};
+use crate::service::allocator::{Slice, UnownedBuffer};
 
 pub struct SliceGuard {
     slice: Slice,

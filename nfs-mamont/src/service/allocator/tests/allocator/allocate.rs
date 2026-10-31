@@ -1,11 +1,11 @@
-//! Defines tests for [`crate::allocator::Allocator::allocate`] interface.
+//! Defines tests for [`crate::service::allocator::PoolAllocator::allocate`] interface.
 
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::allocator::Allocator as _;
-use crate::allocator::PoolAllocator;
+use crate::service::allocator::PoolAllocator;
 
 /// `Option::unwrap` is not a `const fn` before Rust 1.83, so consts are built through this helper.
 const fn nonzero(value: usize) -> NonZeroUsize {
