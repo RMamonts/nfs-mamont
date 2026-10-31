@@ -102,9 +102,18 @@ where
     /// stops acknowledging the client's data (TCP flow control) and the RPC slot table of
     /// the client waits. Replies are never dropped, and a slow client never blocks the
     /// shared VFS/MOUNT/NLM tasks, because no connection ever has more than
-    /// `max_in_flight` replies queued. The memory held by one connection is therefore
-    /// bounded by `max_in_flight × reply size`, and the global command queues by
-    /// `max_in_flight × open connections`.
+    /// `max_in_flight` replies queued; the global command queues hold at most
+    /// `max_in_flight × open connections` requests.
+    ///
+    /// The limit counts requests, not bytes. It bounds the replies queued by one
+    /// connection, about `max_in_flight × reply size` of heap memory, but not the share
+    /// of the buffer allocator the connection holds: every non-empty READ and WRITE takes
+    /// at least one allocator buffer when it is parsed and keeps it until its reply is
+    /// written (READ) or its data is handed to the backend (WRITE). One connection may
+    /// thus hold up to `max_in_flight` buffers, so a client that stops reading its READ
+    /// replies can take the whole pool and stall READ and WRITE of every other
+    /// connection. With untrusted clients, give the allocator more buffers than the
+    /// connections can take this way, or lower the limit.
     ///
     /// A client needs about `throughput × server latency` requests in flight to keep the
     /// server busy, so a limit below that caps the throughput of one connection at

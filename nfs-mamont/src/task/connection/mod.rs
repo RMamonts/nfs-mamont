@@ -26,6 +26,10 @@
 //! VFS/MOUNT/NLM tasks never block on a slow client, and the global command channels
 //! together hold at most `max_in_flight × open connections` requests. Records the
 //! server would initiate on its own (none today) are not covered by the budget.
+//!
+//! The budget counts requests, not buffers: the READ and WRITE requests of one
+//! connection can still hold the whole buffer allocator, see
+//! [`ServerContext::with_max_in_flight`].
 
 use tokio::net::TcpStream;
 use tracing::error;

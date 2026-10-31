@@ -8,8 +8,9 @@ use std::num::NonZeroUsize;
 ///
 /// A client needs about `throughput × server latency` requests in flight to keep the
 /// server busy: 125 for 250 000 metadata operations per second at 0.5 ms, a handful for
-/// 1 MiB reads over 10 GbE. The limit bounds the memory held by one connection to
-/// `DEFAULT_MAX_IN_FLIGHT × reply size`.
+/// 1 MiB reads over 10 GbE. The limit bounds the replies queued by one connection, not
+/// the allocator buffers its READ and WRITE requests hold: 256 reads of 1 MiB take more
+/// than a pool of 64 buffers of 1 MiB, see [`crate::ServerContext::with_max_in_flight`].
 pub const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = match NonZeroUsize::new(256) {
     Some(limit) => limit,
     None => unreachable!(),
