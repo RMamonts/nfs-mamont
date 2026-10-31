@@ -14,13 +14,15 @@
 //!
 //! State structure follows this split:
 //! - exports are keyed by directory path for direct `MNT` lookup;
-//! - active mounts are keyed by client socket address because one client can
-//!   mount multiple directories and `UMNT`/`UMNTALL` are client-scoped;
+//! - active mounts are keyed by client IP address because one client can
+//!   mount multiple directories and `UMNT`/`UMNTALL` are client-scoped; the
+//!   port is deliberately not part of the key, since `mount` and `umount` are
+//!   separate processes that reach the server over separate TCP connections;
 //! - each export keeps server policy metadata (file handle + auth flavors)
 //!   next to user-visible export data.
 
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::net::IpAddr;
 
 use tokio::sync::RwLock;
 
@@ -82,11 +84,18 @@ impl ExportRegistry {
     }
 }
 
-/// Registry of active mounts grouped by client endpoint
+/// Registry of active mounts grouped by client host.
+///
+/// Keyed by IP address only: `MNT`, `UMNT` and `UMNTALL` for one host arrive
+/// over different TCP connections with different source ports, so a key that
+/// included the port would never match an existing entry. Addresses are stored
+/// in canonical form ([`IpAddr::to_canonical`]): a dual-stack listener reports
+/// IPv4 peers as IPv4-mapped IPv6 (`::ffff:a.b.c.d`), which is folded back to
+/// plain IPv4 so one host always has one key.
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
-    by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
+    by_client: HashMap<IpAddr, HashSet<MountEntry>>,
 }
 
 /// In-memory state backing the MOUNT v3 service implementation
@@ -126,8 +135,15 @@ impl MountService {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, SocketAddr};
+
     use super::*;
     use crate::consts::nfsv3::NFS3_FHSIZE;
+    use crate::mount::dump::Dump;
+    use crate::mount::mnt::{self, Mnt};
+    use crate::mount::umnt::{self, Umnt};
+    use crate::mount::umntall::Umntall;
+    use crate::rpc::auth::Credential;
     use crate::vfs::file;
 
     fn handle(byte: u8) -> file::Handle {
@@ -136,6 +152,100 @@ mod tests {
 
     fn path(name: &str) -> file::Path {
         file::Path::new(name.to_string()).unwrap()
+    }
+
+    fn client(port: u16) -> SocketAddr {
+        SocketAddr::new(Ipv4Addr::new(10, 0, 0, 7).into(), port)
+    }
+
+    async fn mounted_dirs(service: &MountService) -> Vec<file::Path> {
+        let mut dirs = service
+            .dump(&Credential::None)
+            .await
+            .mount_list
+            .into_iter()
+            .map(|entry| entry.directory)
+            .collect::<Vec<_>>();
+        dirs.sort_by(|a, b| a.as_path().cmp(b.as_path()));
+        dirs
+    }
+
+    /// `mount` and `umount` are separate processes on the client, so UMNT
+    /// arrives over a different connection (different source port) than MNT did.
+    #[tokio::test]
+    async fn umnt_from_another_port_of_the_same_host_removes_the_mount() {
+        let service = service();
+
+        service
+            .mnt(mnt::Args { dirpath: path("/initial") }, client(1000), &Credential::None)
+            .await
+            .unwrap();
+        assert_eq!(mounted_dirs(&service).await, vec![path("/initial")]);
+
+        service
+            .umnt(umnt::Args { dirpath: path("/initial") }, client(2000), &Credential::None)
+            .await;
+
+        assert!(mounted_dirs(&service).await.is_empty());
+        assert!(service.mounts.read().await.by_client.is_empty());
+    }
+
+    #[tokio::test]
+    async fn umntall_from_another_port_of_the_same_host_removes_all_mounts() {
+        let service = service();
+        service.add_export(path("/second"), handle(2)).await;
+
+        service
+            .mnt(mnt::Args { dirpath: path("/initial") }, client(1000), &Credential::None)
+            .await
+            .unwrap();
+        service
+            .mnt(mnt::Args { dirpath: path("/second") }, client(1001), &Credential::None)
+            .await
+            .unwrap();
+        assert_eq!(mounted_dirs(&service).await, vec![path("/initial"), path("/second")]);
+
+        service.umntall(client(2000), &Credential::None).await;
+
+        assert!(mounted_dirs(&service).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn umnt_from_another_host_keeps_the_mount() {
+        let service = service();
+        let other_host = SocketAddr::new(Ipv4Addr::new(10, 0, 0, 8).into(), 1000);
+
+        service
+            .mnt(mnt::Args { dirpath: path("/initial") }, client(1000), &Credential::None)
+            .await
+            .unwrap();
+
+        service.umnt(umnt::Args { dirpath: path("/initial") }, other_host, &Credential::None).await;
+
+        assert_eq!(mounted_dirs(&service).await, vec![path("/initial")]);
+    }
+
+    /// A dual-stack listener reports IPv4 peers as IPv4-mapped IPv6 addresses;
+    /// they must be the same host as the plain IPv4 form.
+    #[tokio::test]
+    async fn ipv4_mapped_client_is_the_same_host_as_plain_ipv4() {
+        let service = service();
+        let mapped = SocketAddr::new(Ipv4Addr::new(10, 0, 0, 7).to_ipv6_mapped().into(), 1000);
+
+        service
+            .mnt(mnt::Args { dirpath: path("/initial") }, mapped, &Credential::None)
+            .await
+            .unwrap();
+
+        let mount_list = service.dump(&Credential::None).await.mount_list;
+        assert_eq!(mount_list.len(), 1);
+        assert_eq!(mount_list[0].hostname.as_str(), "10.0.0.7");
+
+        service
+            .umnt(umnt::Args { dirpath: path("/initial") }, client(2000), &Credential::None)
+            .await;
+
+        assert!(mounted_dirs(&service).await.is_empty());
     }
 
     fn service() -> MountService {
