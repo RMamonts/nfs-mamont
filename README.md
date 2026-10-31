@@ -14,7 +14,7 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 - **NFSv3** via the `NFS_PROGRAM` (100003) RPC program — full procedure set of RFC 1813.
 - **MOUNT protocol** — export handling, mount/umount, and export dumps.
 - **Custom RPC/XDR layer** — hand-written parser and serializer.
-- **Zero-copy buffer allocator** — a reusable byte-slice allocator for
+- **Zero-copy pool allocator** — `PoolAllocator`, a pool of reusable byte buffers for
   efficient packet and file I/O. Allocator has public trait so you can put your own implementation.
 - **Pluggable VFS backend** — the `Vfs` trait abstracts the filesystem so
   different storage back ends can be mounted.
@@ -46,7 +46,7 @@ application, not of the library.
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the
   current stable toolchain).
 - **Platform:** Linux (`libc` is an optional dependency used only for the
-  `mlock` feature, only needed if you are using our allocator implementation).
+  `mlock` feature, only needed if you are using `PoolAllocator`).
 
 ### Optional feature
 

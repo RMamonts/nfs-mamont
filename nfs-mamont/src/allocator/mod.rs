@@ -1,5 +1,6 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
-//! for user data transmission inside NFS-Mamont implementation.
+//! for user data transmission inside NFS-Mamont implementation, and
+//! [`PoolAllocator`] --- its built-in pool-based implementation.
 
 mod buffer;
 mod slice;
@@ -20,19 +21,19 @@ use tokio::sync::Semaphore;
 pub use buffer::UnownedBuffer;
 pub use slice::Slice;
 
-/// Shared state of the allocator to allow return of buffers and permit restoration.
+/// Shared state of the [`PoolAllocator`] to allow return of buffers and permit restoration.
 #[derive(Debug)]
-pub struct AllocatorState {
+pub struct PoolState {
     pub pool: ArrayQueue<UnownedBuffer>,
     pub semaphore: Semaphore,
     base_ptr: *mut u8,
     layout: Layout,
 }
 
-unsafe impl Send for AllocatorState {}
-unsafe impl Sync for AllocatorState {}
+unsafe impl Send for PoolState {}
+unsafe impl Sync for PoolState {}
 
-impl Drop for AllocatorState {
+impl Drop for PoolState {
     fn drop(&mut self) {
         while self.pool.pop().is_some() {}
         #[cfg(feature = "mlock")]
@@ -93,19 +94,25 @@ pub trait Allocator {
     fn capacity(&self) -> NonZeroUsize;
 }
 
-pub struct Impl {
-    state: Arc<AllocatorState>,
+/// [`Allocator`] backed by a fixed pool of equally sized buffers.
+///
+/// All buffers are carved out of a single contiguous block allocated up front;
+/// [`Allocator::allocate`] hands out as many of them as needed and waits while
+/// the pool is exhausted. Buffers return to the pool when the [`Slice`] is dropped.
+/// With the `mlock` feature the whole block is locked in RAM.
+pub struct PoolAllocator {
+    state: Arc<PoolState>,
     buffer_size: NonZeroUsize,
     capacity: NonZeroUsize,
 }
 
-impl Impl {
-    /// Returns new [`Allocator`] IMPlementation.
+impl PoolAllocator {
+    /// Creates a pool of `count` buffers of `size` bytes each.
     ///
     /// # Parameters
     ///
-    /// - `size` --- size of each buffer to allocate
-    /// - `count` --- number of buffers to allocate
+    /// - `size` --- size of each buffer in the pool
+    /// - `count` --- number of buffers in the pool
     pub fn new(size: NonZeroUsize, count: NonZeroUsize) -> Self {
         let pool = ArrayQueue::new(count.get());
         let semaphore = Semaphore::new(count.get());
@@ -140,7 +147,7 @@ impl Impl {
         }
 
         Self {
-            state: Arc::new(AllocatorState { pool, semaphore, base_ptr, layout }),
+            state: Arc::new(PoolState { pool, semaphore, base_ptr, layout }),
             buffer_size: size,
             // `total_size` is a product of two non-zero values, checked above.
             capacity: NonZeroUsize::new(total_size).expect("capacity must be non-zero"),
@@ -148,7 +155,7 @@ impl Impl {
     }
 }
 
-impl Allocator for Impl {
+impl Allocator for PoolAllocator {
     type Buffer = slice::Slice;
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {

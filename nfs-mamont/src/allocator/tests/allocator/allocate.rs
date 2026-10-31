@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::allocator::Allocator as _;
-use crate::allocator::Impl;
+use crate::allocator::PoolAllocator;
 
 /// `Option::unwrap` is not a `const fn` before Rust 1.83, so consts are built through this helper.
 const fn nonzero(value: usize) -> NonZeroUsize {
@@ -16,7 +16,7 @@ const fn nonzero(value: usize) -> NonZeroUsize {
 }
 
 async fn check_allocate(buffer_size: NonZeroUsize, count: NonZeroUsize, alloc_size: NonZeroUsize) {
-    let allocator = Impl::new(buffer_size, count);
+    let allocator = PoolAllocator::new(buffer_size, count);
     let mut slice = allocator.allocate(alloc_size).await.unwrap();
 
     let verify: Vec<u8> = (0..alloc_size.get()).map(|u| (u + 1) as u8).collect();
@@ -97,7 +97,7 @@ async fn reclaiming() {
     const COUNT: NonZeroUsize = nonzero(15);
     const ALLOC_SIZE: NonZeroUsize = nonzero(SIZE.get() * COUNT.get());
 
-    let allocator = Impl::new(SIZE, COUNT);
+    let allocator = PoolAllocator::new(SIZE, COUNT);
 
     for _ in 0..5 {
         let slice = allocator.allocate(ALLOC_SIZE).await.unwrap();
@@ -122,7 +122,7 @@ async fn allocate_more_than_capacity_returns_none() {
     const SIZE: NonZeroUsize = nonzero(13);
     const COUNT: NonZeroUsize = nonzero(15);
 
-    let allocator = Impl::new(SIZE, COUNT);
+    let allocator = PoolAllocator::new(SIZE, COUNT);
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
     assert!(allocator.allocate(requested).await.is_none());
