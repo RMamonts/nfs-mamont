@@ -15,5 +15,5 @@ mod mount;
 mod nlm;
 
 pub use allocator::{PoolAllocator, Slice};
-pub use mount::{ExportEntryWrapper, MountService};
+pub use mount::MountService;
 pub use nlm::NlmService;

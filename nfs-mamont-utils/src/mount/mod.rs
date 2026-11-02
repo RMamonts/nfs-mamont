@@ -39,10 +39,11 @@ mod tests;
 // TODO: should be taken from config
 const AUTH: [AuthFlavor; 1] = [AuthFlavor::None];
 
+/// Export entry together with the root file handle returned by `MNT`.
 #[derive(Clone)]
-pub struct ExportEntryWrapper {
-    pub export: ExportEntry,
-    pub root_handle: file::Handle,
+struct ExportEntryWrapper {
+    export: ExportEntry,
+    root_handle: file::Handle,
 }
 
 /// Registry of exported directories advertised by the server
@@ -53,14 +54,6 @@ struct ExportRegistry {
 }
 
 impl ExportRegistry {
-    fn from_entries(entries: Vec<ExportEntryWrapper>) -> Self {
-        let mut by_directory = HashMap::new();
-        for entry in entries {
-            by_directory.insert(entry.export.directory.clone(), entry);
-        }
-        Self { by_directory }
-    }
-
     fn by_path(&self, path: &file::Path) -> Option<&ExportEntryWrapper> {
         self.by_directory.get(path)
     }
@@ -99,12 +92,22 @@ pub struct MountService {
     mounts: RwLock<MountRegistry>,
 }
 
-impl MountService {
-    pub fn with_exports(entries: Vec<ExportEntryWrapper>) -> Self {
+impl Default for MountService {
+    /// Creates a [`MountService`] with no exports and no active mounts.
+    fn default() -> Self {
         Self {
-            exports: RwLock::new(ExportRegistry::from_entries(entries)),
+            exports: RwLock::new(ExportRegistry::default()),
             mounts: RwLock::new(MountRegistry::default()),
         }
+    }
+}
+
+impl MountService {
+    /// Creates a [`MountService`] with no exports and no active mounts.
+    ///
+    /// Exports are registered with [`MountService::add_export`].
+    pub fn new() -> Self {
+        Self::default()
     }
 
     async fn export_entry(&self, path: &file::Path) -> Option<ExportEntryWrapper> {

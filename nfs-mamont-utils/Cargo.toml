@@ -22,6 +22,9 @@ nfs-mamont.workspace = true
 
 # External dependencies
 crossbeam-queue.workspace = true
-libc = { version = "0.2.186", optional = true }
-tokio.workspace = true
+libc = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
