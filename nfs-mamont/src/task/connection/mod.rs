@@ -7,19 +7,46 @@
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
+//!
+//! # In-flight limit
+//!
+//! Every connection has a budget of [`ServerContext::max_in_flight`] requests that are
+//! read from the socket but whose replies are not yet written back. The read task takes
+//! one [`limit::Token`] of the budget before it reads a request; the token travels with
+//! the request through the global MOUNT/NLM/VFS tasks, comes back to the write task
+//! inside an [`InFlightReply`] and is returned once the reply bytes are handed to the
+//! socket. When the budget is exhausted the read task leaves the socket unread and TCP
+//! flow control holds the client back. A record that gets no reply (a REPLY sent to the
+//! server) gives its token back right away; every other record yields exactly one
+//! [`InFlightReply`]. A token dropped on the way (a panicking backend, a closed global
+//! channel) frees its slot as well, so requests that are gone never hold the budget.
+//!
+//! The channels are unbounded, which is safe because of the budget: the result channel
+//! of a connection never holds more than `max_in_flight` replies, so the shared
+//! VFS/MOUNT/NLM tasks never block on a slow client, and the global command channels
+//! together hold at most `max_in_flight × open connections` requests. Records the
+//! server would initiate on its own (none today) are not covered by the budget.
+//!
+//! The budget counts requests, not buffers: the READ and WRITE requests of one
+//! connection can still hold the whole buffer allocator, see
+//! [`ServerContext::with_max_in_flight`].
 
 use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
+use crate::task::connection::limit::Budget;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::ProcReply;
+use crate::task::InFlightReply;
 use crate::vfs::Vfs;
 
+pub mod limit;
 mod read;
+#[cfg(test)]
+mod tests;
 mod write;
 
 // Creates all connection tasks with their inner connections
@@ -43,8 +70,10 @@ pub fn new<A, V, B>(
     };
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
-    let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
+    let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // channel for request
+    // in-flight budget of the connection, see the module docs
+    let (budget, limiter) = Budget::new(context.max_in_flight());
 
     let command_senders = CommandSenders::<B>::new(
         mount_sender,
@@ -53,8 +82,14 @@ pub fn new<A, V, B>(
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
-        .spawn();
+    read::ReadTask::<A, B>::new(
+        readhalf,
+        peer_addr,
+        context.get_allocator(),
+        command_senders,
+        budget,
+    )
+    .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
+    write::WriteTask::<B>::new(writehalf, result_receiver, limiter).spawn();
 }
