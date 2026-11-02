@@ -37,6 +37,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # Workspace builds unify tokio features with nfs-mamont-util; catch features the
+      # core uses but does not declare.
+      - name: Check nfs-mamont on its own
+        run: cargo check -p nfs-mamont --all-targets --locked
+
       - name: Check Cargo.lock is up to date
         run: cargo check --locked
 
