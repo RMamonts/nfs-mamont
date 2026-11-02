@@ -14,7 +14,7 @@ fn test_commit() {
 
     let result = args(&mut Cursor::new(DATA)).unwrap();
 
-    assert_eq!(result.file.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(*result.file.as_bytes(), [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
     assert_eq!(result.offset, 65536);
     assert_eq!(result.count, 1024)
 }

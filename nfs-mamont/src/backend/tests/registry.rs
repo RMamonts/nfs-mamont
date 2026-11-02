@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use crate::backend::BackendRegistry;
+use crate::vfs::file::BackendId;
 
 #[test]
 fn add_assigns_sequential_ids() {
     let registry = BackendRegistry::new();
 
-    assert_eq!(registry.add(Arc::new("first")), Some(0));
-    assert_eq!(registry.add(Arc::new("second")), Some(1));
-    assert_eq!(registry.ids(), vec![0, 1]);
+    assert_eq!(registry.add(Arc::new("first")), Some(BackendId::new(0)));
+    assert_eq!(registry.add(Arc::new("second")), Some(BackendId::new(1)));
+    assert_eq!(registry.ids(), vec![BackendId::new(0), BackendId::new(1)]);
 }
 
 #[test]
@@ -27,8 +28,8 @@ fn remove_unknown_id_returns_none() {
     let registry: BackendRegistry<&str> = BackendRegistry::new();
 
     assert!(registry.is_empty());
-    assert!(registry.remove(7).is_none());
-    assert!(registry.get(7).is_none());
+    assert!(registry.remove(BackendId::new(7)).is_none());
+    assert!(registry.get(BackendId::new(7)).is_none());
 }
 
 #[test]
