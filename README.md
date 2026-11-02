@@ -14,10 +14,21 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 - **NFSv3** via the `NFS_PROGRAM` (100003) RPC program — full procedure set of RFC 1813.
 - **MOUNT protocol** — export handling, mount/umount, and export dumps.
 - **Custom RPC/XDR layer** — hand-written parser and serializer.
-- **Zero-copy pool allocator** — `PoolAllocator`, a pool of reusable byte buffers for
-  efficient packet and file I/O. Allocator has public trait so you can put your own implementation.
+- **Zero-copy pool allocator** — `PoolAllocator` (in `nfs-mamont-utils`), a pool of reusable
+  byte buffers for efficient packet and file I/O. Allocator has public trait so you can put your
+  own implementation.
 - **Pluggable VFS backend** — the `Vfs` trait abstracts the filesystem so
   different storage back ends can be mounted.
+
+## Crates
+
+| Crate | Contents |
+|-------|----------|
+| `nfs-mamont` | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
+| `nfs-mamont-utils` | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
+
+`nfs-mamont` does not depend on `nfs-mamont-utils`; use the latter if you do not need custom
+allocator, MOUNT or NLM implementations.
 
 ## Architecture
 
@@ -45,12 +56,12 @@ application, not of the library.
 
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the
   current stable toolchain).
-- **Platform:** Linux (`libc` is an optional dependency used only for the
-  `mlock` feature, only needed if you are using `PoolAllocator`).
+- **Platform:** Linux (`libc` is an optional dependency of `nfs-mamont-utils`, used only
+  for the `mlock` feature).
 
 ### Optional feature
 
-- `mlock` — enables the `libc`-based memory locking helpers.
+- `mlock` (`nfs-mamont-utils`) — locks the whole `PoolAllocator` memory block in RAM via `libc`.
 
 ## Contributing
 

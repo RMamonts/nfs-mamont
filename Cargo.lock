@@ -115,13 +115,22 @@ version = "0.2.0"
 dependencies = [
  "async-channel",
  "byteorder",
- "crossbeam-queue",
- "libc",
  "num-derive",
  "num-traits",
  "tokio",
  "tracing",
  "trait-variant",
+]
+
+[[package]]
+name = "nfs-mamont-utils"
+version = "0.2.0"
+dependencies = [
+ "crossbeam-queue",
+ "libc",
+ "nfs-mamont",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

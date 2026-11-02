@@ -31,21 +31,30 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          version=$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "nfs-mamont") | .version')
-          if [ "$TAG" != "v$version" ]; then
-            echo "::error::release tag $TAG does not match crate version v$version"
-            exit 1
-          fi
+          for crate in nfs-mamont nfs-mamont-utils; do
+            version=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+            if [ "$TAG" != "v$version" ]; then
+              echo "::error::release tag $TAG does not match $crate version v$version"
+              exit 1
+            fi
+          done
 
-      - name: Dry run
+      - name: Dry run nfs-mamont
         run: cargo publish -p nfs-mamont --locked --dry-run
 
       - name: Authenticate with crates.io
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
 
-      - name: Publish
+      - name: Publish nfs-mamont
         run: cargo publish -p nfs-mamont --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      # Must go after nfs-mamont: it depends on the version published above,
+      # so it cannot be dry-run before that.
+      - name: Publish nfs-mamont-utils
+        run: cargo publish -p nfs-mamont-utils --locked
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
