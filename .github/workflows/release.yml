@@ -14,7 +14,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    # Restricted to v* tags; tag creation is limited to org admins by ruleset.
+    # The environment only accepts v* tags; tag creation is limited to org admins by ruleset.
     environment: crates-io
     permissions:
       contents: read
@@ -40,21 +40,33 @@ jobs:
             fi
           done
 
-      - name: Dry run nfs-mamont
-        run: cargo publish -p nfs-mamont --locked --dry-run
+      # Packages and builds every crate before anything is uploaded; dependent crates are
+      # verified against the local, not yet published versions of their dependencies.
+      - name: Dry run
+        run: cargo publish --workspace --locked --dry-run
+
+      # Makes a re-run after a partial failure publish only the remaining crates.
+      - name: Select unpublished crates
+        id: select
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for crate in nfs-mamont nfs-mamont-utils; do
+            curl -sf -A nfs-mamont-release "https://crates.io/api/v1/crates/$crate/${TAG#v}" >/dev/null \
+              || packages="$packages -p $crate"
+          done
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
 
       - name: Authenticate with crates.io
+        if: steps.select.outputs.packages != ''
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
 
-      - name: Publish nfs-mamont
-        run: cargo publish -p nfs-mamont --locked
+      # Publishes in dependency order and waits for each crate to appear in the index.
+      - name: Publish
+        if: steps.select.outputs.packages != ''
+        # PACKAGES is intentionally unquoted: it holds several `-p <crate>` arguments.
+        run: cargo publish --locked $PACKAGES
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      # Must go after nfs-mamont: it depends on the version published above,
-      # so it cannot be dry-run before that.
-      - name: Publish nfs-mamont-utils
-        run: cargo publish -p nfs-mamont-utils --locked
-        env:
+          PACKAGES: ${{ steps.select.outputs.packages }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
