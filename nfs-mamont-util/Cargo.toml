@@ -1,5 +1,5 @@
 [package]
-name = "nfs-mamont-utils"
+name = "nfs-mamont-util"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

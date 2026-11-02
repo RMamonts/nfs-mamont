@@ -4,7 +4,7 @@
 use nfs_mamont::mount::Mount;
 use nfs_mamont::nlm::Nlm;
 use nfs_mamont::{Allocator, Buffer};
-use nfs_mamont_utils::{MountService, NlmService, PoolAllocator, Slice};
+use nfs_mamont_util::{MountService, NlmService, PoolAllocator, Slice};
 
 fn mount<M: Mount + Send + Sync + 'static>() {}
 
