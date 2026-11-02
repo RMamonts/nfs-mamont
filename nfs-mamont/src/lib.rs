@@ -31,7 +31,7 @@ use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
 
-pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;

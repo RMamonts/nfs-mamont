@@ -321,8 +321,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{failed_response, target, Target};
-    use crate::allocator::Slice;
     use crate::parser::NfsArguments;
+    use crate::service::allocator::Slice;
     use crate::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
     use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
 
