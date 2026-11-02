@@ -38,7 +38,9 @@ impl<V> BackendRegistry<V> {
     /// [`BackendId::MAX`] + 1 slots are taken.
     pub fn add(&self, backend: Arc<V>) -> Option<BackendId> {
         let mut backends = self.write();
-        let id = (BackendId::MIN..=BackendId::MAX).find(|id| !backends.contains_key(id))?;
+        let id = (BackendId::MIN.raw()..=BackendId::MAX.raw())
+            .find(|&id| !backends.contains_key(&BackendId::new(id)))
+            .map(BackendId::new)?;
         backends.insert(id, backend);
 
         Some(id)

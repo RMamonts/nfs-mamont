@@ -214,7 +214,7 @@ fn fsstat_args(root: [u8; NFS3_FHSIZE]) -> Vec<u8> {
 /// Serializes write (NFS procedure 7) arguments, including count, offset, stable, and data.
 fn write_args(arg: &WriteWrapper) -> Vec<u8> {
     let mut args = Vec::new();
-    push_opaque(&mut args, &arg.part.file.0);
+    push_opaque(&mut args, arg.part.file.as_bytes());
     push_u64(&mut args, arg.part.offset);
     push_u32(&mut args, arg.part.size);
     push_u32(&mut args, arg.part.stable.to_u32().unwrap());
@@ -229,7 +229,7 @@ fn assert_fsstat_result(result: &NfsArguments<impl Buffer>, expected_root: &[u8]
     let NfsArguments::FsStat(args) = result else {
         panic!("Wrong NFS argument type");
     };
-    assert_eq!(args.root.0, expected_root);
+    assert_eq!(*args.root.as_bytes(), expected_root);
 }
 
 fn assert_fsstat_proc_result(result: &ProcArguments<impl Buffer>, expected_root: &[u8]) {
@@ -419,7 +419,7 @@ async fn parse_write() {
 
     let write = WriteWrapper {
         part: write::ArgsPartial {
-            file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+            file: Handle::from_bytes([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
             size: 0xFF,
             stable: StableHow::Unstable,
@@ -465,7 +465,7 @@ async fn parse_write_after_error() {
 
     let write = WriteWrapper {
         part: write::ArgsPartial {
-            file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+            file: Handle::from_bytes([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
             size: 0xFF,
             stable: StableHow::Unstable,
@@ -638,7 +638,7 @@ async fn parse_write_with_empty_payload() {
 
     let write = WriteWrapper {
         part: write::ArgsPartial {
-            file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+            file: Handle::from_bytes([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
             size: 0xFF,
             stable: StableHow::Unstable,
@@ -816,7 +816,7 @@ async fn parse_write_out_of_memory_after_error() {
     ];
     let write = WriteWrapper {
         part: write::ArgsPartial {
-            file: Handle([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+            file: Handle::from_bytes([0, 1, 2, 3, 4, 5, 6, 7, 8]),
             offset: 0x8000,
             size: 0xFF,
             stable: StableHow::Unstable,

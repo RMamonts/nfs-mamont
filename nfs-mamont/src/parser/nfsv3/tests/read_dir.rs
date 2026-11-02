@@ -23,7 +23,7 @@ fn test_readdir() {
 
     let result = args(&mut Cursor::new(DATA)).unwrap();
 
-    assert_eq!(result.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(*result.dir.as_bytes(), [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
     assert_eq!(result.cookie, read_dir::Cookie::new(4096));
     assert_eq!(result.cookie_verifier, read_dir::CookieVerifier::new([0, 0, 0, 0, 0, 0, 0x20, 0]));
     assert_eq!(result.count, 2048);
