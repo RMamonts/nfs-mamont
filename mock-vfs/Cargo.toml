@@ -8,7 +8,7 @@ description = "In-memory mock VFS backend and benchmark tools for nfs-mamont"
 publish = false
 
 [dependencies]
-nfs-mamont = { path = "../nfs-mamont" }
+nfs-mamont = { path = "../nfs-mamont", features = ["metrics"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing-subscriber.workspace = true
 
