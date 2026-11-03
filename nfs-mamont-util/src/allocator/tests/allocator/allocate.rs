@@ -4,7 +4,7 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use nfs_mamont::Allocator as _;
+use nfs_mamont::Allocator;
 
 use crate::allocator::PoolAllocator;
 
