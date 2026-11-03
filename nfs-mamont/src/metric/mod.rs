@@ -14,6 +14,7 @@ mod queue;
 
 #[cfg(all(test, feature = "metrics"))]
 mod tests;
+mod utils;
 
 pub use allocator::AllocatorMetrics;
 pub use nfs_metrics::*;
@@ -108,6 +109,7 @@ mod nfs_metrics {
 
     use super::io::{IoStats, IoTimer};
     use super::{Queue, Stage, TaskKind};
+    use crate::metric::utils::{PROC_NAMES, TOKIO_SAMPLING_INTERVAL};
     use crate::vfs::file::BackendId;
 
     pub(super) const STAGE_SECONDS: &str = "nfsmamont_rpc_stage_seconds";
@@ -119,35 +121,6 @@ mod nfs_metrics {
     pub(super) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
     pub(super) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
     pub(super) const REPLY_BYTES: &str = "nfsmamont_rpc_reply_bytes";
-
-    /// How often tokio task metrics are sampled into the recorder.
-    const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
-
-    /// `proc` label values, indexed by NFSv3 procedure number.
-    const PROC_NAMES: [&str; 22] = [
-        "null",
-        "getattr",
-        "setattr",
-        "lookup",
-        "access",
-        "readlink",
-        "read",
-        "write",
-        "create",
-        "mkdir",
-        "symlink",
-        "mknod",
-        "remove",
-        "rmdir",
-        "rename",
-        "link",
-        "readdir",
-        "readdirplus",
-        "fsstat",
-        "fsinfo",
-        "pathconf",
-        "commit",
-    ];
 
     /// Reply metrics of one NFSv3 procedure.
     struct ReplyMetrics {
