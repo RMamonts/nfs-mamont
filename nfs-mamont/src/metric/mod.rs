@@ -16,9 +16,8 @@ mod queue;
 mod tests;
 
 pub use allocator::AllocatorMetrics;
-pub use queue::{unbounded, CountedReceiver, CountedSender};
-
 pub use nfs_metrics::*;
+pub use queue::{unbounded, CountedReceiver, CountedSender};
 
 /// Stage of an NFS request between the five timestamps of its pipeline:
 /// received (T0) → parsed (T1) → picked by a VFS worker (T2) → backend done (T3) →
