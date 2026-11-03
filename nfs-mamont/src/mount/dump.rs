@@ -14,6 +14,7 @@ pub struct Success {
     /// of clients that have requested file handles with the MNT procedure.
     pub mount_list: Vec<MountEntry>,
 }
+
 #[trait_variant::make(Send)]
 pub trait Dump {
     /// Retrieves the list of remotely mounted file systems.

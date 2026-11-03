@@ -1,10 +1,10 @@
-//! Defines [`Slice`] --- list of buffers bounded by custome byte range.
+//! Defines [`Slice`] --- list of buffers bounded by custom byte range.
 
 use std::sync::Arc;
 
 use super::Buffer;
 
-/// Represents bounded by custome range list of buffers.
+/// Represents bounded by custom range list of buffers.
 #[cfg_attr(test, derive(Debug))]
 pub struct Slice {
     buffers: Vec<super::UnownedBuffer>,

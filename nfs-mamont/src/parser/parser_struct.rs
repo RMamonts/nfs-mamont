@@ -157,6 +157,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         let header = self.reader.read_frame_header().await.map_err(Error::IO)?;
         let last = header & (HEADER_MASK as u32) != 0;
         let frame_size = header as usize & MAX_FRAGMENT_SIZE;
+        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
 
         if frame_size < std::mem::size_of::<u32>() {
             return Err(Error::IO(io::Error::new(
@@ -175,7 +176,6 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
             )));
         }
 
-        self.reader.begin_body(frame_size).await.map_err(Error::IO)?;
         u32(&mut self.reader).map_err(map_eof)
     }
 
@@ -367,7 +367,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ) -> core::result::Result<ArgWrapper<A::Buffer>, ErrorWrapper> {
         let xid = match self.read_message_header().await {
             Ok(xid) => xid,
-            Err(error) => return Err(ErrorWrapper { xid: None, error }),
+            Err(error) => {
+                return Err(ErrorWrapper { xid: None, error: self.match_errors(error).await })
+            }
         };
         let rpc_header = match self.parse_rpc_header() {
             Ok(arg) => arg,
@@ -385,7 +387,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         // finalize_parsing() is only called after successful header and procedure parsing; it is not run on error paths
         match self.finalize_parsing() {
             Ok(_) => Ok(ArgWrapper { header: RpcHeader { xid, cred: rpc_header.cred }, proc }),
-            Err(error) => Err(ErrorWrapper { xid: Some(xid), error: map_eof(error) }),
+            Err(error) => {
+                Err(ErrorWrapper { xid: Some(xid), error: self.match_errors(map_eof(error)).await })
+            }
         }
     }
 
@@ -501,11 +505,11 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
         Ok(())
     }
 
-    /// Handles errors by potentially discarding the current message.
+    /// Handles errors by discarding the current message.
     ///
-    /// For certain protocol-level errors (version mismatches, auth errors, etc.),
-    /// this method discards the remaining message data to maintain stream alignment
-    /// for subsequent messages. For other errors, it returns them as-is.
+    /// Discards the rest of the current frame after any error so the stream stays
+    /// aligned to the next record. If the frame is fully consumed (`frame_remaining`
+    /// is 0), discarding is a no-op.
     ///
     /// # Arguments
     ///
@@ -513,19 +517,9 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     ///
     /// # Returns
     ///
-    /// Returns the error, potentially after attempting to discard the message.
+    /// Returns the error, potentially replaced by an I/O error if discarding fails.
     async fn match_errors(&mut self, error: Error) -> Error {
-        if let Error::RpcVersionMismatch(_)
-        | Error::ProgramMismatch
-        | Error::ProcedureMismatch
-        | Error::Auth(_)
-        | Error::MessageTypeMismatch
-        | Error::ProgramVersionMismatch(_) = &error
-        {
-            proc_nested_errors(error, self.discard_current_message()).await
-        } else {
-            error
-        }
+        proc_nested_errors(error, self.discard_current_message()).await
     }
 
     /// Discards the remaining data in the current message frame.
