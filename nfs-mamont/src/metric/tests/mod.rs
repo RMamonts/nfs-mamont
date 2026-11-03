@@ -6,7 +6,7 @@ use metrics_util::CompositeKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::consts::nfsv3::GETATTR;
-use crate::metric::nfs_metrics::{
+use crate::metric::nfs::consts::{
     CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS,
     SYSCALL_SECONDS, VFS_IN_FLIGHT, WAIT_SECONDS,
 };

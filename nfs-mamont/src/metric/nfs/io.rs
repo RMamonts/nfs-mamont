@@ -1,6 +1,7 @@
 //! Socket wrapper measuring the time spent in its I/O calls.
 
-use std::io::{self, IoSlice};
+use std::io;
+use std::io::IoSlice;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -37,7 +38,7 @@ impl IoStats {
 
 /// Wraps a socket, adding the time spent in and bytes moved by its I/O calls to [`IoStats`].
 pub struct IoTimer<S> {
-    pub(super) inner: S,
+    pub(in crate::metric) inner: S,
     stats: Arc<IoStats>,
 }
 
