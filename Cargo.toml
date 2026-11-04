@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont", "nfs-mamont-util"]
+members = ["nfs-mamont", "nfs-mamont-util", "mock-vfs"]
 resolver = "2"
 
 [workspace.package]
@@ -21,4 +21,5 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 tokio = { version = "1.51", default-features = false }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 trait-variant = "0.1.2"
