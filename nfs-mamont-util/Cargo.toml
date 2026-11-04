@@ -8,7 +8,7 @@ publish = true
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/RMamonts/nfs-mamont"
-keywords = ["nfs", "nfsv3", "async", "server"]
+keywords =  ["nfs", "nfsv3", "nlm", "mount", "allocator"]
 categories = ["network-programming", "filesystem"]
 rust-version.workspace = true
 
