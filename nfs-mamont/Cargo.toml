@@ -15,18 +15,12 @@ rust-version.workspace = true
 [lib]
 doctest = true
 
-[features]
-default = []
-mlock = ["dep:libc"]
-
 [dependencies]
 # External dependencies
 async-channel.workspace = true
 byteorder.workspace = true
-crossbeam-queue.workspace = true
-libc = { version = "0.2.186", optional = true }
 num-derive.workspace = true
 num-traits.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal"] }
 tracing.workspace = true
 trait-variant.workspace = true
