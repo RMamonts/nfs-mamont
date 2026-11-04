@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_channel::{Receiver, Sender};
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::debug;
 
 use crate::allocator::Buffer;
@@ -21,6 +22,9 @@ pub struct MountCommand<B: Buffer> {
     /// In-flight slot of the request, returned by the write task after the reply is
     /// written, see [`crate::task::connection`].
     pub token: Token,
+    /// Slot of the request in the global pending budget, if one is set, see
+    /// [`crate::limits`].
+    pub pending: Option<OwnedSemaphorePermit>,
 }
 
 pub struct MountTask<M, B>
@@ -63,7 +67,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let MountCommand { result_tx, client_addr, args, token } = command;
+            let MountCommand { result_tx, client_addr, args, token, pending } = command;
             let MountArgWrapper { header, proc } = args;
             debug!(client=%client_addr, xid=header.xid, "mount task: command received");
 
@@ -123,6 +127,7 @@ where
                 proc_result: Ok(ProcResult::Mount(Box::new(mount_result))),
             };
             let _ = result_tx.send(InFlightReply { reply, token }).await;
+            drop(pending);
             debug!(xid = header.xid, "mount task: reply queued");
         }
     }

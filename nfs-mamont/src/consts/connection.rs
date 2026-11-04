@@ -1,6 +1,6 @@
-//! Per-connection limits.
+//! Per-connection and server-wide limits.
 
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 
 /// Lower bound of the default number of requests of one connection that may be read
 /// from the socket but not yet answered, see
@@ -27,5 +27,27 @@ pub const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = match NonZeroUsize::new(256) {
 /// second with a limit of 64, 58k with 128 and 58k with 256.
 pub const IN_FLIGHT_PER_VFS_WORKER: NonZeroUsize = match NonZeroUsize::new(2) {
     Some(factor) => factor,
+    None => unreachable!(),
+};
+
+/// Pending requests per VFS worker the default global pending limit allows, see
+/// [`crate::default_max_pending`]: `vfs_concurrency` requests execute while as many
+/// again are queued, parsed or on their way, so a few per worker keep the pool busy
+/// and more only adds queueing delay.
+pub const PENDING_PER_VFS_WORKER: NonZeroUsize = match NonZeroUsize::new(4) {
+    Some(factor) => factor,
+    None => unreachable!(),
+};
+
+/// Bytes of READ or WRITE data per cost unit of the DRR scheduler, see
+/// [`crate::Scheduling::Drr`]: a procedure costs one unit plus one per started
+/// `COST_UNIT_BYTES`, so a GETATTR costs 1 and a 1 MiB READ 17.
+pub const COST_UNIT_BYTES: usize = 64 * 1024;
+
+/// Default quantum of the DRR scheduler in cost units: per round a connection with
+/// metadata procedures gets up to 32 of them and a connection streaming 1 MiB reads
+/// about two, see [`crate::Scheduling::Drr`].
+pub const DEFAULT_DRR_QUANTUM: NonZeroU32 = match NonZeroU32::new(32) {
+    Some(quantum) => quantum,
     None => unreachable!(),
 };

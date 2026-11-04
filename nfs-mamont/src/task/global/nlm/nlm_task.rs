@@ -6,6 +6,7 @@
 
 use async_channel::{Receiver, Sender};
 use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
@@ -26,6 +27,9 @@ pub struct NlmCommand<B: Buffer> {
     /// In-flight slot of the request, returned by the write task after the reply is
     /// written, see [`crate::task::connection`].
     pub token: Token,
+    /// Slot of the request in the global pending budget, if one is set, see
+    /// [`crate::limits`].
+    pub pending: Option<OwnedSemaphorePermit>,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -74,12 +78,13 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args, token } = command;
+            let NlmCommand { result_sender, args, token, pending } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
             if let Some(result) = nlm_result {
                 send_reply(result_sender, result, xid, token).await;
             }
+            drop(pending);
         }
     }
 }

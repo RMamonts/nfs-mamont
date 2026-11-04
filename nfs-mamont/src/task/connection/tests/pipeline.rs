@@ -13,12 +13,15 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::RPC_VERSION;
+use crate::limits::Limits;
 use crate::parser::tests::allocator::{MockAllocator, MockBuffer};
+use crate::task::connection::budget_alloc::BudgetedAllocator;
 use crate::task::connection::limit::{Budget, Limiter};
 use crate::task::connection::read::{CommandSenders, ReadTask};
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+use crate::task::global::vfs::FlowSender;
 use crate::task::global::vfs::VfsCommand;
 use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
@@ -81,12 +84,25 @@ async fn pipeline(with_write_task: bool) -> Pipeline {
     let (pool_tx, pool_rx) = async_channel::unbounded();
     let (result_tx, result_rx) = async_channel::unbounded();
     let (budget, limiter) = Budget::new(nonzero(LIMIT));
-    let allocator = Arc::new(MockAllocator::new(4096));
+    let limits = Arc::new(Limits::new(nonzero(LIMIT), nonzero(1)));
+    let allocator = Arc::new(BudgetedAllocator::new(
+        Arc::new(MockAllocator::new(4096)),
+        Arc::clone(&limits),
+        Arc::clone(&limiter),
+    ));
 
-    let senders = CommandSenders::new(mount_tx, nlm_tx, pool_tx, result_tx);
-    ReadTask::new(readhalf, addr, allocator, senders, budget).spawn();
+    let senders = CommandSenders::new(mount_tx, nlm_tx, FlowSender::Fifo(pool_tx), result_tx);
+    let read_task = ReadTask::new(readhalf, addr, allocator, senders, budget, limits).spawn();
     if with_write_task {
-        WriteTask::new(writehalf, result_rx, Arc::clone(&limiter)).spawn();
+        WriteTask::new(
+            writehalf,
+            result_rx,
+            Arc::clone(&limiter),
+            read_task.abort_handle(),
+            None,
+            None,
+        )
+        .spawn();
     }
     // Without a write task `result_rx` is dropped here, so no reply can be queued.
 
@@ -98,7 +114,7 @@ async fn pipeline(with_write_task: bool) -> Pipeline {
 async fn answer(pool_rx: &Receiver<VfsCommand<MockBuffer>>, count: usize) -> Vec<u32> {
     let mut xids = Vec::with_capacity(count);
     for _ in 0..count {
-        let VfsCommand { args, result_tx, token } = pool_rx.recv().await.unwrap();
+        let VfsCommand { args, result_tx, token, pending: _ } = pool_rx.recv().await.unwrap();
         let xid = args.header.xid;
         let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))) };
         result_tx.send(InFlightReply { reply, token }).await.unwrap();

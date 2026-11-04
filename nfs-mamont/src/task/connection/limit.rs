@@ -13,26 +13,56 @@
 //! atomic increment. A token holds the [`Limiter`] and frees its slot when it is
 //! dropped, so a request dropped anywhere on its way (a panicking backend, a closed
 //! global channel) cannot leak a slot and leave the read task waiting forever.
+//!
+//! The token also carries the allocator memory charged to the request (see
+//! [`super::budget_alloc`]): the bytes of the connection's data limit and the permit of
+//! the global data budget, both given back when the token is dropped.
 
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::Notify;
+use tokio::sync::{Notify, OwnedSemaphorePermit};
 
-/// Proof that one slot of a connection's budget is taken.
+use crate::stats;
+use crate::task::connection::budget_alloc::Charge;
+
+/// Proof that one slot of a connection's budget is taken, plus the allocator memory
+/// charged to the request.
 ///
-/// The slot is freed when the token is dropped: by the write task once the reply is
-/// written ([`Limiter::release`]), by the read task for a record that gets no reply
-/// ([`Budget::cancel`]), or wherever the request is dropped on its way.
+/// The slot and the memory are freed when the token is dropped: by the write task once
+/// the reply is written ([`Limiter::release`]), by the read task for a record that gets
+/// no reply ([`Budget::cancel`]), or wherever the request is dropped on its way.
 #[must_use = "dropping a token frees its in-flight slot right away"]
 pub struct Token {
     limiter: Arc<Limiter>,
+    /// Bytes charged to the connection's data limit.
+    bytes: u64,
+    /// Units held in the global data budget.
+    data_permit: Option<OwnedSemaphorePermit>,
+}
+
+impl Token {
+    /// Adds the allocator memory `charge` to what the token gives back on drop.
+    pub fn attach(&mut self, charge: Option<Charge>) {
+        if let Some(charge) = charge {
+            self.bytes += charge.bytes;
+            if charge.permit.is_some() {
+                self.data_permit = charge.permit;
+            }
+        }
+    }
+
+    /// Bytes charged to the connection's data limit.
+    #[cfg(test)]
+    pub fn bytes(&self) -> u64 {
+        self.bytes
+    }
 }
 
 impl Drop for Token {
     fn drop(&mut self) {
-        self.limiter.free_slot();
+        self.limiter.free(self.bytes);
     }
 }
 
@@ -40,11 +70,13 @@ impl Drop for Token {
 pub struct Limiter {
     /// Slots freed so far.
     released: AtomicU64,
-    /// Set by the read task while it waits for a slot to be freed.
+    /// Bytes of the data limit freed so far.
+    bytes_released: AtomicU64,
+    /// Set by the read task while it waits for a slot or for bytes to be freed.
     waiting: AtomicBool,
     /// Set once the write task is gone.
     closed: AtomicBool,
-    /// Wakes the read task after a slot is freed or on close.
+    /// Wakes the read task after a release or on close.
     notify: Notify,
 }
 
@@ -67,25 +99,42 @@ impl Limiter {
         self.notify.notify_one();
     }
 
-    fn free_slot(&self) {
+    fn free(&self, bytes: u64) {
         // `SeqCst` pairs with the loads in `Budget::acquire`: either the read task sees
         // this increment, or this load sees the read task waiting and wakes it.
         self.released.fetch_add(1, Ordering::SeqCst);
+        if bytes > 0 {
+            self.bytes_released.fetch_add(bytes, Ordering::SeqCst);
+        }
         if self.waiting.load(Ordering::SeqCst) {
             self.notify.notify_one();
         }
+    }
+
+    /// Returns the bytes of the data limit freed so far.
+    pub(super) fn bytes_released(&self) -> u64 {
+        self.bytes_released.load(Ordering::SeqCst)
+    }
+
+    /// Announces (or withdraws) that the read task is about to park.
+    pub(super) fn set_waiting(&self, waiting: bool) {
+        self.waiting.store(waiting, Ordering::SeqCst);
+    }
+
+    /// Parks until the next release or close.
+    pub(super) async fn parked(&self) {
+        self.notify.notified().await;
+    }
+
+    /// Returns whether [`Self::close`] was called.
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
     }
 
     /// Returns the number of slots freed so far.
     #[cfg(test)]
     pub fn released(&self) -> u64 {
         self.released.load(Ordering::SeqCst)
-    }
-
-    /// Returns whether [`Self::close`] was called.
-    #[cfg(test)]
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::SeqCst)
     }
 }
 
@@ -106,6 +155,7 @@ impl Budget {
     pub fn new(limit: NonZeroUsize) -> (Self, Arc<Limiter>) {
         let limiter = Arc::new(Limiter {
             released: AtomicU64::new(0),
+            bytes_released: AtomicU64::new(0),
             waiting: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             notify: Notify::new(),
@@ -122,6 +172,7 @@ impl Budget {
     ///
     /// `None` once the write task is gone, see [`Limiter::close`].
     pub async fn acquire(&mut self) -> Option<Token> {
+        let mut parked = false;
         loop {
             if self.has_slot() {
                 break;
@@ -130,23 +181,27 @@ impl Budget {
             if self.has_slot() {
                 break;
             }
-            if self.limiter.closed.load(Ordering::SeqCst) {
+            if self.limiter.is_closed() {
                 return None;
             }
             // Announce the wait, then look again: a freed slot checks the flag after
             // its increment, so a slot missed by this look finds the flag set and wakes
             // us. A notification stored before `notified()` is created still completes
             // it, and a stale one only costs another trip through the loop.
-            self.limiter.waiting.store(true, Ordering::SeqCst);
+            self.limiter.set_waiting(true);
             self.refresh();
-            if !self.has_slot() && !self.limiter.closed.load(Ordering::SeqCst) {
-                self.limiter.notify.notified().await;
+            if !self.has_slot() && !self.limiter.is_closed() {
+                if !parked {
+                    parked = true;
+                    stats::IN_FLIGHT_WAITS.fetch_add(1, Ordering::Relaxed);
+                }
+                self.limiter.parked().await;
             }
-            self.limiter.waiting.store(false, Ordering::SeqCst);
+            self.limiter.set_waiting(false);
         }
         self.issued += 1;
 
-        Some(Token { limiter: Arc::clone(&self.limiter) })
+        Some(Token { limiter: Arc::clone(&self.limiter), bytes: 0, data_permit: None })
     }
 
     /// Gives `token` back for a record that gets no reply.

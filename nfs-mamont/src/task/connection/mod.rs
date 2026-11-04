@@ -27,15 +27,24 @@
 //! together hold at most `max_in_flight × open connections` requests. Records the
 //! server would initiate on its own (none today) are not covered by the budget.
 //!
-//! The budget counts requests, not buffers: the READ and WRITE requests of one
-//! connection can still hold the whole buffer allocator, see
-//! [`ServerContext::with_max_in_flight`].
+//! # Global budgets
+//!
+//! On top of the per-connection budget the read task takes a slot of the global
+//! pending budget before it queues a parsed request, and the parser allocates through
+//! a [`budget_alloc::BudgetedAllocator`] that charges READ and WRITE buffers to the
+//! data limit of the connection and to the global data budget before the allocator is
+//! asked, see [`crate::limits`]. The write task closes a connection whose client stops
+//! reading its replies after [`ServerContext::with_write_timeout`].
+
+use std::sync::Arc;
 
 use tokio::net::TcpStream;
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::context::ServerContext;
+use crate::task::connection::budget_alloc::BudgetedAllocator;
 use crate::task::connection::limit::Budget;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
@@ -43,18 +52,23 @@ use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::InFlightReply;
 use crate::vfs::Vfs;
 
+pub mod budget_alloc;
 pub mod limit;
 mod read;
 #[cfg(test)]
 mod tests;
 mod write;
 
-// Creates all connection tasks with their inner connections
+/// Creates all connection tasks with their inner connections.
+///
+/// `permit` is the slot of the connection in the global connection budget, if one is
+/// set; it is given back when the connection is closed.
 pub fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
+    permit: Option<OwnedSemaphorePermit>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -69,27 +83,42 @@ pub fn new<A, V, B>(
         }
     };
     let (readhalf, writehalf) = socket.into_split();
+    let limits = context.limits();
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
-    // channel for request
     // in-flight budget of the connection, see the module docs
-    let (budget, limiter) = Budget::new(context.max_in_flight());
+    let (budget, limiter) = Budget::new(limits.max_in_flight);
+    // the allocator of the connection charges the budgets before allocating
+    let allocator = Arc::new(BudgetedAllocator::new(
+        context.get_allocator(),
+        Arc::clone(&limits),
+        Arc::clone(&limiter),
+    ));
 
     let command_senders = CommandSenders::<B>::new(
         mount_sender,
         nlm_sender,
-        context.get_vfs_manager().sender(),
+        context.get_vfs_manager().flow(),
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(
+    let read_task = read::ReadTask::<A, B>::new(
         readhalf,
         peer_addr,
-        context.get_allocator(),
+        allocator,
         command_senders,
         budget,
+        Arc::clone(&limits),
     )
     .spawn();
 
-    write::WriteTask::<B>::new(writehalf, result_receiver, limiter).spawn();
+    write::WriteTask::<B>::new(
+        writehalf,
+        result_receiver,
+        limiter,
+        read_task.abort_handle(),
+        permit,
+        limits.write_timeout,
+    )
+    .spawn();
 }

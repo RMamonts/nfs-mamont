@@ -4,15 +4,18 @@ mod allocator;
 mod backend;
 pub mod consts;
 mod context;
+mod limits;
 pub mod mount;
 pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
+pub mod stats;
 mod task;
 pub mod vfs;
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
@@ -31,7 +34,8 @@ use crate::vfs::Vfs;
 
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
-pub use context::ServerContext;
+pub use context::{default_drr_quantum, default_max_pending, ServerContext};
+pub use limits::Scheduling;
 pub use rpc::auth;
 pub use rpc::AuthFlavor;
 pub use vfs::file::BackendId;
@@ -69,13 +73,48 @@ where
 
     // TODO: will be replaced with other solution in future
     let mut shutdown = Box::pin(signal::ctrl_c());
+    let limits = context.limits();
 
     let accept_result = loop {
+        // A slot of the connection budget is taken before `accept`, so that beyond the
+        // limit the kernel backlog holds new connections until one is closed.
+        let permit = match &limits.connections {
+            Some(connections) => {
+                let acquire = async {
+                    match Arc::clone(connections).try_acquire_owned() {
+                        Ok(permit) => Ok(permit),
+                        Err(_) => {
+                            stats::CONNECTION_WAITS.fetch_add(1, Ordering::Relaxed);
+                            Arc::clone(connections).acquire_owned().await
+                        }
+                    }
+                };
+                tokio::select! {
+                    permit = acquire => match permit {
+                        Ok(permit) => Some(permit),
+                        Err(_) => break Ok(()),
+                    },
+                    result = &mut shutdown => {
+                        if matches!(result, Ok(())) {
+                            break Ok(());
+                        }
+                        continue;
+                    }
+                }
+            }
+            None => None,
+        };
         tokio::select! {
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
+                        connection::new(
+                            socket,
+                            mount_sender.clone(),
+                            nlm_sender.clone(),
+                            &context,
+                            permit,
+                        );
                     }
                     Err(err) if is_fatal_accept_error(&err) => break Err(err),
                     Err(err) => {

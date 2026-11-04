@@ -52,4 +52,14 @@ pub trait Allocator {
     /// where a short read is legal) should clamp to this value instead of
     /// failing on an oversized request.
     fn capacity(&self) -> NonZeroUsize;
+
+    /// Returns the size requests are rounded up to.
+    ///
+    /// A pool that hands out whole buffers serves a request of one byte with a full
+    /// buffer; budgets that account for allocator memory round every request up to
+    /// this size so that they count what the allocator really spends. The default of
+    /// one byte is right for allocators that allocate exactly what is asked.
+    fn granularity(&self) -> NonZeroUsize {
+        NonZeroUsize::MIN
+    }
 }

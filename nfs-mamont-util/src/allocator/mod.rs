@@ -117,4 +117,9 @@ impl Allocator for PoolAllocator {
     fn capacity(&self) -> NonZeroUsize {
         self.capacity
     }
+
+    /// Every allocation takes whole buffers, so the granularity is the buffer size.
+    fn granularity(&self) -> NonZeroUsize {
+        self.buffer_size
+    }
 }
