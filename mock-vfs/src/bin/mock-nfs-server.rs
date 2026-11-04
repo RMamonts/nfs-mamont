@@ -32,7 +32,7 @@ fn usage() -> String {
 }
 
 enum Command {
-    Run(ServerConfig, Duration),
+    Run(Box<ServerConfig>, Duration),
     Help,
 }
 
@@ -55,13 +55,13 @@ fn parse_args(mut args: Args) -> cli::Result<Command> {
     }
     config.validate().map_err(|err| err.to_string())?;
 
-    Ok(Command::Run(config, stats_interval))
+    Ok(Command::Run(Box::new(config), stats_interval))
 }
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let (config, stats_interval) = match parse_args(Args::from_env()) {
-        Ok(Command::Run(config, stats_interval)) => (config, stats_interval),
+        Ok(Command::Run(config, stats_interval)) => (*config, stats_interval),
         Ok(Command::Help) => {
             println!("{}", usage());
             return ExitCode::SUCCESS;
