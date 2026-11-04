@@ -7,7 +7,7 @@ use tracing::debug;
 use crate::allocator::Buffer;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ClientId, ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand<B: Buffer> {
@@ -17,6 +17,11 @@ pub struct MountCommand<B: Buffer> {
     pub client_addr: SocketAddr,
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
+
+    /// The ID using the socket address.
+    /// It is passed along with the MountCommand to mount.
+    #[allow(dead_code)]
+    pub client_id: ClientId,
 }
 
 pub struct MountTask<M, B>
@@ -59,7 +64,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let MountCommand { result_tx, client_addr, args } = command;
+            let MountCommand { result_tx, client_addr, args, client_id: _ } = command;
             let MountArgWrapper { header, proc } = args;
             debug!(client=%client_addr, xid=header.xid, "mount task: command received");
 

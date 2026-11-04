@@ -19,7 +19,7 @@ use crate::rpc::{Error, ErrorWrapper};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::global::vfs::VfsCommand;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::{ClientId, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
@@ -55,7 +55,7 @@ pub struct ReadTask<
 > {
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
-    client_id: u64,
+    client_id: ClientId,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
 }
@@ -69,11 +69,16 @@ where
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        client_id: u64,
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self { readhalf, client_addr, client_id, allocator, command_senders }
+        Self {
+            readhalf,
+            client_addr,
+            client_id: ClientId::new(client_addr),
+            allocator,
+            command_senders,
+        }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -171,6 +176,7 @@ where
                         result_tx: self.command_senders.result_sender.clone(),
                         args: MountArgWrapper { header, proc },
                         client_addr: self.client_addr,
+                        client_id: self.client_id,
                     };
                     if let Err(err) = self.command_senders.mount_sender.send(command).await {
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
@@ -184,6 +190,7 @@ where
                     let command = NlmCommand {
                         result_sender: self.command_senders.result_sender.clone(),
                         args: NlmArgWrapper { header, proc },
+                        client_id: self.client_id,
                     };
 
                     if let Err(err) = self.command_senders.nlm_sender.send(command).await {

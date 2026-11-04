@@ -8,6 +8,7 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::Error;
 use crate::vfs::NfsRes;
+use std::net::SocketAddr;
 
 pub mod connection;
 pub mod global;
@@ -23,4 +24,15 @@ pub enum ProcResult<B: Buffer> {
 pub struct ProcReply<B: Buffer> {
     pub xid: u32,
     pub proc_result: Result<ProcResult<B>, Error>,
+}
+
+/// The client's ID at the server level. Used in mount and nlm.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct ClientId(SocketAddr);
+
+impl ClientId {
+    /// Initializes the ClientID.
+    pub fn new(addr: SocketAddr) -> Self {
+        ClientId(addr)
+    }
 }
