@@ -11,9 +11,9 @@ use async_channel::Receiver;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::allocator::{Impl, Slice};
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::RPC_VERSION;
+use crate::parser::tests::allocator::{MockAllocator, MockBuffer};
 use crate::task::connection::limit::{Budget, Limiter};
 use crate::task::connection::read::{CommandSenders, ReadTask};
 use crate::task::connection::write::WriteTask;
@@ -61,11 +61,11 @@ fn getattr_frame(xid: u32) -> Vec<u8> {
 /// channels the test reads from.
 struct Pipeline {
     client: TcpStream,
-    pool_rx: Receiver<VfsCommand<Slice>>,
+    pool_rx: Receiver<VfsCommand<MockBuffer>>,
     limiter: Arc<Limiter>,
     // Kept open so that the read task could still queue MOUNT and NLM commands.
-    _mount_rx: Receiver<MountCommand<Slice>>,
-    _nlm_rx: Receiver<NlmCommand<Slice>>,
+    _mount_rx: Receiver<MountCommand<MockBuffer>>,
+    _nlm_rx: Receiver<NlmCommand<MockBuffer>>,
 }
 
 async fn pipeline(with_write_task: bool) -> Pipeline {
@@ -81,7 +81,7 @@ async fn pipeline(with_write_task: bool) -> Pipeline {
     let (pool_tx, pool_rx) = async_channel::unbounded();
     let (result_tx, result_rx) = async_channel::unbounded();
     let (budget, limiter) = Budget::new(nonzero(LIMIT));
-    let allocator = Arc::new(Impl::new(nonzero(4096), nonzero(1)));
+    let allocator = Arc::new(MockAllocator::new(4096));
 
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool_tx, result_tx);
     ReadTask::new(readhalf, addr, allocator, senders, budget).spawn();
@@ -95,7 +95,7 @@ async fn pipeline(with_write_task: bool) -> Pipeline {
 
 /// Takes the `count` oldest queued commands and answers each with a NULL reply through
 /// the channel it carries; returns their xids.
-async fn answer(pool_rx: &Receiver<VfsCommand<Slice>>, count: usize) -> Vec<u32> {
+async fn answer(pool_rx: &Receiver<VfsCommand<MockBuffer>>, count: usize) -> Vec<u32> {
     let mut xids = Vec::with_capacity(count);
     for _ in 0..count {
         let VfsCommand { args, result_tx, token } = pool_rx.recv().await.unwrap();
