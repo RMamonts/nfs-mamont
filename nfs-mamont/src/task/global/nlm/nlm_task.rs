@@ -9,13 +9,13 @@ use std::sync::Arc;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
+use crate::connection_id::ConnectionId;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
-use crate::connection_id::ConnectionId;
 
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {

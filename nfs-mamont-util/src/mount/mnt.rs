@@ -1,7 +1,7 @@
 //! Service implementation for the MOUNT v3 `MNT` procedure.
 
-use nfs_mamont::connection_id::ConnectionId;
 use nfs_mamont::auth::Credential;
+use nfs_mamont::connection_id::ConnectionId;
 use nfs_mamont::mount::mnt::{Args, Fail, Mnt, Success};
 use nfs_mamont::mount::{HostName, MountEntry};
 use tracing::warn;
@@ -36,7 +36,8 @@ impl Mnt for MountService {
 
         let file_handle = export.root_handle;
 
-        let hostname = HostName::new(connection_id.into_inner().ip().to_string()).map_err(|_| Fail::Inval)?;
+        let hostname =
+            HostName::new(connection_id.into_inner().ip().to_string()).map_err(|_| Fail::Inval)?;
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 

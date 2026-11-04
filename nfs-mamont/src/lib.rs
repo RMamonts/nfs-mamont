@@ -12,8 +12,8 @@ mod rpcbind;
 mod serializer;
 pub mod vfs;
 
-pub mod task;
 pub mod connection_id;
+pub mod task;
 
 use std::sync::Arc;
 

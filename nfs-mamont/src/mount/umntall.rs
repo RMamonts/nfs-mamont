@@ -3,8 +3,8 @@
 //! as defined in RFC 1813 section 5.2.4.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
 
-use crate::rpc::auth::Credential;
 use crate::connection_id::ConnectionId;
+use crate::rpc::auth::Credential;
 
 #[trait_variant::make(Send)]
 pub trait Umntall {
