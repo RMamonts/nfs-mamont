@@ -10,10 +10,11 @@ impl Umnt for MountService {
     async fn umnt(&self, args: Args, connection_id: ConnectionId, _cred: &Credential) {
         let mut mounts = self.mounts.write().await;
 
-        if let Some(entries) = mounts.by_client.get_mut(&connection_id) {
+        let ip = connection_id.into_inner().ip().to_canonical();
+        if let Some(entries) = mounts.by_client.get_mut(&ip) {
             entries.retain(|entry| entry.directory != args.dirpath);
             if entries.is_empty() {
-                mounts.by_client.remove(&connection_id);
+                mounts.by_client.remove(&ip);
             }
         }
     }

@@ -36,12 +36,12 @@ impl Mnt for MountService {
 
         let file_handle = export.root_handle;
 
-        let hostname =
-            HostName::new(connection_id.into_inner().ip().to_string()).map_err(|_| Fail::Inval)?;
+        let ip = connection_id.into_inner().ip().to_canonical();
+        let hostname = HostName::new(ip.to_string()).map_err(|_| Fail::Inval)?;
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 
-        self.mounts.write().await.by_client.entry(connection_id).or_default().insert(mount_entry);
+        self.mounts.write().await.by_client.entry(ip).or_default().insert(mount_entry);
 
         Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
     }

@@ -19,12 +19,11 @@
 //! - each export keeps server policy metadata (file handle + auth flavors)
 //!   next to user-visible export data.
 
-use std::collections::{HashMap, HashSet};
-
-use nfs_mamont::connection_id::ConnectionId;
 use nfs_mamont::mount::{ExportEntry, MountEntry};
 use nfs_mamont::vfs::file;
 use nfs_mamont::AuthFlavor;
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use tokio::sync::RwLock;
 
 mod dump;
@@ -81,7 +80,7 @@ impl ExportRegistry {
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
-    by_client: HashMap<ConnectionId, HashSet<MountEntry>>,
+    by_client: HashMap<IpAddr, HashSet<MountEntry>>,
 }
 
 /// In-memory state backing the MOUNT v3 service implementation

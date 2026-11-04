@@ -8,6 +8,6 @@ use super::MountService;
 
 impl Umntall for MountService {
     async fn umntall(&self, connection_id: ConnectionId, _cred: &Credential) {
-        self.mounts.write().await.by_client.remove(&connection_id);
+        self.mounts.write().await.by_client.remove(&connection_id.into_inner().ip().to_canonical());
     }
 }
