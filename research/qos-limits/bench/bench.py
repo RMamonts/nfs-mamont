@@ -44,13 +44,13 @@ VARIANTS = {
     "drr": (SERVER_EXP, ["--max-in-flight", "256", "--max-pending", "auto",
                          "--max-connections", "4096", "--data-budget", "auto",
                          "--max-data-per-conn", "32M", "--write-timeout", "30s",
-                         "--scheduler", "drr"]),
+                         "--scheduler", "drr:32"]),
     # one mechanism at a time, to price each of them
     "pending": (SERVER_EXP, ["--max-in-flight", "256", "--max-pending", "auto"]),
     "wtimeout": (SERVER_EXP, ["--max-in-flight", "256", "--write-timeout", "30s"]),
     "databudget": (SERVER_EXP, ["--max-in-flight", "256", "--data-budget", "auto",
                                 "--max-data-per-conn", "32M"]),
-    "drr-only": (SERVER_EXP, ["--max-in-flight", "256", "--scheduler", "drr"]),
+    "drr-only": (SERVER_EXP, ["--max-in-flight", "256", "--scheduler", "drr:32"]),
 }
 
 

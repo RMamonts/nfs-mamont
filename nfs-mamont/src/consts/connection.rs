@@ -45,9 +45,14 @@ pub const PENDING_PER_VFS_WORKER: NonZeroUsize = match NonZeroUsize::new(4) {
 pub const COST_UNIT_BYTES: usize = 64 * 1024;
 
 /// Default quantum of the DRR scheduler in cost units: per round a connection with
-/// metadata procedures gets up to 32 of them and a connection streaming 1 MiB reads
-/// about two, see [`crate::Scheduling::Drr`].
-pub const DEFAULT_DRR_QUANTUM: NonZeroU32 = match NonZeroU32::new(32) {
+/// metadata procedures gets up to 8 of them and a connection streaming 1 MiB reads
+/// one read per three rounds, see [`crate::Scheduling::Drr`].
+///
+/// A small quantum keeps the wait of a light connection short: on a 1 ms backend with
+/// 64 workers a depth-1 client next to a depth-2048 one sees a p50 of 1.8 ms with a
+/// quantum of 32 and 1.4 ms with 8, at no measurable cost in throughput
+/// (`research/qos-limits`, E7b).
+pub const DEFAULT_DRR_QUANTUM: NonZeroU32 = match NonZeroU32::new(8) {
     Some(quantum) => quantum,
     None => unreachable!(),
 };

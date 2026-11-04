@@ -238,7 +238,7 @@ no budget. The only infinite waiter is a client that does not read its replies; 
 Head-of-line within one connection (a large WRITE waits for bytes, a GETATTR behind it waits for
 the WRITE) cannot be removed with sequential parsing of a TCP stream: a frame cannot be skipped
 without reading its data. It is softened by the budget sizes and the fair hand-out; for READ it
-is removed by allocating the buffer at dispatch time (§11).
+is removed by allocating the buffer at dispatch time (§12).
 
 ### 4.6 Slow reader and the write deadline
 
@@ -284,7 +284,7 @@ a warning in the log.
 | `max_pending` | `max(4 × vfs_concurrency, max_in_flight)` | Little's law: more only adds latency |
 | `data_budget` | set explicitly; with `PoolAllocator`, 7/8 of the pool | margin for buffers held by the backend |
 | `max_data_per_connection` | 32 MiB | BDP + server pipeline for 25 GbE |
-| `quantum` | 32 units (a unit = 1 operation or 64 KiB) | 32 metadata operations ≈ 2 READs of 1 MiB per round |
+| `quantum` | 8 units (a unit = 1 operation or 64 KiB) | a light client waits for at most 8 operations of a heavy one; measured in `research/qos-limits`, E7b |
 | `write_timeout` | 30 s | as `sk_sndtimeo` in knfsd |
 
 Example: 64 workers, pool 1024 × 1 MiB. `data_budget` = 896 MiB, `max_pending` = 256,
@@ -325,7 +325,7 @@ allocators keep compiling.
    it gets today with limit 64, the heavy one loses nothing.
 3. **Polish**: `write_timeout`; flow key = `ClientId`; cost by the measured backend time with a
    deficit correction after `dispatch` (an estimate at pick time, corrected by the fact);
-   READ buffer allocation at dispatch time (§11); flow weights (quantum per flow) for priorities
+   READ buffer allocation at dispatch time (§12); flow weights (quantum per flow) for priorities
    by export or address.
 
 ## 9. Alternatives and why not
@@ -361,7 +361,29 @@ allocators keep compiling.
   §4.1, §4.2, §4.6, §4.7 and add "1000 connections" and "fast + slow link". Criteria: §4.1/§4.2
   within noise; §4.6 victim ≥ 55k ops/s; §4.7 light p50 ≤ 1.5 ms with the heavy one ≥ 55k ops/s.
 
-## 11. Open questions
+## 11. Experimental results
+
+The proposal was implemented experimentally in this branch (the port of PR #450 plus the budgets,
+the allocator wrapper, DRR and the write timeout, all switchable through `ServerContext`) and
+measured on the `mock-vfs` stand; the report is in `research/qos-limits/README.md`. In short:
+
+- the mechanisms cost nothing measurable, except the write timeout through
+  `tokio::time::timeout` per reply (−3 %), and DRR is cheaper than the current pool on
+  `async_channel` (+4…+6 % on four connections, +30 % at depth 1);
+- a client that does not read its replies: 1476 MiB on `main` against 4.5 MiB; the write timeout
+  closes it;
+- a victim next to a READ 1 MiB hog: 59k ops/s instead of zero, the allocator does not wait in
+  the normal mode;
+- a light client next to a heavy one: p50 1.4 ms with DRR (quantum 8) against 4.5 ms with the
+  per-connection limit alone, with no loss for the heavy one; limit 64 gives the same 1.3 ms at
+  the price of −19 %;
+- 1024 active connections: probe latency 22 ms instead of 278 ms thanks to `max_pending`;
+- metadata next to a deep READ 1 MiB queue: 16 ms instead of 110 ms and 7 times more ops/s.
+
+By these results the default DRR quantum in §6 should be taken as 8, and the write timeout
+should be implemented as a per-connection watchdog rather than a wrapper around every reply.
+
+## 12. Open questions
 
 - **Flow key.** Connection or client (`nconnect`)? Depends on #327/#419. Start with the
   connection and move to the client once `ClientId` exists.

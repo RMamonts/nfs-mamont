@@ -1,0 +1,153 @@
+===== e1 =====
+E1 getattr c1          main      --op getattr --connections 1 --depth 1 --duration 6s --warmup 1s     15279 ops/s ± 4.5%      0.0 MiB/s  p50       51us p99      110us  cpu  60.4%  hwm    4.2MiB  err 0  
+E1 getattr c1          inflight  --op getattr --connections 1 --depth 1 --duration 6s --warmup 1s     16300 ops/s ± 3.3%      0.0 MiB/s  p50       47us p99      100us  cpu  60.4%  hwm    4.5MiB  err 0  
+E1 getattr c1          budgets   --op getattr --connections 1 --depth 1 --duration 6s --warmup 1s     15904 ops/s ± 4.3%      0.0 MiB/s  p50       49us p99       96us  cpu  60.3%  hwm    4.5MiB  err 0  
+E1 getattr c1          drr       --op getattr --connections 1 --depth 1 --duration 6s --warmup 1s     20323 ops/s ± 2.3%      0.0 MiB/s  p50       36us p99       80us  cpu  42.5%  hwm    4.5MiB  err 0  
+E1 getattr c1          main      --op getattr --connections 1 --depth 32 --duration 6s --warmup 1s     74170 ops/s ± 4.2%      0.0 MiB/s  p50      408us p99      800us  cpu 113.2%  hwm    4.4MiB  err 0  
+E1 getattr c1          inflight  --op getattr --connections 1 --depth 32 --duration 6s --warmup 1s     71542 ops/s ± 4.1%      0.0 MiB/s  p50      424us p99      848us  cpu 115.2%  hwm    4.5MiB  err 0  
+E1 getattr c1          budgets   --op getattr --connections 1 --depth 32 --duration 6s --warmup 1s     68825 ops/s ± 1.4%      0.0 MiB/s  p50      432us p99      896us  cpu 112.7%  hwm    4.5MiB  err 0  
+E1 getattr c1          drr       --op getattr --connections 1 --depth 32 --duration 6s --warmup 1s     69946 ops/s ± 8.5%      0.0 MiB/s  p50      440us p99      880us  cpu 114.9%  hwm    4.6MiB  err 0  
+E1 getattr c1          main      --op getattr --connections 1 --depth 256 --duration 6s --warmup 1s     85386 ops/s ±11.9%      0.0 MiB/s  p50     2880us p99     5250us  cpu 118.8%  hwm    4.5MiB  err 0  
+E1 getattr c1          inflight  --op getattr --connections 1 --depth 256 --duration 6s --warmup 1s    111240 ops/s ± 8.9%      0.0 MiB/s  p50     2180us p99     4220us  cpu 121.7%  hwm    4.5MiB  err 0  in_flightW=3335
+E1 getattr c1          budgets   --op getattr --connections 1 --depth 256 --duration 6s --warmup 1s    105984 ops/s ± 1.0%      0.0 MiB/s  p50     2370us p99     4610us  cpu 120.2%  hwm    4.7MiB  err 0  in_flightW=3695
+E1 getattr c1          drr       --op getattr --connections 1 --depth 256 --duration 6s --warmup 1s    112764 ops/s ± 4.3%      0.0 MiB/s  p50     2110us p99     3900us  cpu 120.3%  hwm    4.8MiB  err 0  in_flightW=3928 sched_rotations=14704
+E1 getattr c1          main      --op getattr --connections 1 --depth 1024 --duration 6s --warmup 1s     84119 ops/s ± 6.8%      0.0 MiB/s  p50    11520us p99    19970us  cpu 118.8%  hwm    4.9MiB  err 0  
+E1 getattr c1          inflight  --op getattr --connections 1 --depth 1024 --duration 6s --warmup 1s    142932 ops/s ± 3.3%      0.0 MiB/s  p50     6530us p99    13570us  cpu 121.6%  hwm    4.7MiB  err 0  in_flightW=6611
+E1 getattr c1          budgets   --op getattr --connections 1 --depth 1024 --duration 6s --warmup 1s    135418 ops/s ±19.8%      0.0 MiB/s  p50     6910us p99    12540us  cpu 121.6%  hwm    4.6MiB  err 0  in_flightW=6363
+E1 getattr c1          drr       --op getattr --connections 1 --depth 1024 --duration 6s --warmup 1s    131768 ops/s ± 4.8%      0.0 MiB/s  p50     6780us p99    16380us  cpu 117.8%  hwm    4.7MiB  err 0  in_flightW=6300 sched_rotations=18389
+===== e2 =====
+E2 getattr c4          main      --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    299444 ops/s ± 3.4%      0.0 MiB/s  p50      784us p99     2180us  cpu 172.6%  hwm    4.5MiB  err 0  
+E2 getattr c4          inflight  --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    291032 ops/s ± 4.4%      0.0 MiB/s  p50      816us p99     2180us  cpu 174.0%  hwm    4.6MiB  err 0  
+E2 getattr c4          budgets   --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    259046 ops/s ± 5.5%      0.0 MiB/s  p50      896us p99     2430us  cpu 169.8%  hwm    4.7MiB  err 0  
+E2 getattr c4          drr       --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    275284 ops/s ± 5.9%      0.0 MiB/s  p50      880us p99     2300us  cpu 177.5%  hwm    4.7MiB  err 0  sched_rotations=25829
+E2 getattr c4          main      --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    285931 ops/s ± 6.8%      0.0 MiB/s  p50     6780us p99    13060us  cpu 173.4%  hwm    5.4MiB  err 0  
+E2 getattr c4          inflight  --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    324926 ops/s ± 4.8%      0.0 MiB/s  p50     5890us p99    13570us  cpu 186.2%  hwm    5.0MiB  err 0  in_flightW=15158
+E2 getattr c4          budgets   --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    302920 ops/s ± 4.2%      0.0 MiB/s  p50     6660us p99    13310us  cpu 188.1%  hwm    5.3MiB  err 0  in_flightW=13885 pendingW=139
+E2 getattr c4          drr       --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    324893 ops/s ± 6.4%      0.0 MiB/s  p50     6020us p99    13310us  cpu 187.5%  hwm    5.3MiB  err 0  in_flightW=15094 pendingW=163 sched_rotations=46079
+===== e4 =====
+E4 data                main      --op read:64k --connections 1 --depth 32 --duration 6s --warmup 1s     22229 ops/s ± 4.9%   1389.3 MiB/s  p50     1340us p99     2430us  cpu 109.0%  hwm    4.3MiB  err 0  
+E4 data                inflight  --op read:64k --connections 1 --depth 32 --duration 6s --warmup 1s     21815 ops/s ± 4.4%   1363.4 MiB/s  p50     1340us p99     2430us  cpu 110.7%  hwm    4.4MiB  err 0  
+E4 data                budgets   --op read:64k --connections 1 --depth 32 --duration 6s --warmup 1s     21707 ops/s ± 7.9%   1356.7 MiB/s  p50     1380us p99     2500us  cpu 111.2%  hwm    4.6MiB  err 0  conn_dataW=32 allocatorW=4
+E4 data                drr       --op read:64k --connections 1 --depth 32 --duration 6s --warmup 1s     22612 ops/s ± 1.2%   1413.2 MiB/s  p50     1380us p99     2370us  cpu 109.7%  hwm    4.5MiB  err 0  conn_dataW=38 allocatorW=7 sched_rotations=1990
+E4 data                main      --op read:1m --connections 1 --depth 16 --duration 6s --warmup 1s      3165 ops/s ±14.8%   3164.9 MiB/s  p50     4740us p99     8060us  cpu  98.8%  hwm    4.3MiB  err 0  
+E4 data                inflight  --op read:1m --connections 1 --depth 16 --duration 6s --warmup 1s      3006 ops/s ±12.3%   3006.5 MiB/s  p50     4990us p99     8960us  cpu  99.1%  hwm    4.5MiB  err 0  
+E4 data                budgets   --op read:1m --connections 1 --depth 16 --duration 6s --warmup 1s      3026 ops/s ± 6.7%   3025.8 MiB/s  p50     4990us p99     8190us  cpu  98.8%  hwm    4.4MiB  err 0  
+E4 data                drr       --op read:1m --connections 1 --depth 16 --duration 6s --warmup 1s      3078 ops/s ± 4.5%   3078.1 MiB/s  p50     4860us p99     8700us  cpu  99.1%  hwm    4.6MiB  err 0  sched_rotations=7662
+E4 data                main      --op write:64k --connections 1 --depth 32 --duration 6s --warmup 1s     23190 ops/s ±10.9%   1449.4 MiB/s  p50     1220us p99     2240us  cpu 108.2%  hwm    8.6MiB  err 0  
+E4 data                inflight  --op write:64k --connections 1 --depth 32 --duration 6s --warmup 1s     20578 ops/s ±10.7%   1286.1 MiB/s  p50     1440us p99     2430us  cpu 110.5%  hwm    8.7MiB  err 0  allocatorW=30
+E4 data                budgets   --op write:64k --connections 1 --depth 32 --duration 6s --warmup 1s     20246 ops/s ± 7.5%   1265.4 MiB/s  p50     1410us p99     2880us  cpu 108.0%  hwm    8.7MiB  err 0  conn_dataW=2 allocatorW=69
+E4 data                drr       --op write:64k --connections 1 --depth 32 --duration 6s --warmup 1s     22097 ops/s ±19.5%   1381.1 MiB/s  p50     1280us p99     2370us  cpu 103.5%  hwm    8.9MiB  err 0  conn_dataW=1 sched_rotations=250
+E4 data                main      --op read:4k --connections 4 --depth 64 --duration 6s --warmup 1s    177475 ops/s ± 8.5%    693.3 MiB/s  p50     1150us p99     4740us  cpu 168.8%  hwm    4.4MiB  err 0  
+E4 data                inflight  --op read:4k --connections 4 --depth 64 --duration 6s --warmup 1s    178806 ops/s ±11.8%    698.5 MiB/s  p50     1150us p99     4610us  cpu 170.8%  hwm    4.5MiB  err 0  allocatorW=92401
+E4 data                budgets   --op read:4k --connections 4 --depth 64 --duration 6s --warmup 1s    218706 ops/s ± 7.9%    854.3 MiB/s  p50     1010us p99     3260us  cpu 188.9%  hwm    4.7MiB  err 0  data_budgetW=54092 conn_dataW=23319 allocatorW=7
+E4 data                drr       --op read:4k --connections 4 --depth 64 --duration 6s --warmup 1s    217270 ops/s ± 7.5%    848.7 MiB/s  p50     1010us p99     3260us  cpu 188.4%  hwm    4.6MiB  err 0  data_budgetW=56964 conn_dataW=23620 allocatorW=4 sched_rotations=40721
+===== e5 =====
+E5 main                             accepted    5010944  RSS   1475.9 MiB  HWM   1475.9 MiB  timeline [120, 489, 769, 1037, 1296]  
+E5 inflight                         accepted      95180  RSS      4.5 MiB  HWM      4.5 MiB  timeline [4, 4, 4, 4, 4, 4]  in_flightW=280
+E5 budgets                          accepted      94685  RSS      4.6 MiB  HWM      4.7 MiB  timeline [4, 4, 4, 4, 4, 4]  in_flightW=292
+E5 budgets   --write-timeout 5s     accepted      95180  RSS      4.6 MiB  HWM      4.6 MiB  timeline [4, 4, 4, 4, 4]  in_flightW=285 write_timeouts=1
+===== e6 =====
+E6 main      victim read:4k alone    61903 ops/s, next to a READ-1M hog        0 ops/s stalled: no result within 15s  
+E6 inflight  victim read:4k alone    57268 ops/s, next to a READ-1M hog        0 ops/s stalled: no result within 15s  allocatorW=7
+E6 budgets   victim read:4k alone    59568 ops/s, next to a READ-1M hog    58871 ops/s   conn_dataW=3
+E6 drr       victim read:4k alone    59779 ops/s, next to a READ-1M hog    60573 ops/s   conn_dataW=50 sched_rotations=43
+===== e7 =====
+E7 heavy+light main      --latency 1ms          heavy    56770 ops/s     0.0 MiB/s p50  34.82ms  |  light      28 ops/s    0.0 MiB/s p50  34.82ms p99  41.98ms  
+E7 heavy+light main      --latency 1ms          heavy    56190 ops/s     0.0 MiB/s p50  34.82ms  |  light      28 ops/s    0.0 MiB/s p50  34.82ms p99  44.03ms  
+E7 heavy+light main      --latency 1ms          heavy    56901 ops/s     0.0 MiB/s p50  34.82ms  |  light      28 ops/s    0.0 MiB/s p50  34.82ms p99  40.96ms  
+E7 heavy+light inflight  --latency 1ms          heavy    57095 ops/s     0.0 MiB/s p50  34.82ms  |  light     211 ops/s    0.0 MiB/s p50   4.48ms p99   7.94ms  in_flightW=507194
+E7 heavy+light inflight  --latency 1ms          heavy    57277 ops/s     0.0 MiB/s p50  34.82ms  |  light     213 ops/s    0.0 MiB/s p50   4.35ms p99   8.06ms  in_flightW=525446
+E7 heavy+light inflight  --latency 1ms          heavy    57101 ops/s     0.0 MiB/s p50  34.82ms  |  light     211 ops/s    0.0 MiB/s p50   4.48ms p99   7.94ms  in_flightW=512602
+E7 heavy+light inflight  --max-in-flight 64 --latency 1ms heavy    45581 ops/s     0.0 MiB/s p50  44.03ms  |  light     683 ops/s    0.0 MiB/s p50   1.28ms p99   3.07ms  in_flightW=293163
+E7 heavy+light inflight  --max-in-flight 64 --latency 1ms heavy    46232 ops/s     0.0 MiB/s p50  43.01ms  |  light     679 ops/s    0.0 MiB/s p50   1.28ms p99   3.71ms  in_flightW=307418
+E7 heavy+light inflight  --max-in-flight 64 --latency 1ms heavy    47659 ops/s     0.0 MiB/s p50  41.98ms  |  light     687 ops/s    0.0 MiB/s p50   1.28ms p99   3.20ms  in_flightW=336475
+E7 heavy+light budgets   --latency 1ms          heavy    56800 ops/s     0.0 MiB/s p50  34.82ms  |  light     217 ops/s    0.0 MiB/s p50   4.35ms p99   7.55ms  in_flightW=259366 pendingW=42990
+E7 heavy+light budgets   --latency 1ms          heavy    57377 ops/s     0.0 MiB/s p50  34.82ms  |  light     218 ops/s    0.0 MiB/s p50   4.35ms p99   7.55ms  in_flightW=279804 pendingW=41116
+E7 heavy+light budgets   --latency 1ms          heavy    57273 ops/s     0.0 MiB/s p50  34.82ms  |  light     219 ops/s    0.0 MiB/s p50   4.35ms p99   6.66ms  in_flightW=274572 pendingW=42872
+E7 heavy+light drr       --latency 1ms          heavy    56535 ops/s     0.0 MiB/s p50  35.84ms  |  light     529 ops/s    0.0 MiB/s p50   1.82ms p99   3.65ms  in_flightW=277492 pendingW=43846 sched_rotations=24762
+E7 heavy+light drr       --latency 1ms          heavy    57110 ops/s     0.0 MiB/s p50  34.82ms  |  light     540 ops/s    0.0 MiB/s p50   1.79ms p99   3.78ms  in_flightW=281420 pendingW=45563 sched_rotations=25047
+E7 heavy+light drr       --latency 1ms          heavy    57021 ops/s     0.0 MiB/s p50  34.82ms  |  light     534 ops/s    0.0 MiB/s p50   1.82ms p99   3.90ms  in_flightW=290477 pendingW=42720 sched_rotations=24970
+===== e8 =====
+E8 c256+probe main      --latency 1ms          heavy    57786 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  75.78ms  
+E8 c256+probe main      --latency 1ms          heavy    58353 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  75.78ms  
+E8 c256+probe main      --latency 1ms          heavy    57468 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  79.43ms  
+E8 c256+probe inflight  --latency 1ms          heavy    58138 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  75.78ms  
+E8 c256+probe inflight  --latency 1ms          heavy    57977 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  77.82ms  
+E8 c256+probe inflight  --latency 1ms          heavy    57076 ops/s     0.0 MiB/s p50  69.63ms  |  light      14 ops/s    0.0 MiB/s p50  69.63ms p99  89.21ms  
+E8 c256+probe budgets   --latency 1ms          heavy    57415 ops/s     0.0 MiB/s p50  69.63ms  |  light     108 ops/s    0.0 MiB/s p50   8.96ms p99  12.80ms  pendingW=807428
+E8 c256+probe budgets   --latency 1ms          heavy    56650 ops/s     0.0 MiB/s p50  71.68ms  |  light     105 ops/s    0.0 MiB/s p50   9.22ms p99  12.29ms  pendingW=796168
+E8 c256+probe budgets   --latency 1ms          heavy    57964 ops/s     0.0 MiB/s p50  69.63ms  |  light     108 ops/s    0.0 MiB/s p50   8.96ms p99  12.29ms  pendingW=814366
+E8 c256+probe drr       --latency 1ms          heavy    58068 ops/s     0.0 MiB/s p50  69.63ms  |  light     109 ops/s    0.0 MiB/s p50   8.96ms p99  12.03ms  pendingW=818415
+E8 c256+probe drr       --latency 1ms          heavy    58139 ops/s     0.0 MiB/s p50  69.63ms  |  light      89 ops/s    0.0 MiB/s p50  11.01ms p99  13.82ms  pendingW=815222
+E8 c256+probe drr       --latency 1ms          heavy    57283 ops/s     0.0 MiB/s p50  69.63ms  |  light      87 ops/s    0.0 MiB/s p50  11.26ms p99  14.85ms  pendingW=805943
+E8 c1024+probe main      --latency 1ms          heavy    57983 ops/s     0.0 MiB/s p50 278.53ms  |  light       4 ops/s    0.0 MiB/s p50 278.53ms p99 301.27ms  
+E8 c1024+probe main      --latency 1ms          heavy    58063 ops/s     0.0 MiB/s p50 278.53ms  |  light       4 ops/s    0.0 MiB/s p50 278.53ms p99 300.96ms  
+E8 c1024+probe main      --latency 1ms          heavy    58666 ops/s     0.0 MiB/s p50 270.34ms  |  light       4 ops/s    0.0 MiB/s p50 270.34ms p99 288.77ms  
+E8 c1024+probe inflight  --latency 1ms          heavy    57945 ops/s     0.0 MiB/s p50 278.53ms  |  light       4 ops/s    0.0 MiB/s p50 278.53ms p99 310.11ms  
+E8 c1024+probe inflight  --latency 1ms          heavy    58635 ops/s     0.0 MiB/s p50 270.34ms  |  light       4 ops/s    0.0 MiB/s p50 270.34ms p99 291.46ms  
+E8 c1024+probe inflight  --latency 1ms          heavy    58071 ops/s     0.0 MiB/s p50 278.53ms  |  light       4 ops/s    0.0 MiB/s p50 278.53ms p99 301.78ms  
+E8 c1024+probe budgets   --latency 1ms          heavy    57979 ops/s     0.0 MiB/s p50 278.53ms  |  light      45 ops/s    0.0 MiB/s p50  21.50ms p99  25.60ms  pendingW=829326
+E8 c1024+probe budgets   --latency 1ms          heavy    58087 ops/s     0.0 MiB/s p50 278.53ms  |  light      45 ops/s    0.0 MiB/s p50  22.02ms p99  27.14ms  pendingW=828105
+E8 c1024+probe budgets   --latency 1ms          heavy    57970 ops/s     0.0 MiB/s p50 270.34ms  |  light      44 ops/s    0.0 MiB/s p50  22.02ms p99  26.11ms  pendingW=828636
+E8 c1024+probe drr       --latency 1ms          heavy    58382 ops/s     0.0 MiB/s p50 278.53ms  |  light      45 ops/s    0.0 MiB/s p50  21.50ms p99  25.60ms  pendingW=834281
+E8 c1024+probe drr       --latency 1ms          heavy    58044 ops/s     0.0 MiB/s p50 278.53ms  |  light      44 ops/s    0.0 MiB/s p50  22.02ms p99  26.62ms  pendingW=830849
+E8 c1024+probe drr       --latency 1ms          heavy    58462 ops/s     0.0 MiB/s p50 270.34ms  |  light      45 ops/s    0.0 MiB/s p50  21.50ms p99  27.65ms  pendingW=834829
+===== e9 =====
+E9 fast+slow main      --latency 1ms          heavy    54531 ops/s     0.0 MiB/s p50   4.48ms  |  light     431 ops/s    0.0 MiB/s p50   4.48ms p99   6.91ms  
+E9 fast+slow main      --latency 1ms          heavy    55306 ops/s     0.0 MiB/s p50   4.35ms  |  light     436 ops/s    0.0 MiB/s p50   4.48ms p99   6.66ms  
+E9 fast+slow main      --latency 1ms          heavy    54526 ops/s     0.0 MiB/s p50   4.48ms  |  light     443 ops/s    0.0 MiB/s p50   4.35ms p99   7.17ms  
+E9 fast+slow inflight  --latency 1ms          heavy    57430 ops/s     0.0 MiB/s p50   4.35ms  |  light     452 ops/s    0.0 MiB/s p50   4.22ms p99   6.78ms  in_flightW=35444
+E9 fast+slow inflight  --latency 1ms          heavy    57072 ops/s     0.0 MiB/s p50   4.35ms  |  light     456 ops/s    0.0 MiB/s p50   4.35ms p99   6.14ms  in_flightW=33003
+E9 fast+slow inflight  --latency 1ms          heavy    58127 ops/s     0.0 MiB/s p50   4.22ms  |  light     455 ops/s    0.0 MiB/s p50   4.22ms p99   6.02ms  in_flightW=40714
+E9 fast+slow budgets   --latency 1ms          heavy    57563 ops/s     0.0 MiB/s p50   4.35ms  |  light     452 ops/s    0.0 MiB/s p50   4.22ms p99   6.27ms  in_flightW=25904 pendingW=44828
+E9 fast+slow budgets   --latency 1ms          heavy    57595 ops/s     0.0 MiB/s p50   4.35ms  |  light     453 ops/s    0.0 MiB/s p50   4.35ms p99   6.27ms  in_flightW=27662 pendingW=45172
+E9 fast+slow budgets   --latency 1ms          heavy    57695 ops/s     0.0 MiB/s p50   4.22ms  |  light     457 ops/s    0.0 MiB/s p50   4.22ms p99   6.14ms  in_flightW=27935 pendingW=53075
+E9 fast+slow drr       --latency 1ms          heavy    56552 ops/s     0.0 MiB/s p50   4.35ms  |  light    1116 ops/s    0.0 MiB/s p50   1.66ms p99   3.46ms  in_flightW=26577 pendingW=44600 sched_rotations=17698
+E9 fast+slow drr       --latency 1ms          heavy    57198 ops/s     0.0 MiB/s p50   4.35ms  |  light    1141 ops/s    0.0 MiB/s p50   1.66ms p99   3.26ms  in_flightW=27011 pendingW=46661 sched_rotations=17852
+E9 fast+slow drr       --latency 1ms          heavy    56839 ops/s     0.0 MiB/s p50   4.35ms  |  light    1131 ops/s    0.0 MiB/s p50   1.66ms p99   3.39ms  in_flightW=26145 pendingW=47146 sched_rotations=17659
+===== e10 =====
+E10 meta+stream main      --latency 500us --bandwidth 2G --buf-count 256 heavy     2035 ops/s  2035.0 MiB/s p50  15.62ms  |  light   38435 ops/s    0.0 MiB/s p50   1.41ms p99   4.99ms  
+E10 meta+stream main      --latency 500us --bandwidth 2G --buf-count 256 heavy     2041 ops/s  2041.2 MiB/s p50  15.62ms  |  light   41860 ops/s    0.0 MiB/s p50   1.34ms p99   4.35ms  
+E10 meta+stream main      --latency 500us --bandwidth 2G --buf-count 256 heavy     2039 ops/s  2039.2 MiB/s p50  15.62ms  |  light   40743 ops/s    0.0 MiB/s p50   1.38ms p99   4.99ms  
+E10 meta+stream inflight  --latency 500us --bandwidth 2G --buf-count 256 heavy     2044 ops/s  2044.3 MiB/s p50  15.62ms  |  light   41638 ops/s    0.0 MiB/s p50   1.34ms p99   4.35ms  
+E10 meta+stream inflight  --latency 500us --bandwidth 2G --buf-count 256 heavy     2044 ops/s  2043.8 MiB/s p50  15.62ms  |  light   38555 ops/s    0.0 MiB/s p50   1.41ms p99   5.63ms  
+E10 meta+stream inflight  --latency 500us --bandwidth 2G --buf-count 256 heavy     2044 ops/s  2043.9 MiB/s p50  15.62ms  |  light   44166 ops/s    0.0 MiB/s p50   1.31ms p99   3.90ms  
+E10 meta+stream budgets   --latency 500us --bandwidth 2G --buf-count 256 heavy     2041 ops/s  2041.2 MiB/s p50  15.62ms  |  light   40358 ops/s    0.0 MiB/s p50   1.41ms p99   4.35ms  conn_dataW=428
+E10 meta+stream budgets   --latency 500us --bandwidth 2G --buf-count 256 heavy     2045 ops/s  2044.6 MiB/s p50  15.62ms  |  light   43903 ops/s    0.0 MiB/s p50   1.31ms p99   3.84ms  conn_dataW=452
+E10 meta+stream budgets   --latency 500us --bandwidth 2G --buf-count 256 heavy     2043 ops/s  2042.5 MiB/s p50  15.62ms  |  light   41890 ops/s    0.0 MiB/s p50   1.34ms p99   4.35ms  conn_dataW=418
+E10 meta+stream drr       --latency 500us --bandwidth 2G --buf-count 256 heavy     2036 ops/s  2035.6 MiB/s p50  15.62ms  |  light   44346 ops/s    0.0 MiB/s p50   1.31ms p99   3.52ms  conn_dataW=437 sched_rotations=17213
+E10 meta+stream drr       --latency 500us --bandwidth 2G --buf-count 256 heavy     2044 ops/s  2044.2 MiB/s p50  15.62ms  |  light   44111 ops/s    0.0 MiB/s p50   1.31ms p99   3.65ms  conn_dataW=413 sched_rotations=17109
+E10 meta+stream drr       --latency 500us --bandwidth 2G --buf-count 256 heavy     2043 ops/s  2043.2 MiB/s p50  15.62ms  |  light   44872 ops/s    0.0 MiB/s p50   1.31ms p99   3.52ms  conn_dataW=500 sched_rotations=17068
+ALL DONE
+===== e2b =====
+E2b getattr c4         inflight  --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    274249 ops/s ± 4.7%      0.0 MiB/s  p50      848us p99     2430us  cpu 169.1%  hwm    4.6MiB  err 0  
+E2b getattr c4         pending   --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    275661 ops/s ± 7.4%      0.0 MiB/s  p50      864us p99     2430us  cpu 173.1%  hwm    4.6MiB  err 0  
+E2b getattr c4         wtimeout  --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    267280 ops/s ± 2.3%      0.0 MiB/s  p50      896us p99     2370us  cpu 176.9%  hwm    4.5MiB  err 0  
+E2b getattr c4         databudget --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    274006 ops/s ± 3.1%      0.0 MiB/s  p50      880us p99     2300us  cpu 174.4%  hwm    4.6MiB  err 0  
+E2b getattr c4         drr-only  --op getattr --connections 4 --depth 64 --duration 6s --warmup 1s    289884 ops/s ± 4.4%      0.0 MiB/s  p50      816us p99     2240us  cpu 176.0%  hwm    4.6MiB  err 0  sched_rotations=27282
+E2b getattr c4         inflight  --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    321578 ops/s ± 2.3%      0.0 MiB/s  p50     5890us p99    13820us  cpu 184.4%  hwm    5.1MiB  err 0  in_flightW=14861
+E2b getattr c4         pending   --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    332935 ops/s ± 5.1%      0.0 MiB/s  p50     5760us p99    13570us  cpu 185.6%  hwm    5.0MiB  err 0  in_flightW=15272 pendingW=157
+E2b getattr c4         wtimeout  --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    311300 ops/s ± 6.3%      0.0 MiB/s  p50     6140us p99    13820us  cpu 185.8%  hwm    5.1MiB  err 0  in_flightW=14461
+E2b getattr c4         databudget --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    328506 ops/s ± 6.4%      0.0 MiB/s  p50     5890us p99    13060us  cpu 186.3%  hwm    5.0MiB  err 0  in_flightW=15190
+E2b getattr c4         drr-only  --op getattr --connections 4 --depth 512 --duration 6s --warmup 1s    332964 ops/s ± 1.6%      0.0 MiB/s  p50     6020us p99    12800us  cpu 188.0%  hwm    5.3MiB  err 0  in_flightW=15379 sched_rotations=46916
+===== e7b =====
+E7b heavy+light quantum drr       --scheduler drr:8 --latency 1ms heavy    56999 ops/s     0.0 MiB/s p50  34.82ms  |  light     636 ops/s    0.0 MiB/s p50   1.38ms p99   3.26ms  in_flightW=292561 pendingW=47716 sched_rotations=100129
+E7b heavy+light quantum drr       --scheduler drr:8 --latency 1ms heavy    57629 ops/s     0.0 MiB/s p50  34.82ms  |  light     653 ops/s    0.0 MiB/s p50   1.31ms p99   3.39ms  in_flightW=322732 pendingW=60831 sched_rotations=100771
+E7b heavy+light quantum drr       --scheduler drr:8 --latency 1ms heavy    56981 ops/s     0.0 MiB/s p50  34.82ms  |  light     624 ops/s    0.0 MiB/s p50   1.38ms p99   4.03ms  in_flightW=321825 pendingW=52435 sched_rotations=100191
+E7b heavy+light quantum drr       --scheduler drr:1 --latency 1ms heavy    56859 ops/s     0.0 MiB/s p50  34.82ms  |  light     655 ops/s    0.0 MiB/s p50   1.31ms p99   3.14ms  in_flightW=299713 pendingW=49874 sched_rotations=796243
+E7b heavy+light quantum drr       --scheduler drr:1 --latency 1ms heavy    56647 ops/s     0.0 MiB/s p50  35.84ms  |  light     630 ops/s    0.0 MiB/s p50   1.34ms p99   3.78ms  in_flightW=300901 pendingW=45179 sched_rotations=792262
+E7b heavy+light quantum drr       --scheduler drr:1 --latency 1ms heavy    56445 ops/s     0.0 MiB/s p50  35.84ms  |  light     647 ops/s    0.0 MiB/s p50   1.31ms p99   3.97ms  in_flightW=294018 pendingW=52985 sched_rotations=791000
+===== e10b =====
+E10b meta+deep stream main      --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.0 MiB/s p50 124.93ms  |  light     581 ops/s    0.0 MiB/s p50 108.54ms p99 118.78ms  
+E10b meta+deep stream main      --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2026 ops/s  2026.2 MiB/s p50 124.93ms  |  light     573 ops/s    0.0 MiB/s p50 110.59ms p99 196.61ms  
+E10b meta+deep stream main      --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2044 ops/s  2044.3 MiB/s p50 124.93ms  |  light     576 ops/s    0.0 MiB/s p50 110.59ms p99 116.74ms  
+E10b meta+deep stream inflight  --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2046 ops/s  2046.2 MiB/s p50 124.93ms  |  light     581 ops/s    0.0 MiB/s p50 108.54ms p99 118.78ms  in_flightW=15515 allocatorW=8
+E10b meta+deep stream inflight  --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.0 MiB/s p50 124.93ms  |  light     589 ops/s    0.0 MiB/s p50 108.54ms p99 112.64ms  in_flightW=14237 allocatorW=10
+E10b meta+deep stream inflight  --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2044 ops/s  2043.7 MiB/s p50 124.93ms  |  light     586 ops/s    0.0 MiB/s p50 108.54ms p99 122.88ms  in_flightW=12528 allocatorW=17
+E10b meta+deep stream budgets   --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2047 ops/s  2046.9 MiB/s p50 124.93ms  |  light     786 ops/s    0.0 MiB/s p50  79.87ms p99  90.11ms  in_flightW=5708 pendingW=22773 allocatorW=9
+E10b meta+deep stream budgets   --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.0 MiB/s p50 124.93ms  |  light     790 ops/s    0.0 MiB/s p50  79.87ms p99  88.06ms  in_flightW=5868 pendingW=22750 allocatorW=6
+E10b meta+deep stream budgets   --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.2 MiB/s p50 124.93ms  |  light     790 ops/s    0.0 MiB/s p50  79.87ms p99  86.02ms  in_flightW=5218 pendingW=22823 allocatorW=11
+E10b meta+deep stream drr       --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.0 MiB/s p50 124.93ms  |  light    4263 ops/s    0.0 MiB/s p50  15.87ms p99  30.21ms  in_flightW=5848 pendingW=49401 allocatorW=11 sched_rotations=15800
+E10b meta+deep stream drr       --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2048.1 MiB/s p50 124.93ms  |  light    3438 ops/s    0.0 MiB/s p50  19.97ms p99  30.21ms  in_flightW=6180 pendingW=44629 allocatorW=8 sched_rotations=15537
+E10b meta+deep stream drr       --max-data-per-conn 512M --latency 500us --bandwidth 2G --buf-count 512 --concurrency 32 heavy     2048 ops/s  2047.7 MiB/s p50 124.93ms  |  light    4970 ops/s    0.0 MiB/s p50  11.52ms p99  30.21ms  in_flightW=6302 pendingW=51673 allocatorW=15 sched_rotations=15869
+EXTRA DONE
