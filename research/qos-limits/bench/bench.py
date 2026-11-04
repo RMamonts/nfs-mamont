@@ -45,6 +45,12 @@ VARIANTS = {
                          "--max-connections", "4096", "--data-budget", "auto",
                          "--max-data-per-conn", "32M", "--write-timeout", "30s",
                          "--scheduler", "drr"]),
+    # one mechanism at a time, to price each of them
+    "pending": (SERVER_EXP, ["--max-in-flight", "256", "--max-pending", "auto"]),
+    "wtimeout": (SERVER_EXP, ["--max-in-flight", "256", "--write-timeout", "30s"]),
+    "databudget": (SERVER_EXP, ["--max-in-flight", "256", "--data-budget", "auto",
+                                "--max-data-per-conn", "32M"]),
+    "drr-only": (SERVER_EXP, ["--max-in-flight", "256", "--scheduler", "drr"]),
 }
 
 
@@ -390,11 +396,43 @@ def e10_cost_weighted():
                         stream, meta, label="E10 meta+stream")
 
 
+def e2b_mechanism_cost():
+    """Four connections, CPU-bound: the cost of every mechanism on its own."""
+    for depth in [64, 512]:
+        for name in ["inflight", "pending", "wtimeout", "databudget", "drr-only"]:
+            bench("E2b getattr c4", name, [],
+                  ["--op", "getattr", "--connections", "4", "--depth", str(depth),
+                   "--duration", "6s", "--warmup", "1s"])
+
+
+def e7b_quantum():
+    """E7 with smaller DRR quanta: the light client waits for less of the heavy one."""
+    heavy = ["--op", "getattr", "--connections", "1", "--depth", "2048", "--duration", "14s", "--warmup", "1s"]
+    light = ["--op", "getattr", "--connections", "1", "--depth", "1", "--duration", "8s", "--warmup", "1s"]
+    for quantum in ["8", "1"]:
+        for _ in range(REPEATS):
+            two_clients("drr", ["--scheduler", f"drr:{quantum}", "--latency", "1ms"], heavy, light,
+                        label="E7b heavy+light quantum")
+
+
+def e10b_deep_stream():
+    """A streaming client with a deep queue (depth 256 of 1 MiB) next to a metadata
+    client on 32 workers: FIFO serves 1 MiB reads ahead of metadata, DRR serves cost."""
+    meta = ["--op", "getattr", "--connections", "1", "--depth", "64", "--duration", "8s", "--warmup", "1s"]
+    stream = ["--op", "read:1m", "--connections", "1", "--depth", "256", "--duration", "14s", "--warmup", "1s"]
+    server = ["--latency", "500us", "--bandwidth", "2G", "--buf-count", "512", "--concurrency", "32"]
+    for name, extra in [("main", []), ("inflight", []), ("budgets", ["--max-data-per-conn", "512M"]),
+                        ("drr", ["--max-data-per-conn", "512M"])]:
+        for _ in range(REPEATS):
+            two_clients(name, extra + server, stream, meta, label="E10b meta+deep stream")
+
+
 if __name__ == "__main__":
     which = sys.argv[1:] or ["e1", "e2", "e4", "e5", "e6", "e7", "e8", "e9", "e10"]
     table = {"e1": e1_single_connection, "e2": e2_four_connections, "e4": e4_data_path,
              "e5": e5_non_reading_client, "e6": e6_allocator_hog, "e7": e7_heavy_light,
-             "e8": e8_many_connections, "e9": e9_fast_slow, "e10": e10_cost_weighted}
+             "e8": e8_many_connections, "e9": e9_fast_slow, "e10": e10_cost_weighted,
+             "e2b": e2b_mechanism_cost, "e7b": e7b_quantum, "e10b": e10b_deep_stream}
     for w in which:
         print(f"===== {w} =====", flush=True)
         table[w]()

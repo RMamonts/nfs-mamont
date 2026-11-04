@@ -49,7 +49,7 @@ def fmt(value, unit=""):
     if unit == "us":
         return f"{value / 1000:.2f} ms" if value >= 1000 else f"{value:.0f} µs"
     if unit == "k":
-        return f"{value / 1000:.1f}k"
+        return f"{value / 1000:.1f}k" if value >= 1000 else f"{value:.0f}"
     if unit == "mib":
         return f"{value / 1024:.1f}"
     return f"{value:.0f}"
