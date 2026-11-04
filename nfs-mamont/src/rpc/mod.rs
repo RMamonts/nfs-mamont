@@ -34,8 +34,7 @@ pub enum ReplyBody {
 
 /// Authentication flavors.
 #[repr(u32)]
-#[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum AuthFlavor {
     None = 0,
     Sys = 1,

@@ -8,6 +8,8 @@ use nfs_mamont::mount::umnt::{Args, Umnt};
 use super::MountService;
 
 impl Umnt for MountService {
+    // `UMNT` only touches mounts recorded for `client_addr` and has no error
+    // code, so the credential adds nothing (see the module docs).
     async fn umnt(&self, args: Args, client_addr: SocketAddr, _cred: &Credential) {
         let mut mounts = self.mounts.write().await;
 

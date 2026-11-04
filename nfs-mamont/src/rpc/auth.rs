@@ -6,6 +6,22 @@
 //! parser, and is what gets handed to the NFS/MOUNT services via [`Credential`]
 //! so they can enforce per-caller permissions.
 
+use crate::rpc::AuthFlavor;
+
+/// Credential flavors the RPC layer is able to decode.
+///
+/// This is a property of the server implementation, not of its
+/// configuration: any call carrying a flavor outside this list is rejected
+/// while the RPC header is validated, before it reaches a service, with
+/// [`AuthStat::BadCred`]. The list is ordered from the most to the least
+/// specific flavor, so it can be advertised as-is in a MOUNT `MNT` reply
+/// (clients pick the first flavor they support).
+///
+/// Services that advertise accepted flavors (for example a per-export policy
+/// in a MOUNT implementation) should use this list, or a subset of it, as the
+/// only flavors they offer.
+pub const SUPPORTED_AUTH_FLAVORS: &[AuthFlavor] = &[AuthFlavor::Sys, AuthFlavor::None];
+
 /// Authentication status codes (`auth_stat`) from RFC 5531, section 5.3.3.
 ///
 /// See RFC 5531, for the canonical descriptions.
@@ -76,9 +92,9 @@ pub struct AuthSysParams {
 
 /// Authenticated caller identity extracted from an RPC credential.
 ///
-/// Only the flavors the server accepts are represented: `AUTH_NONE` (anonymous)
-/// and `AUTH_SYS` (UNIX-style uid/gid). Any other flavor is rejected during
-/// parsing with [`AuthStat::BadCred`].
+/// Only the flavors the server accepts (see [`SUPPORTED_AUTH_FLAVORS`]) are
+/// represented: `AUTH_NONE` (anonymous) and `AUTH_SYS` (UNIX-style uid/gid).
+/// Any other flavor is rejected during parsing with [`AuthStat::BadCred`].
 ///
 /// This value is passed down to the service layer (e.g. every
 /// [`crate::vfs::Vfs`] method and the MOUNT `mnt` procedure) so an
@@ -90,4 +106,18 @@ pub enum Credential {
     None,
     /// `AUTH_SYS`: UNIX-style caller identity.
     Sys(AuthSysParams),
+}
+
+impl Credential {
+    /// The RPC authentication flavor this credential was sent with.
+    ///
+    /// Useful to match a caller against a flavor policy (for example the
+    /// `auth_flavors` a MOUNT export advertises) without inspecting the
+    /// flavor-specific payload.
+    pub fn flavor(&self) -> AuthFlavor {
+        match self {
+            Credential::None => AuthFlavor::None,
+            Credential::Sys(_) => AuthFlavor::Sys,
+        }
+    }
 }

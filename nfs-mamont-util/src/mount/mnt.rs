@@ -7,15 +7,14 @@ use nfs_mamont::mount::mnt::{Args, Fail, Mnt, Success};
 use nfs_mamont::mount::{HostName, MountEntry};
 use tracing::warn;
 
-use super::MountService;
-use super::AUTH;
+use super::{ExportEntryWrapper, MountService};
 
 impl Mnt for MountService {
     async fn mnt(
         &self,
         args: Args,
         client_addr: SocketAddr,
-        _cred: &Credential,
+        cred: &Credential,
     ) -> Result<Success, Fail> {
         let Some(export) = self.export_entry(&args.dirpath).await else {
             let configured = self
@@ -35,7 +34,19 @@ impl Mnt for MountService {
             return Err(Fail::Access);
         };
 
-        let file_handle = export.root_handle;
+        if let Err(denial) = export.policy.check(cred) {
+            warn!(
+                requested=%args.dirpath.as_path().to_string_lossy(),
+                client=%client_addr,
+                cred=?cred,
+                reason=?denial,
+                policy=?export.policy,
+                "mount denied",
+            );
+            return Err(Fail::Access);
+        }
+
+        let ExportEntryWrapper { root_handle: file_handle, policy, .. } = export;
 
         let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
 
@@ -43,6 +54,6 @@ impl Mnt for MountService {
 
         self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
 
-        Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
+        Ok(Success { file_handle, auth_flavors: policy.auth_flavors })
     }
 }

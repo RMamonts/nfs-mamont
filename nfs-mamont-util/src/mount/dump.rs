@@ -6,6 +6,8 @@ use nfs_mamont::mount::dump::{Dump, Success};
 use super::MountService;
 
 impl Dump for MountService {
+    // The mount list is public information and `DUMP` has no error code,
+    // so the credential is not consulted (see the module docs).
     async fn dump(&self, _cred: &Credential) -> Success {
         let mount_list = self
             .mounts
