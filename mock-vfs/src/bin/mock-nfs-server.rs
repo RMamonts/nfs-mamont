@@ -5,6 +5,7 @@
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use mock_vfs::cli::{self, Args};
 use mock_vfs::server::{Server, ServerConfig};
@@ -15,7 +16,8 @@ mock-nfs-server: NFSv3 server backed by an in-memory mock file system
 Usage: mock-nfs-server [OPTIONS]
 
 Options:
-  --bind <addr>          Address to listen on (default: 0.0.0.0:2049)";
+  --bind <addr>          Address to listen on (default: 0.0.0.0:2049)
+  --stats-interval <dur> Print the budget counters this often, 0 = only at exit (default: 0)";
 
 const USAGE_TAIL: &str = "  -h, --help             Show this help
 
@@ -30,17 +32,19 @@ fn usage() -> String {
 }
 
 enum Command {
-    Run(ServerConfig),
+    Run(ServerConfig, Duration),
     Help,
 }
 
 fn parse_args(mut args: Args) -> cli::Result<Command> {
     let mut config =
         ServerConfig { bind: SocketAddr::from(([0, 0, 0, 0], 2049)), ..ServerConfig::default() };
+    let mut stats_interval = Duration::ZERO;
 
     while let Some(flag) = args.next_flag() {
         match flag.as_str() {
             "--bind" => config.bind = args.parse(&flag)?,
+            "--stats-interval" => stats_interval = args.parse_with(&flag, cli::parse_duration)?,
             "-h" | "--help" => return Ok(Command::Help),
             other => {
                 if !cli::apply_server_flag(&mut config, other, &mut args)? {
@@ -51,13 +55,13 @@ fn parse_args(mut args: Args) -> cli::Result<Command> {
     }
     config.validate().map_err(|err| err.to_string())?;
 
-    Ok(Command::Run(config))
+    Ok(Command::Run(config, stats_interval))
 }
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let config = match parse_args(Args::from_env()) {
-        Ok(Command::Run(config)) => config,
+    let (config, stats_interval) = match parse_args(Args::from_env()) {
+        Ok(Command::Run(config, stats_interval)) => (config, stats_interval),
         Ok(Command::Help) => {
             println!("{}", usage());
             return ExitCode::SUCCESS;
@@ -99,8 +103,22 @@ async fn main() -> ExitCode {
         cli::format_size(config.buf_size.get() as u64),
     );
     eprintln!("press Ctrl+C to stop");
+    if !stats_interval.is_zero() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(stats_interval);
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                println!("stats: {}", nfs_mamont::stats::snapshot());
+            }
+        });
+    }
 
-    match server.wait().await {
+    let result = server.wait().await;
+    // The budget counters go to stdout so that a benchmark runner can read them after
+    // stopping the server with Ctrl+C.
+    println!("stats: {}", nfs_mamont::stats::snapshot());
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: server stopped: {err}");

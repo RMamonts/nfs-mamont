@@ -9,7 +9,9 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::server::ServerConfig;
+use nfs_mamont::{default_drr_quantum, Scheduling};
+
+use crate::server::{Limit, ServerConfig};
 
 /// Result of parsing: the error is a message for the user.
 pub type Result<T> = std::result::Result<T, String>;
@@ -160,7 +162,22 @@ pub const SERVER_FLAGS_HELP: &str = "  --export <path>        Path clients mount
   --file-size <bytes>    Size of every regular file (default: 1G)
   --files <n>            Regular files listed in every directory (default: 128)
   --dirs <n>             Subdirectories listed in every directory (default: 8)
-  --fill <byte>          Fill READ buffers with this byte, e.g. 0xAB (default: leave as is)";
+  --fill <byte>          Fill READ buffers with this byte, e.g. 0xAB (default: leave as is)
+  --max-in-flight <n>    Requests one connection may have in flight (default: library default)
+  --max-pending <n|auto|none>
+                         Requests parsed but not finished, all connections; auto is
+                         max(4 x workers, max-in-flight) (default: none)
+  --max-connections <n|none>
+                         Open connections (default: none)
+  --data-budget <bytes|auto|none>
+                         Allocator memory in flight, all connections; auto is 7/8 of the
+                         pool (default: none)
+  --max-data-per-conn <bytes|none>
+                         Allocator memory one connection may hold (default: none)
+  --scheduler <fifo|drr[:quantum]>
+                         How the VFS pool serves connections (default: fifo)
+  --write-timeout <dur>  Close a connection whose client does not read a reply within
+                         this time, 0 = never (default: 0)";
 
 /// Applies `flag` to `config` when it is one of the server flags.
 ///
@@ -183,10 +200,63 @@ pub fn apply_server_flag(config: &mut ServerConfig, flag: &str, args: &mut Args)
         "--files" => config.vfs.files_per_dir = args.parse(flag)?,
         "--dirs" => config.vfs.dirs_per_dir = args.parse(flag)?,
         "--fill" => config.vfs.read_fill = Some(args.parse_with(flag, parse_byte)?),
+        "--max-in-flight" => {
+            config.limits.max_in_flight = Some(args.parse_with(flag, parse_nonzero_usize)?)
+        }
+        "--max-pending" => config.limits.max_pending = args.parse_with(flag, parse_limit)?,
+        "--max-connections" => {
+            config.limits.max_connections = args.parse_with(flag, parse_optional_nonzero)?
+        }
+        "--data-budget" => config.limits.data_budget = args.parse_with(flag, parse_limit)?,
+        "--max-data-per-conn" => {
+            config.limits.max_data_per_connection = args.parse_with(flag, parse_optional_nonzero)?
+        }
+        "--scheduler" => config.limits.scheduling = args.parse_with(flag, parse_scheduling)?,
+        "--write-timeout" => config.limits.write_timeout = args.parse_with(flag, parse_duration)?,
         _ => return Ok(false),
     }
 
     Ok(true)
+}
+
+/// Parses a budget: `none`, `auto` or a number with an optional size suffix.
+pub fn parse_limit(text: &str) -> Result<Limit> {
+    match text.trim() {
+        "none" | "off" | "0" => Ok(Limit::Off),
+        "auto" => Ok(Limit::Auto),
+        other => parse_nonzero_usize(other).map(Limit::Value),
+    }
+}
+
+/// Parses an optional limit: `none` or a number with an optional size suffix.
+pub fn parse_optional_nonzero(text: &str) -> Result<Option<NonZeroUsize>> {
+    match text.trim() {
+        "none" | "off" | "0" => Ok(None),
+        other => parse_nonzero_usize(other).map(Some),
+    }
+}
+
+/// Parses the scheduler: `fifo`, `drr` or `drr:<quantum>`.
+pub fn parse_scheduling(text: &str) -> Result<Scheduling> {
+    let text = text.trim();
+    if text == "fifo" {
+        return Ok(Scheduling::Fifo);
+    }
+    let quantum = match text.strip_prefix("drr") {
+        Some("") => default_drr_quantum(),
+        Some(rest) => {
+            let value =
+                rest.strip_prefix(':').ok_or_else(|| format!("unknown scheduler '{text}'"))?;
+            value
+                .parse::<u32>()
+                .ok()
+                .and_then(std::num::NonZeroU32::new)
+                .ok_or_else(|| format!("'{value}' is not a positive quantum"))?
+        }
+        None => return Err(format!("unknown scheduler '{text}'")),
+    };
+
+    Ok(Scheduling::Drr { quantum })
 }
 
 /// Formats a duration for humans: `250us`, `1.50ms`, `2.00s`.
