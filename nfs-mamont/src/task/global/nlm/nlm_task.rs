@@ -10,11 +10,12 @@ use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
-use crate::task::{ClientId, ProcReply, ProcResult};
+use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
 };
+use crate::connection_id::ConnectionId;
 
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
@@ -26,7 +27,7 @@ pub struct NlmCommand<B: Buffer> {
     /// The ID using the socket address.
     /// It is passed along with the NlmCommand to nlm.
     #[allow(dead_code)]
-    pub client_id: ClientId,
+    pub connection_id: ConnectionId,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -75,7 +76,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args, client_id: _ } = command;
+            let NlmCommand { result_sender, args, connection_id: _ } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
             if let Some(result) = nlm_result {

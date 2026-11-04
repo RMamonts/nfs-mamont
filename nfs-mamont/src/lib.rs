@@ -10,8 +10,10 @@ mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
-mod task;
 pub mod vfs;
+
+pub mod task;
+pub mod connection_id;
 
 use std::sync::Arc;
 
