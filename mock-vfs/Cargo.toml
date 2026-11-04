@@ -1,0 +1,26 @@
+[package]
+name = "mock-vfs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "In-memory mock VFS backend and benchmark tools for nfs-mamont"
+publish = false
+
+[dependencies]
+nfs-mamont = { path = "../nfs-mamont" }
+nfs-mamont-util = { path = "../nfs-mamont-util" }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "rt",
+    "net",
+    "io-util",
+    "time",
+    "macros",
+    "signal",
+    "sync",
+] }
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }

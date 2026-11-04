@@ -1,26 +1,99 @@
+pub mod scheduler;
 #[cfg(test)]
 mod tests;
 
-use async_channel::{Receiver, Sender};
+use async_channel::{Receiver, SendError, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
+use crate::limits::Scheduling;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::connection::limit::Token;
+use crate::task::global::vfs::scheduler::{FlowHandle, Scheduler};
+use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
-/// One queued NFS procedure: parsed arguments and a channel to send the result.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>);
-/// Sender to enqueue work in the queue.
-type VfsCommandSender<B> = Sender<VfsCommand<B>>;
-/// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
-type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
+/// One queued NFS procedure.
+pub struct VfsCommand<B: Buffer> {
+    /// Parsed RPC header and procedure arguments.
+    pub args: NfsArgWrapper<B>,
+    /// Channel to the write task of the connection the reply goes to.
+    pub result_tx: Sender<InFlightReply<B>>,
+    /// In-flight slot of the request, returned by the write task after the reply is
+    /// written, see [`crate::task::connection`].
+    pub token: Token,
+    /// Slot of the request in the global pending budget, if one is set; given back
+    /// once the procedure is finished, see [`crate::limits`].
+    pub pending: Option<OwnedSemaphorePermit>,
+}
+
+/// Where connections queue procedures for the pool.
+enum Queue<B: Buffer> {
+    /// One shared channel served in arrival order.
+    Fifo(Sender<VfsCommand<B>>),
+    /// A queue per connection served by deficit round robin.
+    Drr(Arc<Scheduler<B>>),
+}
+
+/// Handle of one connection to queue procedures in the pool.
+pub enum FlowSender<B: Buffer> {
+    /// Sender of the shared channel.
+    Fifo(Sender<VfsCommand<B>>),
+    /// Queue of the connection in the scheduler.
+    Drr(FlowHandle<B>),
+}
+
+impl<B: Buffer> FlowSender<B> {
+    /// Queues `command` for execution.
+    ///
+    /// # Errors
+    ///
+    /// Gives the command back when the pool is gone.
+    // The command is returned on purpose, so that the caller can answer it.
+    #[allow(clippy::result_large_err)]
+    pub async fn send(&self, command: VfsCommand<B>) -> Result<(), VfsCommand<B>> {
+        match self {
+            Self::Fifo(sender) => sender.send(command).await.map_err(|SendError(command)| command),
+            Self::Drr(flow) => flow.enqueue(command),
+        }
+    }
+}
+
+/// Where the workers take procedures from.
+enum Source<B: Buffer> {
+    Fifo(Receiver<VfsCommand<B>>),
+    Drr(Arc<Scheduler<B>>),
+}
+
+impl<B: Buffer> Clone for Source<B> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Fifo(receiver) => Self::Fifo(receiver.clone()),
+            Self::Drr(scheduler) => Self::Drr(Arc::clone(scheduler)),
+        }
+    }
+}
+
+impl<B: Buffer> Source<B> {
+    /// Takes the next procedure, waiting while none is queued.
+    ///
+    /// # Returns
+    ///
+    /// `None` once the pool is closed and drained.
+    async fn next(&self) -> Option<VfsCommand<B>> {
+        match self {
+            Self::Fifo(receiver) => receiver.recv().await.ok(),
+            Self::Drr(scheduler) => scheduler.next().await,
+        }
+    }
+}
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -140,7 +213,14 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
     }
 }
 
-/// Pool of [`VfsTask`] workers fed from a single unbounded command channel.
+/// Pool of [`VfsTask`] workers fed from a shared queue.
+///
+/// The queue is unbounded, but every queued command holds an in-flight token of its
+/// connection (see [`crate::task::connection`]) and, when one is set, a slot of the
+/// global pending budget (see [`crate::limits`]), so it never holds more than
+/// `max_in_flight × open connections` or `max_pending` commands. With
+/// [`Scheduling::Drr`] every connection has its own queue and the workers take
+/// procedures in deficit round robin, see [`scheduler`].
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
@@ -150,8 +230,8 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 ///   at the same time, the rest wait in the channel. The pool size is therefore the
 ///   backend queue depth.
 pub struct VfsManager<B: Buffer> {
-    /// Sender to enqueue work in the pool for execution.
-    sender: VfsCommandSender<B>,
+    /// Where connections queue work for the pool.
+    queue: Queue<B>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
@@ -162,6 +242,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// - `backends` --- registry of filesystem implementations, may be empty
     /// - `concurrency` --- number of workers, i.e. the maximum number of procedures
     ///   executed against the backends at the same time
+    /// - `scheduling` --- how the workers pick the next procedure
     ///
     /// # Returns
     ///
@@ -170,29 +251,50 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn new<V>(backends: BackendRegistry<V>, concurrency: NonZeroUsize) -> Self
+    pub fn new<V>(
+        backends: BackendRegistry<V>,
+        concurrency: NonZeroUsize,
+        scheduling: Scheduling,
+    ) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let (queue, source) = match scheduling {
+            Scheduling::Fifo => {
+                let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+                (Queue::Fifo(tx), Source::Fifo(rx))
+            }
+            Scheduling::Drr { quantum } => {
+                let scheduler = Scheduler::new(quantum);
+                (Queue::Drr(Arc::clone(&scheduler)), Source::Drr(scheduler))
+            }
+        };
 
         for _ in 0..concurrency.get() {
-            VfsTask::new(backends.clone(), rx.clone()).spawn();
+            VfsTask::new(backends.clone(), source.clone()).spawn();
         }
 
-        Self { sender: tx }
+        Self { queue }
     }
 
-    /// Returns a clone of the command sender for enqueueing work in the queue.
-    pub fn sender(&self) -> VfsCommandSender<B> {
-        self.sender.clone()
+    /// Returns the handle a new connection queues its procedures through.
+    pub fn flow(&self) -> FlowSender<B> {
+        match &self.queue {
+            Queue::Fifo(sender) => FlowSender::Fifo(sender.clone()),
+            Queue::Drr(scheduler) => FlowSender::Drr(scheduler.register()),
+        }
     }
 }
 
 impl<B: Buffer> Drop for VfsManager<B> {
-    /// Closes the pool's sender so workers stop after the channel is empty.
+    /// Closes the pool's queue so workers stop after it is empty.
     fn drop(&mut self) {
-        self.sender.close();
+        match &self.queue {
+            Queue::Fifo(sender) => {
+                sender.close();
+            }
+            Queue::Drr(scheduler) => scheduler.close(),
+        }
     }
 }
 
@@ -205,8 +307,8 @@ where
 {
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
-    /// Shared receiver from the pool, each worker competes for the same command stream.
-    command_receiver: VfsCommandReceiver<B>,
+    /// Shared queue of the pool, each worker competes for the same command stream.
+    source: Source<B>,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -219,13 +321,13 @@ where
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `command_receiver` --- shared receiver from the pool
+    /// - `source` --- shared queue of the pool
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backends, command_receiver }
+    fn new(backends: BackendRegistry<V>, source: Source<B>) -> Self {
+        Self { backends, source }
     }
 
     /// Spawns a [`VfsTask`].
@@ -237,10 +339,10 @@ where
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Consumes commands until the channel is closed and empty, dispatching each NFS op
+    /// Consumes commands until the queue is closed and empty, dispatching each NFS op
     /// and sending replies.
     async fn run(self) {
-        while let Ok(command) = self.command_receiver.recv().await {
+        while let Some(command) = self.source.next().await {
             dispatch(&self.backends, command).await;
         }
     }
@@ -252,8 +354,7 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (wrapper, tx) = command;
-    let NfsArgWrapper { header, proc } = wrapper;
+    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, token, pending } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
@@ -283,9 +384,13 @@ where
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))) };
 
     // Write task may already be closed; then this connection pipeline is done.
-    if tx.send(reply).await.is_err() {
+    if result_tx.send(InFlightReply { reply, token }).await.is_err() {
         warn!("writer task closed, connection pipeline is done");
     }
+    // The procedure is finished: its slot of the pending budget goes to the next
+    // request, while the in-flight slot of the connection stays taken until the
+    // reply is written.
+    drop(pending);
 }
 
 /// Runs the procedure against `backend` and wraps its result.

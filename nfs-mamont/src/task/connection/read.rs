@@ -1,13 +1,17 @@
 use std::io;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
+use tokio::sync::OwnedSemaphorePermit;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 
-use async_channel::Sender;
+use async_channel::{SendError, Sender};
 
 use crate::allocator::{Allocator, Buffer};
+use crate::limits::Limits;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -16,10 +20,13 @@ use crate::parser::{
     NlmArguments, ProcArguments,
 };
 use crate::rpc::{Error, ErrorWrapper};
+use crate::stats;
+use crate::task::connection::budget_alloc::BudgetedAllocator;
+use crate::task::connection::limit::{Budget, Token};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsCommand;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::global::vfs::{FlowSender, VfsCommand};
+use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
@@ -29,21 +36,40 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
     /// To pass command into vfs task.
-    pool_sender: Sender<VfsCommand<B>>,
+    pool_sender: FlowSender<B>,
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
-    result_sender: Sender<ProcReply<B>>,
+    result_sender: Sender<InFlightReply<B>>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: Sender<(NfsArgWrapper<B>, Sender<ProcReply<B>>)>,
-        result_sender: Sender<ProcReply<B>>,
+        pool_sender: FlowSender<B>,
+        result_sender: Sender<InFlightReply<B>>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender, result_sender }
+    }
+
+    /// Queues `reply` for the write task together with the in-flight slot it frees.
+    ///
+    /// # Errors
+    ///
+    /// `BrokenPipe` when the write task is gone, i.e. the connection is closed.
+    async fn reply(&self, reply: ProcReply<B>, token: Token) -> io::Result<()> {
+        self.result_sender
+            .send(InFlightReply { reply, token })
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "write task closed"))
+    }
+
+    /// Answers `xid` with a `BrokenPipe` error because the global task that should have
+    /// served it is gone (the server is shutting down); the connection is done after it.
+    async fn broken_pipe(&self, xid: u32, token: Token) -> io::Result<()> {
+        let error = io::Error::new(io::ErrorKind::BrokenPipe, "server task closed");
+        self.reply(ProcReply { xid, proc_result: Err(Error::IO(error)) }, token).await
     }
 }
 
@@ -56,7 +82,12 @@ pub struct ReadTask<
     readhalf: OwnedReadHalf,
     client_addr: SocketAddr,
     command_senders: CommandSenders<B>,
-    allocator: Arc<A>,
+    /// Allocator of the connection: charges the budgets before allocating.
+    allocator: Arc<BudgetedAllocator<A>>,
+    /// In-flight budget of the connection, see the [`super`] module docs.
+    budget: Budget,
+    /// Global budgets, see [`crate::limits`].
+    limits: Arc<Limits>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -68,10 +99,12 @@ where
     pub fn new(
         readhalf: OwnedReadHalf,
         client_addr: SocketAddr,
-        allocator: Arc<A>,
+        allocator: Arc<BudgetedAllocator<A>>,
         command_senders: CommandSenders<B>,
+        budget: Budget,
+        limits: Arc<Limits>,
     ) -> Self {
-        Self { readhalf, client_addr, allocator, command_senders }
+        Self { readhalf, client_addr, allocator, command_senders, budget, limits }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -79,69 +112,85 @@ where
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self)
+    pub fn spawn(self) -> JoinHandle<io::Result<()>>
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(async move { self.run().await })
+    }
+
+    /// Takes a slot of the global pending budget, if one is set.
+    ///
+    /// # Returns
+    ///
+    /// `None` when there is no such budget, or when it is closed.
+    async fn pending(limits: &Limits) -> Option<OwnedSemaphorePermit> {
+        let semaphore = limits.pending.as_ref()?;
+        match Arc::clone(semaphore).try_acquire_owned() {
+            Ok(permit) => Some(permit),
+            Err(_) => {
+                stats::PENDING_WAITS.fetch_add(1, Ordering::Relaxed);
+                Arc::clone(semaphore).acquire_owned().await.ok()
+            }
+        }
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let Self { readhalf, client_addr, command_senders, allocator, mut budget, limits } = self;
+        let mut parser = RpcParser::new(readhalf, Arc::clone(&allocator));
 
         loop {
-            match parser.next_message().await {
+            // Taken before the request is read: while the connection has `max_in_flight`
+            // unanswered requests the socket stays unread and TCP flow control holds the
+            // client back. The token returns to the write task inside the reply.
+            let Some(mut token) = budget.acquire().await else {
+                debug!(client=%client_addr, "write task is gone, closing the connection");
+                return Ok(());
+            };
+
+            let message = parser.next_message().await;
+            // Memory allocated while parsing was charged to the budgets; the token gives
+            // it back when the reply is written, or right away if parsing failed.
+            token.attach(allocator.take_charge());
+
+            match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    debug!(client=%self.client_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
+                    debug!(client=%client_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
                     };
 
-                    if let Err(err) = self.command_senders.result_sender.send(result).await {
-                        return send_broken_pipe(
-                            &self.command_senders.result_sender,
-                            header.xid,
-                            err,
-                        )
-                        .await;
-                    }
+                    command_senders.reply(result, token).await?;
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
                     if matches!(*proc, NlmArguments::Null) =>
                 {
-                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
+                    debug!(client=%client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Null))),
                     };
 
-                    if let Err(err) = self.command_senders.result_sender.send(result).await {
-                        return send_broken_pipe(
-                            &self.command_senders.result_sender,
-                            header.xid,
-                            err,
-                        )
-                        .await;
-                    }
+                    command_senders.reply(result, token).await?;
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    let command = NfsArgWrapper { header, proc };
+                    debug!(client=%client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
+                    let pending = Self::pending(&limits).await;
+                    let command = VfsCommand {
+                        args: NfsArgWrapper { header, proc },
+                        result_tx: command_senders.result_sender.clone(),
+                        token,
+                        pending,
+                    };
 
-                    if let Err(err) = self
-                        .command_senders
-                        .pool_sender
-                        .send((command, self.command_senders.result_sender.clone()))
-                        .await
-                    {
-                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
-                            .await;
+                    if let Err(command) = command_senders.pool_sender.send(command).await {
+                        return command_senders.broken_pipe(xid, command.token).await;
                     }
                 }
 
@@ -149,84 +198,72 @@ where
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
+                    debug!(client=%client_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
 
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Mount(Box::new(MountRes::Null))),
                     };
 
-                    if let Err(err) = self.command_senders.result_sender.send(result).await {
-                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
-                            .await;
-                    }
+                    command_senders.reply(result, token).await?;
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
+                    let pending = Self::pending(&limits).await;
                     let command = MountCommand {
-                        result_tx: self.command_senders.result_sender.clone(),
+                        result_tx: command_senders.result_sender.clone(),
                         args: MountArgWrapper { header, proc },
-                        client_addr: self.client_addr,
+                        client_addr,
+                        token,
+                        pending,
                     };
-                    if let Err(err) = self.command_senders.mount_sender.send(command).await {
-                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
-                            .await;
+                    if let Err(SendError(command)) =
+                        command_senders.mount_sender.send(command).await
+                    {
+                        return command_senders.broken_pipe(xid, command.token).await;
                     }
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    let pending = Self::pending(&limits).await;
                     let command = NlmCommand {
-                        result_sender: self.command_senders.result_sender.clone(),
+                        result_sender: command_senders.result_sender.clone(),
                         args: NlmArgWrapper { header, proc },
+                        token,
+                        pending,
                     };
 
-                    if let Err(err) = self.command_senders.nlm_sender.send(command).await {
-                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
-                            .await;
+                    if let Err(SendError(command)) = command_senders.nlm_sender.send(command).await
+                    {
+                        return command_senders.broken_pipe(xid, command.token).await;
                     }
                 }
 
                 // The record is not a CALL at all (a REPLY sent to the server, or a
                 // bogus msg_type). RFC 5531 defines no reply to a reply, and answering
                 // one with a reply of our own could ping-pong with a confused peer, so
-                // the record is dropped silently.
+                // the record is dropped silently and its in-flight slot is given back.
                 Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
-                    warn!(client=%self.client_addr, xid, "rpc record is not a CALL, ignoring");
+                    warn!(client=%client_addr, xid, "rpc record is not a CALL, ignoring");
+                    budget.cancel(token);
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
-                    error!(client=%self.client_addr, xid, error=?error, "rpc parse error");
+                    error!(client=%client_addr, xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
-                    if let Err(err) = self.command_senders.result_sender.send(result).await {
-                        return send_broken_pipe(&self.command_senders.result_sender, xid, err)
-                            .await;
-                    }
+                    command_senders.reply(result, token).await?;
                 }
 
                 // specific case when we couldn't parser xid, which means that we can't send reply
                 Err(ErrorWrapper { xid: None, .. }) => {
-                    error!(client=%self.client_addr, "rpc parse error: xid=<none>");
+                    error!(client=%client_addr, "rpc parse error: xid=<none>");
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }
         }
     }
-}
-
-async fn send_broken_pipe<B: Buffer + 'static>(
-    sender: &Sender<ProcReply<B>>,
-    xid: u32,
-    err: impl std::fmt::Display,
-) -> io::Result<()> {
-    sender
-        .send(ProcReply {
-            xid,
-            proc_result: Err(Error::IO(io::Error::new(io::ErrorKind::BrokenPipe, err.to_string()))),
-        })
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e))
 }

@@ -6,11 +6,13 @@
 
 use async_channel::{Receiver, Sender};
 use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::nlm::Nlm;
-use crate::task::{ProcReply, ProcResult};
+use crate::task::connection::limit::Token;
+use crate::task::{InFlightReply, ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
     parser::{NlmArgWrapper, NlmArguments},
@@ -19,9 +21,15 @@ use crate::{
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_sender: Sender<ProcReply<B>>,
+    pub result_sender: Sender<InFlightReply<B>>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
+    /// In-flight slot of the request, returned by the write task after the reply is
+    /// written, see [`crate::task::connection`].
+    pub token: Token,
+    /// Slot of the request in the global pending budget, if one is set, see
+    /// [`crate::limits`].
+    pub pending: Option<OwnedSemaphorePermit>,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -70,25 +78,29 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args } = command;
+            let NlmCommand { result_sender, args, token, pending } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
             if let Some(result) = nlm_result {
-                send_reply(result_sender, result, xid).await;
+                send_reply(result_sender, result, xid, token).await;
             }
+            drop(pending);
         }
     }
 }
 
-async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: NlmRes, xid: u32) {
+async fn send_reply<B: Buffer>(
+    result_sender: Sender<InFlightReply<B>>,
+    nlm_result: NlmRes,
+    xid: u32,
+    token: Token,
+) {
     // TODO:
     // - some logs when occurred error
     // - or retry with fail
     // * but don't stop task
-    if let Err(e) = result_sender
-        .send(ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) })
-        .await
-    {
+    let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nlm4(Box::new(nlm_result))) };
+    if let Err(e) = result_sender.send(InFlightReply { reply, token }).await {
         error!(xid = xid, "nlm task: failed to send reply: {}", e);
     } else {
         debug!(xid = xid, "nlm task: reply queued");

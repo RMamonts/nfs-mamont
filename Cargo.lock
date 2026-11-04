@@ -3,6 +3,15 @@
 version = 3
 
 [[package]]
+name = "aho-corasick"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "async-channel"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -31,6 +40,12 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+
+[[package]]
+name = "cfg-if"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "concurrent-queue"
@@ -93,10 +108,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
+name = "lazy_static"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "log"
+version = "0.4.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
+name = "memchr"
+version = "2.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mio"
@@ -107,6 +149,17 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys",
+]
+
+[[package]]
+name = "mock-vfs"
+version = "0.2.0"
+dependencies = [
+ "libc",
+ "nfs-mamont",
+ "nfs-mamont-util",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -131,6 +184,15 @@ dependencies = [
  "nfs-mamont",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys",
 ]
 
 [[package]]
@@ -190,6 +252,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-automata"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -198,6 +286,12 @@ dependencies = [
  "errno",
  "libc",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "socket2"
@@ -229,6 +323,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -287,6 +390,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -305,6 +438,12 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "wasi"
