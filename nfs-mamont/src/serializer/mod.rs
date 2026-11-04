@@ -26,14 +26,14 @@ use std::io::{self, Error, ErrorKind, Write};
 use byteorder::{BigEndian, WriteBytesExt};
 use num_traits::ToPrimitive;
 
-use crate::consts::xdr::ALIGNMENT;
+use crate::consts::xdr::{padding_len, ALIGNMENT};
 
 /// Writes XDR alignment padding for an already-written field of length `n` bytes.
 ///
 /// XDR requires 4-byte alignment; this emits zero bytes until the next multiple of [`ALIGNMENT`].
 #[inline]
 pub fn padding(dest: &mut impl Write, n: usize) -> io::Result<()> {
-    let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
+    let padding = padding_len(n);
     let slice = [0u8; ALIGNMENT];
     dest.write_all(&slice[..padding])
 }

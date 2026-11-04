@@ -5,3 +5,18 @@
 /// Every XDR item is serialized in a multiple of [`ALIGNMENT`] bytes, padded
 /// with zero bytes when its length is not already a multiple of it.
 pub const ALIGNMENT: usize = 4;
+
+/// Returns the number of zero bytes needed to pad `len` bytes up to the next
+/// multiple of [`ALIGNMENT`].
+///
+/// ```
+/// use nfs_mamont::consts::xdr::padding_len;
+///
+/// assert_eq!(padding_len(0), 0);
+/// assert_eq!(padding_len(1), 3);
+/// assert_eq!(padding_len(4), 0);
+/// assert_eq!(padding_len(5), 3);
+/// ```
+pub const fn padding_len(len: usize) -> usize {
+    (ALIGNMENT - len % ALIGNMENT) % ALIGNMENT
+}

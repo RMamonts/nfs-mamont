@@ -11,6 +11,7 @@ use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
+#[repr(u32)]
 #[derive(Debug, ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
 pub enum Fail {

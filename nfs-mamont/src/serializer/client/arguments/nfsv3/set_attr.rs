@@ -1,9 +1,9 @@
 use std::io::{Result, Write};
 
 use crate::serializer::files::file_handle;
-use crate::serializer::{option, u32, u64};
+use crate::serializer::{option, u32, u64, variant};
 use crate::vfs::file::Time;
-use crate::vfs::set_attr::{Args, Guard, NewAttr, SetTime};
+use crate::vfs::set_attr::{Args, Guard, NewAttr, SetTime, SetTimeMode};
 
 /// Serializes [`Time`].
 fn serialize_nfs_time(dest: &mut impl Write, time: Time) -> Result<()> {
@@ -13,9 +13,11 @@ fn serialize_nfs_time(dest: &mut impl Write, time: Time) -> Result<()> {
 /// Serializes [`SetTime`].
 fn serialize_set_time(dest: &mut impl Write, set_time: SetTime) -> Result<()> {
     match set_time {
-        SetTime::DontChange => u32(dest, 0),
-        SetTime::ToServer => u32(dest, 1),
-        SetTime::ToClient(time) => u32(dest, 2).and_then(|_| serialize_nfs_time(dest, time)),
+        SetTime::DontChange => variant(dest, SetTimeMode::DontChange),
+        SetTime::ToServer => variant(dest, SetTimeMode::ToServer),
+        SetTime::ToClient(time) => {
+            variant(dest, SetTimeMode::ToClient).and_then(|_| serialize_nfs_time(dest, time))
+        }
     }
 }
 
