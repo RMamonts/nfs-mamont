@@ -19,9 +19,9 @@
 //! result until eviction. A miss executes the current registration transition.
 //! Cached confirmation replies never repeat retirement. Historical replies may
 //! outlive invalidation or replacement; replaying them never restores a record.
-//! Registration payloads are shared internally between the cache and tables,
-//! without cloning identity or callback buffers. No lifetime parameters are
-//! added to the public API.
+//! The cache and registration tables own independent registration values. A cache
+//! miss clones a successful registration for the pending table; confirmation
+//! moves that record to the confirmed table.
 //!
 //! ```
 //! use nfs_mamont::client_id::*;
@@ -55,7 +55,6 @@ pub use types::{
 };
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 
 use generator::Generator;
 use types::OPAQUE_LIMIT;
@@ -64,13 +63,13 @@ const DRC_CAPACITY: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq)]
 struct ClientRecord {
-    registration: Arc<Registration>,
+    registration: Registration,
     clientid: ClientId,
     confirmation: ConfirmationVerifier,
 }
 
 enum Cached {
-    Register { registration: Arc<Registration>, result: Result<PendingClient> },
+    Register { registration: Registration, result: Result<PendingClient> },
     Confirm { pair: PendingClient, result: Result<()> },
 }
 
@@ -99,12 +98,12 @@ impl ClientIdManager {
     }
 
     /// SETCLIENTID transition. Exact argument repeats return the cached pair.
-    /// A cache miss replaces the pending record, preserving confirmed state.
+    /// On a cache miss, a callback update replaces only the pending record sharing
+    /// the confirmed ID. A new incarnation replaces all pending records for its
+    /// identity. Confirmed state is preserved until confirmation.
     pub fn register(&mut self, registration: Registration) -> Result<PendingClient> {
         let replay = self.drc.iter().find_map(|entry| match entry {
-            Cached::Register { registration: cached, result }
-                if cached.as_ref() == &registration =>
-            {
+            Cached::Register { registration: cached, result } if cached == &registration => {
                 Some(*result)
             }
             _ => None,
@@ -112,13 +111,20 @@ impl ClientIdManager {
         if let Some(result) = replay {
             return result;
         }
-        let registration = Arc::new(registration);
         let result = self.register_inner(&registration);
+        if let Ok(pair) = result {
+            let record = ClientRecord {
+                registration: registration.clone(),
+                clientid: pair.clientid,
+                confirmation: pair.confirmation,
+            };
+            self.pending.insert(pair.clientid, record);
+        }
         self.cache(Cached::Register { registration, result });
         result
     }
 
-    fn register_inner(&mut self, registration: &Arc<Registration>) -> Result<PendingClient> {
+    fn register_inner(&mut self, registration: &Registration) -> Result<PendingClient> {
         let ClientIdentity::Handshake(bytes) = &registration.identity else {
             return Err(Error::InvalidIdentity);
         };
@@ -130,21 +136,19 @@ impl ClientIdManager {
             .filter(|old| old.registration.verifier == registration.verifier)
             .map(|old| old.clientid);
         let clientid = match reuse {
-            Some(id) => id,
-            None => ClientId::new(self.ids.next()),
+            Some(id) => {
+                // RFC 3530 §14.2.33: replace {v, x, c, *, *} only.
+                // A pending registration of another incarnation survives.
+                self.pending.remove(&id);
+                id
+            }
+            None => {
+                self.pending
+                    .retain(|_, record| record.registration.identity != registration.identity);
+                ClientId::new(self.ids.next())
+            }
         };
         let confirmation = ConfirmationVerifier::new(self.confirmations.next().to_be_bytes());
-        let replaced = self
-            .pending
-            .iter()
-            .find(|(_, record)| record.registration.identity == registration.identity)
-            .map(|(id, _)| *id);
-        if let Some(id) = replaced {
-            self.pending.remove(&id);
-        }
-        let record =
-            ClientRecord { registration: Arc::clone(registration), clientid, confirmation };
-        self.pending.insert(clientid, record);
         Ok(PendingClient { clientid, confirmation })
     }
 
@@ -204,7 +208,7 @@ impl ClientIdManager {
         }
         let clientid = ClientId::new(self.ids.next());
         let confirmation = ConfirmationVerifier::new(self.confirmations.next().to_be_bytes());
-        let record = ClientRecord { registration: Arc::new(registration), clientid, confirmation };
+        let record = ClientRecord { registration, clientid, confirmation };
         let retired = self.lookup_record(&record.registration.identity).map(|old| old.clientid);
         if let Some(old_id) = retired {
             self.confirmed.remove(&old_id);

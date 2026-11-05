@@ -43,6 +43,56 @@ fn callback_update_preserves_clientid() {
 }
 
 #[test]
+fn callback_updates_preserve_pending_reboot() {
+    let mut m = manager();
+    let first = confirmed(&mut m);
+    let reboot = m.register(registration(2)).unwrap();
+    let mut update = registration(1);
+    if let Callback::Universal { ident, .. } = &mut update.callback {
+        *ident = 99;
+    }
+    let replaced = m.register(update.clone()).unwrap();
+    if let Callback::Universal { ident, .. } = &mut update.callback {
+        *ident = 100;
+    }
+    let next = m.register(update.clone()).unwrap();
+    assert_eq!(next.clientid, first.clientid);
+    assert_ne!(next.confirmation, replaced.confirmation);
+    assert_eq!(m.confirm(replaced), Err(Error::StaleClientId));
+    assert!(m.confirm(next).unwrap().retired.is_none());
+    assert_eq!(m.get(first.clientid).unwrap(), &update);
+
+    let transition = m.confirm(reboot).unwrap();
+    assert_eq!(transition.retired, Some(first.clientid));
+    assert_eq!(m.get(reboot.clientid).unwrap(), &registration(2));
+    assert_eq!(m.get(first.clientid), Err(Error::StaleClientId));
+}
+
+#[test]
+fn new_incarnation_replaces_all_pending_records_for_its_identity() {
+    let mut m = manager();
+    let first = confirmed(&mut m);
+    let reboot = m.register(registration(2)).unwrap();
+    let mut update = registration(1);
+    if let Callback::Universal { ident, .. } = &mut update.callback {
+        *ident = 99;
+    }
+    let callback = m.register(update).unwrap();
+    let mut other = registration(1);
+    other.identity = ClientIdentity::Handshake(b"other-client".to_vec());
+    let unrelated = m.register(other.clone()).unwrap();
+
+    let replacement = m.register(registration(3)).unwrap();
+    assert_eq!(m.confirm(reboot), Err(Error::StaleClientId));
+    assert_eq!(m.confirm(callback), Err(Error::StaleClientId));
+    assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
+    assert!(m.confirm(unrelated).unwrap().retired.is_none());
+    assert_eq!(m.get(unrelated.clientid).unwrap(), &other);
+    assert_eq!(m.confirm(replacement).unwrap().retired, Some(first.clientid));
+    assert_eq!(m.get(replacement.clientid).unwrap(), &registration(3));
+}
+
+#[test]
 fn reboot_retires_only_at_confirmation() {
     let mut m = manager();
     let first = confirmed(&mut m);
@@ -209,23 +259,14 @@ fn implicit_identity_is_compared_by_host_address_and_name() {
 }
 
 #[test]
-fn registration_moves_between_tables_without_cloning_identity() {
+fn registration_survives_cache_removal_and_confirmation() {
     let mut m = manager();
     let input = registration(1);
-    let ClientIdentity::Handshake(bytes) = &input.identity else {
-        panic!("expected handshake identity");
-    };
-    let original_buffer = bytes.as_ptr();
-    let pair = m.register(input).unwrap();
-    let ClientIdentity::Handshake(bytes) = &m.pending[&pair.clientid].registration.identity else {
-        panic!("expected handshake identity");
-    };
-    assert_eq!(bytes.as_ptr(), original_buffer);
+    let pair = m.register(input.clone()).unwrap();
+    m.drc.clear();
     let _ = m.confirm(pair).unwrap();
-    let ClientIdentity::Handshake(bytes) = &m.get(pair.clientid).unwrap().identity else {
-        panic!("expected handshake identity");
-    };
-    assert_eq!(bytes.as_ptr(), original_buffer);
+    assert_eq!(m.get(pair.clientid).unwrap(), &input);
+    assert_eq!(m.lookup(&input.identity), Some(pair.clientid));
 }
 
 #[test]
