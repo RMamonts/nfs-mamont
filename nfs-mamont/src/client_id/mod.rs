@@ -11,6 +11,18 @@
 //! RPC authentication and authorization belong to the caller. Lease lifetimes,
 //! expiration, and state cleanup belong to a separate lease/state manager.
 //!
+//! # Duplicate calls
+//!
+//! A bounded FIFO cache identifies calls by operation and exact arguments:
+//! [`Registration`] for `register`, [`PendingClient`] for `confirm`. It accepts no
+//! RPC XID or request identifier. Identical new calls and retries share a cached
+//! result until eviction. A miss executes the current registration transition.
+//! Cached confirmation replies never repeat retirement. Historical replies may
+//! outlive invalidation or replacement; replaying them never restores a record.
+//! Registration payloads are shared internally between the cache and tables,
+//! without cloning identity or callback buffers. No lifetime parameters are
+//! added to the public API.
+//!
 //! ```
 //! use nfs_mamont::client_id::*;
 //!
@@ -23,8 +35,8 @@
 //!     },
 //! };
 //! let identity = registration.identity.clone();
-//! let pair = clients.register(RequestId { scope: 1, xid: 10 }, registration).unwrap();
-//! let transition = clients.confirm(RequestId { scope: 1, xid: 11 }, pair).unwrap();
+//! let pair = clients.register(registration).unwrap();
+//! let transition = clients.confirm(pair).unwrap();
 //! assert!(transition.retired.is_none()); // Initial registration has nothing to retire.
 //! assert_eq!(clients.lookup(&identity), Some(transition.clientid));
 //! assert_eq!(clients.get(transition.clientid).unwrap().identity, identity);
@@ -39,7 +51,7 @@ mod types;
 pub use connection::{ConnectionGeneration, ConnectionGenerationGenerator, ConnectionInfo};
 pub use types::{
     Callback, ClientId, ClientIdentity, ClientVerifier, ConfirmationVerifier, Error, HostName,
-    NetId, PendingClient, Registration, RequestId, Result, Transition,
+    NetId, PendingClient, Registration, Result, Transition,
 };
 
 use std::collections::{HashMap, VecDeque};
@@ -50,7 +62,7 @@ use types::OPAQUE_LIMIT;
 
 const DRC_CAPACITY: usize = 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 struct ClientRecord {
     registration: Arc<Registration>,
     clientid: ClientId,
@@ -58,8 +70,8 @@ struct ClientRecord {
 }
 
 enum Cached {
-    Register { request: RequestId, registration: Arc<Registration>, result: Result<PendingClient> },
-    Confirm { request: RequestId, pair: PendingClient, result: Result<()> },
+    Register { registration: Arc<Registration>, result: Result<PendingClient> },
+    Confirm { pair: PendingClient, result: Result<()> },
 }
 
 /// Standalone client identity registry. Authentication, lease management and state
@@ -86,16 +98,12 @@ impl ClientIdManager {
         }
     }
 
-    /// SETCLIENTID transition. A DRC miss replaces a pending record with fresh
-    /// confirmation data; the confirmed record remains intact.
-    pub fn register(
-        &mut self,
-        request: RequestId,
-        registration: Registration,
-    ) -> Result<PendingClient> {
+    /// SETCLIENTID transition. Exact argument repeats return the cached pair.
+    /// A cache miss replaces the pending record, preserving confirmed state.
+    pub fn register(&mut self, registration: Registration) -> Result<PendingClient> {
         let replay = self.drc.iter().find_map(|entry| match entry {
-            Cached::Register { request: cached_request, registration: cached, result }
-                if *cached_request == request && cached.as_ref() == &registration =>
+            Cached::Register { registration: cached, result }
+                if cached.as_ref() == &registration =>
             {
                 Some(*result)
             }
@@ -106,7 +114,7 @@ impl ClientIdManager {
         }
         let registration = Arc::new(registration);
         let result = self.register_inner(&registration);
-        self.cache(Cached::Register { request, registration, result });
+        self.cache(Cached::Register { registration, result });
         result
     }
 
@@ -140,26 +148,18 @@ impl ClientIdManager {
         Ok(PendingClient { clientid, confirmation })
     }
 
-    /// SETCLIENTID_CONFIRM transition. Reports a retired ID only once so that the
-    /// state layer can handle its state. Replays do not repeat retirement.
-    pub fn confirm(&mut self, request: RequestId, pair: PendingClient) -> Result<Transition> {
+    /// SETCLIENTID_CONFIRM transition. Repeats return the cached status without
+    /// reporting retirement again. On a miss the current pair is checked.
+    pub fn confirm(&mut self, pair: PendingClient) -> Result<Transition> {
         let replay = self.drc.iter().find_map(|entry| match entry {
-            Cached::Confirm { request: cached_request, pair: cached, result }
-                if *cached_request == request && *cached == pair =>
-            {
-                Some(*result)
-            }
+            Cached::Confirm { pair: cached, result } if *cached == pair => Some(*result),
             _ => None,
         });
         if let Some(result) = replay {
             return result.map(|()| Transition { clientid: pair.clientid, retired: None });
         }
         let result = self.confirm_inner(pair);
-        self.cache(Cached::Confirm {
-            request,
-            pair,
-            result: result.as_ref().map(|_| ()).map_err(|error| *error),
-        });
+        self.cache(Cached::Confirm { pair, result: result.map(|_| ()) });
         result
     }
 
@@ -239,7 +239,6 @@ impl ClientIdManager {
         self.pending.remove(&clientid);
         self.confirmed.remove(&clientid).map(|record| record.clientid)
     }
-
     fn cache(&mut self, entry: Cached) {
         if self.drc.len() >= DRC_CAPACITY {
             self.drc.pop_front();

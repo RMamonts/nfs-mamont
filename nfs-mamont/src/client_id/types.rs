@@ -130,14 +130,6 @@ pub struct PendingClient {
     pub confirmation: ConfirmationVerifier,
 }
 
-/// RPC retransmission identity. Scope must uniquely identify a transport/session
-/// within the server lifetime. Exact operation arguments are also checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RequestId {
-    pub scope: u64,
-    pub xid: u32,
-}
-
 /// Successful confirmation/implicit insertion, possibly replacing an incarnation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "apply any retired client cleanup before using the replacement"]

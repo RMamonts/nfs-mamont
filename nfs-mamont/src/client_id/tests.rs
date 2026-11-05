@@ -4,10 +4,6 @@ fn manager() -> ClientIdManager {
     ClientIdManager::new()
 }
 
-fn request(xid: u32) -> RequestId {
-    RequestId { scope: 1, xid }
-}
-
 fn registration(verifier: u8) -> Registration {
     Registration {
         identity: ClientIdentity::Handshake(vec![0, 255, 0]),
@@ -22,9 +18,9 @@ fn registration(verifier: u8) -> Registration {
 }
 
 fn confirmed(m: &mut ClientIdManager) -> PendingClient {
-    let pair = m.register(request(1), registration(1)).unwrap();
+    let pair = m.register(registration(1)).unwrap();
     assert_eq!(m.get(pair.clientid), Err(Error::StaleClientId));
-    let transition = m.confirm(request(2), pair).unwrap();
+    let transition = m.confirm(pair).unwrap();
     assert!(transition.retired.is_none());
     pair
 }
@@ -37,11 +33,11 @@ fn callback_update_preserves_clientid() {
     if let Callback::Universal { ident, .. } = &mut update.callback {
         *ident = 99;
     }
-    let next = m.register(request(3), update.clone()).unwrap();
+    let next = m.register(update.clone()).unwrap();
     assert_eq!(first.clientid, next.clientid);
     assert_ne!(first.confirmation, next.confirmation);
     assert_eq!(&m.get(first.clientid).unwrap().callback, &registration(1).callback);
-    assert!(m.confirm(request(4), next).unwrap().retired.is_none());
+    assert!(m.confirm(next).unwrap().retired.is_none());
     let record = m.get(first.clientid).unwrap();
     assert_eq!(record, &update);
 }
@@ -50,58 +46,65 @@ fn callback_update_preserves_clientid() {
 fn reboot_retires_only_at_confirmation() {
     let mut m = manager();
     let first = confirmed(&mut m);
-    let next = m.register(request(3), registration(2)).unwrap();
+    let next = m.register(registration(2)).unwrap();
     assert_ne!(first.clientid, next.clientid);
     assert!(m.get(first.clientid).is_ok());
-    let transition = m.confirm(request(4), next).unwrap();
+    let transition = m.confirm(next).unwrap();
     let retired = transition.retired.unwrap();
     assert_eq!(retired, first.clientid);
     assert_eq!(m.get(first.clientid), Err(Error::StaleClientId));
-    assert!(m.confirm(request(4), next).unwrap().retired.is_none());
-    assert!(m.confirm(request(5), next).unwrap().retired.is_none());
+    assert!(m.confirm(next).unwrap().retired.is_none());
 }
 
 #[test]
-fn drc_replays_setclientid_but_miss_replaces_pending() {
+fn repeated_registration_returns_cached_pair() {
     let mut m = manager();
-    let first = m.register(request(1), registration(1)).unwrap();
-    assert_eq!(m.register(request(1), registration(1)).unwrap(), first);
-    let second = m.register(request(2), registration(1)).unwrap();
-    assert_ne!(first.clientid, second.clientid);
-    assert_ne!(first.confirmation, second.confirmation);
-    assert_eq!(m.confirm(request(3), first), Err(Error::StaleClientId));
-    let _ = m.confirm(request(4), second).unwrap();
+    let first = m.register(registration(1)).unwrap();
+    let second = m.register(registration(1)).unwrap();
+    assert_eq!(first, second);
+    let _ = m.confirm(first).unwrap();
+    assert!(m.confirm(second).unwrap().retired.is_none());
 }
 
 #[test]
-fn pending_reboot_is_replaced_even_with_identical_verifier() {
+fn pending_reboot_is_replaced_when_callback_changes() {
     let mut m = manager();
     let first = confirmed(&mut m);
-    let a = m.register(request(3), registration(2)).unwrap();
-    let b = m.register(request(4), registration(2)).unwrap();
+    let a = m.register(registration(2)).unwrap();
+    assert_eq!(m.register(registration(2)).unwrap(), a);
+    let mut changed = registration(2);
+    if let Callback::Universal { ident, .. } = &mut changed.callback {
+        *ident = 99;
+    }
+    let b = m.register(changed).unwrap();
     assert_ne!(a.clientid, b.clientid);
     assert!(m.get(first.clientid).is_ok());
-    assert_eq!(m.confirm(request(5), a), Err(Error::StaleClientId));
-    assert!(m.confirm(request(6), b).unwrap().retired.is_some());
+    assert_eq!(m.confirm(a), Err(Error::StaleClientId));
+    assert!(m.confirm(b).unwrap().retired.is_some());
 }
 
 #[test]
 fn invalidated_pending_cannot_be_confirmed() {
     let mut m = manager();
-    let pair = m.register(request(1), registration(1)).unwrap();
+    let pair = m.register(registration(1)).unwrap();
     assert_eq!(m.invalidate(pair.clientid), None);
-    assert_eq!(m.confirm(request(2), pair), Err(Error::StaleClientId));
+    assert_eq!(m.confirm(pair), Err(Error::StaleClientId));
 }
 
 #[test]
 fn wrong_pair_and_old_confirmation_cannot_change_callback() {
     let mut m = manager();
     let first = confirmed(&mut m);
-    let next = m.register(request(3), registration(1)).unwrap();
-    assert_eq!(m.confirm(request(4), first), Err(Error::StaleClientId));
+    let mut update = registration(1);
+    if let Callback::Universal { ident, .. } = &mut update.callback {
+        *ident = 99;
+    }
+    let next = m.register(update).unwrap();
+    m.drc.clear(); // Exercise the confirmed/pending checks after a cache miss.
+    assert_eq!(m.confirm(first), Err(Error::StaleClientId));
     let wrong = PendingClient { confirmation: ConfirmationVerifier::new([0; 8]), ..next };
-    assert_eq!(m.confirm(request(5), wrong), Err(Error::StaleClientId));
-    let _ = m.confirm(request(6), next).unwrap();
+    assert_eq!(m.confirm(wrong), Err(Error::StaleClientId));
+    let _ = m.confirm(next).unwrap();
 }
 
 #[test]
@@ -109,10 +112,11 @@ fn invalidate_removes_shared_id_pending_but_not_new_incarnation() {
     for verifier in [1, 2] {
         let mut m = manager();
         let first = confirmed(&mut m);
-        let pair = m.register(request(3), registration(verifier)).unwrap();
+        let pair = m.register(registration(verifier)).unwrap();
         assert!(m.invalidate(first.clientid).is_some());
         assert!(m.invalidate(first.clientid).is_none());
-        let result = m.confirm(request(4), pair);
+        m.drc.clear(); // Check record removal rather than a historical cached reply.
+        let result = m.confirm(pair);
         if verifier == 1 {
             assert_eq!(result, Err(Error::StaleClientId));
         } else {
@@ -144,29 +148,16 @@ fn binary_identity_limits_and_domains() {
     let mut m = manager();
     let mut input = registration(1);
     input.identity = ClientIdentity::Handshake(vec![255; 1024]);
-    assert!(m.register(request(1), input.clone()).is_ok());
+    assert!(m.register(input.clone()).is_ok());
     input.identity = ClientIdentity::Handshake(vec![0; 1025]);
-    assert_eq!(m.register(request(2), input.clone()), Err(Error::InvalidIdentity));
+    assert_eq!(m.register(input.clone()), Err(Error::InvalidIdentity));
     input.identity = ClientIdentity::Implicit {
         address: "192.0.2.1".parse().unwrap(),
         host_name: HostName::new("host-one".into()).unwrap(),
     };
-    assert_eq!(m.register(request(3), input.clone()), Err(Error::InvalidIdentity));
+    assert_eq!(m.register(input.clone()), Err(Error::InvalidIdentity));
     let _ = m.new_unchecked(input).unwrap();
     assert_eq!(m.new_unchecked(registration(1)), Err(Error::InvalidIdentity));
-}
-
-#[test]
-fn drc_eviction_and_argument_matching() {
-    let mut m = manager();
-    let a = m.register(request(1), registration(1)).unwrap();
-    let b = m.register(request(1), registration(2)).unwrap();
-    assert_ne!(a, b); // same XID with different arguments is not a retransmission
-    for xid in 2..=DRC_CAPACITY as u32 {
-        m.register(request(xid), registration(2)).unwrap();
-    }
-    let c = m.register(request(1), registration(1)).unwrap();
-    assert_ne!(a, c); // original entry was evicted
 }
 
 #[test]
@@ -174,7 +165,7 @@ fn server_restart_does_not_accept_old_clientid() {
     let pair = confirmed(&mut manager());
     let mut restarted = manager();
     assert_eq!(restarted.get(pair.clientid), Err(Error::StaleClientId));
-    assert_eq!(restarted.confirm(request(1), pair), Err(Error::StaleClientId));
+    assert_eq!(restarted.confirm(pair), Err(Error::StaleClientId));
 }
 
 #[test]
@@ -218,22 +209,57 @@ fn implicit_identity_is_compared_by_host_address_and_name() {
 }
 
 #[test]
-fn drc_shares_registration_and_retains_it_after_invalidation() {
+fn registration_moves_between_tables_without_cloning_identity() {
     let mut m = manager();
-    let pair = m.register(request(1), registration(1)).unwrap();
-    let Some(Cached::Register { registration: cached, .. }) = m.drc.front() else {
-        panic!("expected cached registration");
+    let input = registration(1);
+    let ClientIdentity::Handshake(bytes) = &input.identity else {
+        panic!("expected handshake identity");
     };
-    assert!(Arc::ptr_eq(cached, &m.pending[&pair.clientid].registration));
+    let original_buffer = bytes.as_ptr();
+    let pair = m.register(input).unwrap();
+    let ClientIdentity::Handshake(bytes) = &m.pending[&pair.clientid].registration.identity else {
+        panic!("expected handshake identity");
+    };
+    assert_eq!(bytes.as_ptr(), original_buffer);
+    let _ = m.confirm(pair).unwrap();
+    let ClientIdentity::Handshake(bytes) = &m.get(pair.clientid).unwrap().identity else {
+        panic!("expected handshake identity");
+    };
+    assert_eq!(bytes.as_ptr(), original_buffer);
+}
 
-    let _ = m.confirm(request(2), pair).unwrap();
-    let Some(Cached::Register { registration: cached, .. }) = m.drc.front() else {
-        panic!("expected cached registration");
-    };
-    assert!(Arc::ptr_eq(cached, &m.confirmed[&pair.clientid].registration));
+#[test]
+fn drc_replays_historical_results_without_restoring_registration() {
+    let mut m = manager();
+    let pair = confirmed(&mut m);
     assert_eq!(m.invalidate(pair.clientid), Some(pair.clientid));
-    assert_eq!(m.register(request(1), registration(1)), Ok(pair));
+    assert!(m.confirm(pair).unwrap().retired.is_none());
+    assert_eq!(m.register(registration(1)), Ok(pair));
     assert_eq!(m.get(pair.clientid), Err(Error::StaleClientId));
+
+    m.drc.clear();
+    assert_eq!(m.confirm(pair), Err(Error::StaleClientId));
+    let replacement = m.register(registration(1)).unwrap();
+    assert_ne!(pair.clientid, replacement.clientid);
+    let _ = m.confirm(replacement).unwrap();
+}
+
+#[test]
+fn drc_eviction_reprocesses_identical_arguments() {
+    let mut m = manager();
+    let first = m.register(registration(1)).unwrap();
+    for ident in 2..=DRC_CAPACITY as u32 + 1 {
+        let mut input = registration(1);
+        if let Callback::Universal { ident: callback_ident, .. } = &mut input.callback {
+            *callback_ident = ident;
+        }
+        m.register(input).unwrap();
+    }
+    let next = m.register(registration(1)).unwrap();
+    assert_ne!(first.clientid, next.clientid);
+    assert_ne!(first.confirmation, next.confirmation);
+    assert_eq!(m.confirm(first), Err(Error::StaleClientId));
+    let _ = m.confirm(next).unwrap();
 }
 
 #[test]
