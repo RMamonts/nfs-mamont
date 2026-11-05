@@ -3,7 +3,7 @@
 //! as defined in RFC 1813 section 5.2.4.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.4>.
 
-use crate::connection_id::ConnectionId;
+use crate::client_id::ConnectionInfo;
 use crate::rpc::auth::Credential;
 
 #[trait_variant::make(Send)]
@@ -13,5 +13,5 @@ pub trait Umntall {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umntall(&self, connection_id: ConnectionId, cred: &Credential);
+    async fn umntall(&self, connection: ConnectionInfo, cred: &Credential);
 }

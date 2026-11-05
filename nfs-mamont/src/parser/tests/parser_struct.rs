@@ -21,6 +21,12 @@ use crate::vfs::file::Handle;
 use crate::vfs::write;
 use crate::vfs::write::StableHow;
 
+fn connection_info() -> crate::client_id::ConnectionInfo {
+    use crate::client_id::{ConnectionGenerationGenerator, ConnectionInfo};
+    let mut generations = ConnectionGenerationGenerator::new();
+    ConnectionInfo::new("127.0.0.1:12345".parse().unwrap(), generations.allocate())
+}
+
 /// Wrapper around [`write::ArgsPartial`] for tests with raw byte data
 struct WriteWrapper<'a> {
     part: write::ArgsPartial,
@@ -277,7 +283,7 @@ fn assert_arg_wrapper<B: Buffer, F, T: Fn(&ProcArguments<B>, F)>(
 /// Test: Parses a valid MOUNT call and returns mount-specific arguments.
 #[tokio::test]
 async fn parse_mount_call() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     let frame = mount_call_frame(
         RpcBody::Call as u32,
@@ -290,7 +296,7 @@ async fn parse_mount_call() {
     );
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await.unwrap();
 
@@ -303,7 +309,7 @@ async fn parse_mount_call() {
 /// Test: After a MOUNT procedure mismatch, the parser can parse the next valid MOUNT call.
 #[tokio::test]
 async fn parse_mount_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     let first = mount_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, 99, |_| {});
     let second = mount_call_frame(
@@ -322,7 +328,7 @@ async fn parse_mount_after_error() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60, connection_info());
 
     let first_result = parser.next_message().await;
     assert!(matches!(
@@ -340,7 +346,7 @@ async fn parse_mount_after_error() {
 /// Test: Parses two correct NFS FSSTAT frames back-to-back.
 #[tokio::test]
 async fn parse_two_correct() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     let first =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::FsStat as u32, |buf| {
@@ -356,7 +362,7 @@ async fn parse_two_correct() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x39);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x39, connection_info());
 
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(
@@ -377,7 +383,7 @@ async fn parse_two_correct() {
 /// Test: After a version mismatch error, parses the next valid FSSTAT frame.
 #[tokio::test]
 async fn parse_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     let first = nfs_call_frame(RpcBody::Call as u32, 3, &header, NfsProc::FsStat as u32, |buf| {
         buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
@@ -392,7 +398,7 @@ async fn parse_after_error() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x50);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x50, connection_info());
 
     let result = parser.next_message().await;
     assert!(result.is_err());
@@ -408,7 +414,7 @@ async fn parse_after_error() {
 /// Test: Parses two correct NFS WRITE frames with data.
 #[tokio::test]
 async fn parse_write() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     #[rustfmt::skip]
     let data = [
@@ -440,7 +446,7 @@ async fn parse_write() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0x24));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 76, connection_info());
 
     let result = parser.next_message().await.unwrap();
 
@@ -454,7 +460,7 @@ async fn parse_write() {
 /// Test: The parser recovers from an error on the first WRITE frame and parses the next valid WRITE frame.
 #[tokio::test]
 async fn parse_write_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     #[rustfmt::skip]
     let data = [
@@ -486,7 +492,7 @@ async fn parse_write_after_error() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0x24));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 80);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 80, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -509,7 +515,7 @@ async fn parse_error_when_consumed_exceeds_frame_size() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x20);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x20, connection_info());
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, .. } = result.err().unwrap();
@@ -528,7 +534,7 @@ async fn parse_error_with_too_small_frame_size_returns_error() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 32);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 32, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(result, Err(ErrorWrapper { error: Error::IO(_), xid: None })));
@@ -554,7 +560,7 @@ async fn parse_rejects_any_non_call_message_type() {
     ];
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x35, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -566,7 +572,7 @@ async fn parse_rejects_any_non_call_message_type() {
 /// Ensures the parser rejects fragments with size below XID width.
 #[tokio::test]
 async fn parse_rejects_frame_smaller_than_xid() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let second =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::FsStat as u32, |buf| {
             buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
@@ -581,7 +587,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
@@ -599,7 +605,7 @@ async fn parse_rejects_frame_smaller_than_xid() {
 
 #[tokio::test]
 async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let second =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::FsStat as u32, |buf| {
             buf.extend_from_slice(&fsstat_args([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
@@ -615,7 +621,7 @@ async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
 
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     let ErrorWrapper { error, xid } = result.err().unwrap();
@@ -634,7 +640,7 @@ async fn parse_rejects_fragmented_frame_and_keeps_stream_aligned() {
 /// Verifies the parser handles WRITE with zero opaque payload.
 #[tokio::test]
 async fn parse_write_with_empty_payload() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
 
     let write = WriteWrapper {
         part: write::ArgsPartial {
@@ -655,7 +661,7 @@ async fn parse_write_with_empty_payload() {
     buf.extend_from_slice(&first);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(2));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 76);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 76, connection_info());
     let result = parser.next_message().await.unwrap();
     assert_arg_wrapper(result, &header, |proc, arg| assert_write_proc_result(proc, arg), &write);
 }
@@ -677,7 +683,7 @@ async fn parse_rejects_non_none_cred_auth() {
     );
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -703,7 +709,7 @@ async fn parse_rejects_non_none_verf_auth() {
     );
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -723,7 +729,8 @@ async fn parse_accepts_auth_sys_credentials() {
         gid: 1000,
         gids: vec![4, 27, 1000],
     };
-    let header = RpcHeader { xid: XID, cred: Credential::Sys(params) };
+    let header =
+        RpcHeader { xid: XID, connection: connection_info(), cred: Credential::Sys(params) };
 
     let frame =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::FsStat as u32, |buf| {
@@ -731,7 +738,7 @@ async fn parse_accepts_auth_sys_credentials() {
         });
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x64);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x64, connection_info());
 
     let result = parser.next_message().await.unwrap();
     assert_eq!(result.header, header);
@@ -761,7 +768,7 @@ async fn parse_rejects_truncated_auth_sys() {
     );
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -772,7 +779,7 @@ async fn parse_rejects_truncated_auth_sys() {
 
 #[tokio::test]
 async fn parse_getattr_bad_file_handle_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let first = nfs_call_frame(
         RpcBody::Call as u32,
         RPC_VERSION,
@@ -792,7 +799,7 @@ async fn parse_getattr_bad_file_handle_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(result, Err(ErrorWrapper { error: Error::BadFileHandle, xid: Some(XID) })));
@@ -807,7 +814,7 @@ async fn parse_getattr_bad_file_handle_after_error() {
 
 #[tokio::test]
 async fn parse_write_out_of_memory_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     #[rustfmt::skip]
     let data = [
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -836,7 +843,7 @@ async fn parse_write_out_of_memory_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(4));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -855,7 +862,7 @@ async fn parse_write_out_of_memory_after_error() {
 
 #[tokio::test]
 async fn parse_mkdir_incorrect_string_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let first =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::MkDir as u32, |buf| {
             push_opaque(buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
@@ -871,7 +878,7 @@ async fn parse_mkdir_incorrect_string_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x60, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -889,7 +896,7 @@ async fn parse_mkdir_incorrect_string_after_error() {
 
 #[tokio::test]
 async fn parse_extra_bytes_after_finalize_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let first = nfs_call_frame(
         RpcBody::Call as u32,
         RPC_VERSION,
@@ -909,7 +916,7 @@ async fn parse_extra_bytes_after_finalize_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -928,7 +935,7 @@ async fn parse_extra_bytes_after_finalize_after_error() {
 
 #[tokio::test]
 async fn parse_symlink_window_overflow_after_error() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let path = "a".repeat(400);
     let first = nfs_call_frame(
         RpcBody::Call as u32,
@@ -956,7 +963,7 @@ async fn parse_symlink_window_overflow_after_error() {
     buf.extend_from_slice(&second);
     let socket = MockSocket::new(buf.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 200);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 200, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -989,7 +996,7 @@ fn record(words: &[u32]) -> Vec<u8> {
 /// of answering, and the next call is still parsed.
 #[tokio::test]
 async fn parse_rejects_reply_records_before_decoding_call_body() {
-    let header = RpcHeader { xid: XID, cred: Credential::None };
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
     let reply = RpcBody::Reply as u32;
     let accepted = ReplyBody::MsgAccepted as u32;
     let none = AuthFlavor::None as u32;
@@ -1012,7 +1019,7 @@ async fn parse_rejects_reply_records_before_decoding_call_body() {
         buf.extend_from_slice(&next);
         let socket = MockSocket::new(buf.as_slice());
         let alloc = Arc::new(MockAllocator::new(0));
-        let mut parser = RpcParser::with_capacity(socket, alloc, 0x60);
+        let mut parser = RpcParser::with_capacity(socket, alloc, 0x60, connection_info());
 
         let result = parser.next_message().await;
         assert!(matches!(
@@ -1036,7 +1043,7 @@ async fn parse_rejects_rpc_version_before_decoding_call_body() {
     let frame = record(&[XID, RpcBody::Call as u32, RPC_VERSION + 1]);
     let socket = MockSocket::new(frame.as_slice());
     let alloc = Arc::new(MockAllocator::new(0));
-    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+    let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
     let result = parser.next_message().await;
     assert!(matches!(
@@ -1072,7 +1079,7 @@ async fn parse_checks_program_version_before_procedure() {
             record(&[XID, call, RPC_VERSION, program, version, procedure, none, 0, none, 0]);
         let socket = MockSocket::new(frame.as_slice());
         let alloc = Arc::new(MockAllocator::new(0));
-        let mut parser = RpcParser::with_capacity(socket, alloc, 0x40);
+        let mut parser = RpcParser::with_capacity(socket, alloc, 0x40, connection_info());
 
         let result = parser.next_message().await;
         assert!(
@@ -1086,4 +1093,37 @@ async fn parse_checks_program_version_before_procedure() {
             "program {program} version {version} procedure {procedure}"
         );
     }
+}
+
+/// Observed metadata is stable across RPCs on one socket and differs on reconnect.
+#[tokio::test]
+async fn transport_metadata_survives_parsing() {
+    use crate::client_id::{ConnectionGenerationGenerator, ConnectionInfo};
+
+    let header = RpcHeader { xid: XID, connection: connection_info(), cred: Credential::None };
+    let frame = mount_call_frame(
+        RpcBody::Call as u32,
+        RPC_VERSION,
+        &header,
+        MountProc::Null as u32,
+        |_| {},
+    );
+    let frames = [frame.as_slice(), frame.as_slice()].concat();
+    let mut generations = ConnectionGenerationGenerator::new();
+    let connection =
+        ConnectionInfo::new("127.0.0.1:12345".parse().unwrap(), generations.allocate());
+    let mut parser =
+        RpcParser::new(MockSocket::new(&frames), Arc::new(MockAllocator::new(0)), connection);
+    for _ in 0..2 {
+        assert_eq!(parser.next_message().await.unwrap().header.connection, connection);
+    }
+    let reconnected = ConnectionInfo::new(connection.peer_addr, generations.allocate());
+    let mut parser =
+        RpcParser::new(MockSocket::new(&frame), Arc::new(MockAllocator::new(0)), reconnected);
+    assert_eq!(parser.next_message().await.unwrap().header.connection, reconnected);
+    assert_eq!(reconnected.generation.into_inner(), connection.generation.into_inner() + 1);
+    assert_eq!(
+        connection.generation.verifier(),
+        crate::client_id::ClientVerifier::new(connection.generation.into_inner().to_be_bytes()),
+    );
 }

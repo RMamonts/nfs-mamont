@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::connection_id::ConnectionId;
+use crate::client_id::{ConnectionGenerationGenerator, ConnectionInfo};
 use crate::context::ServerContext;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
@@ -29,6 +29,7 @@ pub fn new<A, V, B>(
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
+    generations: &mut ConnectionGenerationGenerator,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -42,6 +43,7 @@ pub fn new<A, V, B>(
             return;
         }
     };
+    let connection = ConnectionInfo::new(peer_addr, generations.allocate());
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<ProcReply<B>>();
@@ -54,13 +56,8 @@ pub fn new<A, V, B>(
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(
-        readhalf,
-        ConnectionId::new(peer_addr),
-        context.get_allocator(),
-        command_senders,
-    )
-    .spawn();
+    read::ReadTask::<A, B>::new(readhalf, connection, context.get_allocator(), command_senders)
+        .spawn();
 
     write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
 }
