@@ -13,10 +13,13 @@
 //!
 //! # Duplicate calls
 //!
-//! A bounded FIFO cache identifies calls by operation and exact arguments:
-//! [`Registration`] for `register`, [`PendingClient`] for `confirm`. It accepts no
-//! RPC XID or request identifier. Identical new calls and retries share a cached
-//! result until eviction. A miss executes the current registration transition.
+//! A bounded FIFO cache checks RequestId, operation kind and exact arguments.
+//! New RPC calls use new request IDs even when their arguments are identical.
+//! Registration and confirmation have independent request IDs; the returned
+//! clientid and confirmation verifier link the two operations.
+//! The RPC adapter assigns replay scopes and validates the complete RPC request
+//! and caller before invoking the manager. For COMPOUND, scopes must distinguish
+//! operation positions. This cache does not replace caching complete RPC replies.
 //! Cached confirmation replies never repeat retirement. Historical replies may
 //! outlive invalidation or replacement; replaying them never restores a record.
 //! The cache and registration tables own independent registration values. A cache
@@ -35,8 +38,8 @@
 //!     },
 //! };
 //! let identity = registration.identity.clone();
-//! let pair = clients.register(registration).unwrap();
-//! let transition = clients.confirm(pair).unwrap();
+//! let pair = clients.register(RequestId { scope: 1, xid: 10 }, registration).unwrap();
+//! let transition = clients.confirm(RequestId { scope: 1, xid: 11 }, pair).unwrap();
 //! assert!(transition.retired.is_none()); // Initial registration has nothing to retire.
 //! assert_eq!(clients.lookup(&identity), Some(transition.clientid));
 //! assert_eq!(clients.get(transition.clientid).unwrap().identity, identity);
@@ -51,7 +54,7 @@ mod types;
 pub use connection::{ConnectionGeneration, ConnectionGenerationGenerator, ConnectionInfo};
 pub use types::{
     Callback, ClientId, ClientIdentity, ClientVerifier, ConfirmationVerifier, Error, HostName,
-    NetId, PendingClient, Registration, Result, Transition,
+    NetId, PendingClient, Registration, RequestId, Result, Transition,
 };
 
 use std::collections::{HashMap, VecDeque};
@@ -69,8 +72,8 @@ struct ClientRecord {
 }
 
 enum Cached {
-    Register { registration: Registration, result: Result<PendingClient> },
-    Confirm { pair: PendingClient, result: Result<()> },
+    Register { request: RequestId, registration: Registration, result: Result<PendingClient> },
+    Confirm { request: RequestId, pair: PendingClient, result: Result<()> },
 }
 
 /// Standalone client identity registry. Authentication, lease management and state
@@ -97,19 +100,23 @@ impl ClientIdManager {
         }
     }
 
-    /// SETCLIENTID transition. Exact argument repeats return the cached pair.
+    /// SETCLIENTID transition. Retransmissions with the same request ID and
+    /// arguments return the cached pair; new requests execute the transition.
     /// On a cache miss, a callback update replaces only the pending record sharing
     /// the confirmed ID. A new incarnation replaces all pending records for its
     /// identity. Confirmed state is preserved until confirmation.
-    pub fn register(&mut self, registration: Registration) -> Result<PendingClient> {
-        let replay = self.drc.iter().find_map(|entry| match entry {
-            Cached::Register { registration: cached, result } if cached == &registration => {
-                Some(*result)
+    pub fn register(
+        &mut self,
+        request: RequestId,
+        registration: Registration,
+    ) -> Result<PendingClient> {
+        for entry in &self.drc {
+            let Cached::Register { request: id, registration: args, result } = entry else {
+                continue;
+            };
+            if *id == request && *args == registration {
+                return *result;
             }
-            _ => None,
-        });
-        if let Some(result) = replay {
-            return result;
         }
         let result = self.register_inner(&registration);
         if let Ok(pair) = result {
@@ -120,7 +127,7 @@ impl ClientIdManager {
             };
             self.pending.insert(pair.clientid, record);
         }
-        self.cache(Cached::Register { registration, result });
+        self.cache(Cached::Register { request, registration, result });
         result
     }
 
@@ -135,35 +142,31 @@ impl ClientIdManager {
             .lookup_record(&registration.identity)
             .filter(|old| old.registration.verifier == registration.verifier)
             .map(|old| old.clientid);
-        let clientid = match reuse {
-            Some(id) => {
-                // RFC 3530 §14.2.33: replace {v, x, c, *, *} only.
-                // A pending registration of another incarnation survives.
-                self.pending.remove(&id);
-                id
-            }
-            None => {
-                self.pending
-                    .retain(|_, record| record.registration.identity != registration.identity);
-                ClientId::new(self.ids.next())
-            }
+        let clientid = if let Some(id) = reuse {
+            // Inserting by c replaces only {v, x, c, *, *} (RFC 3530 §14.2.33).
+            id
+        } else {
+            self.pending.retain(|_, record| record.registration.identity != registration.identity);
+            ClientId::new(self.ids.next())
         };
         let confirmation = ConfirmationVerifier::new(self.confirmations.next().to_be_bytes());
         Ok(PendingClient { clientid, confirmation })
     }
 
-    /// SETCLIENTID_CONFIRM transition. Repeats return the cached status without
+    /// SETCLIENTID_CONFIRM transition. The request ID belongs to this confirmation
+    /// RPC, not its SETCLIENTID call. Replays return the cached status without
     /// reporting retirement again. On a miss the current pair is checked.
-    pub fn confirm(&mut self, pair: PendingClient) -> Result<Transition> {
-        let replay = self.drc.iter().find_map(|entry| match entry {
-            Cached::Confirm { pair: cached, result } if *cached == pair => Some(*result),
-            _ => None,
-        });
-        if let Some(result) = replay {
-            return result.map(|()| Transition { clientid: pair.clientid, retired: None });
+    pub fn confirm(&mut self, request: RequestId, pair: PendingClient) -> Result<Transition> {
+        for entry in &self.drc {
+            let Cached::Confirm { request: id, pair: args, result } = entry else {
+                continue;
+            };
+            if *id == request && *args == pair {
+                return result.map(|()| Transition { clientid: pair.clientid, retired: None });
+            }
         }
         let result = self.confirm_inner(pair);
-        self.cache(Cached::Confirm { pair, result: result.map(|_| ()) });
+        self.cache(Cached::Confirm { request, pair, result: result.map(|_| ()) });
         result
     }
 

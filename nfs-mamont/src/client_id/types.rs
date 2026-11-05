@@ -130,6 +130,16 @@ pub struct PendingClient {
     pub confirmation: ConfirmationVerifier,
 }
 
+/// Identity of one RPC operation for duplicate detection, independent of clientid.
+/// The adapter assigns a scope that separates clients and, for COMPOUND calls,
+/// operation positions. Retransmissions must preserve both fields. Reusing a
+/// scope and XID for a new identical operation while it is cached is ambiguous.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequestId {
+    pub scope: u64,
+    pub xid: u32,
+}
+
 /// Successful confirmation/implicit insertion, possibly replacing an incarnation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "apply any retired client cleanup before using the replacement"]
