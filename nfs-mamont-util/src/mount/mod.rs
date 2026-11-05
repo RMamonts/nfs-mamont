@@ -20,7 +20,7 @@
 //!   next to user-visible export data.
 
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::net::IpAddr;
 
 use nfs_mamont::mount::{ExportEntry, MountEntry};
 use nfs_mamont::vfs::file;
@@ -81,7 +81,7 @@ impl ExportRegistry {
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
-    by_client: HashMap<SocketAddr, HashSet<MountEntry>>,
+    by_client: HashMap<IpAddr, HashSet<MountEntry>>,
 }
 
 /// In-memory state backing the MOUNT v3 service implementation

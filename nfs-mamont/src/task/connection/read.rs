@@ -1,5 +1,4 @@
 use std::io;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
@@ -8,6 +7,7 @@ use tracing::{debug, error, warn};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
+use crate::connection_id::ConnectionId;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -54,7 +54,7 @@ pub struct ReadTask<
     B: Buffer + 'static = <A as Allocator>::Buffer,
 > {
     readhalf: OwnedReadHalf,
-    client_addr: SocketAddr,
+    client_id: ConnectionId,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
 }
@@ -67,11 +67,11 @@ where
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
-        client_addr: SocketAddr,
+        client_id: ConnectionId,
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
     ) -> Self {
-        Self { readhalf, client_addr, allocator, command_senders }
+        Self { readhalf, client_id, allocator, command_senders }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -94,7 +94,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    debug!(client=%self.client_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
@@ -113,7 +113,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
                     if matches!(*proc, NlmArguments::Null) =>
                 {
-                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Null))),
@@ -131,7 +131,7 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
 
                     if let Err(err) = self
@@ -149,7 +149,7 @@ where
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid, program="MOUNT", proc="NULL", "rpc dispatch");
 
                     let result = ProcReply {
                         xid: header.xid,
@@ -164,11 +164,11 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
                     let command = MountCommand {
                         result_tx: self.command_senders.result_sender.clone(),
                         args: MountArgWrapper { header, proc },
-                        client_addr: self.client_addr,
+                        connection_id: self.client_id,
                     };
                     if let Err(err) = self.command_senders.mount_sender.send(command).await {
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
@@ -178,10 +178,11 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {
                         result_sender: self.command_senders.result_sender.clone(),
                         args: NlmArgWrapper { header, proc },
+                        connection_id: self.client_id,
                     };
 
                     if let Err(err) = self.command_senders.nlm_sender.send(command).await {
@@ -195,11 +196,11 @@ where
                 // one with a reply of our own could ping-pong with a confused peer, so
                 // the record is dropped silently.
                 Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
-                    warn!(client=%self.client_addr, xid, "rpc record is not a CALL, ignoring");
+                    warn!(client=%self.client_id.into_inner(), xid, "rpc record is not a CALL, ignoring");
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
-                    error!(client=%self.client_addr, xid, error=?error, "rpc parse error");
+                    error!(client=%self.client_id.into_inner(), xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
                     if let Err(err) = self.command_senders.result_sender.send(result).await {
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
@@ -209,7 +210,7 @@ where
 
                 // specific case when we couldn't parser xid, which means that we can't send reply
                 Err(ErrorWrapper { xid: None, .. }) => {
-                    error!(client=%self.client_addr, "rpc parse error: xid=<none>");
+                    error!(client=%self.client_id.into_inner(), "rpc parse error: xid=<none>");
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }

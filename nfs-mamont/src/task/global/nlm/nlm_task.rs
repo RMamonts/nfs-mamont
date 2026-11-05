@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
+use crate::connection_id::ConnectionId;
 use crate::nlm::Nlm;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
@@ -22,6 +23,11 @@ pub struct NlmCommand<B: Buffer> {
     pub result_sender: Sender<ProcReply<B>>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
+
+    /// The ID using the socket address.
+    /// It is passed along with the NlmCommand to nlm.
+    #[allow(dead_code)]
+    pub connection_id: ConnectionId,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -70,7 +76,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args } = command;
+            let NlmCommand { result_sender, args, connection_id: _ } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
             if let Some(result) = nlm_result {

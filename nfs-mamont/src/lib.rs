@@ -2,6 +2,7 @@
 
 mod allocator;
 mod backend;
+pub mod connection_id;
 pub mod consts;
 mod context;
 pub mod mount;

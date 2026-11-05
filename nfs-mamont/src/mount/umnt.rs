@@ -3,8 +3,7 @@
 //! as defined in RFC 1813 section 5.2.3.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.3>.
 
-use std::net::SocketAddr;
-
+use crate::connection_id::ConnectionId;
 use crate::rpc::auth::Credential;
 use crate::vfs::file;
 
@@ -25,5 +24,5 @@ pub trait Umnt {
     ///
     /// AUTH_UNIX authentication or better is required.
     /// There are no MOUNT protocol errors which can be returned from this procedure.
-    async fn umnt(&self, args: Args, client_addr: SocketAddr, cred: &Credential);
+    async fn umnt(&self, args: Args, connection_id: ConnectionId, cred: &Credential);
 }

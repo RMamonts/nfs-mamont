@@ -1,8 +1,7 @@
 //! Service implementation for the MOUNT v3 `MNT` procedure.
 
-use std::net::SocketAddr;
-
 use nfs_mamont::auth::Credential;
+use nfs_mamont::connection_id::ConnectionId;
 use nfs_mamont::mount::mnt::{Args, Fail, Mnt, Success};
 use nfs_mamont::mount::{HostName, MountEntry};
 use tracing::warn;
@@ -14,7 +13,7 @@ impl Mnt for MountService {
     async fn mnt(
         &self,
         args: Args,
-        client_addr: SocketAddr,
+        connection_id: ConnectionId,
         _cred: &Credential,
     ) -> Result<Success, Fail> {
         let Some(export) = self.export_entry(&args.dirpath).await else {
@@ -28,7 +27,7 @@ impl Mnt for MountService {
                 .collect::<Vec<_>>();
             warn!(
                 requested=%args.dirpath.as_path().to_string_lossy(),
-                client=%client_addr,
+                client=%connection_id.into_inner(),
                 configured_exports=?configured,
                 "mount denied",
             );
@@ -37,11 +36,12 @@ impl Mnt for MountService {
 
         let file_handle = export.root_handle;
 
-        let hostname = HostName::new(client_addr.ip().to_string()).map_err(|_| Fail::Inval)?;
+        let ip = connection_id.into_inner().ip().to_canonical();
+        let hostname = HostName::new(ip.to_string()).map_err(|_| Fail::Inval)?;
 
         let mount_entry = MountEntry { hostname, directory: args.dirpath.clone() };
 
-        self.mounts.write().await.by_client.entry(client_addr).or_default().insert(mount_entry);
+        self.mounts.write().await.by_client.entry(ip).or_default().insert(mount_entry);
 
         Ok(Success { file_handle, auth_flavors: AUTH.to_vec() })
     }

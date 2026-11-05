@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
+use crate::connection_id::ConnectionId;
 use crate::context::ServerContext;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
@@ -53,8 +54,13 @@ pub fn new<A, V, B>(
         result_sender.clone(),
     );
 
-    read::ReadTask::<A, B>::new(readhalf, peer_addr, context.get_allocator(), command_senders)
-        .spawn();
+    read::ReadTask::<A, B>::new(
+        readhalf,
+        ConnectionId::new(peer_addr),
+        context.get_allocator(),
+        command_senders,
+    )
+    .spawn();
 
     write::WriteTask::<B>::new(writehalf, result_receiver).spawn();
 }
