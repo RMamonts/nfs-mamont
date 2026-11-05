@@ -13,8 +13,6 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 
 - **NFSv3** via the `NFS_PROGRAM` (100003) RPC program — full procedure set of RFC 1813.
 - **MOUNT protocol** — export handling, mount/umount, and export dumps.
-- **Client registration registry** — standalone [ClientIdManager](nfs-mamont/src/client_id/mod.rs) with
-  NFSv4.0 confirmation transitions and a protocol-neutral implicit registration path.
 - **Custom RPC/XDR layer** — hand-written parser and serializer.
 - **Zero-copy pool allocator** — `PoolAllocator` (in `nfs-mamont-util`), a pool of reusable
   byte buffers for efficient packet and file I/O. Allocator has public trait so you can put your
