@@ -9,11 +9,10 @@ pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
+mod task;
 mod serializer;
 pub mod vfs;
-
 pub mod connection_id;
-pub mod task;
 
 use std::sync::Arc;
 
