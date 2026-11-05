@@ -2,6 +2,7 @@
 
 mod allocator;
 mod backend;
+pub mod connection_id;
 pub mod consts;
 mod context;
 pub mod mount;
@@ -9,10 +10,9 @@ pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
-mod task;
 mod serializer;
+mod task;
 pub mod vfs;
-pub mod connection_id;
 
 use std::sync::Arc;
 
