@@ -3,11 +3,12 @@
 //! as defined in RFC 1813 section 5.2.1.
 //! <https://datatracker.ietf.org/doc/html/rfc1813#section-5.2.1>.
 
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use crate::connection_id::ConnectionId;
 use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
-use num_derive::{FromPrimitive, ToPrimitive};
 
 #[repr(u32)]
 #[derive(Debug, ToPrimitive, FromPrimitive)]
