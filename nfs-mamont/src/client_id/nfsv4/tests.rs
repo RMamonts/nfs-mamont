@@ -1,5 +1,6 @@
 use super::*;
 use crate::auth::{AuthSysParams, Credential};
+use crate::client_id::{Callback, ClientVerifier, NetId};
 
 fn manager() -> ClientIdManager {
     ClientIdManager::new()
