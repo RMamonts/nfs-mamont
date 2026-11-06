@@ -1,27 +1,14 @@
-use std::sync::Arc;
-
 use metrics::with_local_recorder;
-use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
-use metrics_util::CompositeKey;
+use metrics_util::debugging::DebugValue;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::consts::nfsv3::GETATTR;
-use crate::metric::nfs::consts::{
-    CPU_SECONDS, DURATION_SECONDS, QUEUE_DEPTH, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS,
-    SYSCALL_SECONDS, VFS_IN_FLIGHT, WAIT_SECONDS,
+use super::consts::{
+    CPU_SECONDS, DURATION_SECONDS, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS,
+    VFS_IN_FLIGHT, WAIT_SECONDS,
 };
-use crate::metric::tests::test_helpers::{samples, snapshot, value};
-use crate::metric::{unbounded, NfsMetrics, Queue, Stage, TaskKind, Timer};
-
-mod io_tests;
-pub mod test_helpers;
-
-fn metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
-    let recorder = DebuggingRecorder::new();
-    let snapshotter = recorder.snapshotter();
-    let metrics = with_local_recorder(&recorder, NfsMetrics::new);
-    (metrics, snapshotter, recorder)
-}
+use crate::consts::nfsv3::GETATTR;
+use crate::metric::test_helpers::{gauge, nfs_metrics as metrics, samples, snapshot, value};
+use crate::metric::{Stage, TaskKind, Timer};
 
 #[test]
 fn timer_is_16_bytes() {
@@ -78,56 +65,8 @@ async fn in_flight_guard_restores_gauge() {
 
     let snapshot = snapshot(&snapshotter);
 
-    assert_eq!(
-        value(&snapshot, VFS_IN_FLIGHT, &[("backend", "0")]),
-        &DebugValue::Gauge(1.0.into())
-    );
-    assert_eq!(
-        value(&snapshot, VFS_IN_FLIGHT, &[("backend", "1")]),
-        &DebugValue::Gauge(0.0.into())
-    );
-}
-
-fn depth(snapshot: &[(CompositeKey, DebugValue)], queue: &str) -> f64 {
-    match value(snapshot, QUEUE_DEPTH, &[("queue", queue)]) {
-        DebugValue::Gauge(depth) => depth.into_inner(),
-        _ => panic!("queue depth is not a gauge"),
-    }
-}
-
-#[tokio::test]
-async fn queue_depth_tracks_each_queue() {
-    let (metrics, snapshotter, _) = metrics();
-    let metrics = Arc::new(metrics);
-    let (vfs_tx, vfs_rx) = unbounded(Arc::clone(&metrics), Queue::Vfs);
-    let (reply_tx, _reply_rx) = unbounded(metrics, Queue::Reply);
-
-    for i in 0..3 {
-        vfs_tx.send(i).await.unwrap();
-    }
-    vfs_rx.recv().await.unwrap();
-    reply_tx.send(()).await.unwrap();
-
-    let snapshot = snapshot(&snapshotter);
-
-    assert_eq!(depth(&snapshot, "vfs"), 2.0);
-    assert_eq!(depth(&snapshot, "reply"), 1.0);
-}
-
-#[tokio::test]
-async fn queue_depth_is_restored_without_receiver() {
-    let (metrics, snapshotter, _) = metrics();
-    let (tx, rx) = unbounded(Arc::new(metrics), Queue::Vfs);
-    let rx_clone = rx.clone();
-
-    tx.send(()).await.unwrap();
-    drop(rx);
-    assert_eq!(depth(&snapshot(&snapshotter), "vfs"), 1.0);
-
-    // taking snapshot resets the gauge to 0
-    drop(rx_clone); // last rx dropped, gauge = -1
-    assert!(tx.send(()).await.is_err()); // failed send doesn't count
-    assert_eq!(depth(&snapshot(&snapshotter), "vfs"), -1.0);
+    assert_eq!(value(&snapshot, VFS_IN_FLIGHT, &[("backend", "0")]), &gauge(1.0));
+    assert_eq!(value(&snapshot, VFS_IN_FLIGHT, &[("backend", "1")]), &gauge(0.0));
 }
 
 #[tokio::test]
@@ -145,7 +84,7 @@ async fn tokio_metrics_are_reported_per_task_kind() {
     for kind in TaskKind::ALL {
         assert_eq!(
             value(&snapshot, "nfsmamont_tokio_task_instrumented_count", &[("task", kind.as_str())]),
-            &DebugValue::Gauge(1.0.into()),
+            &gauge(1.0),
             "task {}",
             kind.as_str()
         );

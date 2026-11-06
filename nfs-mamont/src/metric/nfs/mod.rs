@@ -8,6 +8,10 @@ pub(in crate::metric) mod io;
 mod nfs_metrics;
 #[cfg(feature = "metrics")]
 pub use nfs_metrics::*;
+#[cfg(all(test, feature = "metrics"))]
+mod io_test;
+#[cfg(all(test, feature = "metrics"))]
+mod test;
 
 #[cfg(not(feature = "metrics"))]
 mod noop;

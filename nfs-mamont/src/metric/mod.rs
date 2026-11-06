@@ -14,7 +14,7 @@ mod procedure;
 mod queue;
 
 #[cfg(all(test, feature = "metrics"))]
-mod tests;
+mod test_helpers;
 
 pub use allocator::AllocatorMetrics;
 pub use kinds::{Queue, Stage, TaskKind};

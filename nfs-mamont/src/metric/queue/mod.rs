@@ -6,6 +6,8 @@
 mod counted;
 #[cfg(feature = "metrics")]
 pub use counted::*;
+#[cfg(all(test, feature = "metrics"))]
+mod test;
 
 #[cfg(not(feature = "metrics"))]
 mod noop;

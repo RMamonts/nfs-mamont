@@ -38,7 +38,7 @@ impl IoStats {
 
 /// Wraps a socket, adding the time spent in and bytes moved by its I/O calls to [`IoStats`].
 pub struct IoTimer<S> {
-    pub(in crate::metric) inner: S,
+    pub(super) inner: S,
     stats: Arc<IoStats>,
 }
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::metric::nfs::io::IoTimer;
+use super::io::IoTimer;
 
 #[tokio::test]
 async fn read_bytes_are_counted() {
