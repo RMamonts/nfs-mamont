@@ -1,5 +1,5 @@
 //! Compile-time check that the ready-made implementations satisfy the bounds
-//! [`nfs_mamont::handle_forever`] puts on its MOUNT, NLM and allocator parameters.
+//! [`nfs_mamont::Server`] puts on its MOUNT, NLM and allocator parameters.
 
 use nfs_mamont::mount::Mount;
 use nfs_mamont::nlm::Nlm;
@@ -18,7 +18,7 @@ where
 }
 
 #[test]
-fn utils_types_fit_handle_forever() {
+fn utils_types_fit_server() {
     mount::<MountService>();
     nlm::<NlmService>();
     allocator::<PoolAllocator, Slice>();

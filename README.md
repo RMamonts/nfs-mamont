@@ -24,7 +24,7 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 
 | Crate | Contents |
 |-------|----------|
-| `nfs-mamont` | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
+| `nfs-mamont` | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `Server` actor with lifecycle state and shutdown control |
 | `nfs-mamont-util` | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
 
 `nfs-mamont` does not depend on `nfs-mamont-util`; use the latter if you do not need custom

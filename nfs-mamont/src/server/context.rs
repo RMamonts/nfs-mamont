@@ -21,7 +21,8 @@ use crate::vfs::file::BackendId;
 /// use std::sync::Arc;
 ///
 /// use nfs_mamont::vfs::Vfs;
-/// use nfs_mamont::{Allocator, Buffer, ServerContext};
+/// use nfs_mamont::{Allocator, Buffer};
+/// use nfs_mamont::ServerContext;
 ///
 /// fn attach_and_detach<A, B, V>(allocator: Arc<A>, fs: Arc<V>) -> Option<Arc<V>>
 /// where
@@ -111,7 +112,7 @@ where
     /// Returns a clone of the backend registry.
     ///
     /// The clone shares the same map, so it can be used to attach and detach backends
-    /// after the context has been moved into [`crate::handle_forever`].
+    /// after the context has been moved into [`crate::Server`].
     #[inline]
     pub fn backends(&self) -> BackendRegistry<V> {
         self.backends.clone()
