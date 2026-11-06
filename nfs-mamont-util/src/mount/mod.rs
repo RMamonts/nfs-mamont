@@ -14,7 +14,7 @@
 //!
 //! State structure follows this split:
 //! - exports are keyed by directory path for direct `MNT` lookup;
-//! - active mounts are keyed by client socket address because one client can
+//! - active mounts are keyed by canonical client IP address because one client can
 //!   mount multiple directories and `UMNT`/`UMNTALL` are client-scoped;
 //! - each export keeps server policy metadata (file handle + auth flavors)
 //!   next to user-visible export data.
@@ -77,7 +77,7 @@ impl ExportRegistry {
     }
 }
 
-/// Registry of active mounts grouped by client endpoint
+/// Registry of active mounts grouped by client IP address
 #[derive(Default)]
 struct MountRegistry {
     /// A single client may mount multiple directories
