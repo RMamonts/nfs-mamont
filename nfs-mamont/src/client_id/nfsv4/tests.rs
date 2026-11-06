@@ -1,9 +1,9 @@
 use super::*;
 use crate::auth::{AuthSysParams, Credential};
-use crate::client_id::{Callback, ClientVerifier, NetId};
+use crate::client_id::{Callback, ClientIdGenerator, ClientVerifier, NetId};
 
 fn manager() -> ClientIdManager {
-    ClientIdManager::new()
+    ClientIdManager::new(ClientIdGenerator::new())
 }
 
 fn registration(verifier: u8) -> Registration {
@@ -180,7 +180,8 @@ fn invalidate_removes_shared_id_pending_but_not_new_incarnation() {
 
 #[test]
 fn server_restart_does_not_accept_old_clientid() {
-    let pair = confirmed(&mut manager());
+    let mut before = manager();
+    let pair = confirmed(&mut before);
     let mut restarted = manager();
     assert_eq!(restarted.get(pair.clientid), Err(Error::StaleClientId));
     assert_eq!(restarted.confirm(pair, &Credential::None), Err(Error::StaleClientId));
