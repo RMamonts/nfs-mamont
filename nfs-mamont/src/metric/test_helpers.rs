@@ -1,7 +1,23 @@
 //! Helpers for reading metric values from a [`DebuggingRecorder`](metrics_util::debugging::DebuggingRecorder).
 
-use metrics_util::debugging::{DebugValue, Snapshotter};
+use metrics::with_local_recorder;
+use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
 use metrics_util::CompositeKey;
+
+use crate::metric::NfsMetrics;
+
+/// Builds `T` with a fresh debugging recorder installed, so its metric handles are bound to it.
+pub fn with_recorder<T>(build: impl FnOnce() -> T) -> (T, Snapshotter, DebuggingRecorder) {
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let value = with_local_recorder(&recorder, build);
+    (value, snapshotter, recorder)
+}
+
+/// [`NfsMetrics`] bound to a fresh debugging recorder.
+pub fn nfs_metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
+    with_recorder(NfsMetrics::new)
+}
 
 /// Takes a snapshot of all metric values in debug recorder. Taking a snapshot resets the values
 pub fn snapshot(snapshotter: &Snapshotter) -> Vec<(CompositeKey, DebugValue)> {
@@ -30,5 +46,22 @@ pub fn samples(value: &DebugValue) -> usize {
     match value {
         DebugValue::Histogram(samples) => samples.len(),
         other => panic!("expected a histogram, got {other:?}"),
+    }
+}
+
+/// Gauge value as it appears in a snapshot.
+pub fn gauge(value: f64) -> DebugValue {
+    DebugValue::Gauge(value.into())
+}
+
+/// Returns the value of gauge `name` with exactly `labels`.
+pub fn gauge_value(
+    snapshot: &[(CompositeKey, DebugValue)],
+    name: &str,
+    labels: &[(&str, &str)],
+) -> f64 {
+    match value(snapshot, name, labels) {
+        DebugValue::Gauge(value) => value.into_inner(),
+        other => panic!("expected a gauge, got {other:?}"),
     }
 }
