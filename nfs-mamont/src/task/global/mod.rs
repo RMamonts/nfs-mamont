@@ -7,6 +7,7 @@
 //! - NLM (TODO: TBD)
 //! - AUTH (TODO: TBD)
 
+pub mod client_id;
 pub mod mount;
 pub mod nlm;
 pub mod vfs;

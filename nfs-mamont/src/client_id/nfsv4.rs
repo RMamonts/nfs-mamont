@@ -16,7 +16,7 @@
 //!
 //! ```
 //! use nfs_mamont::{auth::Credential, client_id::*};
-//! let mut clients = ClientIdManager::new();
+//! let mut clients = ClientIdManager::new(ClientIdGenerator::new());
 //! let registration = Registration {
 //!     identity: ClientIdentity::new(b"stable-client".to_vec()).unwrap(),
 //!     verifier: ClientVerifier::new([1; 8]),
@@ -34,7 +34,7 @@ mod tests;
 
 use super::{
     cache::Cache,
-    generator::Generator,
+    generator::{ClientIdGenerator, Generator},
     types::{
         ClientId, ClientIdentity, ConfirmationVerifier, Error, PendingClient, Registration, Result,
     },
@@ -65,7 +65,7 @@ struct CachedConfirmation {
 /// NFSv4 confirmed and unconfirmed client records, without lease management.
 #[derive(Default)]
 pub struct ClientIdManager {
-    ids: Generator,
+    ids: ClientIdGenerator,
     confirmations: Generator,
     confirmed: HashMap<ClientId, ClientRecord>,
     pending: HashMap<ClientId, ClientRecord>,
@@ -74,9 +74,9 @@ pub struct ClientIdManager {
 }
 
 impl ClientIdManager {
-    /// Creates empty confirmed and unconfirmed tables.
-    pub fn new() -> Self {
-        Self::default()
+    /// Creates empty tables using the server's shared clientid allocator.
+    pub fn new(ids: ClientIdGenerator) -> Self {
+        Self { ids, ..Self::default() }
     }
 
     /// Processes SETCLIENTID, starting with the DRC lookup (§14.2.33).
@@ -122,12 +122,12 @@ impl ClientIdManager {
                 // Replace pending records for x even if their verifier matches v.
                 self.pending
                     .retain(|_, record| record.registration.identity != registration.identity);
-                clientid = ClientId::new(self.ids.next());
+                clientid = self.ids.allocate();
             }
         } else {
             // Case 4: no confirmed x; replace any unconfirmed x with fresh c,s.
             self.pending.retain(|_, record| record.registration.identity != registration.identity);
-            clientid = ClientId::new(self.ids.next());
+            clientid = self.ids.allocate();
         }
         let confirmation = ConfirmationVerifier::new(self.confirmations.next());
         let record = ClientRecord {
