@@ -1122,8 +1122,4 @@ async fn transport_metadata_survives_parsing() {
         RpcParser::new(MockSocket::new(&frame), Arc::new(MockAllocator::new(0)), reconnected);
     assert_eq!(parser.next_message().await.unwrap().header.connection, reconnected);
     assert_eq!(reconnected.generation.into_inner(), connection.generation.into_inner() + 1);
-    assert_eq!(
-        connection.generation.verifier(),
-        crate::client_id::ClientVerifier::new(connection.generation.into_inner().to_be_bytes()),
-    );
 }

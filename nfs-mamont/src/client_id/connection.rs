@@ -3,7 +3,6 @@
 use std::net::SocketAddr;
 
 use super::generator::Generator;
-use super::ClientVerifier;
 
 /// TCP connection generation within one server instance. A reconnect gets a fresh value;
 /// this is not a reliable client reboot detector (clients may use many sockets).
@@ -14,11 +13,6 @@ impl ConnectionGeneration {
     /// Consumes the wrapper and returns the numeric connection generation.
     pub fn into_inner(self) -> u64 {
         self.0
-    }
-
-    /// Converts this connection's incarnation hint to a client verifier.
-    pub fn verifier(self) -> ClientVerifier {
-        ClientVerifier::new(self.0.to_be_bytes())
     }
 }
 

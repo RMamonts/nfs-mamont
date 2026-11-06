@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 /// Result of a client registration operation.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -24,34 +24,10 @@ impl ClientId {
     }
 }
 
-/// Stable client host name, independent of protocol-specific name wrappers.
-/// The name must be nonempty and at most 1024 bytes, matching the NLM caller-name
-/// limit. Case and spelling are preserved; no DNS normalization is performed.
-#[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HostName(String);
-
-impl HostName {
-    /// Validates the host name's byte length without copying its allocation.
-    pub fn new(name: String) -> Result<Self> {
-        const MAX_LEN: usize = 1024;
-        if name.is_empty() || name.len() > MAX_LEN {
-            return Err(Error::InvalidHostName);
-        }
-        Ok(Self(name))
-    }
-
-    /// Consumes the wrapper and returns the original host name.
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-}
-
-/// RPC network identifier, distinct from a client host name.
+/// RPC network identifier for an NFSv4 callback.
 /// Preserves the wire string verbatim, including implementation-specific netids.
 /// The RPC transport adapter interprets support and validity; no transport list
 /// or length limit is imposed by this protocol-neutral registration type.
-#[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NetId(String);
 
@@ -69,28 +45,35 @@ impl NetId {
 
 /// Logical client identity, kept in the representation supplied by its adapter.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ClientIdentity {
-    /// Client-supplied opaque identity from an explicit handshake (up to 1024 bytes).
-    Handshake(Vec<u8>),
-    /// Observed host address and client host name, without binary serialization.
-    /// The host name is validated on construction; adapters canonicalize the address.
-    Implicit { address: IpAddr, host_name: HostName },
+pub struct ClientIdentity(Vec<u8>);
+
+impl ClientIdentity {
+    /// Accepts the opaque client.id, at most NFS4_OPAQUE_LIMIT bytes.
+    pub fn new(bytes: Vec<u8>) -> Result<Self> {
+        if bytes.len() > OPAQUE_LIMIT {
+            return Err(Error::InvalidIdentity);
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Returns the opaque client.id bytes.
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
 }
 
 /// Callback destination and RPC parameters, preserved for the transport adapter.
 /// The manager does not interpret addresses or initiate callbacks.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Callback {
-    /// Advertised callback endpoint, RPC netid, program and callback identifier.
-    /// The protocol adapter converts a wire universal address to `SocketAddr`.
-    Universal { netid: NetId, address: SocketAddr, program: u32, ident: u32 },
-    /// Observed peer and callback program. Resolve the service port before use.
-    Peer { address: SocketAddr, program: u32 },
+pub struct Callback {
+    pub netid: NetId,
+    pub address: SocketAddr,
+    pub program: u32,
+    pub ident: u32,
 }
 
 /// Client incarnation verifier, distinct from the server confirmation challenge.
 /// Transparent over the eight wire bytes, with no additional storage.
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClientVerifier([u8; 8]);
 
@@ -101,8 +84,7 @@ impl ClientVerifier {
     }
 }
 
-/// Common client registration data produced by protocol adapters.
-/// Authentication and authorization belong to the calling RPC layer.
+/// SETCLIENTID arguments {v, x, k}; credentials are supplied separately.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registration {
     pub identity: ClientIdentity,
@@ -117,8 +99,13 @@ pub struct Registration {
 pub struct ConfirmationVerifier([u8; 8]);
 
 impl ConfirmationVerifier {
-    /// Wraps the server confirmation challenge's eight wire bytes.
-    pub fn new(bytes: [u8; 8]) -> Self {
+    /// Encodes the server's counter as an eight-byte confirmation challenge.
+    pub fn new(value: u64) -> Self {
+        Self(value.to_be_bytes())
+    }
+
+    /// Accepts the verifier bytes supplied by SETCLIENTID_CONFIRM.
+    pub fn from_bytes(bytes: [u8; 8]) -> Self {
         Self(bytes)
     }
 }
@@ -130,41 +117,22 @@ pub struct PendingClient {
     pub confirmation: ConfirmationVerifier,
 }
 
-/// Identity of one RPC operation for duplicate detection, independent of clientid.
-/// The adapter assigns a scope that separates clients and, for COMPOUND calls,
-/// operation positions. Retransmissions must preserve both fields. Reusing a
-/// scope and XID for a new identical operation while it is cached is ambiguous.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RequestId {
-    pub scope: u64,
-    pub xid: u32,
-}
-
-/// Successful confirmation/implicit insertion, possibly replacing an incarnation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[must_use = "apply any retired client cleanup before using the replacement"]
-pub struct Transition {
-    pub clientid: ClientId,
-    /// Previous confirmed ID; its state is handled by the external state/lease layer.
-    pub retired: Option<ClientId>,
-}
-
 /// Common errors; adapters map these to their wire protocol statuses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// Opaque identity exceeds 1024 bytes, or uses the wrong registration domain.
+    /// Opaque client.id exceeds 1024 bytes.
     InvalidIdentity,
-    /// Client host name is empty or exceeds 1024 bytes.
-    InvalidHostName,
     /// Missing registration or mismatching confirmation pair.
     StaleClientId,
+    /// The RPC principal differs from that of the existing registration.
+    IdentityInUse,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidIdentity => f.write_str("invalid client identity length or domain"),
-            Self::InvalidHostName => f.write_str("client host name must contain 1 to 1024 bytes"),
+            Self::InvalidIdentity => f.write_str("client identity exceeds 1024 bytes"),
+            Self::IdentityInUse => f.write_str("client identity belongs to another RPC principal"),
             Self::StaleClientId => f.write_str("stale client identifier or confirmation verifier"),
         }
     }
