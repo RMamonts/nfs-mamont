@@ -21,6 +21,6 @@ async-channel.workspace = true
 byteorder.workspace = true
 num-derive.workspace = true
 num-traits.workspace = true
-tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal"] }
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }
 tracing.workspace = true
 trait-variant.workspace = true

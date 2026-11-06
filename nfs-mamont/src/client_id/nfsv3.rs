@@ -16,9 +16,9 @@
 //! connection's source port, not an advertised NLM callback service port. Resolve
 //! the callback service separately before sending callbacks.
 //!
-//! IDs belong to the registry that issued them. Shared lock storage must retain
-//! the protocol/registry context alongside a clientid. Cleanup of locks and
-//! pending callbacks must be coordinated with invalidation by the caller.
+//! Use the same ClientIdGenerator for all registries sharing lock storage.
+//! Cleanup of locks and pending callbacks must be coordinated with invalidation
+//! by the caller.
 //!
 //! ```
 //! use nfs_mamont::{auth::Credential, client_id::*};
@@ -27,7 +27,7 @@
 //! let connection = ConnectionInfo::new(
 //!     "192.0.2.1:40000".parse().unwrap(), generations.allocate(),
 //! );
-//! let mut clients = Nfs3ClientIdManager::new();
+//! let mut clients = Nfs3ClientIdManager::new(ClientIdGenerator::new());
 //! let clientid = clients.register(connection, &Credential::None).unwrap();
 //! assert_eq!(clients.get(clientid).unwrap().connection, connection);
 //! assert_eq!(clients.lookup(connection), Some(clientid));
@@ -40,7 +40,7 @@ use crate::auth::Credential;
 
 use super::{
     connection::ConnectionInfo,
-    generator::Generator,
+    generator::ClientIdGenerator,
     types::{ClientId, Error, Result},
 };
 
@@ -56,14 +56,14 @@ pub struct Nfs3Client {
 /// The caller explicitly removes records when their lifetime ends.
 #[derive(Default)]
 pub struct Nfs3ClientIdManager {
-    ids: Generator,
+    ids: ClientIdGenerator,
     clients: HashMap<ClientId, Nfs3Client>,
 }
 
 impl Nfs3ClientIdManager {
-    /// Creates an empty connection registry.
-    pub fn new() -> Self {
-        Self::default()
+    /// Creates an empty registry using the server's shared clientid allocator.
+    pub fn new(ids: ClientIdGenerator) -> Self {
+        Self { ids, ..Self::default() }
     }
 
     /// Registers the connection immediately. Repeating a registration preserves
@@ -85,7 +85,7 @@ impl Nfs3ClientIdManager {
             }
             return Ok(*clientid);
         }
-        let clientid = ClientId::new(self.ids.next());
+        let clientid = self.ids.allocate();
         self.clients.insert(clientid, Nfs3Client { connection, credentials: credentials.clone() });
         Ok(clientid)
     }
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn registration_is_explicit_immediate_and_repeatable() {
-        let mut manager = Nfs3ClientIdManager::new();
+        let mut manager = Nfs3ClientIdManager::new(ClientIdGenerator::new());
         let mut generations = ConnectionGenerationGenerator::new();
         let connection =
             ConnectionInfo::new("192.0.2.1:40000".parse().unwrap(), generations.allocate());
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn credential_collisions_preserve_registration() {
-        let mut manager = Nfs3ClientIdManager::new();
+        let mut manager = Nfs3ClientIdManager::new(ClientIdGenerator::new());
         let mut generations = ConnectionGenerationGenerator::new();
         let connection =
             ConnectionInfo::new("192.0.2.1:40000".parse().unwrap(), generations.allocate());
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn generations_are_not_verifiers_and_other_peers_are_independent() {
-        let mut manager = Nfs3ClientIdManager::new();
+        let mut manager = Nfs3ClientIdManager::new(ClientIdGenerator::new());
         let mut generations = ConnectionGenerationGenerator::new();
         let address = "192.0.2.1:40000".parse().unwrap();
         let first = ConnectionInfo::new(address, generations.allocate());
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn invalidated_connection_gets_fresh_id_on_explicit_registration() {
-        let mut manager = Nfs3ClientIdManager::new();
+        let mut manager = Nfs3ClientIdManager::new(ClientIdGenerator::new());
         let mut generations = ConnectionGenerationGenerator::new();
         let connection =
             ConnectionInfo::new("192.0.2.1:40000".parse().unwrap(), generations.allocate());
