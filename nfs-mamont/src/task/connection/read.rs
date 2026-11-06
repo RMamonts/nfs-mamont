@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{CountedSender, NfsMetrics, Stage, Timer};
+use crate::metric::{CountedSender, NfsMetrics, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -86,16 +86,24 @@ where
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        let metrics = Arc::clone(&self.metrics);
+        tokio::spawn(metrics.instrument(TaskKind::Read, self.run()));
     }
 
     async fn run(self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let (readhalf, io) = self.metrics.io_timer(self.readhalf);
+        let mut parser = RpcParser::new(readhalf, self.allocator);
 
         loop {
-            let _ = parser.wait_message().await; // read error will be handled by parser.next_message()
-            let mut timer = self.metrics.start();
-            match parser.next_message().await {
+            let message =
+                self.metrics.read_call(&io, parser.next_message(), |message| match message {
+                    Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
+                        Some(args.procedure())
+                    }
+
+                    _ => None,
+                });
+            match message.await {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
@@ -103,7 +111,7 @@ where
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
-                        timer: Timer::NONE,
+                        timer: self.metrics.start(),
                     };
 
                     if let Err(err) = self.command_senders.result_sender.send(result).await {
@@ -137,7 +145,7 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
-                    self.metrics.lap(&mut timer, Stage::Read);
+                    let timer = self.metrics.start();
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
