@@ -39,7 +39,7 @@ Nothing is recorded for a reply whose write failed.
 
 Read-side caveats:
 
-- The parser reads into a 2500-byte buffer, so one `read` can pull in several calls; the first carries the syscall time of all of them.
+- The parser reads into its internal buffer, so one `read` can pull in several calls; the first carries the syscall time of all of them.
   CPU per call is exact; syscall time should be averaged over a time interval.
 - There is no read-side wait: idle time there could be the client not sending.
 - READ and WRITE call CPU time includes allocating the data buffer.
