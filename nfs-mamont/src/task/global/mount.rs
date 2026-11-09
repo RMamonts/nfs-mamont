@@ -7,12 +7,13 @@ use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
+use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.
 pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_tx: Sender<ProcReply<B>>,
+    pub result_tx: ReplySender<B>,
     /// The ID using the socket address.
     pub connection_id: ConnectionId,
     /// Placeholder for mount procedure args.

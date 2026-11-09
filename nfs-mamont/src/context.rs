@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
+use crate::consts::connection::{DEFAULT_MAX_IN_FLIGHT, IN_FLIGHT_PER_VFS_WORKER};
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
@@ -52,6 +53,8 @@ where
     allocator: Arc<A>,
     /// Filesystem implementations backing NFS operations, keyed by backend id.
     backends: BackendRegistry<V>,
+    /// Requests one connection may have read but not yet answered.
+    max_in_flight: NonZeroUsize,
 }
 
 impl<A, V, B> ServerContext<A, V, B>
@@ -72,8 +75,28 @@ where
     pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
         let backends = BackendRegistry::new();
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
+        let max_in_flight = default_max_in_flight(vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends }
+        Self { vfs_manager, allocator, backends, max_in_flight }
+    }
+
+    /// Sets how many requests one connection may have read from the socket but not yet
+    /// answered; beyond it the server stops reading and TCP flow control holds the
+    /// client back. The default is the larger of [`DEFAULT_MAX_IN_FLIGHT`] and
+    /// [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`.
+    ///
+    /// The limit caps the throughput of one connection at `max_in_flight / latency`. It
+    /// counts requests, not bytes: a client that stops reading its READ replies can still
+    /// hold the whole allocator pool.
+    pub fn with_max_in_flight(mut self, max_in_flight: NonZeroUsize) -> Self {
+        self.max_in_flight = max_in_flight;
+        self
+    }
+
+    /// Returns how many requests one connection may have read but not yet answered.
+    #[inline]
+    pub fn max_in_flight(&self) -> NonZeroUsize {
+        self.max_in_flight
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.
@@ -121,5 +144,29 @@ where
     #[inline]
     pub fn get_allocator(&self) -> Arc<A> {
         Arc::clone(&self.allocator)
+    }
+}
+
+/// Returns the default in-flight limit for a pool of `vfs_concurrency` workers, see
+/// [`ServerContext::new`].
+fn default_max_in_flight(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
+    DEFAULT_MAX_IN_FLIGHT.max(vfs_concurrency.saturating_mul(IN_FLIGHT_PER_VFS_WORKER))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use super::default_max_in_flight;
+    use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
+
+    #[test]
+    fn the_default_limit_grows_with_the_pool() {
+        let limit = |workers| default_max_in_flight(NonZeroUsize::new(workers).unwrap()).get();
+
+        assert_eq!(limit(1), DEFAULT_MAX_IN_FLIGHT.get());
+        assert_eq!(limit(128), DEFAULT_MAX_IN_FLIGHT.get());
+        assert_eq!(limit(129), 258);
+        assert_eq!(limit(usize::MAX), usize::MAX);
     }
 }

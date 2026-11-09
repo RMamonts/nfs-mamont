@@ -11,6 +11,7 @@ use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
+use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
@@ -20,7 +21,7 @@ pub struct VfsCommand<B: Buffer> {
     /// Parsed RPC header and procedure arguments.
     pub args: NfsArgWrapper<B>,
     /// Channel to the write task of the connection the reply goes to.
-    pub result_tx: Sender<ProcReply<B>>,
+    pub result_tx: ReplySender<B>,
 }
 
 /// Sender to enqueue work in the queue.

@@ -4,19 +4,19 @@ use tracing::error;
 use crate::allocator::Buffer;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::ProcReply;
+use crate::task::connection::limit::InFlightReply;
 
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
-    result_receiver: async_channel::Receiver<ProcReply<B>>,
+    result_receiver: async_channel::Receiver<InFlightReply<B>>,
 }
 
 impl<B: Buffer> WriteTask<B> {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: OwnedWriteHalf,
-        result_receiver: async_channel::Receiver<ProcReply<B>>,
+        result_receiver: async_channel::Receiver<InFlightReply<B>>,
     ) -> Self {
         Self { writehalf, result_receiver }
     }
@@ -37,7 +37,7 @@ impl<B: Buffer> WriteTask<B> {
         let result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
 
-        while let Ok(reply) = result_receiver.recv().await {
+        while let Ok(InFlightReply { reply, token }) = result_receiver.recv().await {
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
             // Use proper authentication verifier instead of None
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
@@ -52,6 +52,9 @@ impl<B: Buffer> WriteTask<B> {
                     // For now, continue processing other replies
                 }
             };
+
+            // Freeing the slot before the reply is written would let replies pile up.
+            drop(token);
         }
     }
 }
