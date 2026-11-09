@@ -9,12 +9,14 @@ use std::time::{Duration, Instant};
 
 use async_channel::Receiver;
 use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::timeout;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
-use crate::consts::rpc::RPC_VERSION;
+use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::task::connection::limit::Budget;
 use crate::task::connection::read::{CommandSenders, ReadTask};
 use crate::task::connection::write::WriteTask;
@@ -74,7 +76,7 @@ fn getattr_frame(xid: u32) -> Vec<u8> {
     body.extend_from_slice(&[1; NFS3_FHSIZE]);
     body.resize(body.len().div_ceil(4) * 4, 0); // XDR padding of the handle
 
-    let mut frame = (0x8000_0000 | u32::try_from(body.len()).unwrap()).to_be_bytes().to_vec();
+    let mut frame = u32::try_from(HEADER_MASK | body.len()).unwrap().to_be_bytes().to_vec();
     frame.append(&mut body);
     frame
 }
@@ -87,8 +89,15 @@ struct Pipeline {
     _nlm_rx: Receiver<NlmCommand<NoBuffer>>,
 }
 
+/// Fills the socket until it stays unwritable, as if the client had stopped reading.
+async fn fill_send_buffer(socket: &OwnedWriteHalf) {
+    while timeout(Duration::from_millis(100), socket.writable()).await.is_ok() {
+        let _ = socket.try_write(&[0; 64 * 1024]);
+    }
+}
+
 /// Starts a connection and sends it twice as many GETATTR calls as it may have in flight.
-async fn flooded_pipeline() -> Pipeline {
+async fn flooded_pipeline(client_reads: bool) -> Pipeline {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
@@ -104,6 +113,9 @@ async fn flooded_pipeline() -> Pipeline {
 
     ReadTask::new(readhalf, ConnectionId::new(addr), Arc::new(NoAllocator), senders, budget)
         .spawn();
+    if !client_reads {
+        fill_send_buffer(&writehalf).await;
+    }
     WriteTask::new(writehalf, result_rx).spawn();
 
     let mut client = client.unwrap();
@@ -137,7 +149,7 @@ async fn wait_until(condition: impl Fn() -> bool) {
 
 #[tokio::test]
 async fn read_task_stops_reading_at_the_limit() {
-    let pipeline = flooded_pipeline().await;
+    let pipeline = flooded_pipeline(true).await;
 
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -153,8 +165,18 @@ async fn read_task_stops_reading_at_the_limit() {
 }
 
 #[tokio::test]
+async fn a_reply_that_cannot_be_written_keeps_its_slot() {
+    let pipeline = flooded_pipeline(false).await;
+    wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
+
+    assert_eq!(answer(&pipeline.pool_rx).await, [1, 2, 3, 4]);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(pipeline.pool_rx.len(), 0, "a slot was freed before its reply was written");
+}
+
+#[tokio::test]
 async fn requests_dropped_without_a_reply_free_their_slots() {
-    let pipeline = flooded_pipeline().await;
+    let pipeline = flooded_pipeline(true).await;
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
 
     // What a panicking backend does with the command it executes.
