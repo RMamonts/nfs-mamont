@@ -7,7 +7,6 @@
 //! Kernel clocksource other than `tsc`  could increase the measurement overhead
 //! (check `/sys/devices/system/clocksource/clocksource0/current_clocksource`).
 
-mod allocator;
 mod kinds;
 mod nfs;
 mod procedure;
@@ -16,7 +15,6 @@ mod queue;
 #[cfg(all(test, feature = "metrics"))]
 mod test_helpers;
 
-pub use allocator::AllocatorMetrics;
 pub use kinds::{Queue, Stage, TaskKind};
 pub use nfs::*;
 pub use queue::{unbounded, CountedReceiver, CountedSender};

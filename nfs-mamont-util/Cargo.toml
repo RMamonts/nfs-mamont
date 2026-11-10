@@ -1,0 +1,35 @@
+[package]
+name = "nfs-mamont-util"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Ready-made building blocks for nfs-mamont servers: pool buffer allocator, MOUNT v3 and NLM v4 service implementations"
+publish = true
+license = "MIT"
+readme = "../README.md"
+repository = "https://github.com/RMamonts/nfs-mamont"
+keywords = ["nfs", "nfsv3", "async", "server"]
+categories = ["network-programming", "filesystem"]
+rust-version.workspace = true
+
+[features]
+default = []
+metrics = ["dep:metrics"]
+mlock = ["dep:libc"]
+
+[dependencies]
+# Internal crates
+nfs-mamont.workspace = true
+
+# External dependencies
+crossbeam-queue.workspace = true
+libc = { workspace = true, optional = true }
+metrics = { version = "0.24.6", optional = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+metrics-util = { version = "0.20", default-features = false, features = [
+    "debugging",
+] }

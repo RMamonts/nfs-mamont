@@ -6,13 +6,11 @@ pub mod consts;
 mod context;
 mod metric;
 pub mod mount;
-#[allow(dead_code)]
-mod nlm;
+pub mod nlm;
 mod parser;
 mod rpc;
 mod rpcbind;
 mod serializer;
-pub mod service;
 mod task;
 pub mod vfs;
 
@@ -35,6 +33,7 @@ pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
+pub use rpc::AuthFlavor;
 pub use vfs::file::BackendId;
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.

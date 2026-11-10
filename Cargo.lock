@@ -231,8 +231,6 @@ version = "0.2.0"
 dependencies = [
  "async-channel",
  "byteorder",
- "crossbeam-queue",
- "libc",
  "metrics",
  "metrics-util",
  "num-derive",
@@ -241,6 +239,19 @@ dependencies = [
  "tokio-metrics",
  "tracing",
  "trait-variant",
+]
+
+[[package]]
+name = "nfs-mamont-util"
+version = "0.2.0"
+dependencies = [
+ "crossbeam-queue",
+ "libc",
+ "metrics",
+ "metrics-util",
+ "nfs-mamont",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
