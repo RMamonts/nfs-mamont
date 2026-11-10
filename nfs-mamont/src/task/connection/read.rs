@@ -93,7 +93,7 @@ where
             // Taken before the request is read: while the connection has `max_in_flight`
             // unanswered requests the socket stays unread and TCP flow control holds the
             // client back.
-            let result_tx = self.budget.acquire().await;
+            let mut result_tx = self.budget.acquire().await;
 
             match parser.next_message().await {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
@@ -123,6 +123,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
+                    self.budget.charge(&mut result_tx, data_footprint(&proc));
                     // Parsed before the pool's slot is taken, so that an idle connection
                     // holds no slot.
                     let args = NfsArgWrapper { header, proc };
@@ -199,5 +200,14 @@ where
                 }
             }
         }
+    }
+}
+
+/// Returns how many bytes of allocator memory a READ or WRITE holds.
+fn data_footprint<B: Buffer>(proc: &NfsArguments<B>) -> usize {
+    match proc {
+        NfsArguments::Read(_, data) => data.footprint(),
+        NfsArguments::Write(args) => args.data.footprint(),
+        _ => 0,
     }
 }

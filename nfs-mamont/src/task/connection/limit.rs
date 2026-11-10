@@ -18,17 +18,24 @@ use crate::task::ProcReply;
 struct Limiter {
     /// Slots freed so far, wrapping.
     released: AtomicUsize,
-    /// Wakes the read task after a slot is freed.
+    /// Bytes of READ and WRITE data freed so far, wrapping.
+    bytes_released: AtomicUsize,
+    /// Wakes the read task after a slot and its data are freed.
     notify: Notify,
 }
 
-/// One slot of a connection's budget, freed when dropped.
+/// One slot of a connection's budget and the data charged to it, freed when dropped.
 pub struct Token {
     limiter: Arc<Limiter>,
+    /// Bytes of data charged to the request, see [`Budget::charge`].
+    bytes: usize,
 }
 
 impl Drop for Token {
     fn drop(&mut self) {
+        if self.bytes > 0 {
+            self.limiter.bytes_released.fetch_add(self.bytes, Ordering::Release);
+        }
         self.limiter.released.fetch_add(1, Ordering::Release);
         // Stores a permit if the read task is not parked yet, so the wake-up is not lost.
         self.limiter.notify.notify_one();
@@ -75,25 +82,64 @@ pub struct Budget<B: Buffer> {
     limit: usize,
     /// Slots taken so far, wrapping.
     issued: usize,
+    /// Limit on the data in flight, see [`Self::new`].
+    data: Option<DataLimit>,
     tx: Sender<InFlightReply<B>>,
 }
 
-impl<B: Buffer> Budget<B> {
-    /// Creates a budget of `limit` slots for replies sent through `tx`.
-    pub fn new(limit: NonZeroUsize, tx: Sender<InFlightReply<B>>) -> Self {
-        let limiter = Arc::new(Limiter { released: AtomicUsize::new(0), notify: Notify::new() });
+struct DataLimit {
+    max: usize,
+    /// Bytes charged so far, wrapping.
+    issued: usize,
+}
 
-        Self { limiter, limit: limit.get(), issued: 0, tx }
+impl<B: Buffer> Budget<B> {
+    /// Creates a budget of `limit` slots for replies sent through `tx`. With `max_data`
+    /// it also stops reading while that many bytes of READ and WRITE data are in flight,
+    /// see [`crate::ServerContext::with_max_data_per_connection`].
+    pub fn new(
+        limit: NonZeroUsize,
+        max_data: Option<NonZeroUsize>,
+        tx: Sender<InFlightReply<B>>,
+    ) -> Self {
+        let limiter = Arc::new(Limiter {
+            released: AtomicUsize::new(0),
+            bytes_released: AtomicUsize::new(0),
+            notify: Notify::new(),
+        });
+
+        let data = max_data.map(|max| DataLimit { max: max.get(), issued: 0 });
+
+        Self { limiter, limit: limit.get(), issued: 0, data, tx }
     }
 
-    /// Takes a slot, waiting while all of them are taken.
+    /// Takes a slot, waiting while all of them, or all the data, are taken.
     pub async fn acquire(&mut self) -> ReplySender<B> {
-        while self.issued.wrapping_sub(self.limiter.released.load(Ordering::Acquire)) == self.limit
-        {
+        while self.is_full() {
             self.limiter.notify.notified().await;
         }
         self.issued = self.issued.wrapping_add(1);
 
-        ReplySender { tx: self.tx.clone(), token: Token { limiter: Arc::clone(&self.limiter) } }
+        let token = Token { limiter: Arc::clone(&self.limiter), bytes: 0 };
+        ReplySender { tx: self.tx.clone(), token }
+    }
+
+    /// Charges `bytes` of data to the request `result_tx` answers; they are freed with
+    /// its slot.
+    pub fn charge(&mut self, result_tx: &mut ReplySender<B>, bytes: usize) {
+        let Some(data) = &mut self.data else {
+            return;
+        };
+        data.issued = data.issued.wrapping_add(bytes);
+        result_tx.token.bytes += bytes;
+    }
+
+    fn is_full(&self) -> bool {
+        let in_flight = self.issued.wrapping_sub(self.limiter.released.load(Ordering::Acquire));
+        let data_full = self.data.as_ref().is_some_and(|data| {
+            let freed = self.limiter.bytes_released.load(Ordering::Acquire);
+            data.issued.wrapping_sub(freed) >= data.max
+        });
+        in_flight == self.limit || data_full
     }
 }

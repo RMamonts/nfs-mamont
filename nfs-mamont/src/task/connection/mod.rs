@@ -63,7 +63,8 @@ pub fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // in-flight budget of the connection, see the module docs
-    let budget = Budget::new(context.max_in_flight(), result_sender);
+    let budget =
+        Budget::new(context.max_in_flight(), context.max_data_per_connection(), result_sender);
 
     let command_senders =
         CommandSenders::<B>::new(mount_sender, nlm_sender, context.get_vfs_manager().sender());

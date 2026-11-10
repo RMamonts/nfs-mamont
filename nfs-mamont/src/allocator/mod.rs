@@ -20,6 +20,14 @@ pub trait Buffer: Send + Sync {
     /// Returns `true` if the buffer is empty.
     fn is_empty(&self) -> bool;
 
+    /// Returns how much allocator memory the buffer holds, at least [`Self::len`]: a pool
+    /// of whole buffers serves a short request with a full one. Limits on allocator
+    /// memory count this. The default suits allocators that allocate exactly what is
+    /// asked.
+    fn footprint(&self) -> usize {
+        self.len()
+    }
+
     /// Creates an empty, zero-length buffer with no backing memory.
     fn empty() -> Self
     where
