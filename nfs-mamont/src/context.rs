@@ -1,5 +1,6 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
@@ -55,6 +56,8 @@ where
     backends: BackendRegistry<V>,
     /// Requests one connection may have read but not yet answered.
     max_in_flight: NonZeroUsize,
+    /// How long a reply may wait for the socket before the connection is closed.
+    write_timeout: Option<Duration>,
 }
 
 impl<A, V, B> ServerContext<A, V, B>
@@ -77,7 +80,7 @@ where
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
         let max_in_flight = default_max_in_flight(vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends, max_in_flight }
+        Self { vfs_manager, allocator, backends, max_in_flight, write_timeout: None }
     }
 
     /// Sets how many requests one connection may have read from the socket but not yet
@@ -97,6 +100,22 @@ where
     #[inline]
     pub fn max_in_flight(&self) -> NonZeroUsize {
         self.max_in_flight
+    }
+
+    /// Closes a connection whose client does not take a reply within `timeout`. Off by
+    /// default; a zero `timeout` turns it off.
+    ///
+    /// Without it, a client that stops reading keeps its connection, its in-flight
+    /// slots and their buffers for as long as it stays connected.
+    pub fn with_write_timeout(mut self, timeout: Duration) -> Self {
+        self.write_timeout = (!timeout.is_zero()).then_some(timeout);
+        self
+    }
+
+    /// Returns the write timeout, see [`Self::with_write_timeout`].
+    #[inline]
+    pub fn write_timeout(&self) -> Option<Duration> {
+        self.write_timeout
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.
