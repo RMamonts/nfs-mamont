@@ -10,6 +10,11 @@ use super::generator::Generator;
 pub struct ConnectionGeneration(u64);
 
 impl ConnectionGeneration {
+    /// Creates new instance of ConnectionGeneration with specified `id`
+    pub fn new(id: u64) -> ConnectionGeneration {
+        ConnectionGeneration(id)
+    }
+
     /// Consumes the wrapper and returns the numeric connection generation.
     pub fn into_inner(self) -> u64 {
         self.0
