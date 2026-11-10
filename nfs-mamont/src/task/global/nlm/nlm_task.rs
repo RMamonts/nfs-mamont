@@ -11,6 +11,7 @@ use tracing::{debug, error};
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
 use crate::nlm::Nlm;
+use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
@@ -20,7 +21,7 @@ use crate::{
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_sender: Sender<ProcReply<B>>,
+    pub result_sender: ReplySender<B>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
 
@@ -86,7 +87,7 @@ where
     }
 }
 
-async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: NlmRes, xid: u32) {
+async fn send_reply<B: Buffer>(result_sender: ReplySender<B>, nlm_result: NlmRes, xid: u32) {
     // TODO:
     // - some logs when occurred error
     // - or retry with fail
