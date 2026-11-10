@@ -7,6 +7,19 @@
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
+//!
+//! # In-flight limit
+//!
+//! A connection may have [`ServerContext::max_in_flight`] requests read from the socket
+//! but not yet answered. The read task takes a [`limit::ReplySender`] from its
+//! [`limit::Budget`] before it reads a request; the slot is freed once the write task has
+//! handed the reply to the socket, or when the request is dropped on its way. While no
+//! slot is free the socket stays unread and TCP flow control holds the client back.
+//!
+//! This is what makes the unbounded channels safe: a result channel holds at most
+//! `max_in_flight` replies, so the shared VFS/MOUNT/NLM tasks never block on a slow
+//! client, and the global channels hold at most `max_in_flight × open connections`
+//! requests.
 
 use tokio::net::TcpStream;
 use tracing::error;
@@ -15,13 +28,16 @@ use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::context::ServerContext;
 use crate::metric::{unbounded, Queue};
+use crate::task::connection::limit::{Budget, InFlightReply};
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::ProcReply;
 use crate::vfs::Vfs;
 
+pub mod limit;
 mod read;
+#[cfg(test)]
+mod tests;
 mod write;
 
 // Creates all connection tasks with their inner connections
@@ -46,15 +62,12 @@ pub fn new<A, V, B>(
     let (readhalf, writehalf) = socket.into_split();
     // channel for result
     let (result_sender, result_receiver) =
-        unbounded::<ProcReply<B>>(context.metrics(), Queue::Reply);
-    // channel for request
+        unbounded::<InFlightReply<B>>(context.metrics(), Queue::Reply);
+    // in-flight budget of the connection, see the module docs
+    let budget = Budget::new(context.max_in_flight(), result_sender);
 
-    let command_senders = CommandSenders::<B>::new(
-        mount_sender,
-        nlm_sender,
-        context.get_vfs_manager().sender(),
-        result_sender.clone(),
-    );
+    let command_senders =
+        CommandSenders::<B>::new(mount_sender, nlm_sender, context.get_vfs_manager().sender());
 
     read::ReadTask::<A, B>::new(
         readhalf,
@@ -62,6 +75,7 @@ pub fn new<A, V, B>(
         context.get_allocator(),
         command_senders,
         context.metrics(),
+        budget,
     )
     .spawn();
 

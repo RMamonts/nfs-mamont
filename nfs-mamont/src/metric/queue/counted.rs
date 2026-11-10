@@ -57,6 +57,18 @@ impl<T> CountedReceiver<T> {
         self.0.metrics.dequeued(self.0.queue, 1);
         Ok(msg)
     }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.rx.len()
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn is_closed(&self) -> bool {
+        self.0.rx.is_closed()
+    }
 }
 
 impl<T> Clone for CountedReceiver<T> {
