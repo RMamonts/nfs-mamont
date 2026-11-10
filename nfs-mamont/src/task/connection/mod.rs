@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
+use crate::connection_id::ConnectionId;
 use crate::context::ServerContext;
 use crate::metric::{unbounded, Queue};
 use crate::task::connection::read::CommandSenders;
@@ -57,7 +58,7 @@ pub fn new<A, V, B>(
 
     read::ReadTask::<A, B>::new(
         readhalf,
-        peer_addr,
+        ConnectionId::new(peer_addr),
         context.get_allocator(),
         command_senders,
         context.metrics(),
