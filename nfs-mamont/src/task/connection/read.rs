@@ -21,7 +21,7 @@ use crate::rpc::{Error, ErrorWrapper};
 use crate::task::connection::limit::Budget;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::{VfsCommand, VfsCommandSender};
+use crate::task::global::vfs::VfsSender;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -32,14 +32,14 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
     /// To pass command into vfs task.
-    pool_sender: VfsCommandSender<B>,
+    pool_sender: VfsSender<B>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: VfsCommandSender<B>,
+        pool_sender: VfsSender<B>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender }
     }
@@ -138,13 +138,13 @@ where
                     let timer = self.metrics.start();
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    let command =
-                        VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, timer };
-
-                    if let Err(SendError(command)) =
-                        self.command_senders.pool_sender.send(command).await
+                    // Parsed before the pool's slot is taken, so that an idle connection
+                    // holds no slot.
+                    let args = NfsArgWrapper { header, proc, timer };
+                    if let Err(result_tx) =
+                        self.command_senders.pool_sender.send(args, result_tx).await
                     {
-                        return command.result_tx.broken_pipe(xid).await;
+                        return result_tx.broken_pipe(xid).await;
                     }
                 }
 

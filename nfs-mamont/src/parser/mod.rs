@@ -15,6 +15,7 @@ mod tests;
 use std::future::Future;
 
 use crate::allocator::Buffer;
+use crate::metric::Timer;
 use crate::mount::{mnt, umnt};
 use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
@@ -61,6 +62,7 @@ pub struct RpcHeader {
 pub struct NfsArgWrapper<B: Buffer> {
     pub header: RpcHeader,
     pub proc: Box<NfsArguments<B>>,
+    pub timer: Timer,
 }
 
 /// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
