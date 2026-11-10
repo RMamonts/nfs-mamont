@@ -93,6 +93,15 @@ where
         self
     }
 
+    /// Limits how many NFS procedures may wait for or run in the VFS pool at once, over
+    /// all connections, so that the queue no longer grows with their number. Off by
+    /// default; MOUNT and NLM procedures are not counted. A few slots per VFS worker
+    /// keep the pool busy, say `4 × vfs_concurrency`; more only add queueing delay.
+    pub fn with_max_pending(mut self, max_pending: NonZeroUsize) -> Self {
+        self.vfs_manager.limit_pending(max_pending);
+        self
+    }
+
     /// Returns how many requests one connection may have read but not yet answered.
     #[inline]
     pub fn max_in_flight(&self) -> NonZeroUsize {
