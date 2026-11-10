@@ -20,6 +20,7 @@ use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::metric::{self, CountedReceiver};
 use crate::task::connection::limit::Budget;
 use crate::task::connection::read::{CommandSenders, ReadTask};
+use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
@@ -28,6 +29,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 const LIMIT: usize = 4;
+const WRITE_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// GETATTR carries no data, so nothing is ever allocated.
 struct NoBuffer;
@@ -98,7 +100,7 @@ async fn fill_send_buffer(socket: &OwnedWriteHalf) {
 }
 
 /// Starts a connection and sends it twice as many GETATTR calls as it may have in flight.
-async fn flooded_pipeline(client_reads: bool) -> Pipeline {
+async fn flooded_pipeline(client_reads: bool, write_timeout: Option<Duration>) -> Pipeline {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
@@ -113,19 +115,14 @@ async fn flooded_pipeline(client_reads: bool) -> Pipeline {
     let budget = Budget::new(NonZeroUsize::new(LIMIT).unwrap(), result_tx);
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool_tx);
 
-    ReadTask::new(
-        readhalf,
-        ConnectionId::new(addr),
-        Arc::new(NoAllocator),
-        senders,
-        Arc::clone(&metrics),
-        budget,
-    )
-    .spawn();
     if !client_reads {
         fill_send_buffer(&writehalf).await;
     }
-    WriteTask::new(writehalf, result_rx, Arc::clone(&metrics)).spawn();
+    let client_id = ConnectionId::new(addr);
+    spawn_tasks(
+        ReadTask::new(readhalf, client_id, Arc::new(NoAllocator), senders, metrics.clone(), budget),
+        WriteTask::new(writehalf, result_rx, metrics.clone(), client_id, write_timeout),
+    );
 
     let mut client = client.unwrap();
     let frames: Vec<u8> = (1..=2 * LIMIT as u32).flat_map(getattr_frame).collect();
@@ -159,7 +156,7 @@ async fn wait_until(condition: impl Fn() -> bool) {
 
 #[tokio::test]
 async fn read_task_stops_reading_at_the_limit() {
-    let pipeline = flooded_pipeline(true).await;
+    let pipeline = flooded_pipeline(true, None).await;
 
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -176,7 +173,7 @@ async fn read_task_stops_reading_at_the_limit() {
 
 #[tokio::test]
 async fn a_reply_that_cannot_be_written_keeps_its_slot() {
-    let pipeline = flooded_pipeline(false).await;
+    let pipeline = flooded_pipeline(false, None).await;
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
 
     assert_eq!(answer(&pipeline.pool_rx).await, [1, 2, 3, 4]);
@@ -186,7 +183,7 @@ async fn a_reply_that_cannot_be_written_keeps_its_slot() {
 
 #[tokio::test]
 async fn requests_dropped_without_a_reply_free_their_slots() {
-    let pipeline = flooded_pipeline(true).await;
+    let pipeline = flooded_pipeline(true, None).await;
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
 
     // What a panicking backend does with the command it executes.
@@ -195,4 +192,17 @@ async fn requests_dropped_without_a_reply_free_their_slots() {
     }
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
     assert_eq!(answer(&pipeline.pool_rx).await, [5, 6, 7, 8]);
+}
+
+#[tokio::test]
+async fn a_client_that_does_not_read_is_disconnected() {
+    let pipeline = flooded_pipeline(false, Some(WRITE_TIMEOUT)).await;
+    wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
+
+    let stuck = Instant::now();
+    answer(&pipeline.pool_rx).await;
+
+    // The write task gives up and stops the read task, which closes the command channel.
+    wait_until(|| pipeline.pool_rx.is_closed()).await;
+    assert!(stuck.elapsed() >= WRITE_TIMEOUT, "closed after {:?}", stuck.elapsed());
 }

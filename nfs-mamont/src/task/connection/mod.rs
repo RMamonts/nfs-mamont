@@ -60,6 +60,7 @@ pub fn new<A, V, B>(
         }
     };
     let (readhalf, writehalf) = socket.into_split();
+    let client_id = ConnectionId::new(peer_addr);
     // channel for result
     let (result_sender, result_receiver) =
         unbounded::<InFlightReply<B>>(context.metrics(), Queue::Reply);
@@ -69,15 +70,40 @@ pub fn new<A, V, B>(
     let command_senders =
         CommandSenders::<B>::new(mount_sender, nlm_sender, context.get_vfs_manager().sender());
 
-    read::ReadTask::<A, B>::new(
-        readhalf,
-        ConnectionId::new(peer_addr),
-        context.get_allocator(),
-        command_senders,
-        context.metrics(),
-        budget,
-    )
-    .spawn();
+    spawn_tasks(
+        read::ReadTask::<A, B>::new(
+            readhalf,
+            client_id,
+            context.get_allocator(),
+            command_senders,
+            context.metrics(),
+            budget,
+        ),
+        write::WriteTask::<B>::new(
+            writehalf,
+            result_receiver,
+            context.metrics(),
+            client_id,
+            context.write_timeout(),
+        ),
+    );
+}
 
-    write::WriteTask::<B>::new(writehalf, result_receiver, context.metrics()).spawn();
+/// Spawns both tasks of a connection.
+///
+/// The read task waits for slots that only the write task frees, so it is stopped once
+/// the write task is gone, whether it finished, timed out or panicked. On a normal exit
+/// it is already gone: it holds a sender of the result channel, and the write task stops
+/// only when the channel is closed.
+fn spawn_tasks<A, B>(read_task: read::ReadTask<A, B>, write_task: write::WriteTask<B>)
+where
+    A: Allocator<Buffer = B> + Send + Sync + 'static,
+    B: Buffer + 'static,
+{
+    let read_task = read_task.spawn();
+    let write_task = write_task.spawn();
+    tokio::spawn(async move {
+        let _ = write_task.await;
+        read_task.abort();
+    });
 }
