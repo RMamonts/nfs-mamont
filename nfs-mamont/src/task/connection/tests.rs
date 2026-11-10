@@ -20,6 +20,7 @@ use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::task::connection::limit::Budget;
 use crate::task::connection::read::{CommandSenders, ReadTask};
+use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
@@ -28,6 +29,7 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
 const LIMIT: usize = 4;
+const WRITE_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// GETATTR carries no data, so nothing is ever allocated.
 struct NoBuffer;
@@ -110,9 +112,13 @@ async fn fill_send_buffer(socket: &OwnedWriteHalf) {
 }
 
 /// Starts a connection and sends it twice as many GETATTR calls as it may have in flight.
-async fn flooded_pipeline(client_reads: bool, max_pending: Option<usize>) -> Pipeline {
+async fn flooded_pipeline(
+    client_reads: bool,
+    max_pending: Option<usize>,
+    write_timeout: Option<Duration>,
+) -> Pipeline {
     let (pool, pool_rx) = pool(max_pending);
-    Pipeline { connection: flooded_connection(pool, client_reads, 1).await, pool_rx }
+    Pipeline { connection: flooded_connection(pool, client_reads, 1, write_timeout).await, pool_rx }
 }
 
 /// Starts a connection queueing into `pool` and sends it twice as many GETATTR calls as
@@ -121,6 +127,7 @@ async fn flooded_connection(
     pool: VfsSender<NoBuffer>,
     client_reads: bool,
     first_xid: u32,
+    write_timeout: Option<Duration>,
 ) -> Connection {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -134,12 +141,14 @@ async fn flooded_connection(
     let budget = Budget::new(NonZeroUsize::new(LIMIT).unwrap(), result_tx);
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool);
 
-    ReadTask::new(readhalf, ConnectionId::new(addr), Arc::new(NoAllocator), senders, budget)
-        .spawn();
     if !client_reads {
         fill_send_buffer(&writehalf).await;
     }
-    WriteTask::new(writehalf, result_rx).spawn();
+    let client_id = ConnectionId::new(addr);
+    spawn_tasks(
+        ReadTask::new(readhalf, client_id, Arc::new(NoAllocator), senders, budget),
+        WriteTask::new(writehalf, result_rx, client_id, write_timeout),
+    );
 
     let mut client = client.unwrap();
     let xids = first_xid..first_xid + 2 * LIMIT as u32;
@@ -177,7 +186,7 @@ async fn wait_until(condition: impl Fn() -> bool) {
 
 #[tokio::test]
 async fn read_task_stops_reading_at_the_limit() {
-    let pipeline = flooded_pipeline(true, None).await;
+    let pipeline = flooded_pipeline(true, None, None).await;
 
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -194,7 +203,7 @@ async fn read_task_stops_reading_at_the_limit() {
 
 #[tokio::test]
 async fn a_reply_that_cannot_be_written_keeps_its_slot() {
-    let pipeline = flooded_pipeline(false, None).await;
+    let pipeline = flooded_pipeline(false, None, None).await;
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
 
     assert_eq!(answer(&pipeline.pool_rx).await, [1, 2, 3, 4]);
@@ -204,7 +213,7 @@ async fn a_reply_that_cannot_be_written_keeps_its_slot() {
 
 #[tokio::test]
 async fn requests_dropped_without_a_reply_free_their_slots() {
-    let pipeline = flooded_pipeline(true, None).await;
+    let pipeline = flooded_pipeline(true, None, None).await;
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
 
     // What a panicking backend does with the command it executes.
@@ -217,7 +226,7 @@ async fn requests_dropped_without_a_reply_free_their_slots() {
 
 #[tokio::test]
 async fn the_pool_holds_at_most_max_pending_requests() {
-    let pipeline = flooded_pipeline(true, Some(2)).await;
+    let pipeline = flooded_pipeline(true, Some(2), None).await;
 
     wait_until(|| pipeline.pool_rx.len() == 2).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -230,8 +239,8 @@ async fn the_pool_holds_at_most_max_pending_requests() {
 #[tokio::test]
 async fn pool_slots_go_round_the_waiting_connections() {
     let (pool, pool_rx) = pool(Some(1));
-    let _first = flooded_connection(pool.clone(), true, 1).await;
-    let _second = flooded_connection(pool, true, 101).await;
+    let _first = flooded_connection(pool.clone(), true, 1, None).await;
+    let _second = flooded_connection(pool, true, 101, None).await;
 
     // The first connection queued its second request before the second one connected,
     // so the turns start with the second command.
@@ -243,4 +252,17 @@ async fn pool_slots_go_round_the_waiting_connections() {
     }
     let turns = &owners[1..];
     assert!(turns.windows(2).all(|pair| pair[0] != pair[1]), "slots went {owners:?}");
+}
+
+#[tokio::test]
+async fn a_client_that_does_not_read_is_disconnected() {
+    let pipeline = flooded_pipeline(false, None, Some(WRITE_TIMEOUT)).await;
+    wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
+
+    let stuck = Instant::now();
+    answer(&pipeline.pool_rx).await;
+
+    // The write task gives up and stops the read task, which closes the command channel.
+    wait_until(|| pipeline.pool_rx.is_closed()).await;
+    assert!(stuck.elapsed() >= WRITE_TIMEOUT, "closed after {:?}", stuck.elapsed());
 }

@@ -2,6 +2,7 @@ use std::io;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
+use tokio::task::AbortHandle;
 use tracing::{debug, error, warn};
 
 use async_channel::{SendError, Sender};
@@ -78,11 +79,11 @@ where
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn spawn(self)
+    pub fn spawn(self) -> AbortHandle
     where
         B: 'static,
     {
-        tokio::spawn(async move { self.run().await });
+        tokio::spawn(async move { self.run().await }).abort_handle()
     }
 
     async fn run(mut self) -> io::Result<()> {
