@@ -97,6 +97,7 @@ impl Allocator for PoolAllocator {
 
     async fn allocate(&self, size: NonZeroUsize) -> Option<Self::Buffer> {
         if size > self.capacity {
+            self.state.metrics.rejected();
             return None;
         }
 

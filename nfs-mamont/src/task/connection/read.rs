@@ -19,12 +19,7 @@ use crate::parser::{
 use crate::rpc::{Error, ErrorWrapper};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-<<<<<<< HEAD
 use crate::task::global::vfs::VfsCommandSender;
-||||||| 72c6c51
-=======
-use crate::task::global::vfs::VfsCommand;
->>>>>>> 5cb42b9c60d24706138d8d11f998dd88e3b10f97
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 

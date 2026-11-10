@@ -15,6 +15,7 @@ use super::consts::{
     STAGE_SECONDS, SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use super::io::{IoStats, IoTimer};
+use crate::consts::nfsv3::NfsProc;
 use crate::metric::{Queue, Stage, TaskKind};
 use crate::vfs::file::BackendId;
 
@@ -65,8 +66,8 @@ pub struct NfsMetrics {
     duration: Histogram,
     requests_ok: Counter,
     requests_err: Counter,
-    /// Indexed by [`BackendId`], registered on first use.
-    vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
+    /// Indexed by [`BackendId`], registered on first use. Doesn't distinguish between different generations of the same backend slot.
+    vfs_in_flight: [OnceLock<Gauge>; BackendId::SLOTS],
     /// Indexed by [`Queue`].
     queue_depth: [Gauge; 2],
     /// Indexed by NFSv3 procedure number.
@@ -211,8 +212,8 @@ impl NfsMetrics {
     /// Counts a request executing in `backend` until the guard is dropped.
     #[inline]
     pub fn vfs_in_flight(&self, backend: BackendId) -> InFlightGuard<'_> {
-        let gauge = self.vfs_in_flight[backend as usize]
-            .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.to_string()));
+        let gauge = self.vfs_in_flight[backend.slot() as usize]
+            .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.slot().to_string()));
         gauge.increment(1.0);
         InFlightGuard(gauge)
     }
@@ -246,7 +247,7 @@ impl NfsMetrics {
     /// Nothing is recorded for `None` or a failed write.
     pub async fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
         &self,
-        procedure: Option<u32>,
+        procedure: Option<NfsProc>,
         io: &IoStats,
         reply: F,
     ) -> F::Output {
@@ -281,7 +282,7 @@ impl NfsMetrics {
         &self,
         io: &IoStats,
         call: F,
-        procedure: impl FnOnce(&F::Output) -> Option<u32>,
+        procedure: impl FnOnce(&F::Output) -> Option<NfsProc>,
     ) -> F::Output {
         let (output, future_metrics) = FutureMonitor::new().instrument(call).await;
         let (syscall, _) = io.take();

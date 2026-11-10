@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::marker::PhantomData;
 
+use crate::consts::nfsv3::NfsProc;
 use crate::metric::{Stage, TaskKind};
 use crate::vfs::file::BackendId;
 
@@ -55,7 +56,7 @@ impl NfsMetrics {
     #[inline]
     pub fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
         &self,
-        _procedure: Option<u32>,
+        _procedure: Option<NfsProc>,
         _io: &IoStats,
         reply: F,
     ) -> F {
@@ -67,7 +68,7 @@ impl NfsMetrics {
         &self,
         _io: &IoStats,
         call: F,
-        _procedure: impl FnOnce(&F::Output) -> Option<u32>,
+        _procedure: impl FnOnce(&F::Output) -> Option<NfsProc>,
     ) -> F {
         call
     }

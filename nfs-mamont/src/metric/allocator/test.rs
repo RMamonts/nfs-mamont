@@ -4,15 +4,17 @@ use std::time::Duration;
 use metrics_util::debugging::{DebugValue, Snapshotter};
 
 use crate::allocator::Allocator as _;
-use crate::allocator::Impl;
 use crate::metric::allocator::allocator_metrics::{
     CHUNKS_CAPACITY, CHUNKS_IN_USE, REJECTED_TOTAL, REQUEST_BYTES, WAIT_SECONDS,
 };
 use crate::metric::test_helpers::{gauge, samples, snapshot, value, with_recorder};
+use crate::service::allocator::PoolAllocator;
 
-fn allocator(size: usize, count: usize) -> (Impl, Snapshotter) {
+fn allocator(size: usize, count: usize) -> (PoolAllocator, Snapshotter) {
     let (allocator, snapshotter, _) = with_recorder(|| {
-        Impl::new(NonZeroUsize::new(size).unwrap(), NonZeroUsize::new(count).unwrap())
+        let size = NonZeroUsize::new(size).unwrap();
+        let count = NonZeroUsize::new(count).unwrap();
+        PoolAllocator::new(size, count)
     });
     (allocator, snapshotter)
 }
