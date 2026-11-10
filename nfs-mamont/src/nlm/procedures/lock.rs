@@ -27,7 +27,7 @@ pub struct Nlm4LockArgs {
 
 /// NLM LOCK result.
 ///
-/// Returned by [`NLMPROC4_LOCK`](crate::consts::nlm::NLMPROC4_LOCK) procedure.
+/// Returned by the [`NlmProc::Lock`](crate::consts::nlm::NlmProc::Lock) procedure.
 pub struct Nlm4LockRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

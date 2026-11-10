@@ -20,29 +20,22 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
 
+use crate::consts::socket::{
+    ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
+};
+use crate::mount::Mount;
 use crate::nlm::Nlm;
+use crate::task::connection;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
-use crate::{mount::Mount, task::connection};
 
-pub use allocator::{Allocator, Buffer, Impl, Slice, UnownedBuffer};
+pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
 pub use vfs::file::BackendId;
-
-/// Initializes tracing logs.
-///
-/// In debug builds logs are enabled by default. In release builds this is a no-op.
-pub fn init_tracing() {
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("nfs_mamont=debug"));
-
-    let _ = tracing_subscriber::fmt().with_env_filter(env_filter).try_init();
-}
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever<A, B, M, N, V>(
@@ -85,7 +78,11 @@ where
                     Ok((socket, _)) => {
                         connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
                     }
-                    Err(err) => break Err(err),
+                    Err(err) if is_fatal_accept_error(&err) => break Err(err),
+                    Err(err) => {
+                        warn!(error = %err, "accept failed, retrying");
+                        tokio::time::sleep(ACCEPT_ERROR_BACKOFF).await;
+                    }
                 }
             }
             result = &mut shutdown => {
@@ -99,4 +96,16 @@ where
     let _ = rpcbind::unregister(port).await;
 
     accept_result
+}
+
+/// Returns `true` for `accept` errors after which the listener is unusable.
+fn is_fatal_accept_error(err: &std::io::Error) -> bool {
+    match err.raw_os_error() {
+        Some(errno) => {
+            errno == ACCEPT_ERROR_EBADF
+                || errno == ACCEPT_ERROR_EINVAL
+                || errno == ACCEPT_ERROR_ENOTSOCK
+        }
+        None => false,
+    }
 }

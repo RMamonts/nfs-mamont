@@ -11,6 +11,7 @@ use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
 
+#[repr(u32)]
 #[derive(Debug, ToPrimitive, FromPrimitive)]
 /// Possible MOUNT errors
 pub enum Fail {
@@ -51,6 +52,7 @@ pub struct Args {
     /// a server pathname of a directory
     pub dirpath: file::Path,
 }
+
 #[trait_variant::make(Send)]
 pub trait Mnt {
     /// Maps a pathname on the server to a NFS version 3 protocol file handle.

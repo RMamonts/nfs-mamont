@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use tokio::net::tcp::OwnedReadHalf;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use async_channel::Sender;
 
@@ -13,13 +13,18 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
-    ArgWrapper, ErrorWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments,
-    NlmArgWrapper, NlmArguments, ProcArguments,
+    ArgWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments, NlmArgWrapper,
+    NlmArguments, ProcArguments,
 };
-use crate::rpc::Error;
+use crate::rpc::{Error, ErrorWrapper};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+<<<<<<< HEAD
 use crate::task::global::vfs::VfsCommandSender;
+||||||| 72c6c51
+=======
+use crate::task::global::vfs::VfsCommand;
+>>>>>>> 5cb42b9c60d24706138d8d11f998dd88e3b10f97
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -29,7 +34,7 @@ pub struct CommandSenders<B: Buffer + 'static> {
     mount_sender: Sender<MountCommand<B>>,
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
-    /// To pass (nfs_3_cmd, tx) into vfs task, so vfs task can send result back to write task.
+    /// To pass command into vfs task.
     pool_sender: VfsCommandSender<B>,
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
@@ -205,6 +210,14 @@ where
                         return send_broken_pipe(&self.command_senders.result_sender, xid, err)
                             .await;
                     }
+                }
+
+                // The record is not a CALL at all (a REPLY sent to the server, or a
+                // bogus msg_type). RFC 5531 defines no reply to a reply, and answering
+                // one with a reply of our own could ping-pong with a confused peer, so
+                // the record is dropped silently.
+                Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
+                    warn!(client=%self.client_addr, xid, "rpc record is not a CALL, ignoring");
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {

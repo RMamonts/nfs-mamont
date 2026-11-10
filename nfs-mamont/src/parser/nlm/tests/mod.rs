@@ -77,7 +77,7 @@ fn opaque_handle_too_large() {
 #[test]
 fn opaque_handle_insufficient_data() {
     let data = xdr::u32_val(10);
-    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::IO(_))));
+    assert!(matches!(opaque_handle(&mut Cursor::new(data)), Err(Error::InvalidData)));
 }
 
 #[test]
@@ -91,5 +91,5 @@ fn parse_lock_bad_file_handle() {
 #[test]
 fn parse_lock_insufficient_data() {
     let data = xdr::string("host");
-    assert!(matches!(parse_lock(&mut Cursor::new(data)), Err(Error::IO(_))));
+    assert!(matches!(parse_lock(&mut Cursor::new(data)), Err(Error::InvalidData)));
 }

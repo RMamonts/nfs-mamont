@@ -30,7 +30,7 @@ use std::io::{Result, Write};
 use super::super::variant;
 use crate::vfs;
 
-/// Serializes `vfs::Error` as an XDR enum discriminant (NFS status).
-pub fn error(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {
+/// Serializes `vfs::Error` as the XDR `nfsstat3` enum discriminant.
+pub fn status(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {
     variant(dest, stat)
 }

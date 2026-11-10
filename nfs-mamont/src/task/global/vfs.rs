@@ -178,9 +178,9 @@ impl<B: Buffer + 'static> VfsManager<B> {
     {
         let (tx, rx) = unbounded::<VfsCommand<B>>(Arc::clone(&metrics), Queue::Vfs);
 
-        (0..concurrency.get()).for_each(|_| {
+        for _ in 0..concurrency.get() {
             VfsTask::new(backends.clone(), rx.clone(), Arc::clone(&metrics)).spawn();
-        });
+        }
 
         Self { sender: tx }
     }
@@ -278,7 +278,8 @@ where
                 warn!(
                     xid = header.xid,
                     proc = %proc_name,
-                    backend = backend_id,
+                    backend_slot = backend_id.slot(),
+                    backend_generation = backend_id.generation(),
                     "no backend attached for this file handle"
                 );
 
@@ -338,13 +339,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::{failed_response, target, Target};
-    use crate::allocator::Slice;
     use crate::parser::NfsArguments;
-    use crate::vfs::file::{Handle, PAYLOAD_SIZE};
+    use crate::service::allocator::Slice;
+    use crate::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
     use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
 
     fn handle(backend: u8) -> Handle {
-        Handle::new(backend, [0x01; PAYLOAD_SIZE])
+        Handle::new(BackendId::new(backend, 0), [0x01; PAYLOAD_SIZE])
     }
 
     fn name() -> vfs::file::Name {
@@ -362,7 +363,7 @@ mod tests {
     fn backend_is_taken_from_the_handle() {
         let proc = NfsArguments::<Slice>::GetAttr(get_attr::Args { file: handle(3) });
 
-        assert!(matches!(target(&proc), Target::Single(3)));
+        assert!(matches!(target(&proc), Target::Single(id) if id == BackendId::new(3, 0)));
     }
 
     #[test]
@@ -372,7 +373,7 @@ mod tests {
             to: DirOpArgs { dir: handle(2), name: name() },
         });
 
-        assert!(matches!(target(&proc), Target::Single(2)));
+        assert!(matches!(target(&proc), Target::Single(id) if id == BackendId::new(2, 0)));
     }
 
     #[test]

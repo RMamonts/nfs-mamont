@@ -1,7 +1,8 @@
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
-use crate::allocator::{Allocator, Slice, UnownedBuffer};
+use crate::allocator::Allocator;
+use crate::service::allocator::{Slice, UnownedBuffer};
 
 pub struct MockAllocator {
     max_size: usize,
