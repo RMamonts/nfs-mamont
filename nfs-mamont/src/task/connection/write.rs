@@ -6,7 +6,7 @@ use tokio::time::timeout;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
-use crate::connection_id::ConnectionId;
+use crate::client_id::ConnectionInfo;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::connection::limit::InFlightReply;
@@ -15,7 +15,7 @@ use crate::task::connection::limit::InFlightReply;
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<InFlightReply<B>>,
-    client_id: ConnectionId,
+    connection_info: ConnectionInfo,
     /// How long one reply may wait for the socket, `None` for ever.
     write_timeout: Option<Duration>,
 }
@@ -25,10 +25,10 @@ impl<B: Buffer> WriteTask<B> {
     pub fn new(
         writehalf: OwnedWriteHalf,
         result_receiver: async_channel::Receiver<InFlightReply<B>>,
-        client_id: ConnectionId,
+        connection_info: ConnectionInfo,
         write_timeout: Option<Duration>,
     ) -> Self {
-        Self { writehalf, result_receiver, client_id, write_timeout }
+        Self { writehalf, result_receiver, connection_info, write_timeout }
     }
 
     /// Spawns a [`WriteTask`] that writes command results to a socket.
@@ -59,7 +59,7 @@ impl<B: Buffer> WriteTask<B> {
             };
             let Ok(written) = written else {
                 warn!(
-                    client=%self.client_id.into_inner(),
+                    client=%self.connection_info.peer_addr,
                     timeout=?self.write_timeout,
                     "write task: the client does not take its replies, closing the connection"
                 );
@@ -70,7 +70,7 @@ impl<B: Buffer> WriteTask<B> {
                     // Reply successfully written to socket
                 }
                 Err(e) => {
-                    error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize/send reply");
+                    error!(client=%self.connection_info.peer_addr, error=%e, "write task: failed to serialize/send reply");
                     // TODO: Consider closing connection or continuing based on error type
                     // For now, continue processing other replies
                 }

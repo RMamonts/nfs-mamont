@@ -4,7 +4,6 @@ use async_channel::{Receiver, Sender};
 use tracing::debug;
 
 use crate::allocator::Buffer;
-use crate::connection_id::ConnectionId;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::connection::limit::ReplySender;
@@ -14,8 +13,6 @@ use crate::task::{ProcReply, ProcResult};
 pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
     pub result_tx: ReplySender<B>,
-    /// The ID using the socket address.
-    pub connection_id: ConnectionId,
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
@@ -60,15 +57,16 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let MountCommand { result_tx, connection_id: client_id, args } = command;
+            let MountCommand { result_tx, args } = command;
             let MountArgWrapper { header, proc } = args;
-            debug!(client=%client_id.into_inner(), xid=header.xid, "mount task: command received");
+            let connection = header.connection;
+            debug!(client=%connection.peer_addr, xid=header.xid, "mount task: command received");
 
             let mount_result = match *proc {
                 MountArguments::Null => MountRes::Null,
                 MountArguments::Mount(args) => {
                     debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=MNT");
-                    let res = mount_service.mnt(args, client_id, &header.cred).await;
+                    let res = mount_service.mnt(args, connection, &header.cred).await;
                     match &res {
                         Ok(_) => {
                             debug!(xid = header.xid, "mount task: proc=MNT result=OK");
@@ -81,7 +79,7 @@ where
                 }
                 MountArguments::Unmount(args) => {
                     debug!(xid=header.xid, dirpath=%args.dirpath.as_path().to_string_lossy(), "mount task: proc=UMNT");
-                    mount_service.umnt(args, client_id, &header.cred).await;
+                    mount_service.umnt(args, connection, &header.cred).await;
                     MountRes::Unmount
                 }
                 MountArguments::Export => {
@@ -106,7 +104,7 @@ where
                 }
                 MountArguments::UnmountAll => {
                     debug!(xid = header.xid, "mount task: proc=UMNTALL");
-                    mount_service.umntall(client_id, &header.cred).await;
+                    mount_service.umntall(connection, &header.cred).await;
                     MountRes::UnmountAll
                 }
             };

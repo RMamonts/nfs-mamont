@@ -3,6 +3,7 @@
 //! The global tasks are replaced by channels the test reads from, so no `Vfs`, `Mount`
 //! or `Nlm` implementation is needed.
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -15,7 +16,7 @@ use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::connection_id::ConnectionId;
+use crate::client_id::{ConnectionGeneration, ConnectionInfo};
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::task::connection::limit::Budget;
@@ -144,7 +145,10 @@ async fn flooded_connection(
     if !client_reads {
         fill_send_buffer(&writehalf).await;
     }
-    let client_id = ConnectionId::new(addr);
+    let client_id = ConnectionInfo::new(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6666),
+        ConnectionGeneration::new(0),
+    );
     spawn_tasks(
         ReadTask::new(readhalf, client_id, Arc::new(NoAllocator), senders, budget),
         WriteTask::new(writehalf, result_rx, client_id, write_timeout),

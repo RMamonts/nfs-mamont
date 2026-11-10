@@ -5,7 +5,7 @@
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::connection_id::ConnectionId;
+use crate::client_id::ConnectionInfo;
 use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
 use crate::vfs::file;
@@ -64,7 +64,7 @@ pub trait Mnt {
     async fn mnt(
         &self,
         args: Args,
-        connection_id: ConnectionId,
+        connection: ConnectionInfo,
         cred: &Credential,
     ) -> Result<Success, Fail>;
 }
