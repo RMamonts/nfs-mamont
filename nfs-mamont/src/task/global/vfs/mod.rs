@@ -15,8 +15,15 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
-/// One queued NFS procedure: parsed arguments, a channel to send the result, and the request timer.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, CountedSender<ProcReply<B>>, Timer);
+/// One queued NFS procedure.
+pub struct VfsCommand<B: Buffer> {
+    /// Parsed RPC header and procedure arguments.
+    pub args: NfsArgWrapper<B>,
+    /// Channel to the write task of the connection the reply goes to.
+    pub result_tx: CountedSender<ProcReply<B>>,
+    /// Timer to measure the duration of stages of the request.
+    pub timer: Timer,
+}
 /// Sender to enqueue work in the queue.
 pub type VfsCommandSender<B> = CountedSender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
@@ -264,9 +271,8 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let (wrapper, tx, mut timer) = command;
+    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, mut timer } = command;
     metrics.lap(&mut timer, Stage::VfsQueue);
-    let NfsArgWrapper { header, proc } = wrapper;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
@@ -300,7 +306,7 @@ where
         ProcReply { xid: header.xid, proc_result: Ok(ProcResult::Nfs3(Box::new(response))), timer };
 
     // Write task may already be closed; then this connection pipeline is done.
-    if tx.send(reply).await.is_err() {
+    if result_tx.send(reply).await.is_err() {
         warn!("writer task closed, connection pipeline is done");
     }
 }
