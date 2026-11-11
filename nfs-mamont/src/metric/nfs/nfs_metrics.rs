@@ -11,11 +11,11 @@ use tokio::task::AbortHandle;
 use tokio_metrics::{FutureMonitor, TaskMetricsReporterBuilder, TaskMonitor};
 
 use super::consts::{
-    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, QUEUE_DEPTH, REPLY_BYTES, REQUESTS_TOTAL,
-    STAGE_SECONDS, SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
+    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS,
+    SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use super::io::{IoStats, IoTimer};
-use crate::metric::{Queue, Stage, TaskKind};
+use crate::metric::{Stage, TaskKind};
 use crate::vfs::file::BackendId;
 
 /// Reply metrics of one NFSv3 procedure.
@@ -67,8 +67,6 @@ pub struct NfsMetrics {
     requests_err: Counter,
     /// Indexed by [`BackendId`], registered on first use.
     vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
-    /// Indexed by [`Queue`].
-    queue_depth: [Gauge; 2],
     /// Indexed by NFSv3 procedure number.
     reply: [ReplyMetrics; 22],
     /// Indexed by NFSv3 procedure number.
@@ -126,7 +124,6 @@ impl NfsMetrics {
         );
         describe_counter!(REQUESTS_TOTAL, Unit::Count, "Completed NFS requests by status");
         describe_gauge!(VFS_IN_FLIGHT, Unit::Count, "NFS requests executing in a VFS backend");
-        describe_gauge!(QUEUE_DEPTH, Unit::Count, "Requests waiting in a pipeline queue");
         describe_histogram!(
             CPU_SECONDS,
             Unit::Seconds,
@@ -164,7 +161,6 @@ impl NfsMetrics {
             requests_ok: counter!(REQUESTS_TOTAL, "status" => "ok"),
             requests_err: counter!(REQUESTS_TOTAL, "status" => "error"),
             vfs_in_flight: std::array::from_fn(|_| OnceLock::new()),
-            queue_depth: Queue::ALL.map(|queue| gauge!(QUEUE_DEPTH, "queue" => queue.as_str())),
             reply: PROC_NAMES.map(ReplyMetrics::new),
             call: PROC_NAMES.map(CallMetrics::new),
             task_monitors,
@@ -215,18 +211,6 @@ impl NfsMetrics {
             .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.to_string()));
         gauge.increment(1.0);
         InFlightGuard(gauge)
-    }
-
-    /// Counts a request as waiting in `queue`; pair with [`NfsMetrics::dequeued`].
-    #[inline]
-    pub fn enqueued(&self, queue: Queue) {
-        self.queue_depth[queue as usize].increment(1.0);
-    }
-
-    /// Counts `count` requests as no longer waiting in `queue`.
-    #[inline]
-    pub fn dequeued(&self, queue: Queue, count: usize) {
-        self.queue_depth[queue as usize].decrement(count as f64);
     }
 
     /// Instruments `fut` with the task monitor of `kind`.

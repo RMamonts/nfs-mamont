@@ -26,27 +26,6 @@ impl Stage {
     }
 }
 
-/// Pipeline queue whose depth is tracked.
-#[derive(Clone, Copy)]
-pub enum Queue {
-    /// Read tasks → VFS worker pool.
-    Vfs,
-    /// workers → connection write tasks, summed over connections.
-    Reply,
-}
-
-#[cfg(feature = "metrics")]
-impl Queue {
-    pub(super) const ALL: [Queue; 2] = [Queue::Vfs, Queue::Reply];
-
-    pub(super) fn as_str(self) -> &'static str {
-        match self {
-            Queue::Vfs => "vfs",
-            Queue::Reply => "reply",
-        }
-    }
-}
-
 /// Kind of work instrumented with its own tokio task monitor.
 #[derive(Clone, Copy)]
 pub enum TaskKind {
