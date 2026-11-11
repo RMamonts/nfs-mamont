@@ -1,6 +1,6 @@
 //! Defines the NFSv4 CLOSE operation types, RFC 7530 §16.2.
 
-use super::{file, Error};
+use super::file;
 
 /// CLOSE arguments (`CLOSE4args`).
 pub struct Args {
@@ -22,5 +22,5 @@ pub struct Success {
 /// Fail result (`CLOSE4res`).
 pub struct Fail {
     /// Error on failure.
-    pub error: Error,
+    pub error: super::Error,
 }

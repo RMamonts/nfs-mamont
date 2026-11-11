@@ -40,7 +40,7 @@ impl SeqId {
     }
 
     /// Returns the raw value of the sequence id.
-    pub fn get(self) -> u32 {
+    pub fn raw(self) -> u32 {
         self.0
     }
 }
