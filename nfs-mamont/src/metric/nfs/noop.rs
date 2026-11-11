@@ -27,15 +27,10 @@ impl NfsMetrics {
     }
 
     #[inline]
-    pub fn start(&self) -> Timer {
-        Timer
-    }
-
-    #[inline]
     pub fn lap(&self, _timer: &mut Timer, _stage: Stage) {}
 
     #[inline]
-    pub fn finish(&self, _timer: Timer, _is_ok: bool) {}
+    pub fn finish(&self, _timer: Timer) {}
 
     #[inline]
     pub fn vfs_in_flight(&self, _backend: BackendId) -> InFlightGuard<'_> {
@@ -55,6 +50,7 @@ impl NfsMetrics {
     #[inline]
     pub fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
         &self,
+        _timer: &Timer,
         _procedure: Option<u32>,
         _io: &IoStats,
         reply: F,
@@ -63,12 +59,12 @@ impl NfsMetrics {
     }
 
     #[inline]
-    pub fn read_call<F: Future>(
+    pub async fn read_call<F: Future>(
         &self,
         _io: &IoStats,
         call: F,
         _procedure: impl FnOnce(&F::Output) -> Option<u32>,
-    ) -> F {
-        call
+    ) -> (F::Output, Timer) {
+        (call.await, Timer)
     }
 }

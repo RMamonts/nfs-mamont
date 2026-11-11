@@ -1,4 +1,7 @@
+use std::cell::Cell;
+use std::collections::hash_map::RandomState;
 use std::future::Future;
+use std::hash::BuildHasher;
 use std::num::NonZeroU64;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -11,10 +14,11 @@ use tokio::task::AbortHandle;
 use tokio_metrics::{FutureMonitor, TaskMetricsReporterBuilder, TaskMonitor};
 
 use super::consts::{
-    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS,
-    TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
+    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REQUESTS_TOTAL, SAMPLE_EVERY, STAGE_SECONDS,
+    SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use super::io::{IoStats, IoTimer};
+use crate::metric::consts::SAMPLE_EVERY_GAUGE;
 use crate::metric::{Stage, TaskKind};
 use crate::vfs::file::BackendId;
 
@@ -76,7 +80,7 @@ pub struct NfsMetrics {
 }
 
 /// Request timestamps carried along with the request through the pipeline,
-/// or [`Timer::NONE`] for requests that are not measured.
+/// or [`Timer::NONE`] for requests that are not measured: non-NFS or not sampled.
 ///
 /// Nanoseconds since [`NfsMetrics`] epoch: 16 bytes instead of 32 for two
 /// [`Instant`]s, and the `None` state is free thanks to [`NonZeroU64`].
@@ -92,6 +96,28 @@ struct Marks {
 impl Timer {
     /// Timer of a request that is not measured.
     pub const NONE: Self = Self(None);
+}
+
+/// Whether to measure the next request: true for about one in [`SAMPLE_EVERY`].
+///
+/// Random rather than every N-th, so that a periodic request pattern can't alias with it.
+/// Always true in tests to keep them deterministic.
+fn sampled() -> bool {
+    if cfg!(test) {
+        return true;
+    }
+    thread_local! {
+        static RNG: Cell<u64> = Cell::new(RandomState::new().hash_one(0) | 1);
+    }
+    RNG.with(|rng| {
+        // xorshift64
+        let mut x = rng.get();
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        rng.set(x);
+        x % SAMPLE_EVERY == 0
+    })
 }
 
 /// Decrements the in-flight gauge on drop.
@@ -137,6 +163,8 @@ impl NfsMetrics {
             Unit::Seconds,
             "Time a message waited for the socket to become ready"
         );
+        describe_gauge!(SAMPLE_EVERY_GAUGE, Unit::Count, "Sample approximately every Nth request");
+        gauge!(SAMPLE_EVERY_GAUGE).set(SAMPLE_EVERY as f64);
 
         let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
         let mut reporters = Vec::new();
@@ -174,7 +202,7 @@ impl NfsMetrics {
 
     /// Starts timing a request (T0).
     #[inline]
-    pub fn start(&self) -> Timer {
+    pub(super) fn start(&self) -> Timer {
         let now = self.now();
         Timer(Some(Marks { start: now, last: now.get() }))
     }
@@ -188,17 +216,12 @@ impl NfsMetrics {
         marks.last = now;
     }
 
-    /// Records the whole request duration and counts the request.
+    /// Records the whole request duration.
     #[inline]
-    pub fn finish(&self, timer: Timer, is_ok: bool) {
+    pub fn finish(&self, timer: Timer) {
         let Some(marks) = timer.0 else { return };
         let now = self.now().get();
         self.duration.record(Duration::from_nanos(now.saturating_sub(marks.start.get())));
-        if is_ok {
-            self.requests_ok.increment(1);
-        } else {
-            self.requests_err.increment(1);
-        }
     }
 
     /// Counts a request executing in `backend` until the guard is dropped.
@@ -223,55 +246,69 @@ impl NfsMetrics {
     }
 
     /// Awaits `reply`, which writes one reply through the [`IoTimer`] behind `io`, and
-    /// records its CPU, syscall and socket wait times and reply size under `procedure`.
-    /// Nothing is recorded for `None` or a failed write.
+    /// counts it as an NFS request of `procedure`. For a measured `timer`, also records
+    /// its CPU, syscall and socket wait times, unless the write failed.
+    /// Nothing is recorded for `None`.
     pub async fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
         &self,
+        timer: &Timer,
         procedure: Option<u32>,
         io: &IoStats,
         reply: F,
     ) -> F::Output {
-        let Some(procedure) = procedure else {
-            let output = reply.await;
-            // Reset the I/O of the unmeasured reply
-            io.take();
-            return output;
+        let Some(procedure) = procedure else { return reply.await };
+
+        let output = if timer.0.is_some() {
+            io.start();
+            let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
+            let syscall = io.take();
+            if output.is_ok() {
+                let metrics = &self.reply[procedure as usize];
+                // IoTimer measures time inside socket's write polls ~= syscall time
+                // Total future poll duration - syscall time = serialization time
+                metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+                metrics.syscall.record(syscall);
+                metrics.wait.record(future_metrics.total_idle_duration);
+            }
+            output
+        } else {
+            reply.await
         };
 
-        let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
-        let syscall = io.take();
         if output.is_ok() {
-            let metrics = &self.reply[procedure as usize];
-            // IoTimer measures time inside socket's write polls ~= syscall time
-            // Total future poll duration - syscall time = serialization time
-            metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
-            metrics.syscall.record(syscall);
-            metrics.wait.record(future_metrics.total_idle_duration);
+            self.requests_ok.increment(1);
+        } else {
+            self.requests_err.increment(1);
         }
         output
     }
 
-    /// Awaits `call`, which reads one call through the [`IoTimer`] behind `io`, and
-    /// records its CPU and syscall time under the procedure `procedure` returns for it.
-    /// Nothing but bytes is recorded for `None`.
+    /// Awaits `call`, which reads one call through the [`IoTimer`] behind `io`.
+    /// If the call is sampled and `procedure` returns its procedure, records its CPU
+    /// and syscall time and starts its [`Timer`]; otherwise returns [`Timer::NONE`].
     ///
     /// One read can buffer several consecutive calls, so the first of them carries
-    /// the syscall time and bytes of the rest.
+    /// the syscall time of the rest.
     pub async fn read_call<F: Future>(
         &self,
         io: &IoStats,
         call: F,
         procedure: impl FnOnce(&F::Output) -> Option<u32>,
-    ) -> F::Output {
+    ) -> (F::Output, Timer) {
+        if !sampled() {
+            return (call.await, Timer::NONE);
+        }
+
+        io.start();
         let (output, future_metrics) = FutureMonitor::new().instrument(call).await;
         let syscall = io.take();
-        if let Some(procedure) = procedure(&output) {
-            let metrics = &self.call[procedure as usize];
-            // Syscalls run inside polls; the rest of the poll time is deserialization
-            metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
-            metrics.syscall.record(syscall);
-        }
-        output
+        let Some(procedure) = procedure(&output) else { return (output, Timer::NONE) };
+
+        let metrics = &self.call[procedure as usize];
+        // Syscalls run inside polls; the rest of the poll time is deserialization
+        metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+        metrics.syscall.record(syscall);
+        (output, self.start())
     }
 }
 

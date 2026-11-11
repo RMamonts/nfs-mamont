@@ -49,7 +49,6 @@ impl<B: Buffer> WriteTask<B> {
         while let Ok(mut reply) = result_receiver.recv().await {
             let mut timer = mem::replace(&mut reply.timer, Timer::NONE);
             self.metrics.lap(&mut timer, Stage::ReplyQueue);
-            let is_ok = reply.proc_result.is_ok();
             let procedure = match &reply.proc_result {
                 Ok(ProcResult::Nfs3(res)) => Some(res.procedure()),
                 _ => None,
@@ -60,20 +59,13 @@ impl<B: Buffer> WriteTask<B> {
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
             let reply_future = serializer.form_reply(reply, verifier);
-            let written = match self.metrics.write_reply(procedure, &io, reply_future).await {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                    true
-                }
-                Err(e) => {
-                    error!(error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
-                    false
-                }
-            };
+            if let Err(e) = self.metrics.write_reply(&timer, procedure, &io, reply_future).await {
+                error!(error=%e, "write task: failed to serialize/send reply");
+                // TODO: Consider closing connection or continuing based on error type
+                // For now, continue processing other replies
+            }
 
-            self.metrics.finish(timer, is_ok && written);
+            self.metrics.finish(timer);
         }
     }
 }
