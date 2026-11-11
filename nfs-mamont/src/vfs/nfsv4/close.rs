@@ -4,8 +4,6 @@ use super::file;
 
 /// CLOSE arguments (`CLOSE4args`).
 pub struct Args {
-    /// File handle of the object to be closed.
-    pub file: file::Handle,
     /// Sequence id providing for the correct ordering of the operation.
     pub seqid: file::SeqId,
     /// State id of the open file description being closed.
