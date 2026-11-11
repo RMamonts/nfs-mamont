@@ -13,6 +13,8 @@ mod rpcbind;
 mod serializer;
 mod task;
 pub mod vfs;
+#[allow(unused)]
+mod vfsv4;
 
 use std::sync::Arc;
 
