@@ -7,3 +7,6 @@ pub const NFS4_FHSIZE: usize = 128;
 
 /// Size of the `other` field of a [`crate::vfs::nfsv4::file::StateId`], in bytes.
 pub const NFS4_OTHER_SIZE: usize = 12;
+
+/// Size of a write verifier (`verifier4`), in bytes.
+pub const NFS4_VERIFIER_SIZE: usize = 8;
