@@ -53,6 +53,28 @@ fn parse_args(mut args: Args) -> cli::Result<Command> {
 
     Ok(Command::Run(config))
 }
+fn init_metrics_exporter(port: u16) {
+    use metrics_exporter_prometheus::NativeHistogramConfig;
+    metrics_exporter_prometheus::PrometheusBuilder::new()
+        .set_native_histogram_for_metric(
+            metrics_exporter_prometheus::Matcher::Prefix("nfsmamont_".to_string()),
+            {
+                let bucket_factor = 2.0;
+                let max_buckets = 32;
+                let zero_threshold = 0.0;
+                NativeHistogramConfig::new(bucket_factor, max_buckets, zero_threshold).unwrap()
+            },
+        )
+        .with_http_listener(([0, 0, 0, 0], port))
+        .install()
+        .expect("failed to install Prometheus recorder");
+
+    tokio::spawn(
+        tokio_metrics::RuntimeMetricsReporterBuilder::default()
+            .with_interval(std::time::Duration::from_secs(1))
+            .describe_and_run(),
+    );
+}
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -68,6 +90,7 @@ async fn main() -> ExitCode {
         }
     };
     cli::init_tracing("warn");
+    init_metrics_exporter(2077);
 
     let latency = config.vfs.latency;
     let server = match Server::start(config.clone()).await {
