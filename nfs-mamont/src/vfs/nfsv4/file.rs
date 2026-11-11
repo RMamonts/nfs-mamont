@@ -5,7 +5,7 @@ use crate::consts::nfsv4::NFS4_FHSIZE;
 /// Corresponds to the file handle from RFC 7530. It is an opaque byte array
 /// of at most [`NFS4_FHSIZE`] bytes, interpreted only by the server.
 ///
-/// TODO: https://github.com/RMamonts/nfs-mamont/issues/496
+/// TODO: <https://github.com/RMamonts/nfs-mamont/issues/496>
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Handle([u8; NFS4_FHSIZE]);
 
