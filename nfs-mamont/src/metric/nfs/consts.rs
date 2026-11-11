@@ -7,7 +7,6 @@ pub(in crate::metric) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
 pub(in crate::metric) const CPU_SECONDS: &str = "nfsmamont_rpc_cpu_seconds";
 pub(in crate::metric) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
 pub(in crate::metric) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
-pub(in crate::metric) const REPLY_BYTES: &str = "nfsmamont_rpc_reply_bytes";
 
 /// How often tokio task metrics are sampled into the recorder.
 pub(super) const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);

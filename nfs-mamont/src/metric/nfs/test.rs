@@ -3,8 +3,8 @@ use metrics_util::debugging::DebugValue;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::consts::{
-    CPU_SECONDS, DURATION_SECONDS, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS,
-    VFS_IN_FLIGHT, WAIT_SECONDS,
+    CPU_SECONDS, DURATION_SECONDS, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS, VFS_IN_FLIGHT,
+    WAIT_SECONDS,
 };
 use crate::consts::nfsv3::GETATTR;
 use crate::metric::test_helpers::{gauge, nfs_metrics as metrics, samples, snapshot, value};
@@ -105,7 +105,6 @@ async fn write_reply() {
     for name in [CPU_SECONDS, SYSCALL_SECONDS, WAIT_SECONDS] {
         assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
     }
-    assert_eq!(value(&snapshot, REPLY_BYTES, &labels), &DebugValue::Histogram(vec![4.0.into()]));
 }
 
 #[tokio::test]
