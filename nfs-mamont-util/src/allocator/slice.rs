@@ -251,6 +251,15 @@ impl Buffer for Slice {
         self.range.len() == 0
     }
 
+    /// The whole buffers of the pool the slice is made of.
+    fn footprint(&self) -> usize {
+        let mut footprint = 0;
+        for buffer in &self.buffers {
+            footprint += buffer.len();
+        }
+        footprint
+    }
+
     fn empty() -> Self {
         Self::empty()
     }

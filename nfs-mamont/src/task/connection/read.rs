@@ -20,7 +20,7 @@ use crate::rpc::{Error, ErrorWrapper};
 use crate::task::connection::limit::Budget;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsCommand;
+use crate::task::global::vfs::VfsSender;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::NfsRes;
 
@@ -30,15 +30,15 @@ pub struct CommandSenders<B: Buffer + 'static> {
     mount_sender: Sender<MountCommand<B>>,
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
-    /// To pass command into nfsv3 task.
-    pool_sender: Sender<VfsCommand<B>>,
+    /// To pass command into vfs task.
+    pool_sender: VfsSender<B>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: Sender<VfsCommand<B>>,
+        pool_sender: VfsSender<B>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender }
     }
@@ -93,7 +93,7 @@ where
             // Taken before the request is read: while the connection has `max_in_flight`
             // unanswered requests the socket stays unread and TCP flow control holds the
             // client back.
-            let result_tx = self.budget.acquire().await;
+            let mut result_tx = self.budget.acquire().await;
 
             match parser.next_message().await {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
@@ -123,12 +123,14 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    let command = VfsCommand { args: NfsArgWrapper { header, proc }, result_tx };
-
-                    if let Err(SendError(command)) =
-                        self.command_senders.pool_sender.send(command).await
+                    self.budget.charge(&mut result_tx, data_footprint(&proc));
+                    // Parsed before the pool's slot is taken, so that an idle connection
+                    // holds no slot.
+                    let args = NfsArgWrapper { header, proc };
+                    if let Err(result_tx) =
+                        self.command_senders.pool_sender.send(args, result_tx).await
                     {
-                        return command.result_tx.broken_pipe(xid).await;
+                        return result_tx.broken_pipe(xid).await;
                     }
                 }
 
@@ -198,5 +200,14 @@ where
                 }
             }
         }
+    }
+}
+
+/// Returns how many bytes of allocator memory a READ or WRITE holds.
+fn data_footprint<B: Buffer>(proc: &NfsArguments<B>) -> usize {
+    match proc {
+        NfsArguments::Read(_, data) => data.footprint(),
+        NfsArguments::Write(args) => args.data.footprint(),
+        _ => 0,
     }
 }

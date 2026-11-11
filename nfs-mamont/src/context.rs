@@ -56,6 +56,8 @@ where
     backends: BackendRegistry<V>,
     /// Requests one connection may have read but not yet answered.
     max_in_flight: NonZeroUsize,
+    /// Bytes of READ and WRITE data one connection may have in flight, `None` for no limit.
+    max_data_per_connection: Option<NonZeroUsize>,
     /// How long a reply may wait for the socket before the connection is closed.
     write_timeout: Option<Duration>,
 }
@@ -80,7 +82,14 @@ where
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency);
         let max_in_flight = default_max_in_flight(vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends, max_in_flight, write_timeout: None }
+        Self {
+            vfs_manager,
+            allocator,
+            backends,
+            max_in_flight,
+            max_data_per_connection: None,
+            write_timeout: None,
+        }
     }
 
     /// Sets how many requests one connection may have read from the socket but not yet
@@ -90,9 +99,18 @@ where
     ///
     /// The limit caps the throughput of one connection at `max_in_flight / latency`. It
     /// counts requests, not bytes: a client that stops reading its READ replies can still
-    /// hold the whole allocator pool.
+    /// hold the whole allocator pool, see [`Self::with_max_data_per_connection`].
     pub fn with_max_in_flight(mut self, max_in_flight: NonZeroUsize) -> Self {
         self.max_in_flight = max_in_flight;
+        self
+    }
+
+    /// Limits how many NFS procedures may wait for or run in the VFS pool at once, over
+    /// all connections, so that the queue no longer grows with their number. Off by
+    /// default; MOUNT and NLM procedures are not counted. A few slots per VFS worker
+    /// keep the pool busy, say `4 × vfs_concurrency`; more only add queueing delay.
+    pub fn with_max_pending(mut self, max_pending: NonZeroUsize) -> Self {
+        self.vfs_manager.limit_pending(max_pending);
         self
     }
 
@@ -100,6 +118,24 @@ where
     #[inline]
     pub fn max_in_flight(&self) -> NonZeroUsize {
         self.max_in_flight
+    }
+
+    /// Limits the allocator memory the READ and WRITE requests of one connection may
+    /// hold, counted by [`Buffer::footprint`], so that a client that stops reading its
+    /// READ replies cannot take the whole pool. Off by default.
+    ///
+    /// The server stops reading the connection while `bytes` are in flight; the request
+    /// that crosses the limit is still served. A client needs about `bandwidth × round
+    /// trip` bytes in flight to run at line rate, a few MiB on 10 GbE.
+    pub fn with_max_data_per_connection(mut self, bytes: NonZeroUsize) -> Self {
+        self.max_data_per_connection = Some(bytes);
+        self
+    }
+
+    /// Returns the data limit of one connection, see [`Self::with_max_data_per_connection`].
+    #[inline]
+    pub fn max_data_per_connection(&self) -> Option<NonZeroUsize> {
+        self.max_data_per_connection
     }
 
     /// Closes a connection whose client does not take a reply within `timeout`. Off by
