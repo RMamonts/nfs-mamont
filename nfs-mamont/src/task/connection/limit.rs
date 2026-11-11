@@ -140,6 +140,7 @@ impl<B: Buffer> Budget<B> {
             let freed = self.limiter.bytes_released.load(Ordering::Acquire);
             data.issued.wrapping_sub(freed) >= data.max
         });
-        in_flight == self.limit || data_full
+
+        (in_flight == self.limit) || data_full
     }
 }
