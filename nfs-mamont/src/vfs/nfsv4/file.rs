@@ -1,13 +1,13 @@
-use std::io;
-
 use crate::consts::nfsv4::NFS4_FHSIZE;
 
 /// A file handle (`nfs_fh4`).
 ///
 /// Corresponds to the file handle from RFC 7530. It is an opaque byte array
 /// of at most [`NFS4_FHSIZE`] bytes, interpreted only by the server.
+///
+/// TODO: https://github.com/RMamonts/nfs-mamont/issues/496
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Handle(Vec<u8>);
+pub struct Handle([u8; NFS4_FHSIZE]);
 
 impl Handle {
     /// Creates a new [`Handle`] from the raw bytes as received from the NFS
@@ -16,14 +16,8 @@ impl Handle {
     /// # Errors
     ///
     /// Returns an error if `raw.len() > NFS4_FHSIZE`.
-    pub fn new(raw: Vec<u8>) -> io::Result<Self> {
-        if raw.len() > NFS4_FHSIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "handle too long"));
-        }
-        if raw.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "handle is empty"));
-        }
-        Ok(Handle(raw))
+    pub fn new(raw: [u8; NFS4_FHSIZE]) -> Self {
+        Handle(raw)
     }
 
     /// Returns the raw bytes of the handle.
