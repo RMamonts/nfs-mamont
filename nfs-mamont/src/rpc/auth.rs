@@ -59,8 +59,7 @@ pub enum AuthStat {
 /// `AUTH_SYS` flavor. It identifies the caller the same way a UNIX process does:
 /// by machine name and a caller-supplied uid/gid pair plus a list of auxiliary
 /// groups.
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthSysParams {
     /// Arbitrary ID the caller stamps on the credential; meaningful only to the caller.
     pub stamp: u32,
@@ -83,8 +82,7 @@ pub struct AuthSysParams {
 /// This value is passed down to the service layer (e.g. every
 /// [`crate::vfs::Vfs`] method and the MOUNT `mnt` procedure) so an
 /// implementation can make authorization decisions based on the caller.
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Credential {
     /// `AUTH_NONE`: anonymous caller, no identity provided.
     None,

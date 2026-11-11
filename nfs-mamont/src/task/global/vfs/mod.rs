@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests;
 
-use async_channel::{Receiver, Sender};
+use async_channel::{Receiver, SendError, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
@@ -22,12 +23,57 @@ pub struct VfsCommand<B: Buffer> {
     pub args: NfsArgWrapper<B>,
     /// Channel to the write task of the connection the reply goes to.
     pub result_tx: ReplySender<B>,
+    /// Slot of the procedure in the pool's limit, if one is set, see
+    /// [`VfsManager::limit_pending`].
+    pub pending: Option<OwnedSemaphorePermit>,
 }
 
 /// Sender to enqueue work in the queue.
 type VfsCommandSender<B> = Sender<VfsCommand<B>>;
+
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
 type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
+
+/// Queues procedures for the pool, first waiting for a slot of its limit if one is set,
+/// see [`VfsManager::limit_pending`].
+pub struct VfsSender<B: Buffer> {
+    tx: VfsCommandSender<B>,
+    pending: Option<Arc<Semaphore>>,
+}
+
+impl<B: Buffer> VfsSender<B> {
+    /// Creates a sender queueing into `tx` behind the slots of `pending`, if any.
+    pub fn new(tx: VfsCommandSender<B>, pending: Option<Arc<Semaphore>>) -> Self {
+        Self { tx, pending }
+    }
+
+    /// Queues a procedure, waiting while all slots of the limit are taken.
+    ///
+    /// The semaphore serves waiters in order and the read task of a connection is its
+    /// only waiter, so the slots go round the waiting connections in turn.
+    ///
+    /// # Errors
+    ///
+    /// Gives `result_tx` back when the pool is gone, so that the caller can answer.
+    pub async fn send(
+        &self,
+        args: NfsArgWrapper<B>,
+        result_tx: ReplySender<B>,
+    ) -> Result<(), ReplySender<B>> {
+        let pending = match &self.pending {
+            Some(pending) => Arc::clone(pending).acquire_owned().await.ok(),
+            None => None,
+        };
+        let command = VfsCommand { args, result_tx, pending };
+        self.tx.send(command).await.map_err(|SendError(command)| command.result_tx)
+    }
+}
+
+impl<B: Buffer> Clone for VfsSender<B> {
+    fn clone(&self) -> Self {
+        Self::new(self.tx.clone(), self.pending.clone())
+    }
+}
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -159,6 +205,8 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 pub struct VfsManager<B: Buffer> {
     /// Sender to enqueue work in the pool for execution.
     sender: VfsCommandSender<B>,
+    /// Procedures that may be queued or running at once, `None` for no limit.
+    pending: Option<Arc<Semaphore>>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
@@ -187,12 +235,20 @@ impl<B: Buffer + 'static> VfsManager<B> {
             VfsTask::new(backends.clone(), rx.clone()).spawn();
         }
 
-        Self { sender: tx }
+        Self { sender: tx, pending: None }
     }
 
-    /// Returns a clone of the command sender for enqueueing work in the queue.
-    pub fn sender(&self) -> VfsCommandSender<B> {
-        self.sender.clone()
+    /// Returns a sender for enqueueing work in the queue.
+    pub fn sender(&self) -> VfsSender<B> {
+        VfsSender::new(self.sender.clone(), self.pending.clone())
+    }
+
+    /// Limits how many procedures may be queued or running at once over all
+    /// connections, see [`crate::ServerContext::with_max_pending`].
+    pub fn limit_pending(&mut self, max_pending: NonZeroUsize) {
+        // `Semaphore::new` panics above `MAX_PERMITS`.
+        let permits = max_pending.get().min(Semaphore::MAX_PERMITS);
+        self.pending = Some(Arc::new(Semaphore::new(permits)));
     }
 }
 
@@ -259,7 +315,8 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx } = command;
+    // The slot is held until the reply is queued, then goes to the next procedure.
+    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, pending: _pending } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {

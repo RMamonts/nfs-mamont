@@ -8,7 +8,6 @@ use tracing::{debug, error, warn};
 use async_channel::{SendError, Sender};
 
 use crate::allocator::{Allocator, Buffer};
-use crate::connection_id::ConnectionId;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -20,7 +19,7 @@ use crate::rpc::{Error, ErrorWrapper};
 use crate::task::connection::limit::Budget;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsCommand;
+use crate::task::global::vfs::VfsSender;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -31,14 +30,14 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To send command into nlm task.
     nlm_sender: Sender<NlmCommand<B>>,
     /// To pass command into vfs task.
-    pool_sender: Sender<VfsCommand<B>>,
+    pool_sender: VfsSender<B>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
     pub fn new(
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: Sender<VfsCommand<B>>,
+        pool_sender: VfsSender<B>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender }
     }
@@ -51,7 +50,7 @@ pub struct ReadTask<
     B: Buffer + 'static = <A as Allocator>::Buffer,
 > {
     readhalf: OwnedReadHalf,
-    client_id: ConnectionId,
+    connection: crate::client_id::ConnectionInfo,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
     /// In-flight budget of the connection, see the [`super`] module docs.
@@ -66,12 +65,12 @@ where
     /// Creates new instance of [`ReadTask`]
     pub fn new(
         readhalf: OwnedReadHalf,
-        client_id: ConnectionId,
+        connection: crate::client_id::ConnectionInfo,
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
         budget: Budget<B>,
     ) -> Self {
-        Self { readhalf, client_id, allocator, command_senders, budget }
+        Self { readhalf, connection, allocator, command_senders, budget }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -87,7 +86,7 @@ where
     }
 
     async fn run(mut self) -> io::Result<()> {
-        let mut parser = RpcParser::new(self.readhalf, self.allocator);
+        let mut parser = RpcParser::new(self.readhalf, self.allocator, self.connection);
 
         loop {
             // Taken before the request is read: while the connection has `max_in_flight`
@@ -99,7 +98,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
-                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.connection.peer_addr, xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
@@ -111,7 +110,7 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header })
                     if matches!(*proc, NlmArguments::Null) =>
                 {
-                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.connection.peer_addr, xid=header.xid, program="NLM", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nlm4(Box::new(NlmRes::Null))),
@@ -122,13 +121,14 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    let command = VfsCommand { args: NfsArgWrapper { header, proc }, result_tx };
-
-                    if let Err(SendError(command)) =
-                        self.command_senders.pool_sender.send(command).await
+                    debug!(client=%self.connection.peer_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
+                    // Parsed before the pool's slot is taken, so that an idle connection
+                    // holds no slot.
+                    let args = NfsArgWrapper { header, proc };
+                    if let Err(result_tx) =
+                        self.command_senders.pool_sender.send(args, result_tx).await
                     {
-                        return command.result_tx.broken_pipe(xid).await;
+                        return result_tx.broken_pipe(xid).await;
                     }
                 }
 
@@ -136,7 +136,7 @@ where
                     if matches!(*proc, MountArguments::Null) =>
                 {
                     let xid = header.xid;
-                    debug!(client=%self.client_id.into_inner(), xid, program="MOUNT", proc="NULL", "rpc dispatch");
+                    debug!(client=%self.connection.peer_addr, xid, program="MOUNT", proc="NULL", "rpc dispatch");
 
                     let result = ProcReply {
                         xid: header.xid,
@@ -148,12 +148,9 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_id.into_inner(), xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
-                    let command = MountCommand {
-                        result_tx,
-                        args: MountArgWrapper { header, proc },
-                        connection_id: self.client_id,
-                    };
+                    debug!(client=%self.connection.peer_addr, xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
+                    let command =
+                        MountCommand { result_tx, args: MountArgWrapper { header, proc } };
                     if let Err(SendError(command)) =
                         self.command_senders.mount_sender.send(command).await
                     {
@@ -163,11 +160,10 @@ where
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    debug!(client=%self.connection.peer_addr, xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
                     let command = NlmCommand {
                         result_sender: result_tx,
                         args: NlmArgWrapper { header, proc },
-                        connection_id: self.client_id,
                     };
 
                     if let Err(SendError(command)) =
@@ -182,18 +178,18 @@ where
                 // one with a reply of our own could ping-pong with a confused peer, so
                 // the record is dropped silently.
                 Err(ErrorWrapper { xid: Some(xid), error: Error::MessageTypeMismatch }) => {
-                    warn!(client=%self.client_id.into_inner(), xid, "rpc record is not a CALL, ignoring");
+                    warn!(client=%self.connection.peer_addr, xid, "rpc record is not a CALL, ignoring");
                 }
 
                 Err(ErrorWrapper { xid: Some(xid), error }) => {
-                    error!(client=%self.client_id.into_inner(), xid, error=?error, "rpc parse error");
+                    error!(client=%self.connection.peer_addr, xid, error=?error, "rpc parse error");
                     let result = ProcReply { xid, proc_result: Err(error) };
                     result_tx.send(result).await?;
                 }
 
                 // specific case when we couldn't parser xid, which means that we can't send reply
                 Err(ErrorWrapper { xid: None, .. }) => {
-                    error!(client=%self.client_id.into_inner(), "rpc parse error: xid=<none>");
+                    error!(client=%self.connection.peer_addr, "rpc parse error: xid=<none>");
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }

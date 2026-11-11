@@ -48,6 +48,8 @@ pub async fn proc_nested_errors<T, E>(
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct RpcHeader {
     pub xid: u32,
+    /// Observed transport metadata supplied when constructing the parser.
+    pub connection: crate::client_id::ConnectionInfo,
     /// Authenticated caller identity extracted from the RPC credential.
     ///
     /// The reply verifier is always `AUTH_NONE` for the accepted flavors

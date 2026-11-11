@@ -2,7 +2,7 @@
 
 mod allocator;
 mod backend;
-pub mod connection_id;
+pub mod client_id;
 pub mod consts;
 mod context;
 pub mod mount;
@@ -20,12 +20,13 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
 
+use crate::client_id::ConnectionGenerationGenerator;
 use crate::consts::socket::{
     ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
 };
 use crate::mount::Mount;
 use crate::nlm::Nlm;
-use crate::task::connection;
+use crate::task::connection as connection_tasks;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::vfs::Vfs;
@@ -33,6 +34,7 @@ use crate::vfs::Vfs;
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use parser::RpcHeader;
 pub use rpc::auth;
 pub use rpc::AuthFlavor;
 pub use vfs::file::BackendId;
@@ -71,12 +73,19 @@ where
     // TODO: will be replaced with other solution in future
     let mut shutdown = Box::pin(signal::ctrl_c());
 
+    let mut generations = ConnectionGenerationGenerator::new();
     let accept_result = loop {
         tokio::select! {
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
+                        connection_tasks::new(
+                            socket,
+                            mount_sender.clone(),
+                            nlm_sender.clone(),
+                            &context,
+                            &mut generations,
+                        );
                     }
                     Err(err) if is_fatal_accept_error(&err) => break Err(err),
                     Err(err) => {

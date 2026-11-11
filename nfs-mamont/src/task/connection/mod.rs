@@ -25,7 +25,7 @@ use tokio::net::TcpStream;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::connection_id::ConnectionId;
+use crate::client_id::{ConnectionGenerationGenerator, ConnectionInfo};
 use crate::context::ServerContext;
 use crate::task::connection::limit::{Budget, InFlightReply};
 use crate::task::connection::read::CommandSenders;
@@ -45,6 +45,7 @@ pub fn new<A, V, B>(
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
+    generations: &mut ConnectionGenerationGenerator,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -58,8 +59,8 @@ pub fn new<A, V, B>(
             return;
         }
     };
+    let connection = ConnectionInfo::new(peer_addr, generations.allocate());
     let (readhalf, writehalf) = socket.into_split();
-    let client_id = ConnectionId::new(peer_addr);
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // in-flight budget of the connection, see the module docs
@@ -71,12 +72,12 @@ pub fn new<A, V, B>(
     spawn_tasks(
         read::ReadTask::<A, B>::new(
             readhalf,
-            client_id,
+            connection,
             context.get_allocator(),
             command_senders,
             budget,
         ),
-        write::WriteTask::<B>::new(writehalf, result_receiver, client_id, context.write_timeout()),
+        write::WriteTask::<B>::new(writehalf, result_receiver, connection, context.write_timeout()),
     );
 }
 
