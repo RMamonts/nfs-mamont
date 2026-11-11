@@ -1,8 +1,9 @@
 use std::cell::Cell;
 use std::collections::hash_map::RandomState;
-use std::future::Future;
+use std::future::{poll_fn, Future};
 use std::hash::BuildHasher;
 use std::num::NonZeroU64;
+use std::pin::pin;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -11,7 +12,7 @@ use metrics::{
     Gauge, Histogram, Key, Unit,
 };
 use tokio::task::AbortHandle;
-use tokio_metrics::{FutureMonitor, TaskMetricsReporterBuilder, TaskMonitor};
+use tokio_metrics::{TaskMetricsReporterBuilder, TaskMonitor};
 
 use super::consts::{
     CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REQUESTS_TOTAL, SAMPLE_EVERY, STAGE_SECONDS,
@@ -260,15 +261,15 @@ impl NfsMetrics {
 
         let output = if timer.0.is_some() {
             io.start();
-            let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
+            let (output, poll, idle) = timed(reply).await;
             let syscall = io.take();
             if output.is_ok() {
                 let metrics = &self.reply[procedure as usize];
                 // IoTimer measures time inside socket's write polls ~= syscall time
                 // Total future poll duration - syscall time = serialization time
-                metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+                metrics.cpu.record(poll.saturating_sub(syscall));
                 metrics.syscall.record(syscall);
-                metrics.wait.record(future_metrics.total_idle_duration);
+                metrics.wait.record(idle);
             }
             output
         } else {
@@ -300,16 +301,41 @@ impl NfsMetrics {
         }
 
         io.start();
-        let (output, future_metrics) = FutureMonitor::new().instrument(call).await;
+        let (output, poll, _) = timed(call).await;
         let syscall = io.take();
         let Some(procedure) = procedure(&output) else { return (output, Timer::NONE) };
 
         let metrics = &self.call[procedure as usize];
         // Syscalls run inside polls; the rest of the poll time is deserialization
-        metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
+        metrics.cpu.record(poll.saturating_sub(syscall));
         metrics.syscall.record(syscall);
         (output, self.start())
     }
+}
+
+/// Awaits `fut`, returning its output, the total time spent inside its polls and
+/// the total time between them.
+///
+/// Unlike [`tokio_metrics::FutureMonitor`], doesn't wrap the waker, so the time
+/// between polls includes the scheduling delay after a wake-up.
+async fn timed<F: Future>(fut: F) -> (F::Output, Duration, Duration) {
+    let mut fut = pin!(fut);
+    let mut poll = Duration::ZERO;
+    let mut idle = Duration::ZERO;
+    let mut last_poll_end = None;
+    let output = poll_fn(|cx| {
+        let start = Instant::now();
+        if let Some(end) = last_poll_end {
+            idle += start - end;
+        }
+        let result = fut.as_mut().poll(cx);
+        let end = Instant::now();
+        poll += end - start;
+        last_poll_end = Some(end);
+        result
+    })
+    .await;
+    (output, poll, idle)
 }
 
 impl Drop for NfsMetrics {
