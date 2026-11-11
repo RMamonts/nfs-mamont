@@ -95,15 +95,17 @@ where
         let mut parser = RpcParser::new(readhalf, self.allocator);
 
         loop {
-            let message =
-                self.metrics.read_call(&io, parser.next_message(), |message| match message {
+            let (message, timer) = self
+                .metrics
+                .read_call(&io, parser.next_message(), |message| match message {
                     Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
                         Some(args.procedure())
                     }
 
                     _ => None,
-                });
-            match message.await {
+                })
+                .await;
+            match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
@@ -111,7 +113,7 @@ where
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
-                        timer: self.metrics.start(),
+                        timer,
                     };
 
                     if let Err(err) = self.command_senders.result_sender.send(result).await {
@@ -145,7 +147,6 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
-                    let timer = self.metrics.start();
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };

@@ -21,11 +21,10 @@ async fn unmeasured_timer_records_nothing() {
 
     let mut timer = Timer::NONE;
     metrics.lap(&mut timer, Stage::Vfs);
-    metrics.finish(timer, true);
+    metrics.finish(timer);
 
     let snapshot = snapshot(&snapshotter);
 
-    assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "ok")]), &DebugValue::Counter(0));
     assert_eq!(samples(value(&snapshot, DURATION_SECONDS, &[])), 0);
     assert_eq!(samples(value(&snapshot, STAGE_SECONDS, &[("stage", "vfs")])), 0);
 }
@@ -38,13 +37,11 @@ async fn laps_and_finish_are_recorded() {
     for stage in Stage::ALL {
         metrics.lap(&mut timer, stage);
     }
-    metrics.finish(timer, true);
-    metrics.finish(metrics.start(), false);
+    metrics.finish(timer);
+    metrics.finish(metrics.start());
 
     let snapshot = snapshot(&snapshotter);
 
-    assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "ok")]), &DebugValue::Counter(1));
-    assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "error")]), &DebugValue::Counter(1));
     assert_eq!(samples(value(&snapshot, DURATION_SECONDS, &[])), 2);
 
     for stage in Stage::ALL {
@@ -96,12 +93,19 @@ async fn write_reply() {
     let (metrics, snapshotter, _) = metrics();
     let (mut socket, io) = metrics.io_timer(Vec::new());
 
-    metrics.write_reply(None, &io, socket.write_all(b"unmeasured")).await.unwrap();
-    metrics.write_reply(Some(GETATTR), &io, socket.write_all(b"abcd")).await.unwrap();
+    // not NFS
+    metrics.write_reply(&metrics.start(), None, &io, socket.write_all(b"mount")).await.unwrap();
+    // not sampled
+    metrics.write_reply(&Timer::NONE, Some(GETATTR), &io, socket.write_all(b"ab")).await.unwrap();
+    metrics
+        .write_reply(&metrics.start(), Some(GETATTR), &io, socket.write_all(b"cd"))
+        .await
+        .unwrap();
 
     let snapshot = snapshot(&snapshotter);
     let labels = [("message", "reply"), ("proc", "getattr")];
 
+    assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "ok")]), &DebugValue::Counter(2));
     for name in [CPU_SECONDS, SYSCALL_SECONDS, WAIT_SECONDS] {
         assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
     }
@@ -113,12 +117,19 @@ async fn read_call() {
     let (mut socket, io) = metrics.io_timer(&b"unmeasuredabcd"[..]);
     let mut buf = [0; 10];
 
-    metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await.unwrap();
-    metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(GETATTR)).await.unwrap();
+    // every call is sampled in tests
+    let (output, not_nfs) = metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await;
+    output.unwrap();
+    let (output, timer) =
+        metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(GETATTR)).await;
+    output.unwrap();
+    metrics.finish(not_nfs);
+    metrics.finish(timer);
 
     let snapshot = snapshot(&snapshotter);
     let labels = [("message", "call"), ("proc", "getattr")];
 
+    assert_eq!(samples(value(&snapshot, DURATION_SECONDS, &[])), 1);
     for name in [CPU_SECONDS, SYSCALL_SECONDS] {
         assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
     }

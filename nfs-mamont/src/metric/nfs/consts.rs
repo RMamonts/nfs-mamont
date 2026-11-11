@@ -7,6 +7,10 @@ pub(in crate::metric) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
 pub(in crate::metric) const CPU_SECONDS: &str = "nfsmamont_rpc_cpu_seconds";
 pub(in crate::metric) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
 pub(in crate::metric) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";
+pub(in crate::metric) const SAMPLE_EVERY_GAUGE: &str = "nfsmamont_sample_every";
+
+/// About one in this many NFS requests is timed.
+pub(super) const SAMPLE_EVERY: u64 = 16;
 
 /// How often tokio task metrics are sampled into the recorder.
 pub(super) const TOKIO_SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
