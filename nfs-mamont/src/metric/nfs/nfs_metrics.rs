@@ -11,8 +11,8 @@ use tokio::task::AbortHandle;
 use tokio_metrics::{FutureMonitor, TaskMetricsReporterBuilder, TaskMonitor};
 
 use super::consts::{
-    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REPLY_BYTES, REQUESTS_TOTAL, STAGE_SECONDS,
-    SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
+    CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS,
+    TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use super::io::{IoStats, IoTimer};
 use crate::metric::{Stage, TaskKind};
@@ -23,7 +23,6 @@ struct ReplyMetrics {
     cpu: Histogram,
     syscall: Histogram,
     wait: Histogram,
-    bytes: Histogram,
 }
 
 impl ReplyMetrics {
@@ -32,7 +31,6 @@ impl ReplyMetrics {
             cpu: histogram!(CPU_SECONDS, "message" => "reply", "proc" => proc),
             syscall: histogram!(SYSCALL_SECONDS, "message" => "reply", "proc" => proc),
             wait: histogram!(WAIT_SECONDS, "message" => "reply", "proc" => proc),
-            bytes: histogram!(REPLY_BYTES, "message" => "reply", "proc" => proc),
         }
     }
 }
@@ -139,7 +137,6 @@ impl NfsMetrics {
             Unit::Seconds,
             "Time a message waited for the socket to become ready"
         );
-        describe_histogram!(REPLY_BYTES, Unit::Bytes, "Size of reply messages");
 
         let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
         let mut reporters = Vec::new();
@@ -242,7 +239,7 @@ impl NfsMetrics {
         };
 
         let (output, future_metrics) = FutureMonitor::new().instrument(reply).await;
-        let (syscall, bytes) = io.take();
+        let syscall = io.take();
         if output.is_ok() {
             let metrics = &self.reply[procedure as usize];
             // IoTimer measures time inside socket's write polls ~= syscall time
@@ -250,7 +247,6 @@ impl NfsMetrics {
             metrics.cpu.record(future_metrics.total_poll_duration.saturating_sub(syscall));
             metrics.syscall.record(syscall);
             metrics.wait.record(future_metrics.total_idle_duration);
-            metrics.bytes.record(bytes as f64);
         }
         output
     }
@@ -268,7 +264,7 @@ impl NfsMetrics {
         procedure: impl FnOnce(&F::Output) -> Option<u32>,
     ) -> F::Output {
         let (output, future_metrics) = FutureMonitor::new().instrument(call).await;
-        let (syscall, _) = io.take();
+        let syscall = io.take();
         if let Some(procedure) = procedure(&output) {
             let metrics = &self.call[procedure as usize];
             // Syscalls run inside polls; the rest of the poll time is deserialization

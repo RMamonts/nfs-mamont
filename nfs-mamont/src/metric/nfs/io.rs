@@ -14,24 +14,19 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 #[derive(Default)]
 pub struct IoStats {
     nanos: AtomicU64,
-    bytes: AtomicU64,
 }
 
 impl IoStats {
     /// Returns the accumulated I/O time and bytes, resetting both.
-    pub fn take(&self) -> (Duration, u64) {
+    pub fn take(&self) -> Duration {
         let nanos = self.nanos.swap(0, Ordering::Relaxed);
-        let bytes = self.bytes.swap(0, Ordering::Relaxed);
-        (Duration::from_nanos(nanos), bytes)
+        Duration::from_nanos(nanos)
     }
 
     fn record(&self, poll: impl FnOnce() -> Poll<io::Result<usize>>) -> Poll<io::Result<usize>> {
         let start = Instant::now();
         let result = poll();
         self.nanos.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
-        if let Poll::Ready(Ok(n)) = result {
-            self.bytes.fetch_add(n as u64, Ordering::Relaxed);
-        }
         result
     }
 }
