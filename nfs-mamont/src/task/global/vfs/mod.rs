@@ -13,8 +13,8 @@ use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::file::BackendId;
-use crate::vfs::{self, NfsRes, Vfs};
+use crate::vfs::nfsv3::file::BackendId;
+use crate::vfs::nfsv3::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure.
 pub struct VfsCommand<B: Buffer> {
@@ -80,69 +80,71 @@ fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
 ///
 /// Used when the procedure cannot reach a backend at all, so no backend-provided
 /// attributes are available.
-fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsRes<B> {
-    let wcc_data = || vfs::WccData { before: None, after: None };
+fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: nfsv3::Error) -> NfsRes<B> {
+    let wcc_data = || nfsv3::WccData { before: None, after: None };
 
     match proc {
         NfsArguments::Null => NfsRes::Null,
-        NfsArguments::GetAttr(_) => NfsRes::GetAttr(Err(vfs::get_attr::Fail { error })),
+        NfsArguments::GetAttr(_) => NfsRes::GetAttr(Err(nfsv3::get_attr::Fail { error })),
         NfsArguments::SetAttr(_) => {
-            NfsRes::SetAttr(Err(vfs::set_attr::Fail { error, wcc_data: wcc_data() }))
+            NfsRes::SetAttr(Err(nfsv3::set_attr::Fail { error, wcc_data: wcc_data() }))
         }
-        NfsArguments::LookUp(_) => NfsRes::LookUp(Err(vfs::lookup::Fail { error, dir_attr: None })),
+        NfsArguments::LookUp(_) => {
+            NfsRes::LookUp(Err(nfsv3::lookup::Fail { error, dir_attr: None }))
+        }
         NfsArguments::Access(_) => {
-            NfsRes::Access(Err(vfs::access::Fail { error, object_attr: None }))
+            NfsRes::Access(Err(nfsv3::access::Fail { error, object_attr: None }))
         }
         NfsArguments::ReadLink(_) => {
-            NfsRes::ReadLink(Err(vfs::read_link::Fail { error, symlink_attr: None }))
+            NfsRes::ReadLink(Err(nfsv3::read_link::Fail { error, symlink_attr: None }))
         }
-        NfsArguments::Read(..) => NfsRes::Read(Err(vfs::read::Fail { error, file_attr: None })),
+        NfsArguments::Read(..) => NfsRes::Read(Err(nfsv3::read::Fail { error, file_attr: None })),
         NfsArguments::Write(_) => {
-            NfsRes::Write(Err(vfs::write::Fail { error, wcc_data: wcc_data() }))
+            NfsRes::Write(Err(nfsv3::write::Fail { error, wcc_data: wcc_data() }))
         }
         NfsArguments::Create(_) => {
-            NfsRes::Create(Err(vfs::create::Fail { error, wcc_data: wcc_data() }))
+            NfsRes::Create(Err(nfsv3::create::Fail { error, wcc_data: wcc_data() }))
         }
         NfsArguments::MkDir(_) => {
-            NfsRes::MkDir(Err(vfs::mk_dir::Fail { error, dir_wcc: wcc_data() }))
+            NfsRes::MkDir(Err(nfsv3::mk_dir::Fail { error, dir_wcc: wcc_data() }))
         }
         NfsArguments::SymLink(_) => {
-            NfsRes::SymLink(Err(vfs::symlink::Fail { error, dir_wcc: wcc_data() }))
+            NfsRes::SymLink(Err(nfsv3::symlink::Fail { error, dir_wcc: wcc_data() }))
         }
         NfsArguments::MkNod(_) => {
-            NfsRes::MkNod(Err(vfs::mk_node::Fail { error, dir_wcc: wcc_data() }))
+            NfsRes::MkNod(Err(nfsv3::mk_node::Fail { error, dir_wcc: wcc_data() }))
         }
         NfsArguments::Remove(_) => {
-            NfsRes::Remove(Err(vfs::remove::Fail { error, dir_wcc: wcc_data() }))
+            NfsRes::Remove(Err(nfsv3::remove::Fail { error, dir_wcc: wcc_data() }))
         }
         NfsArguments::RmDir(_) => {
-            NfsRes::RmDir(Err(vfs::rm_dir::Fail { error, dir_wcc: wcc_data() }))
+            NfsRes::RmDir(Err(nfsv3::rm_dir::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::Rename(_) => NfsRes::Rename(Err(vfs::rename::Fail {
+        NfsArguments::Rename(_) => NfsRes::Rename(Err(nfsv3::rename::Fail {
             error,
             from_dir_wcc: wcc_data(),
             to_dir_wcc: wcc_data(),
         })),
         NfsArguments::Link(_) => {
-            NfsRes::Link(Err(vfs::link::Fail { error, file_attr: None, dir_wcc: wcc_data() }))
+            NfsRes::Link(Err(nfsv3::link::Fail { error, file_attr: None, dir_wcc: wcc_data() }))
         }
         NfsArguments::ReadDir(_) => {
-            NfsRes::ReadDir(Err(vfs::read_dir::Fail { error, dir_attr: None }))
+            NfsRes::ReadDir(Err(nfsv3::read_dir::Fail { error, dir_attr: None }))
         }
         NfsArguments::ReadDirPlus(_) => {
-            NfsRes::ReadDirPlus(Err(vfs::read_dir_plus::Fail { error, dir_attr: None }))
+            NfsRes::ReadDirPlus(Err(nfsv3::read_dir_plus::Fail { error, dir_attr: None }))
         }
         NfsArguments::FsStat(_) => {
-            NfsRes::FsStat(Err(vfs::fs_stat::Fail { error, root_attr: None }))
+            NfsRes::FsStat(Err(nfsv3::fs_stat::Fail { error, root_attr: None }))
         }
         NfsArguments::FsInfo(_) => {
-            NfsRes::FsInfo(Err(vfs::fs_info::Fail { error, root_attr: None }))
+            NfsRes::FsInfo(Err(nfsv3::fs_info::Fail { error, root_attr: None }))
         }
         NfsArguments::PathConf(_) => {
-            NfsRes::PathConf(Err(vfs::path_conf::Fail { error, file_attr: None }))
+            NfsRes::PathConf(Err(nfsv3::path_conf::Fail { error, file_attr: None }))
         }
         NfsArguments::Commit(_) => {
-            NfsRes::Commit(Err(vfs::commit::Fail { error, file_wcc: wcc_data() }))
+            NfsRes::Commit(Err(nfsv3::commit::Fail { error, file_wcc: wcc_data() }))
         }
     }
 }
@@ -208,7 +210,7 @@ impl<B: Buffer> Drop for VfsManager<B> {
 pub struct VfsTask<V, B>
 where
     B: Buffer,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
@@ -219,7 +221,7 @@ where
 impl<V, B> VfsTask<V, B>
 where
     B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     /// Builds a worker that reads commands from the pool and executes them.
     ///
@@ -257,14 +259,14 @@ where
 async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: VfsCommand<B>)
 where
     B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
         Target::None => NfsRes::Null,
-        Target::Crossing => failed_response(&proc, vfs::Error::XDev),
+        Target::Crossing => failed_response(&proc, nfsv3::Error::XDev),
         Target::Single(backend_id) => match backends.get(backend_id) {
             Some(backend) => execute(*proc, backend, &header.cred).await,
             None => {
@@ -276,7 +278,7 @@ where
                     "no backend attached for this file handle"
                 );
 
-                failed_response(&proc, vfs::Error::StaleFile)
+                failed_response(&proc, nfsv3::Error::StaleFile)
             }
         },
     };
@@ -298,7 +300,7 @@ where
 async fn execute<V, B>(proc: NfsArguments<B>, backend: Arc<V>, cred: &Credential) -> NfsRes<B>
 where
     B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     match proc {
         NfsArguments::Null => NfsRes::Null,

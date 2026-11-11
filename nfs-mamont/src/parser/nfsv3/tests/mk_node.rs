@@ -2,8 +2,8 @@ use std::io::Cursor;
 
 use crate::parser::nfsv3::mk_node::{args, what};
 use crate::parser::Error;
-use crate::vfs::mk_node;
-use crate::vfs::set_attr;
+use crate::vfs::nfsv3::mk_node;
+use crate::vfs::nfsv3::set_attr;
 
 #[rustfmt::skip]
 const EMPTY_NEW_ATTR: &[u8] = &[
@@ -71,7 +71,7 @@ fn test_what_block() {
                 atime: set_attr::SetTime::DontChange,
                 mtime: set_attr::SetTime::DontChange,
             },
-            crate::vfs::file::Device { major: 17, minor: 34 }
+            crate::vfs::nfsv3::file::Device { major: 17, minor: 34 }
         )
     ));
 }
@@ -98,7 +98,7 @@ fn test_what_char() {
                 atime: set_attr::SetTime::DontChange,
                 mtime: set_attr::SetTime::DontChange,
             },
-            crate::vfs::file::Device { major: 170, minor: 187 }
+            crate::vfs::nfsv3::file::Device { major: 170, minor: 187 }
         )
     ));
 }

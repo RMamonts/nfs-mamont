@@ -2,7 +2,7 @@
 //!
 //! Contains [`Nlm4Lock`] and [`OpaqueHandle`] types used by lock procedures.
 
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::{Name, OpaqueHandle};
 
@@ -11,7 +11,7 @@ pub struct Nlm4Lock {
     /// Name of the client host making the lock request.
     pub caller_name: Name,
     /// Handle to the file to lock.
-    pub file_handle: vfs::file::Handle,
+    pub file_handle: nfsv3::file::Handle,
     /// Host or process that is making the request.
     pub opaque_handle: OpaqueHandle,
     /// PID of the process making the request.

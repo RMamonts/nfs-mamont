@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`FsStat`] interface.
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -38,7 +38,7 @@ pub struct Success {
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// The attributes of the mount point.
     pub root_attr: Option<file::Attr>,
 }

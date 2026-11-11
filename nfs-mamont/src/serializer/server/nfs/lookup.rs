@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::{file_attr, file_handle};
 use crate::serializer::option;
-use crate::vfs::lookup;
+use crate::vfs::nfsv3::lookup;
 
 /// Serializes [`lookup::Success`] (LOOKUP3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: lookup::Success) -> io::Result<()> {

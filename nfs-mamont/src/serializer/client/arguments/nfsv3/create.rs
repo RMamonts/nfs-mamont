@@ -3,7 +3,7 @@ use std::io::{Result, Write};
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::serializer::files::dir_op_arg;
 use crate::serializer::{array, variant};
-use crate::vfs::create::{Args, How, HowMode, Verifier};
+use crate::vfs::nfsv3::create::{Args, How, HowMode, Verifier};
 
 use crate::serializer::client::arguments::nfsv3::set_attr::serialize_new_attr;
 

@@ -5,8 +5,8 @@ use std::io::Read;
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{bool, option, u32, u64, variant};
 use crate::parser::Result;
-use crate::vfs::set_attr;
-use crate::vfs::set_attr::{Guard, NewAttr, SetTime, SetTimeMode};
+use crate::vfs::nfsv3::set_attr;
+use crate::vfs::nfsv3::set_attr::{Guard, NewAttr, SetTime, SetTimeMode};
 
 /// Parses a [`NewAttr`] structure from the provided `Read` source.
 pub fn new_attr(src: &mut impl Read) -> Result<NewAttr> {

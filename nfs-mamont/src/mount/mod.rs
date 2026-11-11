@@ -9,7 +9,7 @@ pub mod umntall;
 use std::io;
 
 use crate::consts::mount::MOUNT_HOST_NAME_LEN;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 /// Client host name.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]

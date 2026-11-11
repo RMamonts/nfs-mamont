@@ -1,4 +1,4 @@
-use nfs_mamont::vfs::file;
+use nfs_mamont::vfs::nfsv3::file;
 
 use super::MountService;
 

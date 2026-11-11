@@ -1,7 +1,7 @@
 use std::io::{Result, Write};
 
 use crate::serializer::files::dir_op_arg;
-use crate::vfs::mk_dir::Args;
+use crate::vfs::nfsv3::mk_dir::Args;
 
 use crate::serializer::client::arguments::nfsv3::set_attr::serialize_new_attr;
 

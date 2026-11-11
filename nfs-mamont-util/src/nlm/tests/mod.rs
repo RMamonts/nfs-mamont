@@ -3,7 +3,7 @@ use nfs_mamont::nlm::lock::Nlm4Lock;
 use nfs_mamont::nlm::procedures::lock::Nlm4LockArgs;
 use nfs_mamont::nlm::procedures::unlock::Nlm4UnlockArgs;
 use nfs_mamont::nlm::{Name, OpaqueHandle};
-use nfs_mamont::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
+use nfs_mamont::vfs::nfsv3::file::{BackendId, Handle, PAYLOAD_SIZE};
 
 use crate::nlm::lock_types::ActiveLock;
 use crate::nlm::LockRegistry;

@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::parser::nfsv3::mk_dir::args;
-use crate::vfs::set_attr;
+use crate::vfs::nfsv3::set_attr;
 
 #[test]
 fn test_mkdir() {

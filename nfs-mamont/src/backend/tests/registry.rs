@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::backend::BackendRegistry;
-use crate::vfs::file::BackendId;
+use crate::vfs::nfsv3::file::BackendId;
 
 /// Fills every slot of `registry` and returns the ids in attach order.
 fn fill<V>(registry: &BackendRegistry<V>, backend: &Arc<V>) -> Vec<BackendId> {

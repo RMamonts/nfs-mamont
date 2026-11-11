@@ -5,8 +5,8 @@ use std::io::Write;
 
 use crate::serializer::files::{file_attr, file_handle, file_name};
 use crate::serializer::{array, bool, option, u64};
-use crate::vfs::read_dir_plus;
-use crate::vfs::read_dir_plus::Entry;
+use crate::vfs::nfsv3::read_dir_plus;
+use crate::vfs::nfsv3::read_dir_plus::Entry;
 
 /// Serializes a single [`Entry`] (READDIRPLUS3 entry) into XDR.
 fn entry(dest: &mut impl Write, entry: Entry) -> io::Result<()> {

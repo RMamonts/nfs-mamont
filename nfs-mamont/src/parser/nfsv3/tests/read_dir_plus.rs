@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::parser::nfsv3::read_dir_plus::args;
-use crate::vfs::read_dir;
+use crate::vfs::nfsv3::read_dir;
 
 #[test]
 fn test_readdir_plus() {

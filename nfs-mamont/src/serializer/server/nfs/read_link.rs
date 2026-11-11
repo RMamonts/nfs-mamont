@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::{file_attr, file_path};
 use crate::serializer::option;
-use crate::vfs::read_link;
+use crate::vfs::nfsv3::read_link;
 
 /// Serializes [`read_link::Success`] (READLINK3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: read_link::Success) -> io::Result<()> {

@@ -4,7 +4,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -19,7 +19,7 @@ pub enum How {
     Unchecked(super::set_attr::NewAttr),
     /// Specifies that the server should check for the presence
     /// of a duplicate file before performing the create and
-    /// should fail the request with [`vfs::Error::Exist`] if a
+    /// should fail the request with [`nfsv3::Error::Exist`] if a
     /// duplicate file exists.
     ///
     /// If the file does not exist, the request is performed as
@@ -48,21 +48,21 @@ pub struct Success {
     /// The attributes of the regular file just created.
     pub attr: Option<file::Attr>,
     /// Weak cache consistency data for the directory of creation.
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// Weak cache consistency data for the directory.
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// [`Create::create`] arguments.
 pub struct Args {
     /// The location of the file to be created.
-    pub object: vfs::DirOpArgs,
+    pub object: nfsv3::DirOpArgs,
     /// The file creation mode. See [`How`] documentation.
     pub how: How,
 }

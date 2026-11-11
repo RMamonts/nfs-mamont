@@ -5,15 +5,15 @@ use std::io::{ErrorKind, Write};
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::serializer::{array, option, string_max_size, u32, u64, usize_as_u32, variant};
-use crate::vfs;
-use crate::vfs::{file, DirOpArgs, MAX_PATH_LEN};
+use crate::vfs::nfsv3;
+use crate::vfs::nfsv3::{file, DirOpArgs, MAX_PATH_LEN};
 
-/// Serializes [`vfs::file::Time`] into XDR `nfstime3`.
+/// Serializes [`nfsv3::file::Time`] into XDR `nfstime3`.
 pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> io::Result<()> {
     u32(dest, arg.seconds).and_then(|_| u32(dest, arg.nanos))
 }
 
-/// Serializes [`vfs::file::Handle`] into XDR `nfs_fh3`.
+/// Serializes [`nfsv3::file::Handle`] into XDR `nfs_fh3`.
 pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
     usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array(dest, fh.into_bytes()))
 }
@@ -48,15 +48,15 @@ pub fn wcc_attr(dest: &mut impl Write, wcc: file::WccAttr) -> io::Result<()> {
     nfs_time(dest, wcc.ctime)
 }
 
-/// Serializes [`vfs::WccData`] as XDR `wcc_data` (before/after attributes).
-pub fn wcc_data(dest: &mut impl Write, wcc: vfs::WccData) -> io::Result<()> {
+/// Serializes [`nfsv3::WccData`] as XDR `wcc_data` (before/after attributes).
+pub fn wcc_data(dest: &mut impl Write, wcc: nfsv3::WccData) -> io::Result<()> {
     option(dest, wcc.before, |attr, dest| wcc_attr(dest, attr))?;
     option(dest, wcc.after, |attr, dest| file_attr(dest, &attr))
 }
 
 /// Serializes [`file::Name`] as XDR `filename3` (bounded string).
 pub fn file_name(dest: &mut impl Write, file_name: file::Name) -> io::Result<()> {
-    string_max_size(dest, file_name.as_str(), vfs::MAX_NAME_LEN)
+    string_max_size(dest, file_name.as_str(), nfsv3::MAX_NAME_LEN)
 }
 
 /// Serializes [`file::Path`] as XDR `path` (bounded string).

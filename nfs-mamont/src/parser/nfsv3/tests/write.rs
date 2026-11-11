@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::parser::nfsv3::write::args;
-use crate::vfs::write;
+use crate::vfs::nfsv3::write;
 
 #[test]
 fn test_write() {

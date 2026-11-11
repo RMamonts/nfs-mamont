@@ -1,10 +1,10 @@
-//! Runtime registry of [`crate::vfs::Vfs`] backends.
+//! Runtime registry of [`crate::vfs::nfsv3::Vfs`] backends.
 //!
 //! The server starts without any backend and serves requests against the backends
 //! attached later through [`BackendRegistry::add`]. Every backend is identified by a
 //! [`BackendId`] that is encoded in the first two bytes of the file handles it hands
 //! out, so an incoming procedure is routed by looking at
-//! [`file::Handle::backend_id`](crate::vfs::file::Handle::backend_id).
+//! [`file::Handle::backend_id`](crate::vfs::nfsv3::file::Handle::backend_id).
 //!
 //! A [`BackendId`] is a registry slot plus the generation of that slot. The generation
 //! is bumped whenever a backend is detached, so handles of a detached backend turn
@@ -18,7 +18,7 @@ mod tests;
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
-use crate::vfs::file::BackendId;
+use crate::vfs::nfsv3::file::BackendId;
 
 /// One registry slot.
 struct Slot<V> {
@@ -81,7 +81,7 @@ impl<V> BackendRegistry<V> {
     /// Detaches the backend registered under `id`.
     ///
     /// In-flight procedures already dispatched to that backend run to completion;
-    /// later requests carrying its handles fail with [`crate::vfs::Error::StaleFile`],
+    /// later requests carrying its handles fail with [`crate::vfs::nfsv3::Error::StaleFile`],
     /// even after another backend is attached to the same slot.
     ///
     /// # Returns

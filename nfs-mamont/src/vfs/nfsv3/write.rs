@@ -5,7 +5,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use crate::allocator::Buffer;
 use crate::consts::nfsv3::NFS3_WRITEVERFSIZE;
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -33,21 +33,21 @@ pub struct Verifier(pub [u8; NFS3_WRITEVERFSIZE]);
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the file.
-    pub file_wcc: vfs::WccData,
+    pub file_wcc: nfsv3::WccData,
     /// The number of bytes of data written to the file.
     pub count: u32,
     /// The indication of the level of commitment of the data and metadata.
     pub committed: StableHow,
-    /// Cookie used by client to detect server reboot between unstable writes and [`vfs::commit::Commit`].
+    /// Cookie used by client to detect server reboot between unstable writes and [`nfsv3::commit::Commit`].
     pub verifier: Verifier,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// Weak cache consistency data for the file.
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// [`Write::write`] arguments.
@@ -93,10 +93,10 @@ pub struct ArgsPartial {
 pub trait Write<B: Buffer> {
     /// Writes data to a file.
     ///
-    /// Some implementations may return [`vfs::Error::NoSpace`] instead of
-    /// [`vfs::Error::QuotaExceeded`] when a user's quota is exceeded.
+    /// Some implementations may return [`nfsv3::Error::NoSpace`] instead of
+    /// [`nfsv3::Error::QuotaExceeded`] when a user's quota is exceeded.
     ///
     /// If the `file` system object type was not a [`file::Type::Regular`] file,
-    /// [`vfs::Error::InvalidArgument`] is returned.
+    /// [`nfsv3::Error::InvalidArgument`] is returned.
     async fn write(&self, args: Args<B>, cred: &Credential) -> Result<Success, Fail>;
 }

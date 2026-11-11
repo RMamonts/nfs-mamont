@@ -1,7 +1,7 @@
 use crate::allocator::Buffer;
 use crate::parser::NfsArguments;
-use crate::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
-use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
+use crate::vfs::nfsv3::file::{BackendId, Handle, PAYLOAD_SIZE};
+use crate::vfs::nfsv3::{self, get_attr, link, rename, DirOpArgs, NfsRes};
 
 use super::{failed_response, target, Target};
 
@@ -34,8 +34,8 @@ fn handle(backend: u8) -> Handle {
     Handle::new(BackendId::new(backend, 0), [0x01; PAYLOAD_SIZE])
 }
 
-fn name() -> vfs::file::Name {
-    vfs::file::Name::new("file".to_string()).unwrap()
+fn name() -> nfsv3::file::Name {
+    nfsv3::file::Name::new("file".to_string()).unwrap()
 }
 
 #[test]
@@ -86,8 +86,8 @@ fn link_across_backends_is_crossing() {
 fn failed_response_keeps_the_procedure_variant() {
     let proc = NfsArguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
 
-    let NfsRes::GetAttr(Err(fail)) = failed_response(&proc, vfs::Error::StaleFile) else {
+    let NfsRes::GetAttr(Err(fail)) = failed_response(&proc, nfsv3::Error::StaleFile) else {
         panic!("expected a failed GETATTR response");
     };
-    assert_eq!(fail.error, vfs::Error::StaleFile);
+    assert_eq!(fail.error, nfsv3::Error::StaleFile);
 }

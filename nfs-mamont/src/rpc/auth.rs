@@ -81,7 +81,7 @@ pub struct AuthSysParams {
 /// parsing with [`AuthStat::BadCred`].
 ///
 /// This value is passed down to the service layer (e.g. every
-/// [`crate::vfs::Vfs`] method and the MOUNT `mnt` procedure) so an
+/// [`crate::vfs::nfsv3::Vfs`] method and the MOUNT `mnt` procedure) so an
 /// implementation can make authorization decisions based on the caller.
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]

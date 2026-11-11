@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::{file_attr, file_handle, wcc_data};
 use crate::serializer::option;
-use crate::vfs::create;
+use crate::vfs::nfsv3::create;
 
 /// Serializes [`create::Success`] (CREATE3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: create::Success) -> io::Result<()> {

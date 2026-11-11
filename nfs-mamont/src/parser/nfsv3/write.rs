@@ -5,8 +5,8 @@ use std::io::Read;
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{u32, u64, variant};
 use crate::parser::Result;
-use crate::vfs::write;
-use crate::vfs::write::StableHow;
+use crate::vfs::nfsv3::write;
+use crate::vfs::nfsv3::write::StableHow;
 
 /// Parses the arguments for an NFSv3 `WRITE` operation from the provided `Read` source.
 /// Function returns either `parser::Error` or `write::ArgPartial`.

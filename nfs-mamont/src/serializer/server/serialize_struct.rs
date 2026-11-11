@@ -1,6 +1,6 @@
 //! High-level XDR serializer for complete RPC/NFS replies.
 //!
-//! This module bridges `crate::vfs` results to the wire format by selecting the
+//! This module bridges `crate::nfsv3` results to the wire format by selecting the
 //! appropriate per-procedure serializer from `crate::serializer::nfs` (and
 //! mount serializers from `crate::serializer::mount`), then emitting a complete
 //! RPC reply to an async writer.
@@ -19,7 +19,7 @@ use crate::rpc::{AcceptStat, Error, OpaqueAuth, RejectedReply, ReplyBody, RpcBod
 use crate::consts::xdr::{padding_len, ALIGNMENT};
 use crate::serializer::{u32, usize_as_u32};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::{NfsRes, STATUS_OK};
+use crate::vfs::nfsv3::{NfsRes, STATUS_OK};
 
 use super::mount::mnt;
 use super::nfs::{
@@ -32,7 +32,7 @@ use super::rpc::auth;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol replies, except for NFSv3 `READ` procedure reply -
-/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::read::Success`])
+/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`crate::vfs::nfsv3::read::Success`])
 const DEFAULT_SIZE: usize = 4096;
 
 macro_rules! nfs_result {
@@ -368,7 +368,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
 
         // this place is a bit paradox
         // In READ procedure (https://datatracker.ietf.org/doc/html/rfc1813#autoid-25) opaque data
-        // (which is represented with Buffer in vfs::read::Success) from XDR
+        // (which is represented with Buffer in nfsv3::read::Success) from XDR
         // (https://datatracker.ietf.org/doc/html/rfc4506#autoid-17) is used, which mean (quote):
         //    The array is encoded as the element count n
         //    (an unsigned integer) followed by the encoding of each of the array's

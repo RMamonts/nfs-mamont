@@ -22,7 +22,7 @@ use crate::nlm::procedures::{
 
 use crate::parser::error::Error;
 use crate::rpc::auth::Credential;
-use crate::vfs::{
+use crate::vfs::nfsv3::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
