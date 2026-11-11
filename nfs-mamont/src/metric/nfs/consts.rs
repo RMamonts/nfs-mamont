@@ -4,7 +4,6 @@ pub(in crate::metric) const STAGE_SECONDS: &str = "nfsmamont_rpc_stage_seconds";
 pub(in crate::metric) const DURATION_SECONDS: &str = "nfsmamont_rpc_duration_seconds";
 pub(in crate::metric) const REQUESTS_TOTAL: &str = "nfsmamont_rpc_requests_total";
 pub(in crate::metric) const VFS_IN_FLIGHT: &str = "nfsmamont_vfs_in_flight";
-pub(in crate::metric) const QUEUE_DEPTH: &str = "nfsmamont_queue_depth";
 pub(in crate::metric) const CPU_SECONDS: &str = "nfsmamont_rpc_cpu_seconds";
 pub(in crate::metric) const SYSCALL_SECONDS: &str = "nfsmamont_rpc_syscall_seconds";
 pub(in crate::metric) const WAIT_SECONDS: &str = "nfsmamont_rpc_wait_seconds";

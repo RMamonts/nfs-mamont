@@ -1,11 +1,12 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use async_channel::{Receiver, Sender};
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::metric::{unbounded, CountedReceiver, CountedSender, NfsMetrics, Queue, Stage, Timer};
+use crate::metric::{NfsMetrics, Stage, Timer};
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
@@ -13,11 +14,11 @@ use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
 /// One queued NFS procedure: parsed arguments, a channel to send the result, and the request timer.
-pub type VfsCommand<B> = (NfsArgWrapper<B>, CountedSender<ProcReply<B>>, Timer);
+pub type VfsCommand<B> = (NfsArgWrapper<B>, Sender<ProcReply<B>>, Timer);
 /// Sender to enqueue work in the queue.
-pub type VfsCommandSender<B> = CountedSender<VfsCommand<B>>;
+pub type VfsCommandSender<B> = Sender<VfsCommand<B>>;
 /// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
-type VfsCommandReceiver<B> = CountedReceiver<VfsCommand<B>>;
+type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -176,7 +177,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = unbounded::<VfsCommand<B>>(Arc::clone(&metrics), Queue::Vfs);
+        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
 
         (0..concurrency.get()).for_each(|_| {
             VfsTask::new(backends.clone(), rx.clone(), Arc::clone(&metrics)).spawn();

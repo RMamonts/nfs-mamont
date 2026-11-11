@@ -11,12 +11,10 @@ mod allocator;
 mod kinds;
 mod nfs;
 mod procedure;
-mod queue;
 
 #[cfg(all(test, feature = "metrics"))]
 mod test_helpers;
 
 pub use allocator::AllocatorMetrics;
-pub use kinds::{Queue, Stage, TaskKind};
+pub use kinds::{Stage, TaskKind};
 pub use nfs::*;
-pub use queue::{unbounded, CountedReceiver, CountedSender};

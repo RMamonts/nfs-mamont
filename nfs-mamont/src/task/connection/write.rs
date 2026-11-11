@@ -1,11 +1,12 @@
 use std::mem;
 use std::sync::Arc;
 
+use async_channel::Receiver;
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::metric::{CountedReceiver, NfsMetrics, Stage, TaskKind, Timer};
+use crate::metric::{NfsMetrics, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcReply, ProcResult};
@@ -13,7 +14,7 @@ use crate::task::{ProcReply, ProcResult};
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
-    result_receiver: CountedReceiver<ProcReply<B>>,
+    result_receiver: Receiver<ProcReply<B>>,
     metrics: Arc<NfsMetrics>,
 }
 
@@ -21,7 +22,7 @@ impl<B: Buffer> WriteTask<B> {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: OwnedWriteHalf,
-        result_receiver: CountedReceiver<ProcReply<B>>,
+        result_receiver: Receiver<ProcReply<B>>,
         metrics: Arc<NfsMetrics>,
     ) -> Self {
         Self { writehalf, result_receiver, metrics }

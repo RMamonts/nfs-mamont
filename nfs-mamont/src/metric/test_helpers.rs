@@ -53,15 +53,3 @@ pub fn samples(value: &DebugValue) -> usize {
 pub fn gauge(value: f64) -> DebugValue {
     DebugValue::Gauge(value.into())
 }
-
-/// Returns the value of gauge `name` with exactly `labels`.
-pub fn gauge_value(
-    snapshot: &[(CompositeKey, DebugValue)],
-    name: &str,
-    labels: &[(&str, &str)],
-) -> f64 {
-    match value(snapshot, name, labels) {
-        DebugValue::Gauge(value) => value.into_inner(),
-        other => panic!("expected a gauge, got {other:?}"),
-    }
-}
