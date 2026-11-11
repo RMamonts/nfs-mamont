@@ -2,8 +2,6 @@
 
 use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 
-use super::{file, Error};
-
 /// A write verifier (`verifier4`).
 ///
 /// An [`NFS4_VERIFIER_SIZE`]-byte opaque identifier of a server instance,
@@ -29,5 +27,5 @@ pub struct Success {
 /// Fail result (`COMMIT4res`).
 pub struct Fail {
     /// Error on failure.
-    pub error: Error,
+    pub error: super::Error,
 }
