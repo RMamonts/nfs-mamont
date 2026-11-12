@@ -23,7 +23,7 @@ use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::global::vfs::VfsSender;
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::NfsRes;
+use crate::vfs::nfsv3::NfsRes;
 
 /// Wrapper for NLM, NFS, mount command senders.
 pub struct CommandSenders<B: Buffer + 'static> {

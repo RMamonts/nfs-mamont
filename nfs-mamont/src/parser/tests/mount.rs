@@ -4,7 +4,7 @@ use crate::consts::mount::MOUNT_DIRPATH_LEN;
 use crate::mount::{mnt, umnt};
 use crate::parser::mount::mnt::mount;
 use crate::parser::mount::umnt::unmount;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 #[test]
 fn test_mount_basic() {

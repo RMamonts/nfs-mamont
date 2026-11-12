@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::file_attr;
 use crate::serializer::{bool, option, u32};
-use crate::vfs::read;
+use crate::vfs::nfsv3::read;
 
 /// Serializes the non-payload part of [`read::SuccessHeader`] (READ3resok body) into XDR.
 ///

@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::file_attr;
 use crate::serializer::{option, u32, u64};
-use crate::vfs::fs_stat;
+use crate::vfs::nfsv3::fs_stat;
 
 /// Serializes [`fs_stat::Success`] (FSSTAT3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: fs_stat::Success) -> io::Result<()> {

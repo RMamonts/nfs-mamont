@@ -4,7 +4,7 @@ use std::io::Read;
 
 use crate::parser::nfsv3::file;
 use crate::parser::Result;
-use crate::vfs::fs_stat;
+use crate::vfs::nfsv3::fs_stat;
 
 /// Parses the arguments for an NFSv3 `FSSTAT` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<fs_stat::Args> {

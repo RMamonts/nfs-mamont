@@ -5,7 +5,7 @@ use std::io::Read;
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{u32, u64};
 use crate::parser::Result;
-use crate::vfs::commit;
+use crate::vfs::nfsv3::commit;
 
 /// Parses the arguments for an NFSv3 `COMMIT` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<commit::Args> {

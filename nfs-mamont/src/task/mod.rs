@@ -7,7 +7,7 @@ use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::Error;
-use crate::vfs::NfsRes;
+use crate::vfs::nfsv3::NfsRes;
 
 pub mod connection;
 pub mod global;

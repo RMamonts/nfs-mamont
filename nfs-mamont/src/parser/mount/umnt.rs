@@ -5,7 +5,7 @@ use crate::mount::umnt::Args;
 use crate::parser::primitive::string_max_size;
 use crate::parser::Error;
 use crate::parser::Result;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 /// Parses the arguments for an Unmount operation.
 pub fn unmount(src: &mut impl Read) -> Result<Args> {

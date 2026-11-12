@@ -1,26 +1,26 @@
 //! Defines NFSv3 [`Remove`] interface.
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the directory.
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// Weak cache consistency data for the directory, [`Args::object`] dir.
-    pub dir_wcc: vfs::WccData,
+    pub dir_wcc: nfsv3::WccData,
 }
 
 /// [`Remove::remove`] arguments.
 pub struct Args {
-    /// A [`vfs::DirOpArgs`] structure identifying the entry to be removed.
-    pub object: vfs::DirOpArgs,
+    /// A [`nfsv3::DirOpArgs`] structure identifying the entry to be removed.
+    pub object: nfsv3::DirOpArgs,
 }
 
 #[trait_variant::make(Send)]

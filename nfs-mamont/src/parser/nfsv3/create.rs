@@ -6,8 +6,8 @@ use crate::parser::nfsv3::file::file_name;
 use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::primitive::{array, variant};
 use crate::parser::Result;
-use crate::vfs::create;
-use crate::vfs::create::{HowMode, Verifier};
+use crate::vfs::nfsv3::create;
+use crate::vfs::nfsv3::create::{HowMode, Verifier};
 
 use crate::consts::nfsv3::NFS3_CREATEVERFSIZE;
 
@@ -25,7 +25,7 @@ pub fn how(src: &mut impl Read) -> Result<create::How> {
 /// Parses the arguments for an NFSv3 `CREATE` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<create::Args> {
     Ok(create::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::vfs::nfsv3::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         how: how(src)?,
     })
 }

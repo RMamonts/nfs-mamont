@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 
 use nfs_mamont::mount::{ExportEntry, MountEntry};
-use nfs_mamont::vfs::file;
+use nfs_mamont::vfs::nfsv3::file;
 use nfs_mamont::AuthFlavor;
 use tokio::sync::RwLock;
 

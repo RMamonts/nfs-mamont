@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::file_attr;
 use crate::serializer::{option, u32};
-use crate::vfs::access;
+use crate::vfs::nfsv3::access;
 
 /// Serializes [`access::Success`] (ACCESS3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: access::Success) -> io::Result<()> {

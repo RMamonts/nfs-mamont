@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::file_attr;
 use crate::serializer::{bool, option, u32};
-use crate::vfs::path_conf;
+use crate::vfs::nfsv3::path_conf;
 
 /// Serializes [`path_conf::Success`] (PATHCONF3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: path_conf::Success) -> io::Result<()> {

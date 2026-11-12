@@ -9,15 +9,15 @@ use crate::consts::connection::{
     IN_FLIGHT_PER_VFS_WORKER,
 };
 use crate::task::global::vfs::VfsManager;
-use crate::vfs;
-use crate::vfs::file::BackendId;
+use crate::vfs::nfsv3;
+use crate::vfs::nfsv3::file::BackendId;
 
-/// Shared server resources: vfs manager, buffer allocator, and backends.
+/// Shared server resources: nfsv3 manager, buffer allocator, and backends.
 ///
 /// Construct once at startup and share across connection handlers. The context is
 /// created **without** backends: they are attached at runtime with [`Self::add_backend`]
 /// and detached with [`Self::remove_backend`]. Procedures whose file handle points at a
-/// backend that is not attached fail with [`vfs::Error::StaleFile`].
+/// backend that is not attached fail with [`nfsv3::Error::StaleFile`].
 ///
 /// # Example
 ///
@@ -25,7 +25,7 @@ use crate::vfs::file::BackendId;
 /// use std::num::NonZeroUsize;
 /// use std::sync::Arc;
 ///
-/// use nfs_mamont::vfs::Vfs;
+/// use nfs_mamont::vfs::nfsv3::Vfs;
 /// use nfs_mamont::{Allocator, Buffer, ServerContext};
 ///
 /// fn attach_and_detach<A, B, V>(allocator: Arc<A>, fs: Arc<V>) -> Option<Arc<V>>
@@ -48,9 +48,9 @@ pub struct ServerContext<A, V, B>
 where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
-    /// Pool of workers executing NFS procedures against [`crate::vfs::Vfs`] backends.
+    /// Pool of workers executing NFS procedures against [`crate::vfs::nfsv3::Vfs`] backends.
     vfs_manager: VfsManager<B>,
     /// Allocator backing all user-data buffers: READ output buffers and WRITE
     /// payload buffers are served from this single pool.
@@ -75,7 +75,7 @@ impl<A, V, B> ServerContext<A, V, B>
 where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
-    V: vfs::Vfs<B> + Send + Sync + 'static,
+    V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     /// Creates a context with the given allocator and no backends attached.
     ///
@@ -236,13 +236,13 @@ where
         self.backends.remove(id)
     }
 
-    /// Returns the shared vfs manager used to provide link to NFS procedures processor.
+    /// Returns the shared nfsv3 manager used to provide link to NFS procedures processor.
     #[inline]
     pub fn get_vfs_manager(&self) -> &VfsManager<B> {
         &self.vfs_manager
     }
 
-    /// Returns a clone of the [`vfs::Vfs`] backend registered under `id`, if any.
+    /// Returns a clone of the [`nfsv3::Vfs`] backend registered under `id`, if any.
     #[inline]
     pub fn get_backend(&self, id: BackendId) -> Option<Arc<V>> {
         self.backends.get(id)

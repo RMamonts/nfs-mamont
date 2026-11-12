@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Error;
 
 use nfs_mamont::nlm::holder::Nlm4Holder;
-use nfs_mamont::vfs::file::Handle;
+use nfs_mamont::vfs::nfsv3::file::Handle;
 
 use crate::nlm::lock_types::{ActiveLock, PendingLock};
 use crate::nlm::range_ops::{drain_overlapping, merge_adjacent, ranges_overlap};

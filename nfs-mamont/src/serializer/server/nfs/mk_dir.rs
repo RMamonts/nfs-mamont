@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::files::{file_attr, file_handle, wcc_data};
 use crate::serializer::option;
-use crate::vfs::mk_dir;
+use crate::vfs::nfsv3::mk_dir;
 
 /// Serializes [`mk_dir::Success`] (MKDIR3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: mk_dir::Success) -> io::Result<()> {

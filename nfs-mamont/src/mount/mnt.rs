@@ -8,7 +8,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use crate::connection_id::ConnectionId;
 use crate::rpc::auth::Credential;
 use crate::rpc::AuthFlavor;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 #[repr(u32)]
 #[derive(Debug, ToPrimitive, FromPrimitive)]

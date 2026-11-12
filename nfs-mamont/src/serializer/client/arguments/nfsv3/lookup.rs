@@ -2,7 +2,7 @@ use std::io::{Result, Write};
 
 use crate::serializer::files::file_handle;
 use crate::serializer::files::file_name;
-use crate::vfs::lookup::Args;
+use crate::vfs::nfsv3::lookup::Args;
 
 /// Serializes the arguments [`Args`] for an NFSv3 `LOOKUP` operation to the provided `Write` destination.
 pub fn lookup_args(dest: &mut impl Write, arg: Args) -> Result<()> {

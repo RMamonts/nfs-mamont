@@ -2,7 +2,7 @@ use std::io::{Result, Write};
 
 use crate::serializer::files::file_handle;
 use crate::serializer::{u32, u64};
-use crate::vfs::read_dir_plus::Args;
+use crate::vfs::nfsv3::read_dir_plus::Args;
 
 use crate::serializer::client::arguments::nfsv3::read_dir::serialize_cookie_verifier;
 

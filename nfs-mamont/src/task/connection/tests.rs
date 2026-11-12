@@ -28,7 +28,7 @@ use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::global::vfs::scheduler::Scheduler;
 use crate::task::global::vfs::{VfsCommand, VfsSender};
 use crate::task::{ProcReply, ProcResult};
-use crate::vfs::NfsRes;
+use crate::vfs::nfsv3::NfsRes;
 
 const LIMIT: usize = 4;
 const WRITE_TIMEOUT: Duration = Duration::from_millis(100);

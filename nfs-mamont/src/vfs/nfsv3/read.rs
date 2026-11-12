@@ -2,7 +2,7 @@
 
 use crate::allocator::Buffer;
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -26,7 +26,7 @@ pub struct SuccessHeader {
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// The post-operation attributes of the file.
     pub file_attr: Option<file::Attr>,
 }
@@ -35,7 +35,7 @@ pub struct Fail {
 pub struct Args {
     /// The file handle of the file from which data is to be read.
     /// This must identify a file system object of type [`file::Type::Regular`],
-    /// otherwise [`Fail`] with [`vfs::Error::InvalidArgument`] is returned.
+    /// otherwise [`Fail`] with [`nfsv3::Error::InvalidArgument`] is returned.
     pub file: file::Handle,
     /// The position within file at which the read is to begin. If
     /// `offset` is greater than or equal to the size of the file, the [`Success`] is

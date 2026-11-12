@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`Lookup`] interface.
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -15,7 +15,7 @@ pub struct Success {
 /// Failed result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// The post-operation attributes of the directory
     pub dir_attr: Option<file::Attr>,
 }

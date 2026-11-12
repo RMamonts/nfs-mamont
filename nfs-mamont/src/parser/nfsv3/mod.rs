@@ -1,4 +1,4 @@
-//! Implements [`crate::vfs`] interfaces arguments parsing.
+//! Implements [`crate::vfs::nfsv3`] interfaces arguments parsing.
 
 pub mod access;
 pub mod commit;
