@@ -2,7 +2,7 @@ use std::io::{Result, Write};
 
 use crate::serializer::files::file_handle;
 use crate::serializer::{u32, u64};
-use crate::vfs::commit::Args;
+use crate::vfs::nfsv3::commit::Args;
 
 /// Serializes the arguments [`Args`] for an NFSv3 `COMMIT` operation to the provided `Write` destination.
 pub fn commit_args(dest: &mut impl Write, arg: Args) -> Result<()> {

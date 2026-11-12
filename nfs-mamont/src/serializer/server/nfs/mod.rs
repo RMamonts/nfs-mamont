@@ -1,7 +1,7 @@
 //! NFSv3-specific XDR serializers.
 //!
 //! Each submodule corresponds to an NFSv3 procedure and provides helpers that
-//! serialize the associated `crate::vfs::*` result types into XDR.
+//! serialize the associated `crate::nfsv3::*` result types into XDR.
 
 pub mod access;
 pub mod commit;
@@ -28,9 +28,9 @@ pub mod write;
 use std::io::{Result, Write};
 
 use super::super::variant;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
-/// Serializes `vfs::Error` as the XDR `nfsstat3` enum discriminant.
-pub fn status(dest: &mut impl Write, stat: vfs::Error) -> Result<()> {
+/// Serializes `nfsv3::Error` as the XDR `nfsstat3` enum discriminant.
+pub fn status(dest: &mut impl Write, stat: nfsv3::Error) -> Result<()> {
     variant(dest, stat)
 }

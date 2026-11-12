@@ -28,14 +28,14 @@ use crate::nlm::Nlm;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
-use crate::vfs::Vfs;
+use crate::vfs::nfsv3::Vfs;
 
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
 pub use rpc::auth;
 pub use rpc::AuthFlavor;
-pub use vfs::file::BackendId;
+pub use vfs::nfsv3::file::BackendId;
 
 /// Starts the NFS server and processes client connections with explicit MOUNT exports.
 pub async fn handle_forever<A, B, M, N, V>(

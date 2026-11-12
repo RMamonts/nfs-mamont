@@ -1,25 +1,25 @@
 //! Defines NFSv3 [`Commit`] interface.
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
 /// Success result.
 pub struct Success {
     /// Weak cache consistency data for the file.
-    pub file_wcc: vfs::WccData,
+    pub file_wcc: nfsv3::WccData,
     /// This is a cookie that the client can use to determine
-    /// whether the server has rebooted between a call to [vfs::write::Write::write]
+    /// whether the server has rebooted between a call to [nfsv3::write::Write::write]
     /// and a subsequent call to [`Commit::commit`].
-    pub verifier: vfs::write::Verifier,
+    pub verifier: nfsv3::write::Verifier,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// Weak cache consistency data for the file.
-    pub file_wcc: vfs::WccData,
+    pub file_wcc: nfsv3::WccData,
 }
 
 /// [`Commit::commit`] arguments.

@@ -1,9 +1,9 @@
 //! Defines NFSv3 [`ReadDirPlus`] interface.
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
-use crate::vfs::read_dir::Cookie;
-use crate::vfs::read_dir::CookieVerifier;
+use crate::vfs::nfsv3;
+use crate::vfs::nfsv3::read_dir::Cookie;
+use crate::vfs::nfsv3::read_dir::CookieVerifier;
 
 use super::file;
 
@@ -39,7 +39,7 @@ pub struct Success {
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }

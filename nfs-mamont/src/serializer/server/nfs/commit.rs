@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::serializer::array;
 use crate::serializer::files::wcc_data;
-use crate::vfs::commit;
+use crate::vfs::nfsv3::commit;
 
 /// Serializes [`commit::Success`] (COMMIT3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: commit::Success) -> io::Result<()> {

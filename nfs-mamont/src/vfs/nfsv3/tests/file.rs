@@ -1,7 +1,7 @@
 use std::io;
 
-use crate::vfs::file::{Name, Path};
-use crate::vfs::{MAX_NAME_LEN, MAX_PATH_LEN};
+use crate::vfs::nfsv3::file::{Name, Path};
+use crate::vfs::nfsv3::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 #[test]
 fn path_new_rejects_too_long() {

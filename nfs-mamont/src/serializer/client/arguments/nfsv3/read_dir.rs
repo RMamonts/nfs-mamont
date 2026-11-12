@@ -4,7 +4,7 @@ use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::serializer::array;
 use crate::serializer::files::file_handle;
 use crate::serializer::{u32, u64};
-use crate::vfs::read_dir::{Args, CookieVerifier};
+use crate::vfs::nfsv3::read_dir::{Args, CookieVerifier};
 
 /// Serializes [`CookieVerifier`].
 pub fn serialize_cookie_verifier(dest: &mut impl Write, verifier: CookieVerifier) -> Result<()> {

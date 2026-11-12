@@ -3,7 +3,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -55,14 +55,14 @@ pub struct Args {
 
 /// Success result.
 pub struct Success {
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
-    pub wcc_data: vfs::WccData,
+    pub error: nfsv3::Error,
+    pub wcc_data: nfsv3::WccData,
 }
 
 #[trait_variant::make(Send)]
@@ -71,7 +71,7 @@ pub trait SetAttr {
     ///
     /// If [`Args::guard`] is [`Some`] and object ctime differs from the guard one then
     /// implementation must preserve the object attributes and must return a status of
-    /// [`vfs::Error::NotSync`].
+    /// [`nfsv3::Error::NotSync`].
     ///
     /// [`SetAttr::set_attr`] is not guaranteed atomic. A failed [`SetAttr::set_attr`]
     /// may partially change a file's attributes.
@@ -87,7 +87,7 @@ pub trait SetAttr {
     /// Changing the size of a file with [`SetAttr::set_attr`] indirectly
     /// changes the `mtime`.
     ///
-    /// [`vfs::Error::InvalidArgument`] may be returned
+    /// [`nfsv3::Error::InvalidArgument`] may be returned
     /// - if implementation can not store a uid or gid in its own representation
     /// - if implementation can only support 32 bit offset and sizes,
     ///   and [`SetAttr::set_attr`] request to set the size of a file to larger than

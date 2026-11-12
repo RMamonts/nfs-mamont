@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::serializer::files::{file_handle, file_name, file_path, file_type, nfs_time, wcc_attr};
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 #[test]
 fn test_nfstime_success() {

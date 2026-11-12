@@ -2,7 +2,7 @@
 
 use crate::consts::nfsv3::NFS3_COOKIEVERFSIZE;
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -107,7 +107,7 @@ pub struct Success {
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// The attributes of the directory, `dir`.
     pub dir_attr: Option<file::Attr>,
 }
@@ -134,7 +134,7 @@ pub trait ReadDir {
     /// Retrieves a variable number of entries, in sequence, from a directory.
     ///
     /// If the server detects that the cookie is no longer valid, the server will reject the
-    /// [`ReadDir::read_dir`] request with the status, [`vfs::Error::BadCookie`].
+    /// [`ReadDir::read_dir`] request with the status, [`nfsv3::Error::BadCookie`].
     ///
     /// The server may return fewer than [`Args::count`] bytes of XDR-encoded entries.
     /// The [`Args::count`] specified by the client in the request should be greater than or equal to

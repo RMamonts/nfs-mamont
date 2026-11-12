@@ -16,10 +16,10 @@ use crate::rpc::{
     AcceptStat, AuthFlavor, Error, ErrorWrapper, OpaqueAuth, RejectedReply, ReplyBody, RpcBody,
     VersionMismatch,
 };
-use crate::vfs;
-use crate::vfs::file::Handle;
-use crate::vfs::write;
-use crate::vfs::write::StableHow;
+use crate::vfs::nfsv3;
+use crate::vfs::nfsv3::file::Handle;
+use crate::vfs::nfsv3::write;
+use crate::vfs::nfsv3::write::StableHow;
 
 /// Wrapper around [`write::ArgsPartial`] for tests with raw byte data
 struct WriteWrapper<'a> {
@@ -1000,7 +1000,7 @@ async fn parse_rejects_reply_records_before_decoding_call_body() {
         // RPC_MISMATCH reply: supported RPC versions 2..2
         record(&[XID, reply, ReplyBody::MsgDenied as u32, RejectedReply::RpcMismatch as u32, 2, 2]),
         // GETATTR reply: AUTH_NONE verifier, SUCCESS, NFS3ERR_STALE
-        record(&[XID, reply, accepted, none, 0, success, vfs::Error::StaleFile as u32]),
+        record(&[XID, reply, accepted, none, 0, success, nfsv3::Error::StaleFile as u32]),
     ];
     let next =
         nfs_call_frame(RpcBody::Call as u32, RPC_VERSION, &header, NfsProc::FsStat as u32, |buf| {

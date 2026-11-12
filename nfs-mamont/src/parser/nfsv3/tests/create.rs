@@ -2,8 +2,8 @@ use std::io::Cursor;
 
 use crate::parser::nfsv3::create::{args, how};
 use crate::parser::Error;
-use crate::vfs::create;
-use crate::vfs::set_attr;
+use crate::vfs::nfsv3::create;
+use crate::vfs::nfsv3::set_attr;
 
 #[test]
 fn test_create() {

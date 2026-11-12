@@ -6,9 +6,9 @@ use crate::parser::nfsv3::file::{device, file_name};
 use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::primitive::variant;
 use crate::parser::{Error, Result};
-use crate::vfs::file::Type;
-use crate::vfs::mk_node;
-use crate::vfs::mk_node::What;
+use crate::vfs::nfsv3::file::Type;
+use crate::vfs::nfsv3::mk_node;
+use crate::vfs::nfsv3::mk_node::What;
 
 /// Parses a [`mk_node::What`] union from the provided `Read` source.
 ///
@@ -26,7 +26,7 @@ pub fn what(src: &mut impl Read) -> Result<mk_node::What> {
 /// Parses the arguments for an NFSv3 `MKNOD` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_node::Args> {
     Ok(mk_node::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::vfs::nfsv3::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         what: what(src)?,
     })
 }

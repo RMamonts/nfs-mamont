@@ -5,7 +5,7 @@
 
 use crate::connection_id::ConnectionId;
 use crate::rpc::auth::Credential;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 /// Arguments for the Unmount operation, containing the path to be unmounted.
 #[cfg_attr(test, derive(Eq, PartialEq))]

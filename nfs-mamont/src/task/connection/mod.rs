@@ -31,7 +31,7 @@ use crate::task::connection::limit::{Budget, InFlightReply};
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::vfs::Vfs;
+use crate::vfs::nfsv3::Vfs;
 
 pub mod limit;
 mod read;

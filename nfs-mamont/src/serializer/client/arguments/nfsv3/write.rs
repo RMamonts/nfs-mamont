@@ -4,7 +4,7 @@ use std::io::{Result, Write};
 use crate::allocator::Buffer;
 use crate::serializer::files::file_handle;
 use crate::serializer::{padding, u32, u64, usize_as_u32, variant};
-use crate::vfs::write::Args;
+use crate::vfs::nfsv3::write::Args;
 
 /// Serializes buffer data.
 ///

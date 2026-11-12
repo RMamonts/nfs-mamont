@@ -5,7 +5,7 @@ use crate::mount::mnt::Args;
 use crate::parser::primitive::string_max_size;
 use crate::parser::Error;
 use crate::parser::Result;
-use crate::vfs::file;
+use crate::vfs::nfsv3::file;
 
 /// Parses the arguments for a Mount operation.
 pub fn mount(src: &mut impl Read) -> Result<Args> {

@@ -1,13 +1,13 @@
-//! Implements [`crate::vfs::file`] structures parsing
+//! Implements [`crate::vfs::nfsv3::file`] structures parsing
 
 use std::io::Read;
 
 use crate::consts::nfsv3::NFS3_FHSIZE;
 use crate::parser::primitive::{array, string_max_size, u32, u32_as_usize, u64, variant};
 use crate::parser::{Error, Result};
-use crate::vfs;
-use crate::vfs::file::{Name, Path};
-use crate::vfs::{file, MAX_PATH_LEN};
+use crate::vfs::nfsv3;
+use crate::vfs::nfsv3::file::{Name, Path};
+use crate::vfs::nfsv3::{file, MAX_PATH_LEN};
 
 /// Parses a [`file::Handle`] from the provided `Read` source.
 pub fn handle(src: &mut impl Read) -> Result<file::Handle> {
@@ -61,7 +61,7 @@ pub fn wcc_attr(src: &mut impl Read) -> Result<file::WccAttr> {
 
 /// Parses a [`file::Name`] structure from the provided `Read` source.
 pub fn file_name(src: &mut impl Read) -> Result<file::Name> {
-    Name::new(string_max_size(src, vfs::MAX_NAME_LEN)?).map_err(|_| Error::FormatMismatch)
+    Name::new(string_max_size(src, nfsv3::MAX_NAME_LEN)?).map_err(|_| Error::FormatMismatch)
 }
 
 /// Parses a [`file::Path`] structure from the provided `Read` source.

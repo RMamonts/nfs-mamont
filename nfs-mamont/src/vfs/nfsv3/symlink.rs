@@ -1,7 +1,7 @@
 //! Defines NFSv3 [`Symlink`] interface.
 
 use crate::rpc::auth::Credential;
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::file;
 
@@ -12,21 +12,21 @@ pub struct Success {
     /// The attributes for the newly created symbolic link.
     pub attr: Option<file::Attr>,
     /// Weak cache consistency data for the directory.
-    pub wcc_data: vfs::WccData,
+    pub wcc_data: nfsv3::WccData,
 }
 
 /// Fail result.
 pub struct Fail {
     /// Error on failure.
-    pub error: vfs::Error,
+    pub error: nfsv3::Error,
     /// Weak cache consistency data for the directory from [`Args::object`].
-    pub dir_wcc: vfs::WccData,
+    pub dir_wcc: nfsv3::WccData,
 }
 
 /// [`Symlink::symlink`] arguments.
 pub struct Args {
     /// The location of the symbolic link to be created.
-    pub object: vfs::DirOpArgs,
+    pub object: nfsv3::DirOpArgs,
     /// The initial attributes for the symbolic link.
     pub attr: super::set_attr::NewAttr,
     /// The symbolic link data.
@@ -37,7 +37,7 @@ pub struct Args {
 pub trait Symlink {
     /// Creates a new symbolic link.
     ///
-    /// Returns [`vfs::Error::Exist`] for "." or ".." `name`.
+    /// Returns [`nfsv3::Error::Exist`] for "." or ".." `name`.
     ///
     /// For symbolic links, the actual file system node and its contents are expected to be
     /// created in a single atomic operation. That is, once the symbolic link is visible,

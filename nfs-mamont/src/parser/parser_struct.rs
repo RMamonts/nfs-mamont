@@ -50,11 +50,11 @@ use crate::parser::{
 use crate::rpc;
 use crate::rpc::auth::{AuthStat, Credential};
 use crate::rpc::{AuthFlavor, ErrorWrapper, OpaqueAuth, RpcBody, VersionMismatch};
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 /// Minimum buffer size, that could hold complete RPC message
 /// with NFSv3 or Mount protocol arguments, except for NFSv3 `WRITE` procedure -
-/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`vfs::write::Args`]).
+/// this size is enough to hold only arguments without opaque data ([`Buffer`] in [`nfsv3::write::Args`]).
 ///
 /// The arguments of every procedure except for the opaque `WRITE` data MUST fit
 /// into the parser buffer: the parser reads at most `capacity` bytes of a
@@ -554,7 +554,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 ///
 /// # Returns
 ///
-/// Returns the parsed [`vfs::write::Args`] with the allocated data, or an error if:
+/// Returns the parsed [`nfsv3::write::Args`] with the allocated data, or an error if:
 /// - Parsing fails
 /// - The declared data length does not fit into the frame
 /// - Memory allocation fails
@@ -562,7 +562,7 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
 async fn adapter_for_write<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> parser::Result<vfs::write::Args<A::Buffer>>
+) -> parser::Result<nfsv3::write::Args<A::Buffer>>
 where
     A: Allocator,
     S: AsyncRead + Unpin,
@@ -615,7 +615,7 @@ where
 
     // Discard any trailing padding bytes after the data.
     reader.discard_body(padding).await.map_err(parser::Error::IO)?;
-    Ok(vfs::write::Args {
+    Ok(nfsv3::write::Args {
         file: part_arg.file,
         offset: part_arg.offset,
         size: part_arg.size,
@@ -639,13 +639,13 @@ where
 ///
 /// # Returns
 ///
-/// Returns the parsed [`vfs::read::Args`] together with the allocated output
+/// Returns the parsed [`nfsv3::read::Args`] together with the allocated output
 /// buffer, or an error if parsing fails or memory allocation fails. A zero-byte
 /// read yields an empty buffer without touching the allocator.
 async fn adapter_for_read<A, S>(
     alloc: &Arc<A>,
     reader: &mut FrameReader<S>,
-) -> parser::Result<(vfs::read::Args, A::Buffer)>
+) -> parser::Result<(nfsv3::read::Args, A::Buffer)>
 where
     A: Allocator,
     S: AsyncRead + Unpin,

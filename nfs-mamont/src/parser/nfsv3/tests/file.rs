@@ -2,8 +2,8 @@ use std::io::Cursor;
 
 use crate::parser::nfsv3::file::{device, file_name, file_path, handle, r#type, time, wcc_attr};
 use crate::parser::Error;
-use crate::vfs::file;
-use crate::vfs::file::Time;
+use crate::vfs::nfsv3::file;
+use crate::vfs::nfsv3::file::Time;
 
 #[test]
 fn test_parse_device_success() {

@@ -2,7 +2,7 @@
 //!
 //! Contains [`Nlm4Share`], [`FileSharingMode`] and [`FileSharingAccess`] types for DOS file sharing.
 
-use crate::vfs;
+use crate::vfs::nfsv3;
 
 use super::{Name, OpaqueHandle};
 
@@ -43,7 +43,7 @@ pub struct Nlm4Share {
     /// Name of the client host making the lock request.
     pub caller_name: Name,
     /// Handle to the file to share.
-    pub file_handle: vfs::file::Handle,
+    pub file_handle: nfsv3::file::Handle,
     /// Host or process that is making the request.
     pub opaque_handle: OpaqueHandle,
     /// Specifies operations prohibited to other clients.

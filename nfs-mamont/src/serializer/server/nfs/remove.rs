@@ -4,7 +4,7 @@ use std::io;
 use std::io::Write;
 
 use crate::serializer::files::wcc_data;
-use crate::vfs::remove;
+use crate::vfs::nfsv3::remove;
 
 /// Serializes [`remove::Success`] (REMOVE3resok body) into XDR.
 pub fn result_ok(dest: &mut impl Write, arg: remove::Success) -> io::Result<()> {

@@ -6,12 +6,12 @@ use crate::parser::nfsv3::file;
 use crate::parser::nfsv3::file::file_name;
 use crate::parser::nfsv3::set_attr::new_attr;
 use crate::parser::Result;
-use crate::vfs::mk_dir;
+use crate::vfs::nfsv3::mk_dir;
 
 /// Parses the arguments for an NFSv3 `MKDIR` operation from the provided `Read` source.
 pub fn args(src: &mut impl Read) -> Result<mk_dir::Args> {
     Ok(mk_dir::Args {
-        object: crate::vfs::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
+        object: crate::vfs::nfsv3::DirOpArgs { dir: file::handle(src)?, name: file_name(src)? },
         attr: new_attr(src)?,
     })
 }
