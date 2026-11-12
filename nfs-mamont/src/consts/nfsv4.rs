@@ -4,3 +4,6 @@
 /// `opaque nfs_fh4<NFS4_FHSIZE>` without fixing a numeric value in the text.
 /// Implementations conventionally use 128 bytes; this crate follows suit.
 pub const NFS4_FHSIZE: usize = 128;
+
+/// Size of the `other` field of a [`crate::vfs::nfsv4::file::StateId`], in bytes.
+pub const NFS4_OTHER_SIZE: usize = 12;

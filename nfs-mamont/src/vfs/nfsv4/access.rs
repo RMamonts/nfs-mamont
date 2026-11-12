@@ -1,8 +1,6 @@
 //! Defines the NFSv4 ACCESS operation types, RFC 7530 §16.1.
 use crate::vfs::nfs_shared::access::Mask;
 
-use super::Error;
-
 /// ACCESS arguments (`ACCESS4args`).
 pub struct Args {
     /// Bitmask of access permissions to check.
@@ -21,5 +19,5 @@ pub struct Success {
 /// Fail result (`ACCESS4res`).
 pub struct Fail {
     /// Error on failure.
-    pub error: Error,
+    pub error: super::Error,
 }

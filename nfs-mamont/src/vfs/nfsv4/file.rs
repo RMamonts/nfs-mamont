@@ -1,4 +1,4 @@
-use crate::consts::nfsv4::NFS4_FHSIZE;
+use crate::consts::nfsv4::{NFS4_FHSIZE, NFS4_OTHER_SIZE};
 
 /// A file handle (`nfs_fh4`).
 ///
@@ -24,4 +24,36 @@ impl Handle {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+}
+
+/// A sequence identifier (`seqid4`).
+///
+/// Used to order operations on the same state and detect duplicate or
+/// out-of-order requests. See RFC 7530 §2.2.15.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct SeqId(u32);
+
+impl SeqId {
+    /// Builds a sequence id from its raw value.
+    pub fn new(raw: u32) -> Self {
+        SeqId(raw)
+    }
+
+    /// Returns the raw value of the sequence id.
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+}
+
+/// A state identifier (`stateid4`).
+///
+/// Used to identify a particular state of the file opened by a client, such
+/// as an open file description or a byte-range lock. See RFC 7530 §2.2.16.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StateId {
+    /// Monotonically increasing sequence id for the state.
+    pub seqid: SeqId,
+    /// Opaque [`crate::consts::nfsv4::NFS4_OTHER_SIZE`]-byte value identifying
+    /// the state.
+    pub other: [u8; NFS4_OTHER_SIZE],
 }
