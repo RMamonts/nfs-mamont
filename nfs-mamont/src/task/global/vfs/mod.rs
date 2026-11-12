@@ -1,7 +1,7 @@
+pub mod scheduler;
 #[cfg(test)]
 mod tests;
 
-use async_channel::{Receiver, SendError, Sender};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -17,6 +17,8 @@ use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
+use scheduler::{FlowHandle, Scheduler};
+
 /// One queued NFS procedure.
 pub struct VfsCommand<B: Buffer> {
     /// Parsed RPC header and procedure arguments.
@@ -28,23 +30,17 @@ pub struct VfsCommand<B: Buffer> {
     pub pending: Option<OwnedSemaphorePermit>,
 }
 
-/// Sender to enqueue work in the queue.
-type VfsCommandSender<B> = Sender<VfsCommand<B>>;
-
-/// Receiver from the queue, each [`VfsTask`] worker competes for the same command stream.
-type VfsCommandReceiver<B> = Receiver<VfsCommand<B>>;
-
-/// Queues procedures for the pool, first waiting for a slot of its limit if one is set,
-/// see [`VfsManager::limit_pending`].
+/// Queues the procedures of one connection for the pool, first waiting for a slot of
+/// its limit if one is set, see [`VfsManager::limit_pending`].
 pub struct VfsSender<B: Buffer> {
-    tx: VfsCommandSender<B>,
+    flow: FlowHandle<B>,
     pending: Option<Arc<Semaphore>>,
 }
 
 impl<B: Buffer> VfsSender<B> {
-    /// Creates a sender queueing into `tx` behind the slots of `pending`, if any.
-    pub fn new(tx: VfsCommandSender<B>, pending: Option<Arc<Semaphore>>) -> Self {
-        Self { tx, pending }
+    /// Creates a sender queueing into `flow` behind the slots of `pending`, if any.
+    pub fn new(flow: FlowHandle<B>, pending: Option<Arc<Semaphore>>) -> Self {
+        Self { flow, pending }
     }
 
     /// Queues a procedure, waiting while all slots of the limit are taken.
@@ -65,13 +61,7 @@ impl<B: Buffer> VfsSender<B> {
             None => None,
         };
         let command = VfsCommand { args, result_tx, pending };
-        self.tx.send(command).await.map_err(|SendError(command)| command.result_tx)
-    }
-}
-
-impl<B: Buffer> Clone for VfsSender<B> {
-    fn clone(&self) -> Self {
-        Self::new(self.tx.clone(), self.pending.clone())
+        self.flow.enqueue(command).map_err(|command| command.result_tx)
     }
 }
 
@@ -193,18 +183,19 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
     }
 }
 
-/// Pool of [`VfsTask`] workers fed from a single unbounded command channel.
+/// Pool of [`VfsTask`] workers fed from one queue per connection, served in deficit
+/// round robin, see [`scheduler`].
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
 ///   backend futures (copying data, checksums, synchronous syscalls, ...) is spread over
 ///   the cores instead of being serialized in a single task;
 /// - at most as many procedures as there are workers are executed against the backends
-///   at the same time, the rest wait in the channel. The pool size is therefore the
+///   at the same time, the rest wait in their queues. The pool size is therefore the
 ///   backend queue depth.
 pub struct VfsManager<B: Buffer> {
-    /// Sender to enqueue work in the pool for execution.
-    sender: VfsCommandSender<B>,
+    /// Queues of the connections the workers take procedures from.
+    scheduler: Arc<Scheduler<B>>,
     /// Procedures that may be queued or running at once, `None` for no limit.
     pending: Option<Arc<Semaphore>>,
 }
@@ -229,18 +220,18 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (tx, rx) = async_channel::unbounded::<VfsCommand<B>>();
+        let scheduler = Scheduler::new();
 
         for _ in 0..concurrency.get() {
-            VfsTask::new(backends.clone(), rx.clone()).spawn();
+            VfsTask::new(backends.clone(), Arc::clone(&scheduler)).spawn();
         }
 
-        Self { sender: tx, pending: None }
+        Self { scheduler, pending: None }
     }
 
-    /// Returns a sender for enqueueing work in the queue.
+    /// Returns the sender a new connection queues its procedures through.
     pub fn sender(&self) -> VfsSender<B> {
-        VfsSender::new(self.sender.clone(), self.pending.clone())
+        VfsSender::new(self.scheduler.register(), self.pending.clone())
     }
 
     /// Limits how many procedures may be queued or running at once over all
@@ -253,9 +244,9 @@ impl<B: Buffer + 'static> VfsManager<B> {
 }
 
 impl<B: Buffer> Drop for VfsManager<B> {
-    /// Closes the pool's sender so workers stop after the channel is empty.
+    /// Closes the pool's queues so workers stop once they are empty.
     fn drop(&mut self) {
-        self.sender.close();
+        self.scheduler.close();
     }
 }
 
@@ -268,8 +259,8 @@ where
 {
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
-    /// Shared receiver from the pool, each worker competes for the same command stream.
-    command_receiver: VfsCommandReceiver<B>,
+    /// Queues of the pool, shared by all workers.
+    scheduler: Arc<Scheduler<B>>,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -282,13 +273,13 @@ where
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `command_receiver` --- shared receiver from the pool
+    /// - `scheduler` --- queues of the pool
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, command_receiver: VfsCommandReceiver<B>) -> Self {
-        Self { backends, command_receiver }
+    pub fn new(backends: BackendRegistry<V>, scheduler: Arc<Scheduler<B>>) -> Self {
+        Self { backends, scheduler }
     }
 
     /// Spawns a [`VfsTask`].
@@ -300,10 +291,10 @@ where
         tokio::spawn(async move { self.run().await });
     }
 
-    /// Consumes commands until the channel is closed and empty, dispatching each NFS op
+    /// Consumes commands until the pool is closed and drained, dispatching each NFS op
     /// and sending replies.
     async fn run(self) {
-        while let Ok(command) = self.command_receiver.recv().await {
+        while let Some(command) = self.scheduler.next().await {
             dispatch(&self.backends, command).await;
         }
     }

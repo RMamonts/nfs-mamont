@@ -24,6 +24,7 @@ use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+use crate::task::global::vfs::scheduler::Scheduler;
 use crate::task::global::vfs::{VfsCommand, VfsSender};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
@@ -112,14 +113,42 @@ struct Connection {
 
 struct Pipeline {
     connection: Connection,
-    pool_rx: Receiver<VfsCommand<TestBuffer>>,
+    pool_rx: Pool,
 }
 
-/// The VFS pool of a test: a queue the test reads from, behind `max_pending` slots.
-fn pool(max_pending: Option<usize>) -> (VfsSender<TestBuffer>, Receiver<VfsCommand<TestBuffer>>) {
-    let (tx, rx) = async_channel::unbounded();
+/// The VFS pool of a test: the queues of its connections, read by the test instead of
+/// the workers, behind `max_pending` slots.
+struct Pool {
+    scheduler: Arc<Scheduler<TestBuffer>>,
+    pending: Option<Arc<Semaphore>>,
+}
+
+impl Pool {
+    /// Registers the queue of a new connection.
+    fn sender(&self) -> VfsSender<TestBuffer> {
+        VfsSender::new(self.scheduler.register(), self.pending.clone())
+    }
+
+    /// Returns the number of commands queued over all connections.
+    fn len(&self) -> usize {
+        self.scheduler.queued()
+    }
+
+    /// Returns whether every connection is gone; commands it queued may still wait for
+    /// the workers.
+    fn is_closed(&self) -> bool {
+        self.scheduler.connections() == 0
+    }
+
+    /// Takes the next command, in the order the workers would.
+    async fn recv(&self) -> VfsCommand<TestBuffer> {
+        self.scheduler.next().await.unwrap()
+    }
+}
+
+fn pool(max_pending: Option<usize>) -> Pool {
     let pending = max_pending.map(|permits| Arc::new(Semaphore::new(permits)));
-    (VfsSender::new(tx, pending), rx)
+    Pool { scheduler: Scheduler::new(), pending }
 }
 
 /// Fills the socket until it stays unwritable, as if the client had stopped reading.
@@ -158,9 +187,9 @@ async fn flooded_pipeline(
     max_pending: Option<usize>,
     write_timeout: Option<Duration>,
 ) -> Pipeline {
-    let (pool, pool_rx) = pool(max_pending);
+    let pool_rx = pool(max_pending);
     let setup = Setup { client_reads, write_timeout, ..Setup::default() };
-    Pipeline { connection: flooded_connection(pool, &setup).await, pool_rx }
+    Pipeline { connection: flooded_connection(pool_rx.sender(), &setup).await, pool_rx }
 }
 
 /// Starts a connection queueing into `pool` and sends it twice as many calls as it may
@@ -196,8 +225,8 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: &Setup) -> Conne
 }
 
 /// Answers the oldest queued command; returns its xid.
-async fn answer_one(pool_rx: &Receiver<VfsCommand<TestBuffer>>) -> u32 {
-    let VfsCommand { args, result_tx, .. } = pool_rx.recv().await.unwrap();
+async fn answer_one(pool_rx: &Pool) -> u32 {
+    let VfsCommand { args, result_tx, .. } = pool_rx.recv().await;
     let xid = args.header.xid;
     let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))) };
     result_tx.send(reply).await.unwrap();
@@ -205,7 +234,7 @@ async fn answer_one(pool_rx: &Receiver<VfsCommand<TestBuffer>>) -> u32 {
 }
 
 /// Answers the `LIMIT` oldest queued commands; returns their xids.
-async fn answer(pool_rx: &Receiver<VfsCommand<TestBuffer>>) -> Vec<u32> {
+async fn answer(pool_rx: &Pool) -> Vec<u32> {
     let mut xids = Vec::with_capacity(LIMIT);
     for _ in 0..LIMIT {
         xids.push(answer_one(pool_rx).await);
@@ -256,7 +285,7 @@ async fn requests_dropped_without_a_reply_free_their_slots() {
 
     // What a panicking backend does with the command it executes.
     for _ in 0..LIMIT {
-        drop(pipeline.pool_rx.recv().await.unwrap());
+        drop(pipeline.pool_rx.recv().await);
     }
     wait_until(|| pipeline.pool_rx.len() == LIMIT).await;
     assert_eq!(answer(&pipeline.pool_rx).await, [5, 6, 7, 8]);
@@ -276,9 +305,10 @@ async fn the_pool_holds_at_most_max_pending_requests() {
 
 #[tokio::test]
 async fn pool_slots_go_round_the_waiting_connections() {
-    let (pool, pool_rx) = pool(Some(1));
-    let _first = flooded_connection(pool.clone(), &Setup::default()).await;
-    let _second = flooded_connection(pool, &Setup { first_xid: 101, ..Setup::default() }).await;
+    let pool_rx = pool(Some(1));
+    let _first = flooded_connection(pool_rx.sender(), &Setup::default()).await;
+    let second = Setup { first_xid: 101, ..Setup::default() };
+    let _second = flooded_connection(pool_rx.sender(), &second).await;
 
     // The first connection queued its second request before the second one connected,
     // so the turns start with the second command.
@@ -300,16 +330,16 @@ async fn a_client_that_does_not_read_is_disconnected() {
     let stuck = Instant::now();
     answer(&pipeline.pool_rx).await;
 
-    // The write task gives up and stops the read task, which closes the command channel.
+    // The write task gives up and stops the read task, which drops its queue.
     wait_until(|| pipeline.pool_rx.is_closed()).await;
     assert!(stuck.elapsed() >= WRITE_TIMEOUT, "closed after {:?}", stuck.elapsed());
 }
 
 #[tokio::test]
 async fn read_task_stops_reading_at_the_data_limit() {
-    let (pool, pool_rx) = pool(None);
+    let pool_rx = pool(None);
     let setup = Setup { max_data: Some(3000), call: read_frame, ..Setup::default() };
-    let _connection = flooded_connection(pool, &setup).await;
+    let _connection = flooded_connection(pool_rx.sender(), &setup).await;
 
     // Every READ holds a whole unit of 2048 bytes, so two of them reach the limit of
     // 3000, before the four slots run out.
@@ -324,9 +354,9 @@ async fn read_task_stops_reading_at_the_data_limit() {
 
 #[tokio::test]
 async fn requests_larger_than_the_data_limit_are_read_one_at_a_time() {
-    let (pool, pool_rx) = pool(None);
+    let pool_rx = pool(None);
     let setup = Setup { max_data: Some(1000), call: read_frame, ..Setup::default() };
-    let _connection = flooded_connection(pool, &setup).await;
+    let _connection = flooded_connection(pool_rx.sender(), &setup).await;
 
     for xid in 1..=3 {
         wait_until(|| pool_rx.len() == 1).await;

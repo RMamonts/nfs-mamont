@@ -18,7 +18,7 @@
 //!
 //! This is what makes the unbounded channels safe: a result channel holds at most
 //! `max_in_flight` replies, so the shared VFS/MOUNT/NLM tasks never block on a slow
-//! client, and the global channels hold at most `max_in_flight × open connections`
+//! client, and the global queues hold at most `max_in_flight × open connections`
 //! requests.
 
 use tokio::net::TcpStream;

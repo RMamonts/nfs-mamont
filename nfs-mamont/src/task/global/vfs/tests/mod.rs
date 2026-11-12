@@ -5,6 +5,8 @@ use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
 
 use super::{failed_response, target, Target};
 
+mod scheduler;
+
 /// Routing never touches the payload, so the buffer holds no data.
 struct MockBuffer;
 
