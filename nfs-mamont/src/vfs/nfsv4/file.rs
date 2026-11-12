@@ -45,6 +45,27 @@ impl SeqId {
     }
 }
 
+/// A bitmask of attribute names (`bitmap4`), RFC 7530 §2.2.3.
+///
+/// Each bit corresponds to a file attribute; the mask selects which set of
+/// attributes is requested or returned.
+pub type Bitmap = Vec<u32>;
+
+/// A list of attributes
+pub type AttrList = Vec<u8>;
+
+/// A set of file attributes (`fattr4`), RFC 7530 §2.2.8.
+///
+/// Carries the attribute mask and the attributes encoded as an opaque
+/// byte sequence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attr {
+    /// Bitmask describing the attributes carried in `attr_vals`.
+    pub attrmask: Bitmap,
+    /// Attributes encoded as an opaque byte sequence.
+    pub attr_vals: AttrList,
+}
+
 /// A state identifier (`stateid4`).
 ///
 /// Used to identify a particular state of the file opened by a client, such

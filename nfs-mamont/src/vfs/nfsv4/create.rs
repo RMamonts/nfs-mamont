@@ -1,5 +1,7 @@
 //! Defines the NFSv4 CREATE operation types, RFC 7530 §16.4.
 
+use crate::vfs::nfsv4::file::{Attr, Bitmap};
+
 /// File type (`nfs_ftype4`), RFC 7530 §2.2.
 pub enum FType {
     /// NF4REG - regular file.
@@ -72,17 +74,6 @@ pub enum CreateType {
     Fifo,
 }
 
-/// A set of file attributes (`fattr4`), RFC 7530 §2.2.8.
-///
-/// Represents the attributes to set on the newly created object. The raw
-/// attribute mask and values are kept opaque.
-pub struct Attr {
-    /// Bitmask describing the attributes carried in `attr_vals`.
-    pub attrmask: Vec<u32>,
-    /// Attributes encoded as an opaque byte sequence.
-    pub attr_vals: Vec<u8>,
-}
-
 /// CREATE arguments (`CREATE4args`).
 pub struct Args {
     /// Type and creation data of the object to create.
@@ -98,7 +89,7 @@ pub struct Success {
     /// Change information for the directory in which the object was created.
     pub cinfo: ChangeInfo,
     /// Bitmask of attributes for which the server could not set the value.
-    pub attrset: Vec<u32>,
+    pub attrset: Bitmap,
 }
 
 /// Fail result (`CREATE4res`).
