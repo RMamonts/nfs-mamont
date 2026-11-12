@@ -6,7 +6,19 @@ use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 ///
 /// An [`NFS4_VERIFIER_SIZE`]-byte opaque identifier of a server instance,
 /// used to detect a server reboot between a WRITE and a subsequent COMMIT.
-pub struct Verifier(pub [u8; NFS4_VERIFIER_SIZE]);
+pub struct Verifier([u8; NFS4_VERIFIER_SIZE]);
+
+impl Verifier {
+    /// Creates a new [`Verifier`] from the raw bytes.
+    pub fn new(raw: [u8; NFS4_VERIFIER_SIZE]) -> Self {
+        Verifier(raw)
+    }
+
+    /// Returns the raw bytes of the verifier.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 /// COMMIT arguments (`COMMIT4args`).
 pub struct Args {
