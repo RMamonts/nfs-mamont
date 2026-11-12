@@ -1,6 +1,7 @@
 //! Per-connection limits.
 
 use std::num::NonZeroUsize;
+use std::time::Duration;
 
 /// Lower bound of the default [`crate::ServerContext::with_max_in_flight`].
 ///
@@ -20,3 +21,15 @@ pub const IN_FLIGHT_PER_VFS_WORKER: NonZeroUsize = match NonZeroUsize::new(2) {
     Some(factor) => factor,
     None => unreachable!(),
 };
+
+/// Default of [`crate::ServerContext::with_max_unverified_connections`], the same as the
+/// Linux NFS server.
+pub const DEFAULT_MAX_UNVERIFIED_CONNECTIONS: NonZeroUsize = match NonZeroUsize::new(64) {
+    Some(limit) => limit,
+    None => unreachable!(),
+};
+
+/// Default of [`crate::ServerContext::with_idle_timeout`]: a client that keeps a
+/// connection without a single request for longer is most likely gone, and a live one
+/// reconnects when it has a request to send.
+pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(6 * 60);

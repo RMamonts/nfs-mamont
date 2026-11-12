@@ -18,6 +18,7 @@ use crate::parser::{
 };
 use crate::rpc::{Error, ErrorWrapper};
 use crate::task::connection::limit::Budget;
+use crate::task::connection::probation::Ticket;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::task::global::vfs::VfsSender;
@@ -56,6 +57,8 @@ pub struct ReadTask<
     allocator: Arc<A>,
     /// In-flight budget of the connection, see the [`super`] module docs.
     budget: Budget<B>,
+    /// Place on probation until the first valid call, see [`super::probation`].
+    probation: Option<Ticket>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -70,8 +73,9 @@ where
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
         budget: Budget<B>,
+        probation: Option<Ticket>,
     ) -> Self {
-        Self { readhalf, client_id, allocator, command_senders, budget }
+        Self { readhalf, client_id, allocator, command_senders, budget, probation }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -95,7 +99,24 @@ where
             // client back.
             let mut result_tx = self.budget.acquire().await;
 
-            match parser.next_message().await {
+            let message = tokio::select! {
+                biased;
+                message = parser.next_message() => message,
+                () = evicted(self.probation.as_ref()) => {
+                    debug!(client=%self.client_id.into_inner(), "closing a connection that has sent no valid call");
+                    return Ok(());
+                }
+                () = self.budget.idle() => {
+                    debug!(client=%self.client_id.into_inner(), "closing an idle connection");
+                    return Ok(());
+                }
+            };
+            if message.is_ok() {
+                // The first valid call ends the probation.
+                self.probation = None;
+            }
+
+            match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
@@ -209,5 +230,13 @@ fn data_footprint<B: Buffer>(proc: &NfsArguments<B>) -> usize {
         NfsArguments::Read(_, data) => data.footprint(),
         NfsArguments::Write(args) => args.data.footprint(),
         _ => 0,
+    }
+}
+
+/// Completes once the connection is pushed out of probation; never without a place on it.
+async fn evicted(probation: Option<&Ticket>) {
+    match probation {
+        Some(ticket) => ticket.evicted().await,
+        None => std::future::pending().await,
     }
 }

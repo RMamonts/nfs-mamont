@@ -5,11 +5,14 @@
 
 use std::io;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_channel::Sender;
 use tokio::sync::Notify;
+use tokio::time::{Instant, Sleep};
 
 use crate::allocator::Buffer;
 use crate::rpc::Error;
@@ -84,7 +87,18 @@ pub struct Budget<B: Buffer> {
     issued: usize,
     /// Limit on the data in flight, see [`Self::new`].
     data: Option<DataLimit>,
+    /// Timer of [`Self::idle`], `None` without an idle timeout.
+    idle: Option<IdleTimer>,
     tx: Sender<InFlightReply<B>>,
+}
+
+/// One timer per connection, re-armed at most once per period instead of on every
+/// request.
+struct IdleTimer {
+    period: Duration,
+    sleep: Pin<Box<Sleep>>,
+    /// Slots issued and released when the timer was armed.
+    armed_at: (usize, usize),
 }
 
 struct DataLimit {
@@ -96,10 +110,12 @@ struct DataLimit {
 impl<B: Buffer> Budget<B> {
     /// Creates a budget of `limit` slots for replies sent through `tx`. With `max_data`
     /// it also stops reading while that many bytes of READ and WRITE data are in flight,
-    /// see [`crate::ServerContext::with_max_data_per_connection`].
+    /// see [`crate::ServerContext::with_max_data_per_connection`]; with `idle_timeout`,
+    /// [`Self::idle`] tells when the connection has been idle that long.
     pub fn new(
         limit: NonZeroUsize,
         max_data: Option<NonZeroUsize>,
+        idle_timeout: Option<Duration>,
         tx: Sender<InFlightReply<B>>,
     ) -> Self {
         let limiter = Arc::new(Limiter {
@@ -109,8 +125,14 @@ impl<B: Buffer> Budget<B> {
         });
 
         let data = max_data.map(|max| DataLimit { max: max.get(), issued: 0 });
+        let idle = idle_timeout.map(|period| IdleTimer {
+            period,
+            sleep: Box::pin(tokio::time::sleep(period)),
+            // `idle` is first polled with one slot issued, see its docs.
+            armed_at: (1, 0),
+        });
 
-        Self { limiter, limit: limit.get(), issued: 0, data, tx }
+        Self { limiter, limit: limit.get(), issued: 0, data, idle, tx }
     }
 
     /// Takes a slot, waiting while all of them, or all the data, are taken.
@@ -132,6 +154,27 @@ impl<B: Buffer> Budget<B> {
         };
         data.issued = data.issued.wrapping_add(bytes);
         result_tx.token.bytes += bytes;
+    }
+
+    /// Completes once the connection has had nothing in flight but the request being
+    /// read, and no request read or answered, for one to two idle timeouts; never
+    /// without an idle timeout. Called after [`Self::acquire`], while that request is
+    /// read.
+    pub async fn idle(&mut self) {
+        let Some(timer) = &mut self.idle else {
+            return std::future::pending().await;
+        };
+        loop {
+            timer.sleep.as_mut().await;
+            let now = (self.issued, self.limiter.released.load(Ordering::Acquire));
+            if now == timer.armed_at && now.0.wrapping_sub(now.1) <= 1 {
+                return;
+            }
+            // Something happened since the timer was armed, or a request is still in
+            // flight: start over.
+            timer.armed_at = now;
+            timer.sleep.as_mut().reset(Instant::now() + timer.period);
+        }
     }
 
     fn is_full(&self) -> bool {

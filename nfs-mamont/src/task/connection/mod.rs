@@ -22,18 +22,21 @@
 //! requests.
 
 use tokio::net::TcpStream;
+use tokio::sync::OwnedSemaphorePermit;
 use tracing::error;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::context::ServerContext;
 use crate::task::connection::limit::{Budget, InFlightReply};
+use crate::task::connection::probation::Ticket;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
 use crate::vfs::Vfs;
 
 pub mod limit;
+pub mod probation;
 mod read;
 #[cfg(test)]
 mod tests;
@@ -45,6 +48,8 @@ pub fn new<A, V, B>(
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
     context: &ServerContext<A, V, B>,
+    permit: Option<OwnedSemaphorePermit>,
+    probation: Ticket,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -63,8 +68,12 @@ pub fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // in-flight budget of the connection, see the module docs
-    let budget =
-        Budget::new(context.max_in_flight(), context.max_data_per_connection(), result_sender);
+    let budget = Budget::new(
+        context.max_in_flight(),
+        context.max_data_per_connection(),
+        context.idle_timeout(),
+        result_sender,
+    );
 
     let command_senders =
         CommandSenders::<B>::new(mount_sender, nlm_sender, context.get_vfs_manager().sender());
@@ -76,8 +85,10 @@ pub fn new<A, V, B>(
             context.get_allocator(),
             command_senders,
             budget,
+            Some(probation),
         ),
         write::WriteTask::<B>::new(writehalf, result_receiver, client_id, context.write_timeout()),
+        permit,
     );
 }
 
@@ -87,8 +98,14 @@ pub fn new<A, V, B>(
 /// the write task is gone, whether it finished, timed out or panicked. On a normal exit
 /// it is already gone: it holds a sender of the result channel, and the write task stops
 /// only when the channel is closed.
-fn spawn_tasks<A, B>(read_task: read::ReadTask<A, B>, write_task: write::WriteTask<B>)
-where
+///
+/// `permit`, the slot of the connection in [`ServerContext::with_max_connections`], is
+/// given back once the write task is gone.
+fn spawn_tasks<A, B>(
+    read_task: read::ReadTask<A, B>,
+    write_task: write::WriteTask<B>,
+    permit: Option<OwnedSemaphorePermit>,
+) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
 {
@@ -97,5 +114,6 @@ where
     tokio::spawn(async move {
         let _ = write_task.await;
         read_task.abort();
+        drop(permit);
     });
 }
