@@ -1,3 +1,5 @@
+use std::io;
+
 use metrics::with_local_recorder;
 use metrics_util::debugging::DebugValue;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -89,23 +91,29 @@ async fn tokio_metrics_are_reported_per_task_kind() {
 }
 
 #[tokio::test]
-async fn write_reply() {
+async fn write_replies() {
     let (metrics, snapshotter, _) = metrics();
     let (mut socket, io) = metrics.io_timer(Vec::new());
 
     // not NFS
-    metrics.write_reply(&metrics.start(), None, &io, socket.write_all(b"mount")).await.unwrap();
+    metrics.serialize_reply(&metrics.start(), None, || Ok(())).unwrap();
     // not sampled
-    metrics.write_reply(&Timer::NONE, Some(GETATTR), &io, socket.write_all(b"ab")).await.unwrap();
+    metrics.serialize_reply(&Timer::NONE, Some(GETATTR), || Ok(())).unwrap();
+    metrics.serialize_reply(&metrics.start(), Some(GETATTR), || Ok(())).unwrap();
+    // failed
     metrics
-        .write_reply(&metrics.start(), Some(GETATTR), &io, socket.write_all(b"cd"))
-        .await
-        .unwrap();
+        .serialize_reply(&metrics.start(), Some(GETATTR), || Err(io::ErrorKind::Other.into()))
+        .unwrap_err();
+
+    metrics.flush_replies(None, &io, socket.write_all(b"ab")).await.unwrap();
+    metrics.flush_replies(Some(GETATTR), &io, socket.write_all(b"cd")).await.unwrap();
+    metrics.count_replies(2, 1);
 
     let snapshot = snapshot(&snapshotter);
     let labels = [("message", "reply"), ("proc", "getattr")];
 
     assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "ok")]), &DebugValue::Counter(2));
+    assert_eq!(value(&snapshot, REQUESTS_TOTAL, &[("status", "error")]), &DebugValue::Counter(1));
     for name in [CPU_SECONDS, SYSCALL_SECONDS, WAIT_SECONDS] {
         assert_eq!(samples(value(&snapshot, name, &labels)), 1, "{name}");
     }

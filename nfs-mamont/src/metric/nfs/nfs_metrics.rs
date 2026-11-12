@@ -97,6 +97,12 @@ struct Marks {
 impl Timer {
     /// Timer of a request that is not measured.
     pub const NONE: Self = Self(None);
+
+    /// Whether the request is measured.
+    #[inline]
+    pub fn is_measured(&self) -> bool {
+        self.0.is_some()
+    }
 }
 
 /// Whether to measure the next request: true for about one in [`SAMPLE_EVERY`].
@@ -246,42 +252,56 @@ impl NfsMetrics {
         IoTimer::new(socket)
     }
 
-    /// Awaits `reply`, which writes one reply through the [`IoTimer`] behind `io`, and
-    /// counts it as an NFS request of `procedure`. For a measured `timer`, also records
-    /// its CPU, syscall and socket wait times, unless the write failed.
+    /// Runs `serialize`, which stages one reply, and records its CPU time under
+    /// `procedure` if `timer` is measured and serialization succeeded.
     /// Nothing is recorded for `None`.
-    pub async fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
+    pub fn serialize_reply(
         &self,
         timer: &Timer,
         procedure: Option<u32>,
-        io: &IoStats,
-        reply: F,
-    ) -> F::Output {
-        let Some(procedure) = procedure else { return reply.await };
+        serialize: impl FnOnce() -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        let (Some(procedure), Some(_)) = (procedure, &timer.0) else { return serialize() };
 
-        let output = if timer.0.is_some() {
-            io.start();
-            let (output, poll, idle) = timed(reply).await;
-            let syscall = io.take();
-            if output.is_ok() {
-                let metrics = &self.reply[procedure as usize];
-                // IoTimer measures time inside socket's write polls ~= syscall time
-                // Total future poll duration - syscall time = serialization time
-                metrics.cpu.record(poll.saturating_sub(syscall));
-                metrics.syscall.record(syscall);
-                metrics.wait.record(idle);
-            }
-            output
-        } else {
-            reply.await
-        };
-
+        let start = Instant::now();
+        let output = serialize();
         if output.is_ok() {
-            self.requests_ok.increment(1);
-        } else {
-            self.requests_err.increment(1);
+            self.reply[procedure as usize].cpu.record(start.elapsed());
         }
         output
+    }
+
+    /// Awaits `flush`, which writes a batch of staged replies through the [`IoTimer`] behind `io`,
+    /// and records its syscall and socket wait times under `procedure`, unless the write failed.
+    /// Nothing is recorded for `None`.
+    ///
+    /// One flush sends several replies, so `procedure` (a measured reply of the batch) carries
+    /// the syscall and wait time of the rest.
+    pub async fn flush_replies<F: Future<Output = std::io::Result<()>>>(
+        &self,
+        procedure: Option<u32>,
+        io: &IoStats,
+        flush: F,
+    ) -> F::Output {
+        let Some(procedure) = procedure else { return flush.await };
+
+        io.start();
+        let (output, _, idle) = timed(flush).await;
+        let syscall = io.take();
+        if output.is_ok() {
+            let metrics = &self.reply[procedure as usize];
+            // IoTimer measures time inside socket's write polls ~= syscall time
+            metrics.syscall.record(syscall);
+            metrics.wait.record(idle);
+        }
+        output
+    }
+
+    /// Counts written and failed NFS replies.
+    #[inline]
+    pub fn count_replies(&self, ok: u64, err: u64) {
+        self.requests_ok.increment(ok);
+        self.requests_err.increment(err);
     }
 
     /// Awaits `call`, which reads one call through the [`IoTimer`] behind `io`.

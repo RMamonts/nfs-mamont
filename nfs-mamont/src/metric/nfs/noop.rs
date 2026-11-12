@@ -13,6 +13,11 @@ pub struct Timer;
 
 impl Timer {
     pub const NONE: Self = Self;
+
+    #[inline]
+    pub fn is_measured(&self) -> bool {
+        false
+    }
 }
 
 /// No-op in-flight guard.
@@ -48,15 +53,27 @@ impl NfsMetrics {
     }
 
     #[inline]
-    pub fn write_reply<T, F: Future<Output = std::io::Result<T>>>(
+    pub fn serialize_reply(
         &self,
         _timer: &Timer,
         _procedure: Option<u32>,
-        _io: &IoStats,
-        reply: F,
-    ) -> F {
-        reply
+        serialize: impl FnOnce() -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        serialize()
     }
+
+    #[inline]
+    pub fn flush_replies<F: Future<Output = std::io::Result<()>>>(
+        &self,
+        _procedure: Option<u32>,
+        _io: &IoStats,
+        flush: F,
+    ) -> F {
+        flush
+    }
+
+    #[inline]
+    pub fn count_replies(&self, _ok: u64, _err: u64) {}
 
     #[inline]
     pub async fn read_call<F: Future>(
