@@ -11,12 +11,12 @@ use crate::rpc::auth::Credential;
 use crate::task::connection::limit::{Budget, InFlightReply};
 use crate::task::global::vfs::scheduler::{cost, Scheduler, QUANTUM};
 use crate::task::global::vfs::VfsCommand;
-use crate::vfs::{read, write};
+use crate::vfs::nfsv3::{read, write};
 
 use super::{handle, MockBuffer};
 
 fn getattr() -> NfsArguments<MockBuffer> {
-    NfsArguments::GetAttr(crate::vfs::get_attr::Args { file: handle(0) })
+    NfsArguments::GetAttr(crate::vfs::nfsv3::get_attr::Args { file: handle(0) })
 }
 
 fn read_of(count: u32) -> NfsArguments<MockBuffer> {
