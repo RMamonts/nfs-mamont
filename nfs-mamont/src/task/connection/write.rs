@@ -1,11 +1,12 @@
 use std::mem;
 use std::sync::Arc;
 
+use async_channel::Receiver;
 use tokio::net::tcp::OwnedWriteHalf;
 use tracing::error;
 
 use crate::allocator::Buffer;
-use crate::metric::{CountedReceiver, NfsMetrics, Stage, TaskKind, Timer};
+use crate::metric::{NfsMetrics, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 use crate::task::{ProcReply, ProcResult};
@@ -13,7 +14,7 @@ use crate::task::{ProcReply, ProcResult};
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
-    result_receiver: CountedReceiver<ProcReply<B>>,
+    result_receiver: Receiver<ProcReply<B>>,
     metrics: Arc<NfsMetrics>,
 }
 
@@ -21,7 +22,7 @@ impl<B: Buffer> WriteTask<B> {
     /// Creates new instance of [`WriteTask`]
     pub fn new(
         writehalf: OwnedWriteHalf,
-        result_receiver: CountedReceiver<ProcReply<B>>,
+        result_receiver: Receiver<ProcReply<B>>,
         metrics: Arc<NfsMetrics>,
     ) -> Self {
         Self { writehalf, result_receiver, metrics }
@@ -48,7 +49,6 @@ impl<B: Buffer> WriteTask<B> {
         while let Ok(mut reply) = result_receiver.recv().await {
             let mut timer = mem::replace(&mut reply.timer, Timer::NONE);
             self.metrics.lap(&mut timer, Stage::ReplyQueue);
-            let is_ok = reply.proc_result.is_ok();
             let procedure = match &reply.proc_result {
                 Ok(ProcResult::Nfs3(res)) => Some(res.procedure()),
                 _ => None,
@@ -59,20 +59,13 @@ impl<B: Buffer> WriteTask<B> {
             let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
 
             let reply_future = serializer.form_reply(reply, verifier);
-            let written = match self.metrics.write_reply(procedure, &io, reply_future).await {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                    true
-                }
-                Err(e) => {
-                    error!(error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
-                    false
-                }
-            };
+            if let Err(e) = self.metrics.write_reply(&timer, procedure, &io, reply_future).await {
+                error!(error=%e, "write task: failed to serialize/send reply");
+                // TODO: Consider closing connection or continuing based on error type
+                // For now, continue processing other replies
+            }
 
-            self.metrics.finish(timer, is_ok && written);
+            self.metrics.finish(timer);
         }
     }
 }

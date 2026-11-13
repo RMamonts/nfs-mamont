@@ -3,35 +3,40 @@
 use std::io;
 use std::io::IoSlice;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-/// Time spent in and bytes moved by the I/O calls of an [`IoTimer`] since the last [`IoStats::take`].
+/// Time spent in the I/O calls of an [`IoTimer`] between [`IoStats::start`] and [`IoStats::take`].
 #[derive(Default)]
 pub struct IoStats {
+    enabled: AtomicBool,
     nanos: AtomicU64,
-    bytes: AtomicU64,
 }
 
 impl IoStats {
-    /// Returns the accumulated I/O time and bytes, resetting both.
-    pub fn take(&self) -> (Duration, u64) {
+    /// Starts timing I/O calls.
+    pub fn start(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+
+    /// Stops timing I/O calls and returns the accumulated time, resetting it.
+    pub fn take(&self) -> Duration {
+        self.enabled.store(false, Ordering::Relaxed);
         let nanos = self.nanos.swap(0, Ordering::Relaxed);
-        let bytes = self.bytes.swap(0, Ordering::Relaxed);
-        (Duration::from_nanos(nanos), bytes)
+        Duration::from_nanos(nanos)
     }
 
     fn record(&self, poll: impl FnOnce() -> Poll<io::Result<usize>>) -> Poll<io::Result<usize>> {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return poll();
+        }
         let start = Instant::now();
         let result = poll();
         self.nanos.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
-        if let Poll::Ready(Ok(n)) = result {
-            self.bytes.fetch_add(n as u64, Ordering::Relaxed);
-        }
         result
     }
 }

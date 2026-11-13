@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use async_channel::Sender;
 
 use crate::allocator::{Allocator, Buffer};
-use crate::metric::{CountedSender, NfsMetrics, TaskKind, Timer};
+use crate::metric::{NfsMetrics, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -34,7 +34,7 @@ pub struct CommandSenders<B: Buffer + 'static> {
     /// To pass into mount task as part of message,
     /// so mount task can send result back to write task
     /// and to bypass vfs with null procedure.
-    result_sender: CountedSender<ProcReply<B>>,
+    result_sender: Sender<ProcReply<B>>,
 }
 
 impl<B: Buffer + 'static> CommandSenders<B> {
@@ -42,7 +42,7 @@ impl<B: Buffer + 'static> CommandSenders<B> {
         mount_sender: Sender<MountCommand<B>>,
         nlm_sender: Sender<NlmCommand<B>>,
         pool_sender: VfsCommandSender<B>,
-        result_sender: CountedSender<ProcReply<B>>,
+        result_sender: Sender<ProcReply<B>>,
     ) -> Self {
         Self { mount_sender, nlm_sender, pool_sender, result_sender }
     }
@@ -95,15 +95,17 @@ where
         let mut parser = RpcParser::new(readhalf, self.allocator);
 
         loop {
-            let message =
-                self.metrics.read_call(&io, parser.next_message(), |message| match message {
+            let (message, timer) = self
+                .metrics
+                .read_call(&io, parser.next_message(), |message| match message {
                     Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
                         Some(args.procedure())
                     }
 
                     _ => None,
-                });
-            match message.await {
+                })
+                .await;
+            match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
                     if matches!(*proc, NfsArguments::Null) =>
                 {
@@ -111,7 +113,7 @@ where
                     let result = ProcReply {
                         xid: header.xid,
                         proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))),
-                        timer: self.metrics.start(),
+                        timer,
                     };
 
                     if let Err(err) = self.command_senders.result_sender.send(result).await {
@@ -145,7 +147,6 @@ where
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
-                    let timer = self.metrics.start();
                     let xid = header.xid;
                     debug!(client=%self.client_addr, xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     let command = NfsArgWrapper { header, proc };
@@ -227,7 +228,7 @@ where
 }
 
 async fn send_broken_pipe<B: Buffer + 'static>(
-    sender: &CountedSender<ProcReply<B>>,
+    sender: &Sender<ProcReply<B>>,
     xid: u32,
     err: impl std::fmt::Display,
 ) -> io::Result<()> {
