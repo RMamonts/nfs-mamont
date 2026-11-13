@@ -18,6 +18,8 @@ pub struct RemovedLease {
 }
 
 impl RemovedLease {
+    /// Whether the original deadline has elapsed at the time of this call.
+    /// This also works for leases removed explicitly before their deadline.
     pub fn is_expired(&self) -> bool {
         self.deadline <= Instant::now()
     }
@@ -26,39 +28,73 @@ impl RemovedLease {
 struct Lease {
     key: Key,
     credentials: Credential,
+    /// Selected by the registration path and kept unchanged on renewal.
+    timeout: Duration,
 }
 
 /// Every active record owns exactly one timer. Keys and both collections remain
 /// private so callers cannot remove a timer independently of its record.
+/// Checked and unchecked registration select the timeout for a new lease;
+/// subsequent registration and renewal preserve its timeout and credentials.
+/// This type does not manage registration records or release client resources.
 pub struct ClientLeases {
-    duration: Duration,
+    checked_timeout: Duration,
+    unchecked_timeout: Duration,
     leases: DelayQueue<ClientId>,
     active_leases: HashMap<ClientId, Lease>,
 }
 
 impl ClientLeases {
-    pub fn new(duration: Duration) -> Self {
-        Self { duration, leases: DelayQueue::new(), active_leases: HashMap::new() }
+    /// Configures independent timeouts for checked and unchecked registrations.
+    /// A zero timeout makes new leases on that path expire immediately.
+    pub fn new(checked_timeout: Duration, unchecked_timeout: Duration) -> Self {
+        Self {
+            checked_timeout,
+            unchecked_timeout,
+            leases: DelayQueue::new(),
+            active_leases: HashMap::new(),
+        }
     }
 
+    /// Whether there are no active records or pending lease timers.
     pub fn is_empty(&self) -> bool {
         self.active_leases.is_empty()
     }
 
-    /// Creates a timer or renews an existing lease without changing its owner.
+    /// Creates a checked lease or renews it with its original timeout and owner.
     /// An overdue lease must be removed before the client can register again.
-    pub fn register(&mut self, clientid: ClientId, credentials: Credential) -> Result<()> {
+    pub fn register_checked(&mut self, clientid: ClientId, credentials: Credential) -> Result<()> {
+        self.register(clientid, credentials, self.checked_timeout)
+    }
+
+    /// Creates an unchecked lease or renews it with its original timeout and owner.
+    /// An overdue lease must be removed before the client can register again.
+    pub fn register_unchecked(
+        &mut self,
+        clientid: ClientId,
+        credentials: Credential,
+    ) -> Result<()> {
+        self.register(clientid, credentials, self.unchecked_timeout)
+    }
+
+    fn register(
+        &mut self,
+        clientid: ClientId,
+        credentials: Credential,
+        timeout: Duration,
+    ) -> Result<()> {
         match self.active_leases.entry(clientid) {
             Entry::Occupied(_) => self.renew(clientid, &credentials),
             Entry::Vacant(entry) => {
-                let key = self.leases.insert(clientid, self.duration);
-                entry.insert(Lease { key, credentials });
+                let key = self.leases.insert(clientid, timeout);
+                entry.insert(Lease { key, credentials, timeout });
                 Ok(())
             }
         }
     }
 
-    /// Resets only the timer, after checking the deadline and credentials.
+    /// Resets the timer using the timeout selected at creation, after checking
+    /// the deadline and credentials. No registration kind is needed to renew.
     pub fn renew(&mut self, clientid: ClientId, credentials: &Credential) -> Result<()> {
         let lease = self.active_leases.get(&clientid).ok_or(Error::StaleClientId)?;
         if self.leases.deadline(&lease.key) <= Instant::now() {
@@ -67,11 +103,12 @@ impl ClientLeases {
         if lease.credentials != *credentials {
             return Err(Error::IdentityInUse);
         }
-        self.leases.reset(&lease.key, self.duration);
+        self.leases.reset(&lease.key, lease.timeout);
         Ok(())
     }
 
     /// Removes the record and its timer together; an unknown ID has no effect.
+    /// Returns metadata for caller-side cleanup without sending a notification.
     #[must_use]
     pub fn remove(&mut self, clientid: ClientId) -> Option<RemovedLease> {
         let entry = match self.active_leases.entry(clientid) {
@@ -84,6 +121,8 @@ impl ClientLeases {
     }
 
     /// Checks the deadline and removes an overdue lease in a single operation.
+    /// Unknown IDs and leases whose deadlines have not elapsed return `None`.
+    /// The caller handles registration removal and expiration notification.
     #[must_use]
     pub fn remove_expired(&mut self, clientid: ClientId) -> Option<RemovedLease> {
         let entry = match self.active_leases.entry(clientid) {
@@ -98,6 +137,7 @@ impl ClientLeases {
     }
 
     /// Waits for and removes the next expired lease. Returns `None` when empty.
+    /// The caller handles registration removal and expiration notification.
     /// Cancellation leaves both collections unchanged unless a lease is returned.
     pub async fn expired(&mut self) -> Option<RemovedLease> {
         poll_fn(|cx| {
@@ -141,14 +181,14 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn register_renew_and_remove_keep_records_and_timers_together() {
-        let mut leases = ClientLeases::new(DURATION);
+        let mut leases = ClientLeases::new(DURATION, DURATION);
         let a = ClientId::new(1);
         let b = ClientId::new(2);
-        leases.register(a, Credential::None).unwrap();
-        leases.register(b, foreign()).unwrap();
+        leases.register_checked(a, Credential::None).unwrap();
+        leases.register_unchecked(b, foreign()).unwrap();
         assert_count(&leases, 2);
         advance(Duration::from_secs(6)).await;
-        leases.register(a, Credential::None).unwrap();
+        leases.register_checked(a, Credential::None).unwrap();
         assert_count(&leases, 2);
         let removed = leases.remove(b).unwrap();
         assert_eq!(removed.clientid, b);
@@ -167,7 +207,7 @@ mod tests {
         assert!(leases.expired().await.is_none());
 
         // Reusing the queue's storage cannot leave an old key in the map.
-        leases.register(b, foreign()).unwrap();
+        leases.register_unchecked(b, foreign()).unwrap();
         assert!(leases.remove(a).is_none());
         assert_count(&leases, 1);
         let expired = leases.expired().await.unwrap();
@@ -179,13 +219,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn rejected_registration_preserves_credentials_and_deadline() {
-        let mut leases = ClientLeases::new(DURATION);
+        let mut leases = ClientLeases::new(DURATION, DURATION);
         let id = ClientId::new(1);
-        leases.register(id, Credential::None).unwrap();
+        leases.register_checked(id, Credential::None).unwrap();
         let original_key = leases.active_leases[&id].key;
         let original_deadline = leases.leases.deadline(&original_key);
         advance(Duration::from_secs(3)).await;
-        assert_eq!(leases.register(id, foreign()), Err(Error::IdentityInUse));
+        assert_eq!(leases.register_checked(id, foreign()), Err(Error::IdentityInUse));
         assert_eq!(leases.renew(id, &foreign()), Err(Error::IdentityInUse));
         let lease = &leases.active_leases[&id];
         assert_eq!(lease.key, original_key);
@@ -194,17 +234,63 @@ mod tests {
         assert_count(&leases, 1);
         advance(DURATION).await;
         assert_eq!(leases.renew(id, &Credential::None), Err(Error::StaleClientId));
-        assert_eq!(leases.register(id, Credential::None), Err(Error::StaleClientId));
+        assert_eq!(leases.register_checked(id, Credential::None), Err(Error::StaleClientId));
         assert_count(&leases, 1);
         assert!(leases.remove_expired(id).unwrap().is_expired());
         assert_count(&leases, 0);
     }
 
     #[tokio::test(start_paused = true)]
+    async fn distinct_timeouts_are_preserved_when_both_kinds_are_renewed() {
+        let mut leases = ClientLeases::new(Duration::from_secs(5), Duration::from_secs(12));
+        let checked = ClientId::new(1);
+        let unchecked = ClientId::new(2);
+        leases.register_checked(checked, Credential::None).unwrap();
+        leases.register_unchecked(unchecked, Credential::None).unwrap();
+        advance(Duration::from_secs(3)).await;
+        leases.renew(checked, &Credential::None).unwrap();
+        leases.register_unchecked(unchecked, Credential::None).unwrap();
+        assert_count(&leases, 2);
+
+        advance(Duration::from_secs(6)).await;
+        assert_eq!(leases.remove_expired(checked).unwrap().clientid, checked);
+        assert!(leases.remove_expired(unchecked).is_none());
+        assert_count(&leases, 1);
+        leases.renew(unchecked, &Credential::None).unwrap();
+        advance(Duration::from_secs(10)).await;
+        assert!(leases.remove_expired(unchecked).is_none());
+        advance(Duration::from_secs(3)).await;
+        assert_eq!(leases.remove_expired(unchecked).unwrap().clientid, unchecked);
+        assert_count(&leases, 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn zero_timeout_affects_only_its_registration_kind() {
+        for (checked_timeout, unchecked_timeout) in
+            [(Duration::ZERO, DURATION), (DURATION, Duration::ZERO)]
+        {
+            let mut leases = ClientLeases::new(checked_timeout, unchecked_timeout);
+            let checked = ClientId::new(1);
+            let unchecked = ClientId::new(2);
+            leases.register_checked(checked, Credential::None).unwrap();
+            leases.register_unchecked(unchecked, Credential::None).unwrap();
+            let (immediate, delayed) =
+                if checked_timeout.is_zero() { (checked, unchecked) } else { (unchecked, checked) };
+            assert_eq!(leases.remove_expired(immediate).unwrap().clientid, immediate);
+            assert!(leases.remove_expired(delayed).is_none());
+            assert_eq!(leases.renew(delayed, &Credential::None), Ok(()));
+            assert_count(&leases, 1);
+            advance(DURATION + Duration::from_millis(1)).await;
+            assert_eq!(leases.remove_expired(delayed).unwrap().clientid, delayed);
+            assert_count(&leases, 0);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn cancelled_wait_and_renewal_leave_one_current_timer() {
-        let mut leases = ClientLeases::new(DURATION);
+        let mut leases = ClientLeases::new(DURATION, DURATION);
         let id = ClientId::new(1);
-        leases.register(id, Credential::None).unwrap();
+        leases.register_checked(id, Credential::None).unwrap();
         tokio::select! {
             biased;
             _ = tokio::task::yield_now() => {}

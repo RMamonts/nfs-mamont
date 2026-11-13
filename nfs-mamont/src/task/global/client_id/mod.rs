@@ -1,9 +1,10 @@
 //! Server-owned client registration actor.
 //!
-//! One task serializes both protocol registries and owns their shared clientid
-//! generator. Each command carries a one-shot reply channel. Dropping the reply
-//! receiver does not cancel the registration or stop the actor. Dropping all
-//! command senders lets the actor drain queued commands and exit.
+//! One task serializes checked and unchecked registration, coordinates their
+//! shared clientid sequence with lease timers, and sends command replies through
+//! one-shot channels. Dropping a reply receiver does not cancel the command or
+//! stop the actor. Dropping all command senders drains queued commands and exits
+//! without waiting for remaining leases or reporting them as expired.
 //!
 //! Registries start empty and fill as registration commands arrive. The same
 //! task drives a DelayQueue for active leases and publishes expired client IDs
@@ -17,7 +18,9 @@
 //!
 //! # #[tokio::main(flavor = "current_thread")]
 //! # async fn main() {
-//! let (task, sender, expired) = ClientIdTask::new(Duration::from_secs(60));
+//! let checked_timeout = Duration::from_secs(60);
+//! let unchecked_timeout = Duration::from_secs(300);
+//! let (task, sender, expired) = ClientIdTask::new(checked_timeout, unchecked_timeout);
 //! let running = task.spawn();
 //! let mut generations = ConnectionGenerationGenerator::new();
 //! let connection = ConnectionInfo::new(
@@ -58,28 +61,31 @@ pub type ClientIdReplyReceiver<T> = oneshot::Receiver<Result<T>>;
 
 /// Commands handled by the server's client registration actor.
 pub enum ClientIdCommand {
-    /// NFSv4 registration; the returned pair must subsequently be confirmed.
+    /// Checked registration; the returned pair must subsequently be confirmed.
     Register {
         registration: Registration,
         credentials: Credential,
         result_sender: ClientIdReplySender<PendingClient>,
     },
-    /// Confirms a previously returned NFSv4 registration pair.
+    /// Confirms a previously returned checked registration pair.
     Confirm { pair: PendingClient, credentials: Credential, result_sender: ClientIdReplySender<()> },
-    /// Immediately registers an NFSv3 peer, including credential collision checks.
+    /// Immediately registers an unchecked peer, including credential collision checks.
     RegisterUnchecked {
         connection: ConnectionInfo,
         credentials: Credential,
         result_sender: ClientIdReplySender<ClientId>,
     },
-    /// Extends an active lease after authenticated client activity.
+    /// Checks credentials against the lease owner and extends an active lease
+    /// using its original checked or unchecked timeout. An expired lease cannot
+    /// be revived.
     Renew { clientid: ClientId, credentials: Credential, result_sender: ClientIdReplySender<()> },
-    /// Removes a client and cancels its timer. Returns the removed active ID for
-    /// state cleanup, or `None` for an unconfirmed or unknown client.
+    /// Removes a registration and cancels its timer without an expiration event.
+    /// Returns an unchecked or confirmed checked ID for caller-side state cleanup.
+    /// Pending-only checked records are removed but return `None`, as do unknown IDs.
     Invalidate { clientid: ClientId, result_sender: ClientIdReplySender<Option<ClientId>> },
 }
 
-/// Owns both client registries and their common ID allocator.
+/// Coordinates client registries, lease timers, command replies, and expiration events.
 pub struct ClientIdTask {
     clients: ClientRegistries,
     receiver: ClientIdReceiver,
@@ -89,21 +95,27 @@ pub struct ClientIdTask {
 
 impl ClientIdTask {
     /// Creates an empty, unstarted actor, its command sender and an unbounded
-    /// expiration receiver. Leases start on NFSv4 confirmation or NFSv3
-    /// registration; unconfirmed records have no lease. Expiration invalidates
+    /// expiration receiver. Leases start on checked confirmation or unchecked
+    /// registration; pending-only checked IDs have no lease. A pending update
+    /// preserves the existing confirmed client's lease. Expiration invalidates
     /// the registration before sending its ID. Dropping the expiration receiver
     /// does not stop command processing. Dropping all command senders drains
     /// queued commands and stops the actor without waiting for active leases.
     ///
-    /// A zero duration makes leases expire immediately. Timer operations require
-    /// a Tokio runtime with time enabled and a duration supported by Tokio timers.
-    pub fn new(lease_duration: Duration) -> (Self, ClientIdSender, Receiver<ClientId>) {
+    /// `checked_timeout` and `unchecked_timeout` apply to their respective
+    /// registration paths. A zero timeout makes only that kind expire immediately.
+    /// Timer operations require a Tokio runtime with time enabled and a duration
+    /// supported by Tokio timers.
+    pub fn new(
+        checked_timeout: Duration,
+        unchecked_timeout: Duration,
+    ) -> (Self, ClientIdSender, Receiver<ClientId>) {
         let (sender, receiver) = async_channel::unbounded();
         let (expired_sender, expired_receiver) = async_channel::unbounded();
         let task = Self {
             clients: ClientRegistries::new(),
             receiver,
-            leases: ClientLeases::new(lease_duration),
+            leases: ClientLeases::new(checked_timeout, unchecked_timeout),
             expired_sender,
         };
         (task, sender, expired_receiver)
@@ -152,7 +164,7 @@ impl ClientIdTask {
                         }
                     }
                     if let Some(clientid) = confirmation.clientid {
-                        self.leases.register(clientid, credentials)?;
+                        self.leases.register_checked(clientid, credentials)?;
                     }
                     Ok(())
                 });
@@ -164,7 +176,7 @@ impl ClientIdTask {
                 }
                 let result = self.clients.register_unchecked(connection, &credentials).and_then(
                     |clientid| {
-                        self.leases.register(clientid, credentials)?;
+                        self.leases.register_unchecked(clientid, credentials)?;
                         Ok(clientid)
                     },
                 );
@@ -302,7 +314,8 @@ mod tests {
 
     #[tokio::test]
     async fn protocols_share_ids_and_retries_preserve_them() {
-        let (task, sender, _expired) = ClientIdTask::new(Duration::from_secs(60));
+        let (task, sender, _expired) =
+            ClientIdTask::new(Duration::from_secs(60), Duration::from_secs(60));
         let running = task.spawn();
         let mut generations = ConnectionGenerationGenerator::new();
         let connection =
@@ -328,7 +341,8 @@ mod tests {
 
     #[tokio::test]
     async fn errors_and_abandoned_replies_do_not_stop_actor() {
-        let (task, sender, _expired) = ClientIdTask::new(Duration::from_secs(60));
+        let (task, sender, _expired) =
+            ClientIdTask::new(Duration::from_secs(60), Duration::from_secs(60));
         let running = task.spawn();
         let (result_sender, receiver) = oneshot::channel();
         drop(receiver);
@@ -380,7 +394,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn leases_expire_once_for_both_protocols_and_empty_queue_accepts_new_clients() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         tokio::task::yield_now().await;
         let pending = register(&sender, 1, 1).await;
@@ -416,7 +430,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn renewal_resets_timer_and_bad_credentials_do_not_extend_lease() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let peer = unchecked(&sender, connection(), Credential::None).await.unwrap();
         tokio::time::advance(Duration::from_secs(6)).await;
@@ -436,7 +450,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn overdue_renewal_is_rejected_even_if_command_is_handled_before_timer() {
-        let (mut task, sender, expired) = ClientIdTask::new(LEASE);
+        let (mut task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let (result_sender, receiver) = oneshot::channel();
         task.handle(ClientIdCommand::RegisterUnchecked {
             connection: connection(),
@@ -460,10 +474,10 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn confirmation_reports_overdue_previous_client_before_replacement() {
-        let (mut task, _sender, expired) = ClientIdTask::new(LEASE);
+        let (mut task, _sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let first = task.clients.register(registration(1, 1), &Credential::None).unwrap();
         task.clients.confirm(first, &Credential::None).unwrap();
-        task.leases.register(first.clientid, Credential::None).unwrap();
+        task.leases.register_checked(first.clientid, Credential::None).unwrap();
         let reboot = task.clients.register(registration(2, 1), &Credential::None).unwrap();
         tokio::time::advance(LEASE + Duration::from_millis(1)).await;
         let (result_sender, receiver) = oneshot::channel();
@@ -480,7 +494,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn callback_confirmation_renews_and_reboot_cancels_previous_timer() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let first = register(&sender, 1, 1).await;
         assert_eq!(confirm(&sender, first, Credential::None).await, Ok(()));
@@ -508,7 +522,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invalidation_cancels_timer_without_affecting_reused_queue_keys() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let old = unchecked(&sender, connection(), Credential::None).await.unwrap();
         assert_eq!(invalidate(&sender, old).await, Some(old));
@@ -525,7 +539,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invalidation_returns_removed_id_and_preserves_other_protocol() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let peer = unchecked(&sender, connection(), Credential::None).await.unwrap();
         let first = register(&sender, 1, 1).await;
@@ -553,7 +567,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invalidating_unconfirmed_client_removes_pending_registration_without_timer() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let pending = register(&sender, 1, 1).await;
         assert_eq!(invalidate(&sender, pending.clientid).await, None);
@@ -568,7 +582,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn repeated_registration_cannot_change_lease_owner_or_extend_foreign_lease() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         let owner = foreign();
         let peer = unchecked(&sender, connection(), owner.clone()).await.unwrap();
@@ -596,9 +610,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn invalidating_already_removed_registration_cancels_remaining_timer() {
-        let (mut task, _sender, _expired) = ClientIdTask::new(LEASE);
+        let (mut task, _sender, _expired) = ClientIdTask::new(LEASE, LEASE);
         let peer = task.clients.register_unchecked(connection(), &Credential::None).unwrap();
-        task.leases.register(peer, Credential::None).unwrap();
+        task.leases.register_unchecked(peer, Credential::None).unwrap();
         assert!(task.clients.invalidate(peer).is_some());
         assert_eq!(task.invalidate(peer), None);
         assert!(task.leases.is_empty());
@@ -606,7 +620,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn zero_duration_expires_immediately() {
-        let (task, sender, expired) = ClientIdTask::new(Duration::ZERO);
+        let (task, sender, expired) = ClientIdTask::new(Duration::ZERO, Duration::ZERO);
         let running = task.spawn();
         let peer = unchecked(&sender, connection(), Credential::None).await.unwrap();
         tokio::task::yield_now().await;
@@ -618,9 +632,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn missing_registration_still_notifies_cleanup_on_expiration() {
-        let (mut task, sender, expired) = ClientIdTask::new(LEASE);
+        let (mut task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let peer = task.clients.register_unchecked(connection(), &Credential::None).unwrap();
-        task.leases.register(peer, Credential::None).unwrap();
+        task.leases.register_unchecked(peer, Credential::None).unwrap();
         assert!(task.clients.invalidate(peer).is_some());
         let running = task.spawn();
         tokio::time::advance(LEASE + Duration::from_millis(1)).await;
@@ -632,8 +646,40 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn checked_and_unchecked_paths_use_independent_timeouts_on_renewal() {
+        let (task, sender, expired) = ClientIdTask::new(Duration::from_secs(3), LEASE);
+        let running = task.spawn();
+        let first = register(&sender, 1, 1).await;
+        assert_eq!(confirm(&sender, first, Credential::None).await, Ok(()));
+        let peer = unchecked(&sender, connection(), Credential::None).await.unwrap();
+
+        tokio::time::advance(Duration::from_secs(2)).await;
+        assert_eq!(confirm(&sender, first, Credential::None).await, Ok(()));
+        assert_eq!(unchecked(&sender, connection(), Credential::None).await, Ok(peer));
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(expired.try_recv().unwrap(), first.clientid);
+        assert!(expired.try_recv().is_err());
+        assert_eq!(renew(&sender, peer, Credential::None).await, Ok(()));
+
+        let next = register(&sender, 2, 1).await;
+        assert_ne!(next.clientid, first.clientid);
+        assert_eq!(confirm(&sender, next, Credential::None).await, Ok(()));
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(expired.try_recv().unwrap(), next.clientid);
+        assert!(expired.try_recv().is_err());
+        tokio::time::advance(Duration::from_secs(7)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(expired.try_recv().unwrap(), peer);
+        assert!(expired.try_recv().is_err());
+        drop(sender);
+        running.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn closed_expiration_channel_does_not_stop_actor_and_commands_drain_on_shutdown() {
-        let (task, sender, expired) = ClientIdTask::new(LEASE);
+        let (task, sender, expired) = ClientIdTask::new(LEASE, LEASE);
         let running = task.spawn();
         drop(expired);
         let old = unchecked(&sender, connection(), Credential::None).await.unwrap();
