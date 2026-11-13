@@ -36,7 +36,7 @@ fn callback_update_preserves_clientid() {
     assert_eq!(first.clientid, next.clientid);
     assert_ne!(first.confirmation, next.confirmation);
     assert_eq!(&m.get(first.clientid).unwrap().callback, &registration(1).callback);
-    assert_eq!(m.confirm(next, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(next, &Credential::None), Ok(None));
     let record = m.get(first.clientid).unwrap();
     assert_eq!(record, &update);
 }
@@ -53,7 +53,7 @@ fn new_registration_can_restore_a_previous_callback() {
             assert_eq!(pair.clientid, old.clientid);
             assert_ne!(pair.confirmation, old.confirmation);
         }
-        assert_eq!(m.confirm(pair, &Credential::None), Ok(()));
+        assert_eq!(m.confirm(pair, &Credential::None), Ok(None));
         assert_eq!(m.get(pair.clientid).unwrap(), &input);
         previous = Some(pair);
     }
@@ -72,7 +72,7 @@ fn callback_updates_preserve_pending_reboot() {
     assert_eq!(next.clientid, first.clientid);
     assert_ne!(next.confirmation, replaced.confirmation);
     assert_eq!(m.confirm(replaced, &Credential::None), Err(Error::StaleClientId));
-    assert_eq!(m.confirm(next, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(next, &Credential::None), Ok(None));
     assert_eq!(m.get(first.clientid).unwrap(), &update);
 
     m.confirm(reboot, &Credential::None).unwrap();
@@ -96,9 +96,9 @@ fn new_incarnation_replaces_all_pending_records_for_its_identity() {
     assert_eq!(m.confirm(reboot, &Credential::None), Err(Error::StaleClientId));
     assert_eq!(m.confirm(callback, &Credential::None), Err(Error::StaleClientId));
     assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
-    assert_eq!(m.confirm(unrelated, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(unrelated, &Credential::None), Ok(None));
     assert_eq!(m.get(unrelated.clientid).unwrap(), &other);
-    assert_eq!(m.confirm(replacement, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(replacement, &Credential::None), Ok(Some(first.clientid)));
     assert_eq!(m.get(replacement.clientid).unwrap(), &registration(3));
 }
 
@@ -109,9 +109,11 @@ fn reboot_retires_only_at_confirmation() {
     let next = m.register(registration(2), &Credential::None).unwrap();
     assert_ne!(first.clientid, next.clientid);
     assert!(m.get(first.clientid).is_ok());
-    m.confirm(next, &Credential::None).unwrap();
+    assert_eq!(m.confirm(next, &Credential::None), Ok(Some(first.clientid)));
     assert_eq!(m.get(first.clientid), Err(Error::StaleClientId));
-    assert_eq!(m.confirm(next, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(next, &Credential::None), Ok(None));
+    m.confirmation_drc = Cache::default();
+    assert_eq!(m.confirm(next, &Credential::None), Ok(None));
 }
 
 #[test]
@@ -123,7 +125,7 @@ fn new_request_replaces_pending_even_with_identical_arguments() {
     assert_ne!(first.clientid, next.clientid);
     assert_ne!(first.confirmation, next.confirmation);
     assert_eq!(m.confirm(first, &Credential::None), Err(Error::StaleClientId));
-    assert_eq!(m.confirm(next, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(next, &Credential::None), Ok(None));
 }
 
 #[test]
@@ -137,7 +139,7 @@ fn pending_reboot_is_replaced_when_callback_changes() {
     assert_ne!(a.clientid, b.clientid);
     assert!(m.get(first.clientid).is_ok());
     assert_eq!(m.confirm(a, &Credential::None), Err(Error::StaleClientId));
-    assert_eq!(m.confirm(b, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(b, &Credential::None), Ok(Some(first.clientid)));
 }
 
 #[test]
@@ -223,7 +225,7 @@ fn registration_principal_conflict_preserves_confirmed_and_pending() {
         );
         assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
     }
-    assert_eq!(m.confirm(pending, &owner), Ok(()));
+    assert_eq!(m.confirm(pending, &owner), Ok(Some(first.clientid)));
 }
 
 #[test]
@@ -235,7 +237,7 @@ fn pending_without_confirmed_can_be_replaced_by_another_principal() {
     assert_ne!(first.confirmation, next.confirmation);
     assert_eq!(m.confirm(first, &credential(100, 1)), Err(Error::StaleClientId));
     assert_eq!(m.confirm(next, &credential(100, 1)), Err(Error::IdentityInUse));
-    assert_eq!(m.confirm(next, &credential(200, 2)), Ok(()));
+    assert_eq!(m.confirm(next, &credential(200, 2)), Ok(None));
 }
 
 #[test]
@@ -267,7 +269,7 @@ fn confirmation_rejects_foreign_credentials_in_each_branch() {
         assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
         m.confirm(next, &owner).unwrap();
         assert_eq!(m.get(next.clientid).unwrap(), &input);
-        assert_eq!(m.confirm(next, &owner), Ok(()));
+        assert_eq!(m.confirm(next, &owner), Ok(None));
     }
 }
 
@@ -282,7 +284,7 @@ fn new_incarnation_replaces_pending_even_when_verifier_is_unchanged() {
     assert_ne!(a.confirmation, b.confirmation);
     assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
     assert_eq!(m.confirm(a, &Credential::None), Err(Error::StaleClientId));
-    assert_eq!(m.confirm(b, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(b, &Credential::None), Ok(Some(first.clientid)));
 }
 
 #[test]
@@ -306,7 +308,7 @@ fn drc_hit_preserves_pending_and_confirmed_state() {
     assert_eq!(m.register(input, &Credential::None).unwrap(), pair);
     assert_eq!(m.register(other, &owner).unwrap(), other_pair);
     assert_eq!(m.get(first.clientid).unwrap(), &registration(1));
-    assert_eq!(m.confirm(pair, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(pair, &Credential::None), Ok(Some(first.clientid)));
 }
 
 #[test]
@@ -319,7 +321,7 @@ fn drc_checks_credentials_and_evicts_invalidated_registration() {
     assert_eq!(m.invalidate(next.clientid), None);
     let recreated = m.register(registration(1), &credential(200, 1)).unwrap();
     assert_ne!(next, recreated);
-    assert_eq!(m.confirm(recreated, &credential(200, 1)), Ok(()));
+    assert_eq!(m.confirm(recreated, &credential(200, 1)), Ok(None));
 }
 
 #[test]
@@ -327,11 +329,11 @@ fn confirmation_drc_replays_success_without_restoring_records() {
     let mut m = manager();
     let first = confirmed(&mut m);
     let pair = m.register(registration(2), &Credential::None).unwrap();
-    assert_eq!(m.confirm(pair, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(pair, &Credential::None), Ok(Some(first.clientid)));
     assert_eq!(m.get(first.clientid), Err(Error::StaleClientId));
     assert_eq!(m.invalidate(pair.clientid), Some(pair.clientid));
     // A DRC hit precedes the table lookup and must not recreate the record.
-    assert_eq!(m.confirm(pair, &Credential::None), Ok(()));
+    assert_eq!(m.confirm(pair, &Credential::None), Ok(None));
     assert_eq!(m.get(pair.clientid), Err(Error::StaleClientId));
     m.confirmation_drc = Cache::default();
     assert_eq!(m.confirm(pair, &Credential::None), Err(Error::StaleClientId));
@@ -347,7 +349,7 @@ fn confirmation_drc_separates_credentials_and_caches_failures() {
     m.confirm(pair, &owner).unwrap();
     assert_eq!(m.invalidate(pair.clientid), Some(pair.clientid));
     assert_eq!(m.confirm(pair, &foreign), Err(Error::IdentityInUse));
-    assert_eq!(m.confirm(pair, &owner), Ok(()));
+    assert_eq!(m.confirm(pair, &owner), Ok(None));
     assert_eq!(m.get(pair.clientid), Err(Error::StaleClientId));
 }
 

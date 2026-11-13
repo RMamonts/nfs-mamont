@@ -143,23 +143,33 @@ impl ClientIdManager {
     /// Processes SETCLIENTID_CONFIRM, starting with the DRC lookup (§14.2.34).
     /// A principal mismatch preserves all records. Callback updates require
     /// distinct confirmed/unconfirmed verifiers before checking credentials.
-    pub fn confirm(&mut self, pair: PendingClient, credentials: &Credential) -> Result<()> {
+    /// Returns the retired client ID when promoting a new incarnation. Callback
+    /// updates and cached replies return `None`: they retire no client state.
+    pub fn confirm(
+        &mut self,
+        pair: PendingClient,
+        credentials: &Credential,
+    ) -> Result<Option<ClientId>> {
         if let Some(cached) = self
             .confirmation_drc
             .find(|cached| cached.pair == pair && cached.credentials == *credentials)
         {
-            return cached.result;
+            return cached.result.map(|()| None);
         }
         let result = self.confirm_inner(pair, credentials);
         self.confirmation_drc.add(CachedConfirmation {
             pair,
             credentials: credentials.clone(),
-            result,
+            result: result.map(|_| ()),
         });
         result
     }
 
-    fn confirm_inner(&mut self, pair: PendingClient, credentials: &Credential) -> Result<()> {
+    fn confirm_inner(
+        &mut self,
+        pair: PendingClient,
+        credentials: &Credential,
+    ) -> Result<Option<ClientId>> {
         let Some(pending) = self.pending.get(&pair.clientid) else {
             // Case 2: confirmed retry after the RPC cache entry was evicted.
             let Some(record) = self.confirmed.get(&pair.clientid) else {
@@ -171,7 +181,7 @@ impl ClientIdManager {
             if record.credentials != *credentials {
                 return Err(Error::IdentityInUse);
             }
-            return Ok(());
+            return Ok(None);
         };
         if pending.confirmation != pair.confirmation {
             return Err(Error::StaleClientId);
@@ -199,7 +209,7 @@ impl ClientIdManager {
         }
         self.drc.retain(|cached| cached.pending.clientid != pair.clientid);
         self.confirmed.insert(pair.clientid, record);
-        Ok(())
+        Ok(previous.filter(|old| *old != pair.clientid))
     }
 
     /// Returns a confirmed registration; unknown or unconfirmed IDs are stale.

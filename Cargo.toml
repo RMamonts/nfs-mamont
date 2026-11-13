@@ -20,5 +20,7 @@ libc = "0.2.186"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 tokio = { version = "1.51", default-features = false }
+# tokio-util 0.7.20 requires Rust 1.85; the workspace supports Rust 1.75.
+tokio-util = { version = ">=0.7.19, <0.7.20", default-features = false }
 tracing = "0.1"
 trait-variant = "0.1.2"
