@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 //! Defines NFSv4 operation types.
 //!
 //! Each operation (RFC 7530 §16) is described in its own submodule, which
