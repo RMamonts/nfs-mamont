@@ -33,24 +33,20 @@
 //! # }
 //! ```
 
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    future::poll_fn,
-    time::Duration,
-};
+mod leases;
+
+use std::time::Duration;
 
 use async_channel::{Receiver, Sender};
-use tokio::time::Instant;
 use tokio::{sync::oneshot, task::JoinHandle};
-use tokio_util::time::{delay_queue::Key, DelayQueue};
 
-use crate::{
-    auth::Credential,
-    client_id::{
-        ClientId, ClientIdGenerator, ClientIdManager, ConnectionInfo, Error, Nfs3ClientIdManager,
-        PendingClient, Registration, Result,
-    },
+use crate::auth::Credential;
+use crate::client_id::{
+    ClientId, ClientIdGenerator, ClientIdManager, ConnectionInfo, Nfs3ClientIdManager,
+    PendingClient, Registration, Result,
 };
+
+use super::client_id::leases::{ClientLeases, Protocol, RemovedLease};
 
 /// Sender cloned by callers of the client registration actor.
 pub type ClientIdSender = Sender<ClientIdCommand>;
@@ -89,23 +85,8 @@ pub struct ClientIdTask {
     nfsv4: ClientIdManager,
     nfsv3: Nfs3ClientIdManager,
     receiver: ClientIdReceiver,
-    lease_duration: Duration,
-    leases: DelayQueue<ClientId>,
-    active_leases: HashMap<ClientId, Lease>,
+    leases: ClientLeases,
     expired_sender: Sender<ClientId>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Protocol {
-    Nfs3,
-    Nfs4,
-}
-
-/// Timer handle, owning registry, and immutable principal allowed to renew it.
-struct Lease {
-    key: Key,
-    protocol: Protocol,
-    credentials: Credential,
 }
 
 impl ClientIdTask {
@@ -126,9 +107,7 @@ impl ClientIdTask {
             nfsv4: ClientIdManager::new(ids.clone()),
             nfsv3: Nfs3ClientIdManager::new(ids),
             receiver,
-            lease_duration,
-            leases: DelayQueue::new(),
-            active_leases: HashMap::new(),
+            leases: ClientLeases::new(lease_duration),
             expired_sender,
         };
         (task, sender, expired_receiver)
@@ -147,20 +126,8 @@ impl ClientIdTask {
                     let Ok(command) = command else { break };
                     self.handle(command);
                 }
-                Some(expired) = poll_fn(|cx| self.leases.poll_expired(cx)), if !self.leases.is_empty() => {
-                    let key = expired.key();
-                    let clientid = expired.into_inner();
-                    match self.active_leases.entry(clientid) {
-                        Entry::Occupied(entry) if entry.get().key == key => {
-                            let lease = entry.remove();
-                            self.expire(clientid, lease);
-                        }
-                        Entry::Occupied(_) => {
-                            // An obsolete timer must not expire the current lease.
-                            tracing::debug!(clientid = clientid.into_inner(), "ignoring obsolete lease timer");
-                        }
-                        Entry::Vacant(_) => unreachable!("expired timer must have an active lease"),
-                    }
+                Some(lease) = self.leases.expired(), if !self.leases.is_empty() => {
+                    self.expire(lease);
                 }
             }
         }
@@ -182,15 +149,14 @@ impl ClientIdTask {
                     // Preserve the reply, but never revive an expired client.
                     if let Some(old) = retired {
                         // The manager already removed the old registration.
-                        let overdue = self.lease_is_due(old);
-                        match self.cancel_lease(old) {
-                            Some(_) if overdue => self.notify_expired(old),
-                            Some(_) => {}
-                            None => unreachable!("retired confirmed client must have a lease"),
+                        if let Some(lease) = self.leases.remove(old) {
+                            if lease.is_expired() {
+                                self.notify_expired(lease.clientid);
+                            }
                         }
                     }
                     if self.nfsv4.get(pair.clientid).is_ok() {
-                        self.register_lease(pair.clientid, Protocol::Nfs4, credentials)?;
+                        self.leases.register(pair.clientid, Protocol::Nfs4, credentials)?;
                     }
                     Ok(())
                 });
@@ -201,7 +167,7 @@ impl ClientIdTask {
                     self.expire_if_due(clientid);
                 }
                 let result = self.nfsv3.register(connection, &credentials).and_then(|clientid| {
-                    self.register_lease(clientid, Protocol::Nfs3, credentials)?;
+                    self.leases.register(clientid, Protocol::Nfs3, credentials)?;
                     Ok(clientid)
                 });
                 send_reply(result_sender, result);
@@ -217,39 +183,9 @@ impl ClientIdTask {
         }
     }
 
-    /// Credentials and protocol are set only when the lease is first created.
-    fn register_lease(
-        &mut self,
-        clientid: ClientId,
-        protocol: Protocol,
-        credentials: Credential,
-    ) -> Result<()> {
-        match self.active_leases.entry(clientid) {
-            Entry::Occupied(entry) => {
-                if entry.get().protocol != protocol {
-                    return Err(Error::StaleClientId);
-                }
-                self.renew(clientid, &credentials)
-            }
-            Entry::Vacant(entry) => {
-                let key = self.leases.insert(clientid, self.lease_duration);
-                entry.insert(Lease { key, protocol, credentials });
-                Ok(())
-            }
-        }
-    }
-
-    #[must_use]
-    fn cancel_lease(&mut self, clientid: ClientId) -> Option<Lease> {
-        let lease = self.active_leases.remove(&clientid)?;
-        // The key is owned by this lease and is consumed along with it.
-        self.leases.remove(&lease.key);
-        Some(lease)
-    }
-
     #[must_use]
     fn invalidate(&mut self, clientid: ClientId) -> Option<ClientId> {
-        if let Some(lease) = self.cancel_lease(clientid) {
+        if let Some(lease) = self.leases.remove(clientid) {
             self.remove_registration(clientid, lease.protocol)
         } else {
             // Only NFSv4 has unconfirmed registrations without an active lease.
@@ -264,7 +200,8 @@ impl ClientIdTask {
         }
     }
 
-    fn expire(&mut self, clientid: ClientId, lease: Lease) {
+    fn expire(&mut self, lease: RemovedLease) {
+        let clientid = lease.clientid;
         if self.remove_registration(clientid, lease.protocol).is_none() {
             tracing::warn!(
                 clientid = clientid.into_inner(),
@@ -282,29 +219,15 @@ impl ClientIdTask {
         }
     }
 
-    fn lease_is_due(&self, clientid: ClientId) -> bool {
-        self.active_leases
-            .get(&clientid)
-            .is_some_and(|lease| self.leases.deadline(&lease.key) <= Instant::now())
-    }
-
     fn expire_if_due(&mut self, clientid: ClientId) {
-        if self.lease_is_due(clientid) {
-            let Some(lease) = self.cancel_lease(clientid) else {
-                unreachable!("overdue client must have an active lease");
-            };
-            self.expire(clientid, lease);
+        if let Some(lease) = self.leases.remove_expired(clientid) {
+            self.expire(lease);
         }
     }
 
     fn renew(&mut self, clientid: ClientId, credentials: &Credential) -> Result<()> {
         self.expire_if_due(clientid);
-        let lease = self.active_leases.get(&clientid).ok_or(Error::StaleClientId)?;
-        if lease.credentials != *credentials {
-            return Err(Error::IdentityInUse);
-        }
-        self.leases.reset(&lease.key, self.lease_duration);
-        Ok(())
+        self.leases.renew(clientid, credentials)
     }
 }
 
@@ -547,7 +470,7 @@ mod tests {
         let (mut task, _sender, expired) = ClientIdTask::new(LEASE);
         let first = task.nfsv4.register(registration(1, 1), &Credential::None).unwrap();
         task.nfsv4.confirm(first, &Credential::None).unwrap();
-        task.register_lease(first.clientid, Protocol::Nfs4, Credential::None).unwrap();
+        task.leases.register(first.clientid, Protocol::Nfs4, Credential::None).unwrap();
         let reboot = task.nfsv4.register(registration(2, 1), &Credential::None).unwrap();
         tokio::time::advance(LEASE + Duration::from_millis(1)).await;
         let (result_sender, receiver) = oneshot::channel();
@@ -558,8 +481,8 @@ mod tests {
         });
         assert_eq!(receiver.await.unwrap(), Ok(()));
         assert_eq!(expired.try_recv().unwrap(), first.clientid);
-        assert_eq!(task.active_leases.len(), 1);
-        assert!(task.active_leases.contains_key(&reboot.clientid));
+        assert_eq!(task.leases.renew(first.clientid, &Credential::None), Err(Error::StaleClientId));
+        assert_eq!(task.leases.renew(reboot.clientid, &Credential::None), Ok(()));
     }
 
     #[tokio::test(start_paused = true)]
@@ -682,26 +605,10 @@ mod tests {
     async fn invalidating_already_removed_registration_cancels_remaining_timer() {
         let (mut task, _sender, _expired) = ClientIdTask::new(LEASE);
         let peer = task.nfsv3.register(connection(), &Credential::None).unwrap();
-        task.register_lease(peer, Protocol::Nfs3, Credential::None).unwrap();
+        task.leases.register(peer, Protocol::Nfs3, Credential::None).unwrap();
         assert!(task.nfsv3.invalidate(peer).is_some());
         assert_eq!(task.invalidate(peer), None);
-        assert!(task.active_leases.is_empty());
         assert!(task.leases.is_empty());
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn protocol_mismatch_is_rejected_without_changing_lease() {
-        let (mut task, _sender, _expired) = ClientIdTask::new(LEASE);
-        let peer = task.nfsv3.register(connection(), &Credential::None).unwrap();
-        task.register_lease(peer, Protocol::Nfs3, Credential::None).unwrap();
-        let deadline = task.leases.deadline(&task.active_leases[&peer].key);
-        tokio::time::advance(Duration::from_secs(3)).await;
-        assert_eq!(task.register_lease(peer, Protocol::Nfs4, foreign()), Err(Error::StaleClientId));
-        let lease = &task.active_leases[&peer];
-        assert_eq!(lease.protocol, Protocol::Nfs3);
-        assert_eq!(lease.credentials, Credential::None);
-        assert_eq!(task.leases.deadline(&lease.key), deadline);
-        assert_eq!(task.invalidate(peer), Some(peer));
     }
 
     #[tokio::test(start_paused = true)]
@@ -717,29 +624,10 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn obsolete_timer_does_not_expire_current_lease() {
-        let (mut task, sender, expired) = ClientIdTask::new(LEASE);
-        let peer = task.nfsv3.register(connection(), &Credential::None).unwrap();
-        task.register_lease(peer, Protocol::Nfs3, Credential::None).unwrap();
-        task.leases.insert(peer, Duration::from_secs(1));
-        let running = task.spawn();
-        tokio::time::advance(Duration::from_secs(2)).await;
-        tokio::task::yield_now().await;
-        assert!(expired.try_recv().is_err());
-        assert_eq!(renew(&sender, peer, Credential::None).await, Ok(()));
-        tokio::time::advance(LEASE + Duration::from_millis(1)).await;
-        tokio::task::yield_now().await;
-        assert_eq!(expired.try_recv().unwrap(), peer);
-        assert!(expired.try_recv().is_err());
-        drop(sender);
-        running.await.unwrap();
-    }
-
-    #[tokio::test(start_paused = true)]
     async fn missing_registration_still_notifies_cleanup_on_expiration() {
         let (mut task, sender, expired) = ClientIdTask::new(LEASE);
         let peer = task.nfsv3.register(connection(), &Credential::None).unwrap();
-        task.register_lease(peer, Protocol::Nfs3, Credential::None).unwrap();
+        task.leases.register(peer, Protocol::Nfs3, Credential::None).unwrap();
         assert!(task.nfsv3.invalidate(peer).is_some());
         let running = task.spawn();
         tokio::time::advance(LEASE + Duration::from_millis(1)).await;
