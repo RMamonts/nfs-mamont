@@ -1,11 +1,11 @@
 use crate::allocator::Buffer;
 use crate::parser::NfsArguments;
 use crate::vfs::file::{BackendId, Handle, PAYLOAD_SIZE};
-use crate::vfs::{self, get_attr, link, rename, DirOpArgs, NfsRes};
+use crate::vfs::{self, get_attr, link, read, rename, write, DirOpArgs, NfsRes};
 
-use super::{failed_response, target, Target};
+use super::{cost, failed_response, target, Target};
 
-mod scheduler;
+mod drr;
 
 /// Routing never touches the payload, so the buffer holds no data.
 struct MockBuffer;
@@ -92,4 +92,26 @@ fn failed_response_keeps_the_procedure_variant() {
         panic!("expected a failed GETATTR response");
     };
     assert_eq!(fail.error, vfs::Error::StaleFile);
+}
+
+fn read_of(count: u32) -> NfsArguments<MockBuffer> {
+    NfsArguments::Read(read::Args { file: handle(0), offset: 0, count }, MockBuffer)
+}
+
+fn write_of(size: u32) -> NfsArguments<MockBuffer> {
+    let stable = write::StableHow::Unstable;
+    NfsArguments::Write(write::Args { file: handle(0), offset: 0, size, stable, data: MockBuffer })
+}
+
+#[test]
+fn cost_grows_with_the_data() {
+    let getattr = NfsArguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
+
+    assert_eq!(cost(&getattr), 1);
+    assert_eq!(cost(&read_of(0)), 1);
+    assert_eq!(cost(&read_of(4096)), 2);
+    assert_eq!(cost(&read_of(64 * 1024)), 2);
+    assert_eq!(cost(&read_of(64 * 1024 + 1)), 3);
+    assert_eq!(cost(&read_of(1 << 20)), 17);
+    assert_eq!(cost(&write_of(64 * 1024)), 2);
 }

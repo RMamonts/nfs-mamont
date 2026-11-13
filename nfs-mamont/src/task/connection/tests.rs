@@ -18,14 +18,15 @@ use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
-use crate::task::connection::limit::Budget;
-use crate::task::connection::probation::{Probation, Ticket};
+use crate::limits::connection::ConnectionLimits;
+use crate::limits::probation::{Probation, Ticket};
+use crate::limits::{self, Limits};
 use crate::task::connection::read::{CommandSenders, ReadTask};
 use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::scheduler::Scheduler;
+use crate::task::global::vfs::drr::{self, Slot};
 use crate::task::global::vfs::{VfsCommand, VfsSender};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
@@ -123,36 +124,36 @@ struct Pipeline {
 /// The VFS pool of a test: the queues of its connections, read by the test instead of
 /// the workers, behind `max_pending` slots.
 struct Pool {
-    scheduler: Arc<Scheduler<TestBuffer>>,
-    pending: Option<Arc<Semaphore>>,
+    sender: drr::Sender<VfsCommand<TestBuffer>>,
+    receiver: drr::Receiver<VfsCommand<TestBuffer>>,
 }
 
 impl Pool {
-    /// Registers the queue of a new connection.
+    /// Opens the queue of a new connection.
     fn sender(&self) -> VfsSender<TestBuffer> {
-        VfsSender::new(self.scheduler.register(), self.pending.clone())
+        self.sender.flow()
     }
 
     /// Returns the number of commands queued over all connections.
     fn len(&self) -> usize {
-        self.scheduler.queued()
+        self.receiver.queued()
     }
 
     /// Returns whether every connection is gone; commands it queued may still wait for
     /// the workers.
     fn is_closed(&self) -> bool {
-        self.scheduler.connections() == 0
+        self.receiver.senders() == 0
     }
 
     /// Takes the next command, in the order the workers would.
-    async fn recv(&self) -> VfsCommand<TestBuffer> {
-        self.scheduler.next().await.unwrap()
+    async fn recv(&self) -> (VfsCommand<TestBuffer>, Slot) {
+        self.receiver.recv().await.unwrap()
     }
 }
 
 fn pool(max_pending: Option<usize>) -> Pool {
-    let pending = max_pending.map(|permits| Arc::new(Semaphore::new(permits)));
-    Pool { scheduler: Scheduler::new(), pending }
+    let (sender, receiver) = drr::channel(max_pending.map(|max| NonZeroUsize::new(max).unwrap()));
+    Pool { sender, receiver }
 }
 
 /// Fills the socket until it stays unwritable, as if the client had stopped reading.
@@ -166,7 +167,7 @@ async fn fill_send_buffer(socket: &OwnedWriteHalf) {
 struct Setup {
     client_reads: bool,
     first_xid: u32,
-    /// Data limit of the connection, see [`Budget::new`].
+    /// Data limit of the connection, see [`Limits::max_data_per_connection`].
     max_data: Option<usize>,
     write_timeout: Option<Duration>,
     idle_timeout: Option<Duration>,
@@ -219,9 +220,13 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
     let (mount_tx, _mount_rx) = async_channel::unbounded();
     let (nlm_tx, _nlm_rx) = async_channel::unbounded();
     let (result_tx, result_rx) = async_channel::unbounded();
-    let max_data = setup.max_data.map(|max| NonZeroUsize::new(max).unwrap());
-    let limit = NonZeroUsize::new(LIMIT).unwrap();
-    let budget = Budget::new(limit, max_data, setup.idle_timeout, result_tx);
+    let limits = Limits {
+        max_in_flight: NonZeroUsize::new(LIMIT).unwrap(),
+        max_data_per_connection: setup.max_data.map(|max| NonZeroUsize::new(max).unwrap()),
+        idle_timeout: setup.idle_timeout,
+        ..limits::defaults(NonZeroUsize::MIN)
+    };
+    let connection_limits = ConnectionLimits::new(&limits, result_tx, setup.probation);
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool);
 
     if !setup.client_reads {
@@ -230,7 +235,7 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
     let client_id = ConnectionId::new(addr);
     let allocator = Arc::new(TestAllocator);
     spawn_tasks(
-        ReadTask::new(readhalf, client_id, allocator, senders, budget, setup.probation),
+        ReadTask::new(readhalf, client_id, allocator, senders, connection_limits),
         WriteTask::new(writehalf, result_rx, client_id, setup.write_timeout),
         setup.permit,
     );
@@ -244,7 +249,8 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
 
 /// Answers the oldest queued command; returns its xid.
 async fn answer_one(pool_rx: &Pool) -> u32 {
-    let VfsCommand { args, result_tx, .. } = pool_rx.recv().await;
+    // The slot of `max_pending` is held until the reply is queued, as the workers do.
+    let (VfsCommand { args, result_tx }, _slot) = pool_rx.recv().await;
     let xid = args.header.xid;
     let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))) };
     result_tx.send(reply).await.unwrap();
@@ -382,18 +388,6 @@ async fn requests_larger_than_the_data_limit_are_read_one_at_a_time() {
         assert_eq!(pool_rx.len(), 1, "a READ larger than the limit was read with another");
         assert_eq!(answer_one(&pool_rx).await, xid);
     }
-}
-
-#[tokio::test]
-async fn probation_pushes_out_the_oldest_connection() {
-    let probation = Probation::new(NonZeroUsize::new(2).unwrap());
-    let (first, second) = (probation.admit(), probation.admit());
-    let left = probation.admit();
-    drop(left);
-    let _third = probation.admit();
-
-    timeout(WAIT, first.evicted()).await.expect("the oldest connection is pushed out");
-    assert!(timeout(WAIT, second.evicted()).await.is_err(), "only one connection is pushed out");
 }
 
 #[tokio::test]

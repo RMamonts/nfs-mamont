@@ -1,45 +1,55 @@
 //! Limits that keep clients from taking more of the server than their share.
 //!
-//! All of them are set through [`ServerContext`] and kept in [`Limits`]. This is the map
-//! of what each one bounds and where it is enforced, in the order a request meets them.
-//! The read and write tasks of a connection are described in [`crate::task::connection`].
+//! All of them are set through [`ServerContext`] and kept in [`Limits`]. They are
+//! enforced by one object per scope:
 //!
-//! Each entry gives the default, where the limit is enforced and what happens at it.
+//! - [`Admission`] lets new connections in, in the accept loop;
+//! - [`ConnectionLimits`] decide whether the read task of a connection may read the next
+//!   request and whether the connection has to close;
+//! - the write task of a connection enforces its write timeout, see
+//!   [`crate::task::connection`];
+//! - the VFS pool's [`drr`] channel holds the procedures of all connections.
+//!
+//! This is their map, in the order a request meets them: for each limit its default,
+//! where it is enforced and what happens at it.
 //!
 //! # Connections
 //!
-//! - [`Limits::max_connections`], off. [`crate::accept`] takes a slot for every new
+//! - [`Limits::max_connections`], off. [`Admission::accept`] takes a slot for every new
 //!   connection, freed once the write task of the connection is gone. At the limit the
 //!   oldest connection on probation is closed; without one, `accept` waits.
 //! - [`Limits::max_unverified_connections`], [`DEFAULT_MAX_UNVERIFIED_CONNECTIONS`].
-//!   [`Probation`] admits every new connection; the read task leaves it with the first
-//!   valid call. At the limit the oldest connection on probation is closed.
-//! - [`Limits::idle_timeout`], [`DEFAULT_IDLE_TIMEOUT`]. [`Budget::idle`], polled by the
-//!   read task while it waits for a request. The connection is closed.
+//!   [`Admission::accept`] puts every new connection on [`Probation`];
+//!   [`ConnectionLimits::verified`] takes it off with the first valid call. At the limit
+//!   the oldest connection on probation is closed.
+//! - [`Limits::idle_timeout`], [`DEFAULT_IDLE_TIMEOUT`]. [`ConnectionLimits::expired`],
+//!   polled by the read task while it waits for a request. The connection is closed.
 //!
 //! # Requests of one connection
 //!
 //! - [`Limits::max_in_flight`], the larger of [`DEFAULT_MAX_IN_FLIGHT`] and
-//!   [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`. [`Budget::acquire`] takes a slot
-//!   before a request is read; the write task frees it once the reply is written. At the
-//!   limit the socket stays unread and TCP flow control holds the client back.
-//! - [`Limits::max_data_per_connection`], off. [`Budget::charge`] counts READ and WRITE
-//!   data by [`Buffer::footprint`]. At the limit the socket stays unread.
+//!   [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`. [`ConnectionLimits::acquire`]
+//!   takes a slot before a request is read; the write task frees it once the reply is
+//!   written. At the limit the socket stays unread and TCP flow control holds the client
+//!   back.
+//! - [`Limits::max_data_per_connection`], off. [`ConnectionLimits::charge`] counts READ
+//!   and WRITE data by [`Buffer::footprint`]. At the limit the socket stays unread.
 //! - [`Limits::write_timeout`], off. The write task, for every reply. The connection is
 //!   closed.
 //!
 //! # Shared by all connections
 //!
-//! - [`Limits::max_pending`], off. [`VfsSender::send`] takes a slot before a procedure is
-//!   queued for the VFS pool, freed once its reply is queued. At the limit the read task
-//!   waits.
+//! - [`Limits::max_pending`], off: the capacity of the [`drr`] channel.
+//!   [`FlowSender::send`] takes a slot before a procedure is queued for the VFS pool,
+//!   freed once its reply is queued. At the limit the read task waits.
+//! - [`Limits::vfs_concurrency`], no default. [`VfsManager`] runs that many workers, each
+//!   executing one procedure at a time. At the limit procedures wait in their queues.
 //! - The allocator pool, [`Allocator::capacity`], set by the allocator.
 //!   [`Allocator::allocate`], called by the parser in the read task for READ and WRITE
 //!   data. At the limit the read task waits for memory.
 //!
-//! The VFS pool serves the connections in deficit round robin, see
-//! [`crate::task::global::vfs::scheduler`]; that shares the workers fairly but limits
-//! nothing.
+//! The [`drr`] channel serves the connections in deficit round robin; that shares the
+//! workers fairly but limits nothing.
 //!
 //! # What bounds what
 //!
@@ -52,14 +62,25 @@
 //!   `write_timeout` frees what a client that stopped reading holds.
 //!
 //! [`ServerContext`]: crate::ServerContext
-//! [`Probation`]: crate::task::connection::probation::Probation
-//! [`Budget::idle`]: crate::task::connection::limit::Budget::idle
-//! [`Budget::acquire`]: crate::task::connection::limit::Budget::acquire
-//! [`Budget::charge`]: crate::task::connection::limit::Budget::charge
-//! [`VfsSender::send`]: crate::task::global::vfs::VfsSender::send
+//! [`Admission`]: admission::Admission
+//! [`Admission::accept`]: admission::Admission::accept
+//! [`Probation`]: probation::Probation
+//! [`ConnectionLimits`]: connection::ConnectionLimits
+//! [`ConnectionLimits::verified`]: connection::ConnectionLimits::verified
+//! [`ConnectionLimits::expired`]: connection::ConnectionLimits::expired
+//! [`ConnectionLimits::acquire`]: connection::ConnectionLimits::acquire
+//! [`ConnectionLimits::charge`]: connection::ConnectionLimits::charge
+//! [`drr`]: crate::task::global::vfs::drr
+//! [`FlowSender::send`]: crate::task::global::vfs::drr::FlowSender::send
+//! [`VfsManager`]: crate::task::global::vfs::VfsManager
 //! [`Buffer::footprint`]: crate::Buffer::footprint
 //! [`Allocator::capacity`]: crate::Allocator::capacity
 //! [`Allocator::allocate`]: crate::Allocator::allocate
+
+pub mod admission;
+pub mod budget;
+pub mod connection;
+pub mod probation;
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -69,8 +90,8 @@ use crate::consts::connection::{
     IN_FLIGHT_PER_VFS_WORKER,
 };
 
-/// Limits of a server, set through the `with_*` methods of [`crate::ServerContext`] and
-/// read with [`crate::ServerContext::limits`].
+/// Limits of a server, set through [`crate::ServerContext::new`] and its `with_*` methods
+/// and read with [`crate::ServerContext::limits`].
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Limits {
@@ -95,6 +116,9 @@ pub struct Limits {
     /// NFS procedures that may wait for or run in the VFS pool at once, `None` for no
     /// limit, see [`crate::ServerContext::with_max_pending`].
     pub max_pending: Option<NonZeroUsize>,
+    /// NFS procedures executed against the backends at once, see
+    /// [`crate::ServerContext::new`].
+    pub vfs_concurrency: NonZeroUsize,
 }
 
 /// Returns the default limits for a VFS pool of `vfs_concurrency` workers, see the
@@ -108,6 +132,7 @@ pub fn defaults(vfs_concurrency: NonZeroUsize) -> Limits {
         max_data_per_connection: None,
         write_timeout: None,
         max_pending: None,
+        vfs_concurrency,
     }
 }
 

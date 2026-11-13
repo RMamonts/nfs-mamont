@@ -7,19 +7,8 @@
 //! - [`write::WriteTask`] - Writes operation results back to the network connection
 //!
 //! These tasks communicate via unbounded channels to form an asynchronous processing pipeline.
-//!
-//! # In-flight limit
-//!
-//! A connection may have [`crate::Limits::max_in_flight`] requests read from the socket
-//! but not yet answered. The read task takes a [`limit::ReplySender`] from its
-//! [`limit::Budget`] before it reads a request; the slot is freed once the write task has
-//! handed the reply to the socket, or when the request is dropped on its way. While no
-//! slot is free the socket stays unread and TCP flow control holds the client back.
-//!
-//! This is what makes the unbounded channels safe: a result channel holds at most
-//! `max_in_flight` replies, so the shared VFS/MOUNT/NLM tasks never block on a slow
-//! client, and the global queues hold at most `max_in_flight × open connections`
-//! requests.
+//! The read task holds the [`ConnectionLimits`] of the connection, which bound what the
+//! channels hold, see [`crate::limits`].
 
 use tokio::net::TcpStream;
 use tokio::sync::OwnedSemaphorePermit;
@@ -28,15 +17,15 @@ use tracing::error;
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::context::ServerContext;
-use crate::task::connection::limit::{Budget, InFlightReply};
-use crate::task::connection::probation::Ticket;
+use crate::limits::admission::Pass;
+use crate::limits::budget::InFlightReply;
+use crate::limits::connection::ConnectionLimits;
 use crate::task::connection::read::CommandSenders;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
+use crate::task::global::vfs::VfsSender;
 use crate::vfs::Vfs;
 
-pub mod limit;
-pub mod probation;
 mod read;
 #[cfg(test)]
 mod tests;
@@ -47,9 +36,9 @@ pub fn new<A, V, B>(
     socket: TcpStream,
     mount_sender: async_channel::Sender<MountCommand<B>>,
     nlm_sender: async_channel::Sender<NlmCommand<B>>,
+    vfs_sender: VfsSender<B>,
     context: &ServerContext<A, V, B>,
-    permit: Option<OwnedSemaphorePermit>,
-    probation: Ticket,
+    pass: Pass,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -67,17 +56,10 @@ pub fn new<A, V, B>(
     let client_id = ConnectionId::new(peer_addr);
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
-    // in-flight budget of the connection, see the module docs
     let limits = context.limits();
-    let budget = Budget::new(
-        limits.max_in_flight,
-        limits.max_data_per_connection,
-        limits.idle_timeout,
-        result_sender,
-    );
+    let connection_limits = ConnectionLimits::new(limits, result_sender, Some(pass.ticket));
 
-    let command_senders =
-        CommandSenders::<B>::new(mount_sender, nlm_sender, context.get_vfs_manager().sender());
+    let command_senders = CommandSenders::<B>::new(mount_sender, nlm_sender, vfs_sender);
 
     spawn_tasks(
         read::ReadTask::<A, B>::new(
@@ -85,11 +67,10 @@ pub fn new<A, V, B>(
             client_id,
             context.get_allocator(),
             command_senders,
-            budget,
-            Some(probation),
+            connection_limits,
         ),
         write::WriteTask::<B>::new(writehalf, result_receiver, client_id, limits.write_timeout),
-        permit,
+        pass.slot,
     );
 }
 
@@ -100,12 +81,12 @@ pub fn new<A, V, B>(
 /// it is already gone: it holds a sender of the result channel, and the write task stops
 /// only when the channel is closed.
 ///
-/// `permit`, the slot of the connection in [`ServerContext::with_max_connections`], is
-/// given back once the write task is gone.
+/// `slot`, the slot of the connection in [`crate::Limits::max_connections`], is given
+/// back once the write task is gone.
 fn spawn_tasks<A, B>(
     read_task: read::ReadTask<A, B>,
     write_task: write::WriteTask<B>,
-    permit: Option<OwnedSemaphorePermit>,
+    slot: Option<OwnedSemaphorePermit>,
 ) where
     A: Allocator<Buffer = B> + Send + Sync + 'static,
     B: Buffer + 'static,
@@ -115,6 +96,6 @@ fn spawn_tasks<A, B>(
     tokio::spawn(async move {
         let _ = write_task.await;
         read_task.abort();
-        drop(permit);
+        drop(slot);
     });
 }

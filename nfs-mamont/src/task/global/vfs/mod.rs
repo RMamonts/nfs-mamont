@@ -1,23 +1,25 @@
-pub mod scheduler;
+pub mod drr;
 #[cfg(test)]
 mod tests;
 
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
+use crate::limits::budget::ReplySender;
+use crate::limits::Limits;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
-use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
 
-use scheduler::{FlowHandle, Scheduler};
+use drr::{Cost, Receiver};
+
+/// Bytes of READ or WRITE data that cost as much as one procedure.
+const COST_UNIT: u32 = 64 * 1024;
 
 /// One queued NFS procedure.
 pub struct VfsCommand<B: Buffer> {
@@ -25,45 +27,27 @@ pub struct VfsCommand<B: Buffer> {
     pub args: NfsArgWrapper<B>,
     /// Channel to the write task of the connection the reply goes to.
     pub result_tx: ReplySender<B>,
-    /// Slot of the procedure in the pool's limit, if one is set, see
-    /// [`VfsManager::limit_pending`].
-    pub pending: Option<OwnedSemaphorePermit>,
 }
 
-/// Queues the procedures of one connection for the pool, first waiting for a slot of
-/// its limit if one is set, see [`VfsManager::limit_pending`].
-pub struct VfsSender<B: Buffer> {
-    flow: FlowHandle<B>,
-    pending: Option<Arc<Semaphore>>,
-}
-
-impl<B: Buffer> VfsSender<B> {
-    /// Creates a sender queueing into `flow` behind the slots of `pending`, if any.
-    pub fn new(flow: FlowHandle<B>, pending: Option<Arc<Semaphore>>) -> Self {
-        Self { flow, pending }
-    }
-
-    /// Queues a procedure, waiting while all slots of the limit are taken.
-    ///
-    /// The semaphore serves waiters in order and the read task of a connection is its
-    /// only waiter, so the slots go round the waiting connections in turn.
-    ///
-    /// # Errors
-    ///
-    /// Gives `result_tx` back when the pool is gone, so that the caller can answer.
-    pub async fn send(
-        &self,
-        args: NfsArgWrapper<B>,
-        result_tx: ReplySender<B>,
-    ) -> Result<(), ReplySender<B>> {
-        let pending = match &self.pending {
-            Some(pending) => Arc::clone(pending).acquire_owned().await.ok(),
-            None => None,
-        };
-        let command = VfsCommand { args, result_tx, pending };
-        self.flow.enqueue(command).map_err(|command| command.result_tx)
+impl<B: Buffer> Cost for VfsCommand<B> {
+    fn cost(&self) -> u32 {
+        cost(&self.args.proc)
     }
 }
+
+/// Returns the cost of `proc`: one unit, plus one per started [`COST_UNIT`] of READ or
+/// WRITE data.
+fn cost<B: Buffer>(proc: &NfsArguments<B>) -> u32 {
+    let bytes = match proc {
+        NfsArguments::Read(args, _) => args.count,
+        NfsArguments::Write(args) => args.size,
+        _ => 0,
+    };
+    1 + bytes.div_ceil(COST_UNIT)
+}
+
+/// Queues the procedures of one connection for the pool, see [`VfsManager::sender`].
+pub type VfsSender<B> = drr::FlowSender<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -184,7 +168,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 }
 
 /// Pool of [`VfsTask`] workers fed from one queue per connection, served in deficit
-/// round robin, see [`scheduler`].
+/// round robin, see [`drr`].
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
@@ -193,21 +177,21 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 /// - at most as many procedures as there are workers are executed against the backends
 ///   at the same time, the rest wait in their queues. The pool size is therefore the
 ///   backend queue depth.
+///
+/// Dropping the manager closes the queues; the workers stop once they are drained.
 pub struct VfsManager<B: Buffer> {
-    /// Queues of the connections the workers take procedures from.
-    scheduler: Arc<Scheduler<B>>,
-    /// Procedures that may be queued or running at once, `None` for no limit.
-    pending: Option<Arc<Semaphore>>,
+    /// Opens the queues of new connections.
+    sender: drr::Sender<VfsCommand<B>>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
-    /// Creates a new [`VfsManager`] with `concurrency` workers.
+    /// Creates a new [`VfsManager`] with [`Limits::vfs_concurrency`] workers that hold at
+    /// most [`Limits::max_pending`] procedures, if it is set.
     ///
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `concurrency` --- number of workers, i.e. the maximum number of procedures
-    ///   executed against the backends at the same time
+    /// - `limits` --- limits of the server
     ///
     /// # Returns
     ///
@@ -216,37 +200,21 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn new<V>(backends: BackendRegistry<V>, concurrency: NonZeroUsize) -> Self
+    pub fn new<V>(backends: BackendRegistry<V>, limits: &Limits) -> Self
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let scheduler = Scheduler::new();
-
-        for _ in 0..concurrency.get() {
-            VfsTask::new(backends.clone(), Arc::clone(&scheduler)).spawn();
+        let (sender, receiver) = drr::channel(limits.max_pending);
+        for _ in 0..limits.vfs_concurrency.get() {
+            VfsTask::new(backends.clone(), receiver.clone()).spawn();
         }
 
-        Self { scheduler, pending: None }
+        Self { sender }
     }
 
-    /// Returns the sender a new connection queues its procedures through.
+    /// Opens the queue a new connection sends its procedures through.
     pub fn sender(&self) -> VfsSender<B> {
-        VfsSender::new(self.scheduler.register(), self.pending.clone())
-    }
-
-    /// Limits how many procedures may be queued or running at once over all
-    /// connections, see [`crate::ServerContext::with_max_pending`].
-    pub fn limit_pending(&mut self, max_pending: NonZeroUsize) {
-        // `Semaphore::new` panics above `MAX_PERMITS`.
-        let permits = max_pending.get().min(Semaphore::MAX_PERMITS);
-        self.pending = Some(Arc::new(Semaphore::new(permits)));
-    }
-}
-
-impl<B: Buffer> Drop for VfsManager<B> {
-    /// Closes the pool's queues so workers stop once they are empty.
-    fn drop(&mut self) {
-        self.scheduler.close();
+        self.sender.flow()
     }
 }
 
@@ -260,7 +228,7 @@ where
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
     /// Queues of the pool, shared by all workers.
-    scheduler: Arc<Scheduler<B>>,
+    receiver: Receiver<VfsCommand<B>>,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -273,13 +241,13 @@ where
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `scheduler` --- queues of the pool
+    /// - `receiver` --- queues of the pool
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, scheduler: Arc<Scheduler<B>>) -> Self {
-        Self { backends, scheduler }
+    pub fn new(backends: BackendRegistry<V>, receiver: Receiver<VfsCommand<B>>) -> Self {
+        Self { backends, receiver }
     }
 
     /// Spawns a [`VfsTask`].
@@ -294,8 +262,10 @@ where
     /// Consumes commands until the pool is closed and drained, dispatching each NFS op
     /// and sending replies.
     async fn run(self) {
-        while let Some(command) = self.scheduler.next().await {
+        while let Some((command, slot)) = self.receiver.recv().await {
             dispatch(&self.backends, command).await;
+            // Held until the reply is queued, then goes to the next procedure.
+            drop(slot);
         }
     }
 }
@@ -306,8 +276,7 @@ where
     B: Buffer + 'static,
     V: vfs::Vfs<B> + Send + Sync + 'static,
 {
-    // The slot is held until the reply is queued, then goes to the next procedure.
-    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx, pending: _pending } = command;
+    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
