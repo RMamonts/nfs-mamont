@@ -11,7 +11,7 @@ use async_channel::Receiver;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::timeout;
 
 use crate::allocator::{Allocator, Buffer};
@@ -19,6 +19,7 @@ use crate::connection_id::ConnectionId;
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::task::connection::limit::Budget;
+use crate::task::connection::probation::{Probation, Ticket};
 use crate::task::connection::read::{CommandSenders, ReadTask};
 use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
@@ -31,6 +32,9 @@ use crate::vfs::NfsRes;
 
 const LIMIT: usize = 4;
 const WRITE_TIMEOUT: Duration = Duration::from_millis(100);
+const IDLE_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long the tests wait to see that something does not happen.
+const WAIT: Duration = Duration::from_millis(50);
 /// Bytes every READ of the tests asks for.
 const READ_COUNT: u32 = 1000;
 /// Allocator memory a test buffer holds per started unit, like a pool of whole buffers.
@@ -165,8 +169,15 @@ struct Setup {
     /// Data limit of the connection, see [`Budget::new`].
     max_data: Option<usize>,
     write_timeout: Option<Duration>,
+    idle_timeout: Option<Duration>,
+    /// Place of the connection on probation, see [`Probation`].
+    probation: Option<Ticket>,
+    /// Slot of the connection in a connection limit.
+    permit: Option<OwnedSemaphorePermit>,
     /// Builds the calls the client sends.
     call: fn(u32) -> Vec<u8>,
+    /// How many calls the client sends.
+    calls: u32,
 }
 
 impl Default for Setup {
@@ -176,7 +187,11 @@ impl Default for Setup {
             first_xid: 1,
             max_data: None,
             write_timeout: None,
+            idle_timeout: None,
+            probation: None,
+            permit: None,
             call: getattr_frame,
+            calls: 2 * LIMIT as u32,
         }
     }
 }
@@ -189,12 +204,12 @@ async fn flooded_pipeline(
 ) -> Pipeline {
     let pool_rx = pool(max_pending);
     let setup = Setup { client_reads, write_timeout, ..Setup::default() };
-    Pipeline { connection: flooded_connection(pool_rx.sender(), &setup).await, pool_rx }
+    Pipeline { connection: flooded_connection(pool_rx.sender(), setup).await, pool_rx }
 }
 
-/// Starts a connection queueing into `pool` and sends it twice as many calls as it may
-/// have in flight, with xids from `setup.first_xid` on.
-async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: &Setup) -> Connection {
+/// Starts a connection queueing into `pool` and sends it `setup.calls` calls, with xids
+/// from `setup.first_xid` on.
+async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connection {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
@@ -205,20 +220,23 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: &Setup) -> Conne
     let (nlm_tx, _nlm_rx) = async_channel::unbounded();
     let (result_tx, result_rx) = async_channel::unbounded();
     let max_data = setup.max_data.map(|max| NonZeroUsize::new(max).unwrap());
-    let budget = Budget::new(NonZeroUsize::new(LIMIT).unwrap(), max_data, result_tx);
+    let limit = NonZeroUsize::new(LIMIT).unwrap();
+    let budget = Budget::new(limit, max_data, setup.idle_timeout, result_tx);
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool);
 
     if !setup.client_reads {
         fill_send_buffer(&writehalf).await;
     }
     let client_id = ConnectionId::new(addr);
+    let allocator = Arc::new(TestAllocator);
     spawn_tasks(
-        ReadTask::new(readhalf, client_id, Arc::new(TestAllocator), senders, budget),
+        ReadTask::new(readhalf, client_id, allocator, senders, budget, setup.probation),
         WriteTask::new(writehalf, result_rx, client_id, setup.write_timeout),
+        setup.permit,
     );
 
     let mut client = client.unwrap();
-    let xids = setup.first_xid..setup.first_xid + 2 * LIMIT as u32;
+    let xids = setup.first_xid..setup.first_xid + setup.calls;
     client.write_all(&xids.flat_map(setup.call).collect::<Vec<_>>()).await.unwrap();
 
     Connection { _client: client, _mount_rx, _nlm_rx }
@@ -306,9 +324,9 @@ async fn the_pool_holds_at_most_max_pending_requests() {
 #[tokio::test]
 async fn pool_slots_go_round_the_waiting_connections() {
     let pool_rx = pool(Some(1));
-    let _first = flooded_connection(pool_rx.sender(), &Setup::default()).await;
+    let _first = flooded_connection(pool_rx.sender(), Setup::default()).await;
     let second = Setup { first_xid: 101, ..Setup::default() };
-    let _second = flooded_connection(pool_rx.sender(), &second).await;
+    let _second = flooded_connection(pool_rx.sender(), second).await;
 
     // The first connection queued its second request before the second one connected,
     // so the turns start with the second command.
@@ -339,7 +357,7 @@ async fn a_client_that_does_not_read_is_disconnected() {
 async fn read_task_stops_reading_at_the_data_limit() {
     let pool_rx = pool(None);
     let setup = Setup { max_data: Some(3000), call: read_frame, ..Setup::default() };
-    let _connection = flooded_connection(pool_rx.sender(), &setup).await;
+    let _connection = flooded_connection(pool_rx.sender(), setup).await;
 
     // Every READ holds a whole unit of 2048 bytes, so two of them reach the limit of
     // 3000, before the four slots run out.
@@ -356,7 +374,7 @@ async fn read_task_stops_reading_at_the_data_limit() {
 async fn requests_larger_than_the_data_limit_are_read_one_at_a_time() {
     let pool_rx = pool(None);
     let setup = Setup { max_data: Some(1000), call: read_frame, ..Setup::default() };
-    let _connection = flooded_connection(pool_rx.sender(), &setup).await;
+    let _connection = flooded_connection(pool_rx.sender(), setup).await;
 
     for xid in 1..=3 {
         wait_until(|| pool_rx.len() == 1).await;
@@ -364,4 +382,82 @@ async fn requests_larger_than_the_data_limit_are_read_one_at_a_time() {
         assert_eq!(pool_rx.len(), 1, "a READ larger than the limit was read with another");
         assert_eq!(answer_one(&pool_rx).await, xid);
     }
+}
+
+#[tokio::test]
+async fn probation_pushes_out_the_oldest_connection() {
+    let probation = Probation::new(NonZeroUsize::new(2).unwrap());
+    let (first, second) = (probation.admit(), probation.admit());
+    let left = probation.admit();
+    drop(left);
+    let _third = probation.admit();
+
+    timeout(WAIT, first.evicted()).await.expect("the oldest connection is pushed out");
+    assert!(timeout(WAIT, second.evicted()).await.is_err(), "only one connection is pushed out");
+}
+
+#[tokio::test]
+async fn a_connection_that_sends_no_call_is_pushed_out() {
+    let probation = Probation::new(NonZeroUsize::new(1).unwrap());
+    let pool_rx = pool(None);
+    let setup =
+        Setup { call: |_| Vec::new(), probation: Some(probation.admit()), ..Setup::default() };
+    let _silent = flooded_connection(pool_rx.sender(), setup).await;
+    tokio::time::sleep(WAIT).await;
+    assert!(!pool_rx.is_closed(), "the connection was closed before it was pushed out");
+
+    let _newer = probation.admit();
+    wait_until(|| pool_rx.is_closed()).await;
+}
+
+#[tokio::test]
+async fn a_connection_that_sent_a_call_is_not_pushed_out() {
+    let probation = Probation::new(NonZeroUsize::new(1).unwrap());
+    let pool_rx = pool(None);
+    let setup = Setup { probation: Some(probation.admit()), ..Setup::default() };
+    let _connection = flooded_connection(pool_rx.sender(), setup).await;
+    wait_until(|| pool_rx.len() == LIMIT).await;
+
+    // Answered, so that the read task gets back to waiting for the socket, where a
+    // connection on probation would be pushed out.
+    let _newer = probation.admit();
+    assert_eq!(answer(&pool_rx).await, [1, 2, 3, 4]);
+    assert_eq!(answer(&pool_rx).await, [5, 6, 7, 8]);
+    tokio::time::sleep(WAIT).await;
+    assert!(!pool_rx.is_closed(), "a connection that sent calls was pushed out");
+}
+
+#[tokio::test]
+async fn an_idle_connection_is_closed() {
+    let pool_rx = pool(None);
+    // Fewer calls than slots, so that the read task waits for the socket all along.
+    let setup = Setup { idle_timeout: Some(IDLE_TIMEOUT), calls: 2, ..Setup::default() };
+    let _connection = flooded_connection(pool_rx.sender(), setup).await;
+
+    // Requests in flight keep the connection open past the timeout.
+    wait_until(|| pool_rx.len() == 2).await;
+    tokio::time::sleep(3 * IDLE_TIMEOUT).await;
+    assert!(!pool_rx.is_closed(), "a connection with requests in flight was closed");
+
+    // Once the last reply is written, the timeout starts.
+    assert_eq!(answer_one(&pool_rx).await, 1);
+    assert_eq!(answer_one(&pool_rx).await, 2);
+    let idle = Instant::now();
+    wait_until(|| pool_rx.is_closed()).await;
+    assert!(idle.elapsed() >= IDLE_TIMEOUT, "closed after {:?}", idle.elapsed());
+}
+
+#[tokio::test]
+async fn the_connection_slot_is_given_back_when_the_connection_closes() {
+    let slots = Arc::new(Semaphore::new(1));
+    let pool_rx = pool(None);
+    let permit = Some(Arc::clone(&slots).try_acquire_owned().unwrap());
+    let connection =
+        flooded_connection(pool_rx.sender(), Setup { permit, ..Setup::default() }).await;
+    assert_eq!(answer(&pool_rx).await, [1, 2, 3, 4]);
+    assert_eq!(answer(&pool_rx).await, [5, 6, 7, 8]);
+    assert_eq!(slots.available_permits(), 0, "the slot is held while the connection is open");
+
+    drop(connection);
+    wait_until(|| slots.available_permits() == 1).await;
 }

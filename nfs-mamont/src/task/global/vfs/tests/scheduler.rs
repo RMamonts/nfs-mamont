@@ -38,7 +38,7 @@ struct Connection {
 impl Connection {
     fn new() -> Self {
         let (tx, replies) = async_channel::unbounded();
-        let budget = Budget::new(NonZeroUsize::new(1 << 20).unwrap(), None, tx);
+        let budget = Budget::new(NonZeroUsize::new(1 << 20).unwrap(), None, None, tx);
         Self { budget, _replies: replies }
     }
 

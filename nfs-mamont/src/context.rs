@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
-use crate::consts::connection::{DEFAULT_MAX_IN_FLIGHT, IN_FLIGHT_PER_VFS_WORKER};
+use crate::consts::connection::{
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_IN_FLIGHT, DEFAULT_MAX_UNVERIFIED_CONNECTIONS,
+    IN_FLIGHT_PER_VFS_WORKER,
+};
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
@@ -60,6 +63,12 @@ where
     max_data_per_connection: Option<NonZeroUsize>,
     /// How long a reply may wait for the socket before the connection is closed.
     write_timeout: Option<Duration>,
+    /// Open connections, `None` for no limit.
+    max_connections: Option<NonZeroUsize>,
+    /// Connections that have not sent a valid call yet.
+    max_unverified_connections: NonZeroUsize,
+    /// How long a connection may stay without requests in flight.
+    idle_timeout: Option<Duration>,
 }
 
 impl<A, V, B> ServerContext<A, V, B>
@@ -89,6 +98,9 @@ where
             max_in_flight,
             max_data_per_connection: None,
             write_timeout: None,
+            max_connections: None,
+            max_unverified_connections: DEFAULT_MAX_UNVERIFIED_CONNECTIONS,
+            idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         }
     }
 
@@ -152,6 +164,56 @@ where
     #[inline]
     pub fn write_timeout(&self) -> Option<Duration> {
         self.write_timeout
+    }
+
+    /// Limits the number of open connections. At the limit a new connection closes the
+    /// oldest one that has not sent a valid call yet, see
+    /// [`Self::with_max_unverified_connections`]; without one, it waits until another
+    /// connection is closed, and the rest wait in the kernel's accept queue.
+    ///
+    /// Off by default: an NFS client usually talks to a server over one connection per
+    /// machine, or `nconnect` of them, and a limit below their number keeps new clients
+    /// from mounting.
+    pub fn with_max_connections(mut self, max: NonZeroUsize) -> Self {
+        self.max_connections = Some(max);
+        self
+    }
+
+    /// Returns the limit on open connections, see [`Self::with_max_connections`].
+    #[inline]
+    pub fn max_connections(&self) -> Option<NonZeroUsize> {
+        self.max_connections
+    }
+
+    /// Limits the connections that have not sent a valid call yet: a new one closes the
+    /// oldest of them. Clients that send requests are never affected. The default is
+    /// [`DEFAULT_MAX_UNVERIFIED_CONNECTIONS`].
+    pub fn with_max_unverified_connections(mut self, max: NonZeroUsize) -> Self {
+        self.max_unverified_connections = max;
+        self
+    }
+
+    /// Returns the limit on connections without a valid call, see
+    /// [`Self::with_max_unverified_connections`].
+    #[inline]
+    pub fn max_unverified_connections(&self) -> NonZeroUsize {
+        self.max_unverified_connections
+    }
+
+    /// Closes a connection that has had no request in flight, and no request read or
+    /// answered, for `timeout` to twice that, so that the connections of clients that are
+    /// gone do not stay open. The default is
+    /// [`DEFAULT_IDLE_TIMEOUT`]; a zero `timeout` turns it off. Clients reconnect when they
+    /// have a request to send, and with nothing in flight none has to be sent again.
+    pub fn with_idle_timeout(mut self, timeout: Duration) -> Self {
+        self.idle_timeout = (!timeout.is_zero()).then_some(timeout);
+        self
+    }
+
+    /// Returns the idle timeout, see [`Self::with_idle_timeout`].
+    #[inline]
+    pub fn idle_timeout(&self) -> Option<Duration> {
+        self.idle_timeout
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.
