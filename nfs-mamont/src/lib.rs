@@ -5,6 +5,7 @@ mod backend;
 pub mod connection_id;
 pub mod consts;
 mod context;
+mod limits;
 pub mod mount;
 pub mod nlm;
 mod parser;
@@ -36,6 +37,7 @@ use crate::vfs::Vfs;
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use limits::Limits;
 pub use rpc::auth;
 pub use rpc::AuthFlavor;
 pub use vfs::file::BackendId;
@@ -73,9 +75,10 @@ where
 
     // `Semaphore::new` panics above `MAX_PERMITS`.
     let connections = context
-        .max_connections()
+        .limits()
+        .max_connections
         .map(|max| Arc::new(Semaphore::new(max.get().min(Semaphore::MAX_PERMITS))));
-    let probation = Probation::new(context.max_unverified_connections());
+    let probation = Probation::new(context.limits().max_unverified_connections);
 
     // TODO: will be replaced with other solution in future
     let mut shutdown = Box::pin(signal::ctrl_c());

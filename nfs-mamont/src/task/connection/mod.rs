@@ -10,7 +10,7 @@
 //!
 //! # In-flight limit
 //!
-//! A connection may have [`ServerContext::max_in_flight`] requests read from the socket
+//! A connection may have [`crate::Limits::max_in_flight`] requests read from the socket
 //! but not yet answered. The read task takes a [`limit::ReplySender`] from its
 //! [`limit::Budget`] before it reads a request; the slot is freed once the write task has
 //! handed the reply to the socket, or when the request is dropped on its way. While no
@@ -68,10 +68,11 @@ pub fn new<A, V, B>(
     // channel for result
     let (result_sender, result_receiver) = async_channel::unbounded::<InFlightReply<B>>();
     // in-flight budget of the connection, see the module docs
+    let limits = context.limits();
     let budget = Budget::new(
-        context.max_in_flight(),
-        context.max_data_per_connection(),
-        context.idle_timeout(),
+        limits.max_in_flight,
+        limits.max_data_per_connection,
+        limits.idle_timeout,
         result_sender,
     );
 
@@ -87,7 +88,7 @@ pub fn new<A, V, B>(
             budget,
             Some(probation),
         ),
-        write::WriteTask::<B>::new(writehalf, result_receiver, client_id, context.write_timeout()),
+        write::WriteTask::<B>::new(writehalf, result_receiver, client_id, limits.write_timeout),
         permit,
     );
 }
