@@ -11,16 +11,9 @@ use tokio_util::time::{delay_queue::Key, DelayQueue};
 use crate::auth::Credential;
 use crate::client_id::{ClientId, Error, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Protocol {
-    Nfs3,
-    Nfs4,
-}
-
 /// Metadata returned only after both the timer and its client record are removed.
 pub struct RemovedLease {
     pub clientid: ClientId,
-    pub protocol: Protocol,
     deadline: Instant,
 }
 
@@ -32,7 +25,6 @@ impl RemovedLease {
 
 struct Lease {
     key: Key,
-    protocol: Protocol,
     credentials: Credential,
 }
 
@@ -55,22 +47,12 @@ impl ClientLeases {
 
     /// Creates a timer or renews an existing lease without changing its owner.
     /// An overdue lease must be removed before the client can register again.
-    pub fn register(
-        &mut self,
-        clientid: ClientId,
-        protocol: Protocol,
-        credentials: Credential,
-    ) -> Result<()> {
+    pub fn register(&mut self, clientid: ClientId, credentials: Credential) -> Result<()> {
         match self.active_leases.entry(clientid) {
-            Entry::Occupied(entry) => {
-                if entry.get().protocol != protocol {
-                    return Err(Error::StaleClientId);
-                }
-                self.renew(clientid, &credentials)
-            }
+            Entry::Occupied(_) => self.renew(clientid, &credentials),
             Entry::Vacant(entry) => {
                 let key = self.leases.insert(clientid, self.duration);
-                entry.insert(Lease { key, protocol, credentials });
+                entry.insert(Lease { key, credentials });
                 Ok(())
             }
         }
@@ -97,8 +79,8 @@ impl ClientLeases {
             Entry::Vacant(_) => return None,
         };
         let removed = self.leases.remove(&entry.get().key);
-        let lease = entry.remove();
-        Some(RemovedLease { clientid, protocol: lease.protocol, deadline: removed.deadline() })
+        entry.remove();
+        Some(RemovedLease { clientid, deadline: removed.deadline() })
     }
 
     /// Checks the deadline and removes an overdue lease in a single operation.
@@ -111,8 +93,8 @@ impl ClientLeases {
             _ => return None,
         };
         let removed = self.leases.remove(&entry.get().key);
-        let lease = entry.remove();
-        Some(RemovedLease { clientid, protocol: lease.protocol, deadline: removed.deadline() })
+        entry.remove();
+        Some(RemovedLease { clientid, deadline: removed.deadline() })
     }
 
     /// Waits for and removes the next expired lease. Returns `None` when empty.
@@ -124,10 +106,10 @@ impl ClientLeases {
             };
             let deadline = expired.deadline();
             let clientid = expired.into_inner();
-            let Some(lease) = self.active_leases.remove(&clientid) else {
+            let Some(_) = self.active_leases.remove(&clientid) else {
                 unreachable!("each lease timer is created and removed with its active record");
             };
-            Poll::Ready(Some(RemovedLease { clientid, protocol: lease.protocol, deadline }))
+            Poll::Ready(Some(RemovedLease { clientid, deadline }))
         })
         .await
     }
@@ -162,15 +144,14 @@ mod tests {
         let mut leases = ClientLeases::new(DURATION);
         let a = ClientId::new(1);
         let b = ClientId::new(2);
-        leases.register(a, Protocol::Nfs3, Credential::None).unwrap();
-        leases.register(b, Protocol::Nfs4, foreign()).unwrap();
+        leases.register(a, Credential::None).unwrap();
+        leases.register(b, foreign()).unwrap();
         assert_count(&leases, 2);
         advance(Duration::from_secs(6)).await;
-        leases.register(a, Protocol::Nfs3, Credential::None).unwrap();
+        leases.register(a, Credential::None).unwrap();
         assert_count(&leases, 2);
         let removed = leases.remove(b).unwrap();
         assert_eq!(removed.clientid, b);
-        assert_eq!(removed.protocol, Protocol::Nfs4);
         assert!(!removed.is_expired());
         assert_count(&leases, 1);
         assert!(leases.remove(b).is_none());
@@ -181,49 +162,39 @@ mod tests {
         advance(Duration::from_secs(6)).await;
         let removed = leases.remove_expired(a).unwrap();
         assert_eq!(removed.clientid, a);
-        assert_eq!(removed.protocol, Protocol::Nfs3);
         assert!(removed.is_expired());
         assert_count(&leases, 0);
         assert!(leases.expired().await.is_none());
 
         // Reusing the queue's storage cannot leave an old key in the map.
-        leases.register(b, Protocol::Nfs4, foreign()).unwrap();
+        leases.register(b, foreign()).unwrap();
         assert!(leases.remove(a).is_none());
         assert_count(&leases, 1);
         let expired = leases.expired().await.unwrap();
         assert_eq!(expired.clientid, b);
-        assert_eq!(expired.protocol, Protocol::Nfs4);
         assert!(expired.is_expired());
         assert_count(&leases, 0);
         assert_eq!(leases.renew(b, &foreign()), Err(Error::StaleClientId));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn rejected_registration_preserves_protocol_credentials_and_deadline() {
+    async fn rejected_registration_preserves_credentials_and_deadline() {
         let mut leases = ClientLeases::new(DURATION);
         let id = ClientId::new(1);
-        leases.register(id, Protocol::Nfs3, Credential::None).unwrap();
+        leases.register(id, Credential::None).unwrap();
         let original_key = leases.active_leases[&id].key;
         let original_deadline = leases.leases.deadline(&original_key);
         advance(Duration::from_secs(3)).await;
-        assert_eq!(
-            leases.register(id, Protocol::Nfs4, Credential::None),
-            Err(Error::StaleClientId)
-        );
-        assert_eq!(leases.register(id, Protocol::Nfs3, foreign()), Err(Error::IdentityInUse));
+        assert_eq!(leases.register(id, foreign()), Err(Error::IdentityInUse));
         assert_eq!(leases.renew(id, &foreign()), Err(Error::IdentityInUse));
         let lease = &leases.active_leases[&id];
         assert_eq!(lease.key, original_key);
-        assert_eq!(lease.protocol, Protocol::Nfs3);
         assert_eq!(lease.credentials, Credential::None);
         assert_eq!(leases.leases.deadline(&lease.key), original_deadline);
         assert_count(&leases, 1);
         advance(DURATION).await;
         assert_eq!(leases.renew(id, &Credential::None), Err(Error::StaleClientId));
-        assert_eq!(
-            leases.register(id, Protocol::Nfs3, Credential::None),
-            Err(Error::StaleClientId)
-        );
+        assert_eq!(leases.register(id, Credential::None), Err(Error::StaleClientId));
         assert_count(&leases, 1);
         assert!(leases.remove_expired(id).unwrap().is_expired());
         assert_count(&leases, 0);
@@ -233,7 +204,7 @@ mod tests {
     async fn cancelled_wait_and_renewal_leave_one_current_timer() {
         let mut leases = ClientLeases::new(DURATION);
         let id = ClientId::new(1);
-        leases.register(id, Protocol::Nfs4, Credential::None).unwrap();
+        leases.register(id, Credential::None).unwrap();
         tokio::select! {
             biased;
             _ = tokio::task::yield_now() => {}
