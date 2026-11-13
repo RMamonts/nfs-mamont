@@ -102,11 +102,11 @@ where
             let message = tokio::select! {
                 biased;
                 message = parser.next_message() => message,
-                () = evicted(self.probation.as_ref()) => {
+                _ = evicted(self.probation.as_ref()) => {
                     debug!(client=%self.client_id.into_inner(), "closing a connection that has sent no valid call");
                     return Ok(());
                 }
-                () = self.budget.idle() => {
+                _ = self.budget.idle() => {
                     debug!(client=%self.client_id.into_inner(), "closing an idle connection");
                     return Ok(());
                 }
