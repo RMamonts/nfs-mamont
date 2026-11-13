@@ -1,7 +1,6 @@
 //! Defines the NFSv4 CREATE operation types, RFC 7530 §16.4.
 
 /// File type (`nfs_ftype4`), RFC 7530 §2.2.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FType {
     /// NF4REG - regular file.
     Regular,
@@ -25,7 +24,6 @@ pub enum FType {
 
 /// Device number pairs used by block and character special files
 /// (`specdata4`), RFC 7530 §2.2.4.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SpecData {
     /// Major device number.
     pub specdata1: u32,
@@ -34,10 +32,21 @@ pub struct SpecData {
 }
 
 /// A change identifier (`changeid4`), RFC 7530 §2.2.9.
-pub type ChangeId = u64;
+pub struct ChangeId(u64);
+
+impl ChangeId {
+    /// Builds a change id from its raw value.
+    pub fn new(id: u64) -> ChangeId {
+        ChangeId(id)
+    }
+
+    /// Returns the raw value of the change id.
+    pub fn raw(&self) -> u64 {
+        self.0
+    }
+}
 
 /// Change information for a directory (`change_info4`), RFC 7530 §2.2.9.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ChangeInfo {
     /// Whether `before` and `after` refer to the same directory.
     pub atomic: bool,
@@ -48,7 +57,6 @@ pub struct ChangeInfo {
 }
 
 /// Type of the file system object to create (`createtype4`), RFC 7530 §16.4.2.
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateType {
     /// NF4DIR - create a directory.
     Dir,
@@ -68,7 +76,6 @@ pub enum CreateType {
 ///
 /// Represents the attributes to set on the newly created object. The raw
 /// attribute mask and values are kept opaque.
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attr {
     /// Bitmask describing the attributes carried in `attr_vals`.
     pub attrmask: Vec<u32>,
