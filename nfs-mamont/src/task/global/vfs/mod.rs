@@ -1,13 +1,14 @@
-pub mod drr;
 #[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
 
+use drr_channel::{Cost, Receiver};
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
+use crate::consts::connection::VFS_QUANTUM;
 use crate::limits::budget::ReplySender;
 use crate::limits::Limits;
 use crate::parser::{NfsArgWrapper, NfsArguments};
@@ -15,8 +16,6 @@ use crate::rpc::auth::Credential;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::file::BackendId;
 use crate::vfs::{self, NfsRes, Vfs};
-
-use drr::{Cost, Receiver};
 
 /// Bytes of READ or WRITE data that cost as much as one procedure.
 const COST_UNIT: u32 = 64 * 1024;
@@ -47,7 +46,7 @@ fn cost<B: Buffer>(proc: &NfsArguments<B>) -> u32 {
 }
 
 /// Queues the procedures of one connection for the pool, see [`VfsManager::sender`].
-pub type VfsSender<B> = drr::FlowSender<VfsCommand<B>>;
+pub type VfsSender<B> = drr_channel::FlowSender<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -168,7 +167,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 }
 
 /// Pool of [`VfsTask`] workers fed from one queue per connection, served in deficit
-/// round robin, see [`drr`].
+/// round robin, see [`drr_channel`].
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
@@ -181,7 +180,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: vfs::Error) -> NfsR
 /// Dropping the manager closes the queues; the workers stop once they are drained.
 pub struct VfsManager<B: Buffer> {
     /// Opens the queues of new connections.
-    sender: drr::Sender<VfsCommand<B>>,
+    sender: drr_channel::Sender<VfsCommand<B>>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
@@ -204,7 +203,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (sender, receiver) = drr::channel(limits.max_pending);
+        let (sender, receiver) = drr_channel::channel(limits.max_pending, VFS_QUANTUM);
         for _ in 0..limits.vfs_concurrency.get() {
             VfsTask::new(backends.clone(), receiver.clone()).spawn();
         }

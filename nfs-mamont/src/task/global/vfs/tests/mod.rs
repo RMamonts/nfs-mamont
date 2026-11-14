@@ -5,8 +5,6 @@ use crate::vfs::{self, get_attr, link, read, rename, write, DirOpArgs, NfsRes};
 
 use super::{cost, failed_response, target, Target};
 
-mod drr;
-
 /// Routing never touches the payload, so the buffer holds no data.
 struct MockBuffer;
 

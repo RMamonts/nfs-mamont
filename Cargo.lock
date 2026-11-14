@@ -57,6 +57,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
+name = "drr-channel"
+version = "0.3.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,6 +122,7 @@ version = "0.3.0"
 dependencies = [
  "async-channel",
  "byteorder",
+ "drr-channel",
  "num-derive",
  "num-traits",
  "tokio",

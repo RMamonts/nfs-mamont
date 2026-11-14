@@ -26,6 +26,7 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 |-------|----------|
 | [`nfs-mamont`](nfs-mamont/README.md) | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
 | [`nfs-mamont-util`](nfs-mamont-util/README.md) | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
+| [`drr-channel`](drr-channel/README.md) | Async channel with one queue per sender, served by deficit round robin; shares the VFS worker pool of `nfs-mamont` between connections and is usable on its own |
 
 `nfs-mamont` does not depend on `nfs-mamont-util`; use the latter if you do not need custom
 allocator, MOUNT or NLM implementations.

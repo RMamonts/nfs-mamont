@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_channel::Receiver;
+use drr_channel::Slot;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
@@ -16,6 +17,7 @@ use tokio::time::timeout;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
+use crate::consts::connection::VFS_QUANTUM;
 use crate::consts::nfsv3::{NfsProc, NFS3_FHSIZE, NFS_PROGRAM, NFS_VERSION};
 use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::limits::connection::ConnectionLimits;
@@ -26,7 +28,6 @@ use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::drr::{self, Slot};
 use crate::task::global::vfs::{VfsCommand, VfsSender};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
@@ -124,8 +125,8 @@ struct Pipeline {
 /// The VFS pool of a test: the queues of its connections, read by the test instead of
 /// the workers, behind `max_pending` slots.
 struct Pool {
-    sender: drr::Sender<VfsCommand<TestBuffer>>,
-    receiver: drr::Receiver<VfsCommand<TestBuffer>>,
+    sender: drr_channel::Sender<VfsCommand<TestBuffer>>,
+    receiver: drr_channel::Receiver<VfsCommand<TestBuffer>>,
 }
 
 impl Pool {
@@ -153,7 +154,7 @@ impl Pool {
 
 fn pool(max_pending: Option<usize>) -> Pool {
     let capacity = max_pending.map_or(NonZeroUsize::MAX, |max| NonZeroUsize::new(max).unwrap());
-    let (sender, receiver) = drr::channel(capacity);
+    let (sender, receiver) = drr_channel::channel(capacity, VFS_QUANTUM);
     Pool { sender, receiver }
 }
 

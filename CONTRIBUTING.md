@@ -115,13 +115,16 @@ The contribution workflow is:
 
 ### Building and testing
 
-The repository is a Cargo workspace with two member crates:
+The repository is a Cargo workspace with three member crates:
 
 - `nfs-mamont` — the core library: RPC/XDR layer, MOUNT/NFSv3/NLM protocol
   traits, VFS interface and the server loop. It does not depend on
   `nfs-mamont-util`.
 - `nfs-mamont-util` — ready-made implementations built on the public API of
   `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService`.
+- `drr-channel` — async channel with one queue per sender, served by deficit
+  round robin. `nfs-mamont` uses it for its VFS worker pool; it depends on
+  neither of the other two and knows nothing about NFS.
 
 The commands below run from the repository root and cover the whole workspace.
 
@@ -141,9 +144,11 @@ cargo fmt --all --check
 # Documentation
 cargo doc --no-deps
 
-# Check the core crate on its own: workspace builds unify dependency features
-# with nfs-mamont-util, which can hide a feature the core uses but does not declare
+# Check the core crate and drr-channel on their own: workspace builds unify
+# dependency features between the crates, which can hide a feature a crate uses but
+# does not declare
 cargo check -p nfs-mamont --all-targets
+cargo check -p drr-channel --all-targets
 ```
 
 Optional, to exercise the memory-locking helpers:

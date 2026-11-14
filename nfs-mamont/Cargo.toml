@@ -16,6 +16,9 @@ rust-version.workspace = true
 doctest = true
 
 [dependencies]
+# Internal crates
+drr-channel.workspace = true
+
 # External dependencies
 async-channel.workspace = true
 byteorder.workspace = true
