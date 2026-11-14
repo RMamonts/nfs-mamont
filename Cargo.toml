@@ -1,5 +1,5 @@
 [workspace]
-members = ["nfs-mamont", "nfs-mamont-util"]
+members = ["drr-channel", "nfs-mamont", "nfs-mamont-util"]
 resolver = "2"
 
 [workspace.package]
@@ -10,6 +10,7 @@ rust-version = "1.75.0"
 
 [workspace.dependencies]
 # Internal crates
+drr-channel = { path = "drr-channel", version = "0.1.0" }
 nfs-mamont = { path = "nfs-mamont", version = "0.3.0" }
 
 # External dependencies

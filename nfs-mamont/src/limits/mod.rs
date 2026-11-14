@@ -8,7 +8,7 @@
 //!   request and whether the connection has to close;
 //! - the write task of a connection enforces its write timeout, see
 //!   [`crate::task::connection`];
-//! - the VFS pool's [`drr`] channel holds the procedures of all connections.
+//! - the VFS pool's [`drr_channel`] holds the procedures of all connections.
 //!
 //! This is their map, in the order a request meets them: for each limit where it is
 //! enforced and what happens at it. The defaults are told by the `with_*` methods of
@@ -37,15 +37,16 @@
 //!
 //! # Shared by all connections
 //!
-//! - [`Limits::max_pending`], the capacity of the [`drr`] channel. [`FlowSender::send`]
-//!   takes a slot before a procedure is queued for the VFS pool, freed once its reply
-//!   is queued. At the limit the read tasks wait, the one that waits longest first.
+//! - [`Limits::max_pending`], the capacity of the VFS pool's [`drr_channel`].
+//!   [`FlowSender::send`] takes a slot before a procedure is queued for the pool, freed
+//!   once its reply is queued. At the limit the read tasks wait, the one that waits
+//!   longest first.
 //! - [`Limits::vfs_concurrency`]. [`VfsManager`] runs that many workers, each executing
 //!   one procedure at a time. At the limit procedures wait in their queues.
 //! - The allocator pool. [`Allocator::allocate`], called by the parser in the read task
 //!   for READ and WRITE data. At the limit the read task waits for memory.
 //!
-//! The [`drr`] channel serves the connections in deficit round robin; that shares the
+//! The [`drr_channel`] serves the connections in deficit round robin; that shares the
 //! workers fairly but limits nothing.
 //!
 //! # What bounds what
@@ -68,8 +69,7 @@
 //! [`ConnectionLimits::expired`]: connection::ConnectionLimits::expired
 //! [`ConnectionLimits::acquire`]: connection::ConnectionLimits::acquire
 //! [`ConnectionLimits::charge`]: connection::ConnectionLimits::charge
-//! [`drr`]: crate::task::global::vfs::drr
-//! [`FlowSender::send`]: crate::task::global::vfs::drr::FlowSender::send
+//! [`FlowSender::send`]: drr_channel::FlowSender::send
 //! [`VfsManager`]: crate::task::global::vfs::VfsManager
 //! [`Buffer::footprint`]: crate::Buffer::footprint
 //! [`Allocator::allocate`]: crate::Allocator::allocate
