@@ -2,39 +2,74 @@
 //!
 //! [`channel`] returns a [`Sender`] and a [`Receiver`]. Every [`Sender::flow`] is a queue
 //! of its own, a flow; receivers take items from the flows in turn, so that a flow gets
-//! its share of the receivers however many items the others have queued.
+//! its share of the receivers however many items the others have queued. It is meant for
+//! a pool of workers shared by many sources: connections, tenants, jobs.
 //!
 //! The flows that have items queued form a ring. A receiver takes the oldest item of the
 //! flow at the head while the flow's deficit covers its [`Cost`]; otherwise the flow is
-//! credited one more [`QUANTUM`] and moves to the tail. A flow that runs empty leaves the
+//! credited one more quantum and moves to the tail. A flow that runs empty leaves the
 //! ring and loses its deficit, so an idle flow banks no credit. A flow alone gets every
 //! receiver, backlogged flows get equal shares of the cost, and a light flow waits for
 //! at most one quantum of each heavy one.
 //!
 //! At most `capacity` items may be queued or still held by receivers at once, see
 //! [`Slot`]; senders wait for a slot in the order they came.
+//!
+//! # Choosing the quantum
+//!
+//! The quantum is how many cost units a flow may spend per turn. A light flow waits for
+//! one quantum of every backlogged one, so a small quantum isolates flows better; but the
+//! items of one flow then no longer follow each other, which costs whatever the receivers
+//! gain from serving a flow in a row. An item costing more than the quantum takes several
+//! turns of the ring.
+//!
+//! # Example
+//!
+//! ```
+//! use std::num::{NonZeroU32, NonZeroUsize};
+//!
+//! use drr_channel::{channel, Cost};
+//!
+//! #[derive(Debug)]
+//! struct Job(u32);
+//!
+//! impl Cost for Job {
+//!     fn cost(&self) -> u32 {
+//!         1
+//!     }
+//! }
+//!
+//! # #[tokio::main(flavor = "current_thread")]
+//! # async fn main() {
+//! let capacity = NonZeroUsize::new(64).unwrap();
+//! let quantum = NonZeroU32::new(2).unwrap();
+//! let (sender, receiver) = channel(capacity, quantum);
+//!
+//! let (busy, quiet) = (sender.flow(), sender.flow());
+//! for id in 0..4 {
+//!     busy.send(Job(id)).await.unwrap();
+//! }
+//! quiet.send(Job(100)).await.unwrap();
+//!
+//! // The busy flow spends its quantum, then the quiet one gets its turn.
+//! let mut order = Vec::new();
+//! for _ in 0..5 {
+//!     let (job, _slot) = receiver.recv().await.unwrap();
+//!     order.push(job.0);
+//! }
+//! assert_eq!(order, [0, 1, 100, 2, 3]);
+//! # }
+//! ```
+
+#[cfg(test)]
+mod tests;
 
 use std::collections::VecDeque;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::pin::pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
-
-/// Cost units a flow may spend per turn.
-///
-/// A light flow waits for one quantum of every backlogged one, so a small quantum
-/// isolates flows better; but the items of one flow then no longer follow each other, and
-/// the VFS pool loses the batching of replies per connection.
-///
-/// Measured there with its default capacity of 256, for a quantum of 8, 4, 2 and 1. On a
-/// 1 ms backend, next to 16 connections with 64 GETATTRs in flight each, a light
-/// connection waits 3.6, 2.6, 2.1 and 1.8 ms; next to 64 connections with 16 each, 8.1,
-/// 6.2, 4.2 and 3.2 ms. With as many connections as the capacity or more, every flow has
-/// about one item queued and the wait is close to 10 ms whatever the quantum. A server
-/// short of CPU on a 200 us backend loses 0, 0, 1 and 4 % of its throughput. An item
-/// costing more than the quantum takes several turns of the ring.
-pub const QUANTUM: u32 = 4;
 
 /// How much of the receivers' work an item takes, in units of the cheapest item.
 pub trait Cost {
@@ -42,11 +77,18 @@ pub trait Cost {
     fn cost(&self) -> u32;
 }
 
-/// Creates a channel holding at most `capacity` items.
-pub fn channel<T: Cost>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
+/// Creates a channel holding at most `capacity` items, whose flows may spend `quantum`
+/// cost units per turn.
+pub fn channel<T: Cost>(capacity: NonZeroUsize, quantum: NonZeroU32) -> (Sender<T>, Receiver<T>) {
     // `Semaphore::new` panics above `MAX_PERMITS`.
     let slots = Arc::new(Semaphore::new(capacity.get().min(Semaphore::MAX_PERMITS)));
-    let inner = Inner { flows: Vec::new(), free: Vec::new(), ring: VecDeque::new(), closed: false };
+    let inner = Inner {
+        flows: Vec::new(),
+        free: Vec::new(),
+        ring: VecDeque::new(),
+        quantum: quantum.get(),
+        closed: false,
+    };
     let shared = Arc::new(Shared { inner: Mutex::new(inner), wake: Notify::new(), slots });
 
     (Sender { shared: Arc::clone(&shared) }, Receiver { shared })
@@ -120,7 +162,7 @@ impl<T> FlowSender<T> {
             if flow.queue.is_empty() {
                 // A flow joining the ring starts a fresh turn: what it left unspent
                 // before is lost, so an idle flow banks no credit.
-                flow.deficit = QUANTUM;
+                flow.deficit = inner.quantum;
                 inner.ring.push_back(self.id);
             }
             flow.queue.push_back((item, Slot { _permit: slot }));
@@ -180,7 +222,8 @@ impl<T: Cost> Receiver<T> {
     }
 }
 
-#[cfg(test)]
+/// Counters of the channel, for metrics and tests. Each of them takes the lock of the
+/// channel and looks at every flow.
 impl<T> Receiver<T> {
     /// Returns the number of items queued over all flows.
     pub fn queued(&self) -> usize {
@@ -232,6 +275,8 @@ struct Inner<T> {
     free: Vec<usize>,
     /// Flows with queued items; the head is served next.
     ring: VecDeque<usize>,
+    /// Cost units a flow may spend per turn.
+    quantum: u32,
     closed: bool,
 }
 
@@ -252,7 +297,7 @@ impl<T: Cost> Inner<T> {
             let cost = oldest.cost();
             if flow.deficit < cost {
                 // Too little left for the oldest item: one more quantum, the others first.
-                flow.deficit += QUANTUM;
+                flow.deficit += self.quantum;
                 self.ring.pop_front();
                 self.ring.push_back(id);
                 continue;

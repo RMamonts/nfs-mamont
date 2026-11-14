@@ -31,7 +31,7 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          for crate in nfs-mamont nfs-mamont-util; do
+          for crate in drr-channel nfs-mamont nfs-mamont-util; do
             version=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
             if [ "$TAG" != "v$version" ]; then
@@ -51,7 +51,7 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          for crate in nfs-mamont nfs-mamont-util; do
+          for crate in drr-channel nfs-mamont nfs-mamont-util; do
             curl -sf -A nfs-mamont-release "https://crates.io/api/v1/crates/$crate/${TAG#v}" >/dev/null \
               || packages="$packages -p $crate"
           done

@@ -1,6 +1,6 @@
 //! Per-connection limits.
 
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Duration;
 
 /// Lower bound of the default [`crate::ServerContext::with_max_in_flight`].
@@ -19,6 +19,25 @@ pub const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = match NonZeroUsize::new(256) {
 /// and a 1 ms backend gets 44k operations per second with a limit of 64 and 58k with 128.
 pub const IN_FLIGHT_PER_VFS_WORKER: NonZeroUsize = match NonZeroUsize::new(2) {
     Some(factor) => factor,
+    None => unreachable!(),
+};
+
+/// Cost units a connection may spend per turn of the VFS pool, the quantum of its
+/// [`drr_channel`].
+///
+/// A light connection waits for one quantum of every backlogged one, so a small quantum
+/// isolates connections better; but the procedures of one connection then no longer
+/// follow each other, and the pool loses the batching of replies per connection.
+///
+/// Measured with the pool's default capacity of 256, for a quantum of 8, 4, 2 and 1. On a
+/// 1 ms backend, next to 16 connections with 64 GETATTRs in flight each, a light
+/// connection waits 3.6, 2.6, 2.1 and 1.8 ms; next to 64 connections with 16 each, 8.1,
+/// 6.2, 4.2 and 3.2 ms. With as many connections as the capacity or more, every
+/// connection has about one procedure queued and the wait is close to 10 ms whatever the
+/// quantum. A server short of CPU on a 200 us backend loses 0, 0, 1 and 4 % of its
+/// throughput.
+pub const VFS_QUANTUM: NonZeroU32 = match NonZeroU32::new(4) {
+    Some(quantum) => quantum,
     None => unreachable!(),
 };
 
