@@ -10,7 +10,7 @@ rust-version = "1.75.0"
 
 [workspace.dependencies]
 # Internal crates
-drr-channel = { path = "drr-channel", version = "0.3.0" }
+drr-channel = { path = "drr-channel", version = "0.1.0" }
 nfs-mamont = { path = "nfs-mamont", version = "0.3.0" }
 
 # External dependencies

@@ -1,6 +1,6 @@
 [package]
 name = "drr-channel"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
 description = "Async channel with one queue per sender, served by deficit round robin: fair sharing of a tokio worker pool between connections or tenants"
