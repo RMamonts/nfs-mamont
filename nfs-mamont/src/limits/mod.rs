@@ -32,10 +32,12 @@
 //!   takes a slot before a request is read; the write task frees it once the reply is
 //!   written. At the limit the socket stays unread and TCP flow control holds the client
 //!   back.
-//! - [`Limits::max_data_per_connection`], off. [`ConnectionLimits::charge`] counts READ
-//!   and WRITE data by [`Buffer::footprint`]. At the limit the socket stays unread.
-//! - [`Limits::write_timeout`], off. The write task, for every reply. The connection is
-//!   closed.
+//! - [`Limits::max_data_per_connection`], [`Allocator::pool_size`] divided by
+//!   [`CONNECTIONS_PER_POOL`], off if the allocator tells no pool size.
+//!   [`ConnectionLimits::charge`] counts READ and WRITE data by [`Buffer::footprint`].
+//!   At the limit the socket stays unread.
+//! - [`Limits::write_timeout`], [`DEFAULT_WRITE_TIMEOUT`]. The write task, for every
+//!   reply. The connection is closed.
 //!
 //! # Shared by all connections
 //!
@@ -77,6 +79,7 @@
 //! [`VfsManager`]: crate::task::global::vfs::VfsManager
 //! [`Buffer::footprint`]: crate::Buffer::footprint
 //! [`Allocator::capacity`]: crate::Allocator::capacity
+//! [`Allocator::pool_size`]: crate::Allocator::pool_size
 //! [`Allocator::allocate`]: crate::Allocator::allocate
 
 pub mod admission;
@@ -88,8 +91,9 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::consts::connection::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_IN_FLIGHT, DEFAULT_MAX_UNVERIFIED_CONNECTIONS,
-    IN_FLIGHT_PER_VFS_WORKER, PENDING_PER_VFS_WORKER,
+    CONNECTIONS_PER_POOL, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_IN_FLIGHT,
+    DEFAULT_MAX_UNVERIFIED_CONNECTIONS, DEFAULT_WRITE_TIMEOUT, IN_FLIGHT_PER_VFS_WORKER,
+    PENDING_PER_VFS_WORKER,
 };
 
 /// Limits of a server, set through [`crate::ServerContext::new`] and its `with_*` methods
@@ -123,16 +127,17 @@ pub struct Limits {
     pub vfs_concurrency: NonZeroUsize,
 }
 
-/// Returns the default limits for a VFS pool of `vfs_concurrency` workers, see the
+/// Returns the default limits for a VFS pool of `vfs_concurrency` workers and an
+/// allocator pool of `pool_size` bytes, if the allocator tells one, see the
 /// [module docs](self).
-pub fn defaults(vfs_concurrency: NonZeroUsize) -> Limits {
+pub fn defaults(vfs_concurrency: NonZeroUsize, pool_size: Option<NonZeroUsize>) -> Limits {
     Limits {
         max_connections: None,
         max_unverified_connections: DEFAULT_MAX_UNVERIFIED_CONNECTIONS,
         idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
         max_in_flight: default_max_in_flight(vfs_concurrency),
-        max_data_per_connection: None,
-        write_timeout: None,
+        max_data_per_connection: default_max_data_per_connection(pool_size),
+        write_timeout: Some(DEFAULT_WRITE_TIMEOUT),
         max_pending: default_max_pending(vfs_concurrency),
         vfs_concurrency,
     }
@@ -141,6 +146,12 @@ pub fn defaults(vfs_concurrency: NonZeroUsize) -> Limits {
 /// Returns the default in-flight limit for a pool of `vfs_concurrency` workers.
 fn default_max_in_flight(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
     DEFAULT_MAX_IN_FLIGHT.max(vfs_concurrency.saturating_mul(IN_FLIGHT_PER_VFS_WORKER))
+}
+
+/// Returns the default data limit of one connection: its share of an allocator pool of
+/// `pool_size` bytes, none without a pool size or with a pool too small to share.
+fn default_max_data_per_connection(pool_size: Option<NonZeroUsize>) -> Option<NonZeroUsize> {
+    NonZeroUsize::new(pool_size?.get() / CONNECTIONS_PER_POOL)
 }
 
 /// Returns the default limit of a pool of `vfs_concurrency` workers.
@@ -152,7 +163,7 @@ fn default_max_pending(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use super::{default_max_in_flight, default_max_pending};
+    use super::{default_max_data_per_connection, default_max_in_flight, default_max_pending};
     use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
 
     #[test]
@@ -172,5 +183,16 @@ mod tests {
         assert_eq!(limit(1), 4);
         assert_eq!(limit(64), 256);
         assert_eq!(limit(usize::MAX), usize::MAX);
+    }
+
+    #[test]
+    fn the_default_data_limit_is_a_share_of_the_pool() {
+        let limit = |pool| default_max_data_per_connection(NonZeroUsize::new(pool));
+
+        assert_eq!(limit(0), None, "no pool size, no limit");
+        assert_eq!(limit(3), None, "a pool too small to share");
+        assert_eq!(limit(4), NonZeroUsize::new(1));
+        assert_eq!(limit(64 << 20), NonZeroUsize::new(16 << 20));
+        assert_eq!(limit(usize::MAX), NonZeroUsize::new(usize::MAX / 4));
     }
 }

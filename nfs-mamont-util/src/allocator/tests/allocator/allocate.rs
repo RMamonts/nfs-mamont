@@ -141,3 +141,10 @@ async fn footprint_counts_the_whole_buffers_of_the_pool() {
     let two_parts = allocator.allocate(nonzero(1025)).await.unwrap();
     assert_eq!(footprint(&two_parts), (1025, 2048));
 }
+
+#[test]
+fn pool_size_is_that_of_all_the_buffers() {
+    let allocator = PoolAllocator::new(nonzero(1024), nonzero(4));
+
+    assert_eq!(allocator.pool_size(), Some(nonzero(4096)));
+}

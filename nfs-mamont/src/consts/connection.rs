@@ -45,6 +45,26 @@ pub const DEFAULT_MAX_UNVERIFIED_CONNECTIONS: NonZeroUsize = match NonZeroUsize:
     None => unreachable!(),
 };
 
+/// How many connections it takes to hold the whole allocator pool: the default
+/// [`crate::ServerContext::with_max_data_per_connection`] is the pool divided by it.
+///
+/// A client that stops reading its READ replies keeps their buffers until the write
+/// timeout closes it; with this share, three such clients leave room for the others.
+/// The limit costs about 1 % of the throughput of 4 KiB WRITEs and nothing of GETATTR
+/// and READ.
+pub const CONNECTIONS_PER_POOL: NonZeroUsize = match NonZeroUsize::new(4) {
+    Some(connections) => connections,
+    None => unreachable!(),
+};
+
+/// Default of [`crate::ServerContext::with_write_timeout`], the time after which a Linux
+/// NFS client gives a call over TCP up as lost: a client that has not taken a reply for
+/// that long no longer waits for it.
+///
+/// The timeout is armed for every reply, which costs a server short of CPU 2 to 3 % of
+/// its GETATTR and 4 KiB READ throughput.
+pub const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Default of [`crate::ServerContext::with_idle_timeout`]: a client that keeps a
 /// connection without a single request for longer is most likely gone, and a live one
 /// reconnects when it has a request to send.

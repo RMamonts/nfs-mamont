@@ -77,8 +77,10 @@ mod tests {
         for _ in 0..3 {
             clients.push(TcpStream::connect(addr).await.unwrap());
         }
-        let limits =
-            Limits { max_connections: NonZeroUsize::new(1), ..limits::defaults(NonZeroUsize::MIN) };
+        let limits = Limits {
+            max_connections: NonZeroUsize::new(1),
+            ..limits::defaults(NonZeroUsize::MIN, None)
+        };
         (listener, clients, Admission::new(&limits))
     }
 

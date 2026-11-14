@@ -224,7 +224,7 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
         max_in_flight: NonZeroUsize::new(LIMIT).unwrap(),
         max_data_per_connection: setup.max_data.map(|max| NonZeroUsize::new(max).unwrap()),
         idle_timeout: setup.idle_timeout,
-        ..limits::defaults(NonZeroUsize::MIN)
+        ..limits::defaults(NonZeroUsize::MIN, None)
     };
     let connection_limits = ConnectionLimits::new(&limits, result_tx, setup.probation);
     let senders = CommandSenders::new(mount_tx, nlm_tx, pool);

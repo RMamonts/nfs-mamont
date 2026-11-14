@@ -70,11 +70,9 @@ where
     /// backends at the same time; procedures beyond it wait in a queue. Set it to the
     /// number of operations the backends can run in parallel (their queue depth).
     pub fn new(allocator: Arc<A>, vfs_concurrency: NonZeroUsize) -> Self {
-        Self {
-            allocator,
-            backends: BackendRegistry::new(),
-            limits: limits::defaults(vfs_concurrency),
-        }
+        let limits = limits::defaults(vfs_concurrency, allocator.pool_size());
+
+        Self { allocator, backends: BackendRegistry::new(), limits }
     }
 
     /// Returns the limits of the server, set with [`Self::new`] and the `with_*` methods.
@@ -131,7 +129,10 @@ where
 
     /// Limits the allocator memory the READ and WRITE requests of one connection may
     /// hold, counted by [`Buffer::footprint`], so that a client that stops reading its
-    /// READ replies cannot take the whole pool. Off by default.
+    /// READ replies cannot take the whole pool. The default is [`Allocator::pool_size`]
+    /// divided by [`crate::consts::connection::CONNECTIONS_PER_POOL`], and no limit if
+    /// the allocator tells no pool size. A value that is never reached, such as
+    /// [`NonZeroUsize::MAX`], takes the limit off.
     ///
     /// The server stops reading the connection while `bytes` are in flight; the request
     /// that crosses the limit is still served. A client needs about `bandwidth × round
@@ -141,11 +142,13 @@ where
         self
     }
 
-    /// Closes a connection whose client does not take a reply within `timeout`. Off by
-    /// default; a zero `timeout` turns it off.
+    /// Closes a connection whose client does not take a reply within `timeout`. The
+    /// default is [`crate::consts::connection::DEFAULT_WRITE_TIMEOUT`]; a zero `timeout`
+    /// turns it off.
     ///
     /// Without it, a client that stops reading keeps its connection, its in-flight
-    /// slots and their buffers for as long as it stays connected.
+    /// slots and their buffers for as long as it stays connected. The timeout covers a
+    /// whole reply, so the largest one has to get through the client's link within it.
     pub fn with_write_timeout(mut self, timeout: Duration) -> Self {
         self.limits.write_timeout = unless_zero(timeout);
         self
