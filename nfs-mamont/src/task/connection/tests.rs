@@ -152,7 +152,8 @@ impl Pool {
 }
 
 fn pool(max_pending: Option<usize>) -> Pool {
-    let (sender, receiver) = drr::channel(max_pending.map(|max| NonZeroUsize::new(max).unwrap()));
+    let capacity = max_pending.map_or(NonZeroUsize::MAX, |max| NonZeroUsize::new(max).unwrap());
+    let (sender, receiver) = drr::channel(capacity);
     Pool { sender, receiver }
 }
 

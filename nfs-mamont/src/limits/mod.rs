@@ -10,46 +10,40 @@
 //!   [`crate::task::connection`];
 //! - the VFS pool's [`drr`] channel holds the procedures of all connections.
 //!
-//! This is their map, in the order a request meets them: for each limit its default,
-//! where it is enforced and what happens at it.
+//! This is their map, in the order a request meets them: for each limit where it is
+//! enforced and what happens at it. The defaults are told by the `with_*` methods of
+//! [`ServerContext`].
 //!
 //! # Connections
 //!
-//! - [`Limits::max_connections`], off. [`Admission::accept`] takes a slot for every new
+//! - [`Limits::max_connections`]. [`Admission::accept`] takes a slot for every new
 //!   connection, freed once the write task of the connection is gone. At the limit the
 //!   oldest connection on probation is closed; without one, `accept` waits.
-//! - [`Limits::max_unverified_connections`], [`DEFAULT_MAX_UNVERIFIED_CONNECTIONS`].
-//!   [`Admission::accept`] puts every new connection on [`Probation`];
-//!   [`ConnectionLimits::verified`] takes it off with the first valid call. At the limit
-//!   the oldest connection on probation is closed.
-//! - [`Limits::idle_timeout`], [`DEFAULT_IDLE_TIMEOUT`]. [`ConnectionLimits::expired`],
-//!   polled by the read task while it waits for a request. The connection is closed.
+//! - [`Limits::max_unverified_connections`]. [`Admission::accept`] puts every new
+//!   connection on [`Probation`]; [`ConnectionLimits::verified`] takes it off with the
+//!   first valid call. At the limit the oldest connection on probation is closed.
+//! - [`Limits::idle_timeout`]. [`ConnectionLimits::expired`], polled by the read task
+//!   while it waits for a request. The connection is closed.
 //!
 //! # Requests of one connection
 //!
-//! - [`Limits::max_in_flight`], the larger of [`DEFAULT_MAX_IN_FLIGHT`] and
-//!   [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`. [`ConnectionLimits::acquire`]
-//!   takes a slot before a request is read; the write task frees it once the reply is
-//!   written. At the limit the socket stays unread and TCP flow control holds the client
-//!   back.
-//! - [`Limits::max_data_per_connection`], [`Allocator::pool_size`] divided by
-//!   [`CONNECTIONS_PER_POOL`], off if the allocator tells no pool size.
-//!   [`ConnectionLimits::charge`] counts READ and WRITE data by [`Buffer::footprint`].
-//!   At the limit the socket stays unread.
-//! - [`Limits::write_timeout`], [`DEFAULT_WRITE_TIMEOUT`]. The write task, for every
-//!   reply. The connection is closed.
+//! - [`Limits::max_in_flight`]. [`ConnectionLimits::acquire`] takes a slot before a
+//!   request is read; the write task frees it once the reply is written. At the limit
+//!   the socket stays unread and TCP flow control holds the client back.
+//! - [`Limits::max_data_per_connection`]. [`ConnectionLimits::charge`] counts READ and
+//!   WRITE data by [`Buffer::footprint`]. At the limit the socket stays unread.
+//! - [`Limits::write_timeout`]. The write task, for every reply. The connection is
+//!   closed.
 //!
 //! # Shared by all connections
 //!
-//! - [`Limits::max_pending`], [`PENDING_PER_VFS_WORKER`] × `vfs_concurrency`: the
-//!   capacity of the [`drr`] channel. [`FlowSender::send`] takes a slot before a
-//!   procedure is queued for the VFS pool, freed once its reply is queued. At the limit
-//!   the read tasks wait, the one that waits longest first.
-//! - [`Limits::vfs_concurrency`], no default. [`VfsManager`] runs that many workers, each
-//!   executing one procedure at a time. At the limit procedures wait in their queues.
-//! - The allocator pool, [`Allocator::capacity`], set by the allocator.
-//!   [`Allocator::allocate`], called by the parser in the read task for READ and WRITE
-//!   data. At the limit the read task waits for memory.
+//! - [`Limits::max_pending`], the capacity of the [`drr`] channel. [`FlowSender::send`]
+//!   takes a slot before a procedure is queued for the VFS pool, freed once its reply
+//!   is queued. At the limit the read tasks wait, the one that waits longest first.
+//! - [`Limits::vfs_concurrency`]. [`VfsManager`] runs that many workers, each executing
+//!   one procedure at a time. At the limit procedures wait in their queues.
+//! - The allocator pool. [`Allocator::allocate`], called by the parser in the read task
+//!   for READ and WRITE data. At the limit the read task waits for memory.
 //!
 //! The [`drr`] channel serves the connections in deficit round robin; that shares the
 //! workers fairly but limits nothing.
@@ -78,8 +72,6 @@
 //! [`FlowSender::send`]: crate::task::global::vfs::drr::FlowSender::send
 //! [`VfsManager`]: crate::task::global::vfs::VfsManager
 //! [`Buffer::footprint`]: crate::Buffer::footprint
-//! [`Allocator::capacity`]: crate::Allocator::capacity
-//! [`Allocator::pool_size`]: crate::Allocator::pool_size
 //! [`Allocator::allocate`]: crate::Allocator::allocate
 
 pub mod admission;

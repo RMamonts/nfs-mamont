@@ -11,8 +11,8 @@
 //! receiver, backlogged flows get equal shares of the cost, and a light flow waits for
 //! at most one quantum of each heavy one.
 //!
-//! With a capacity, at most that many items may be queued or still held by receivers at
-//! once, see [`Slot`]; senders wait for a slot in the order they came.
+//! At most `capacity` items may be queued or still held by receivers at once, see
+//! [`Slot`]; senders wait for a slot in the order they came.
 
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
@@ -25,11 +25,15 @@ use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 ///
 /// A light flow waits for one quantum of every backlogged one, so a small quantum
 /// isolates flows better; but the items of one flow then no longer follow each other, and
-/// the VFS pool loses the batching of replies per connection. Measured there with GETATTR
-/// on 256 backlogged connections, for a quantum of 8, 4, 2 and 1: a light connection
-/// waits 35, 17, 9 and 5 ms on a 1 ms backend, and a server short of CPU loses 0, 3, 10
-/// and 20 % of its throughput on a 100-200 us backend. An item costing more than the
-/// quantum takes several turns of the ring.
+/// the VFS pool loses the batching of replies per connection.
+///
+/// Measured there with its default capacity of 256, for a quantum of 8, 4, 2 and 1. On a
+/// 1 ms backend, next to 16 connections with 64 GETATTRs in flight each, a light
+/// connection waits 3.6, 2.6, 2.1 and 1.8 ms; next to 64 connections with 16 each, 8.1,
+/// 6.2, 4.2 and 3.2 ms. With as many connections as the capacity or more, every flow has
+/// about one item queued and the wait is close to 10 ms whatever the quantum. A server
+/// short of CPU on a 200 us backend loses 0, 0, 1 and 4 % of its throughput. An item
+/// costing more than the quantum takes several turns of the ring.
 pub const QUANTUM: u32 = 4;
 
 /// How much of the receivers' work an item takes, in units of the cheapest item.
@@ -38,10 +42,10 @@ pub trait Cost {
     fn cost(&self) -> u32;
 }
 
-/// Creates a channel holding at most `capacity` items, if one is given.
-pub fn channel<T: Cost>(capacity: Option<NonZeroUsize>) -> (Sender<T>, Receiver<T>) {
+/// Creates a channel holding at most `capacity` items.
+pub fn channel<T: Cost>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
     // `Semaphore::new` panics above `MAX_PERMITS`.
-    let slots = capacity.map(|max| Arc::new(Semaphore::new(max.get().min(Semaphore::MAX_PERMITS))));
+    let slots = Arc::new(Semaphore::new(capacity.get().min(Semaphore::MAX_PERMITS)));
     let inner = Inner { flows: Vec::new(), free: Vec::new(), ring: VecDeque::new(), closed: false };
     let shared = Arc::new(Shared { inner: Mutex::new(inner), wake: Notify::new(), slots });
 
@@ -93,7 +97,7 @@ pub struct FlowSender<T> {
 }
 
 impl<T> FlowSender<T> {
-    /// Queues `item` on this flow, first waiting for a slot of the capacity, if any.
+    /// Queues `item` on this flow, first waiting for a slot of the capacity.
     ///
     /// The slots are handed out in the order senders asked for them, so when every flow
     /// has one sender waiting at a time, they go round the waiting flows in turn.
@@ -102,9 +106,9 @@ impl<T> FlowSender<T> {
     ///
     /// Gives the item back when the channel is closed.
     pub async fn send(&self, item: T) -> Result<(), T> {
-        let slot = match &self.shared.slots {
-            Some(slots) => Arc::clone(slots).acquire_owned().await.ok(),
-            None => None,
+        // The semaphore is never closed, so the error only stands for a closed channel.
+        let Ok(slot) = Arc::clone(&self.shared.slots).acquire_owned().await else {
+            return Err(item);
         };
         {
             let mut guard = self.shared.lock();
@@ -194,18 +198,17 @@ impl<T> Receiver<T> {
     }
 }
 
-/// Slot of one item in the capacity of the channel, freed when dropped; holds nothing
-/// without a capacity.
+/// Slot of one item in the capacity of the channel, freed when dropped.
 pub struct Slot {
-    _permit: Option<OwnedSemaphorePermit>,
+    _permit: OwnedSemaphorePermit,
 }
 
 struct Shared<T> {
     inner: Mutex<Inner<T>>,
     /// Wakes a receiver when an item is queued or the channel closes.
     wake: Notify,
-    /// Capacity of the channel, `None` for no limit.
-    slots: Option<Arc<Semaphore>>,
+    /// Capacity of the channel.
+    slots: Arc<Semaphore>,
 }
 
 impl<T> Shared<T> {

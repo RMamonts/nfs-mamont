@@ -9,6 +9,8 @@ use crate::task::global::vfs::drr::{channel, Cost, Receiver, QUANTUM};
 
 /// How long the tests wait to see that something does not happen.
 const WAIT: Duration = Duration::from_millis(50);
+/// A capacity the tests never reach.
+const ROOMY: NonZeroUsize = NonZeroUsize::MAX;
 /// Cost of a 1 MiB READ.
 const HEAVY: u32 = 17;
 
@@ -35,7 +37,7 @@ async fn next_id(receiver: &Receiver<Item>) -> u32 {
 
 #[tokio::test]
 async fn one_flow_is_served_in_order() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=20 {
         assert!(flow.send(item(id, HEAVY)).await.is_ok());
@@ -48,7 +50,7 @@ async fn one_flow_is_served_in_order() {
 
 #[tokio::test]
 async fn backlogged_flows_get_equal_cost_shares() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let (light, heavy) = (sender.flow(), sender.flow());
     for i in 0..500 {
         assert!(light.send(item(1000 + i, 1)).await.is_ok());
@@ -71,7 +73,7 @@ async fn backlogged_flows_get_equal_cost_shares() {
 
 #[tokio::test]
 async fn a_light_flow_waits_for_at_most_one_quantum() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let (heavy, light) = (sender.flow(), sender.flow());
     for i in 0..100 {
         assert!(heavy.send(item(1000 + i, 1)).await.is_ok());
@@ -89,7 +91,7 @@ async fn a_light_flow_waits_for_at_most_one_quantum() {
 
 #[tokio::test]
 async fn an_idle_flow_banks_no_credit() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let (first, second) = (sender.flow(), sender.flow());
     // The first flow is served alone, then runs empty.
     for i in 0..40 {
@@ -112,7 +114,7 @@ async fn an_idle_flow_banks_no_credit() {
 
 #[tokio::test]
 async fn recv_waits_for_an_item() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
 
     let producer = tokio::spawn(async move {
@@ -125,7 +127,7 @@ async fn recv_waits_for_an_item() {
 
 #[tokio::test]
 async fn dropping_the_sender_hands_out_the_queued_items_then_stops() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=3 {
         assert!(flow.send(item(id, 1)).await.is_ok());
@@ -141,7 +143,7 @@ async fn dropping_the_sender_hands_out_the_queued_items_then_stops() {
 
 #[tokio::test]
 async fn a_dropped_flow_is_freed_once_drained() {
-    let (sender, receiver) = channel(None);
+    let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=2 {
         assert!(flow.send(item(id, 1)).await.is_ok());
@@ -160,7 +162,7 @@ async fn a_dropped_flow_is_freed_once_drained() {
 
 #[tokio::test]
 async fn an_item_counts_against_the_capacity_until_its_slot_is_dropped() {
-    let (sender, receiver) = channel(Some(NonZeroUsize::new(2).unwrap()));
+    let (sender, receiver) = channel(NonZeroUsize::new(2).unwrap());
     let flow = sender.flow();
     assert!(flow.send(item(1, 1)).await.is_ok());
     assert!(flow.send(item(2, 1)).await.is_ok());

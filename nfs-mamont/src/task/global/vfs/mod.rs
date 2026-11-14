@@ -204,7 +204,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (sender, receiver) = drr::channel(Some(limits.max_pending));
+        let (sender, receiver) = drr::channel(limits.max_pending);
         for _ in 0..limits.vfs_concurrency.get() {
             VfsTask::new(backends.clone(), receiver.clone()).spawn();
         }
