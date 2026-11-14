@@ -39,9 +39,10 @@
 //!
 //! # Shared by all connections
 //!
-//! - [`Limits::max_pending`], off: the capacity of the [`drr`] channel.
-//!   [`FlowSender::send`] takes a slot before a procedure is queued for the VFS pool,
-//!   freed once its reply is queued. At the limit the read task waits.
+//! - [`Limits::max_pending`], [`PENDING_PER_VFS_WORKER`] × `vfs_concurrency`: the
+//!   capacity of the [`drr`] channel. [`FlowSender::send`] takes a slot before a
+//!   procedure is queued for the VFS pool, freed once its reply is queued. At the limit
+//!   the read tasks wait, the one that waits longest first.
 //! - [`Limits::vfs_concurrency`], no default. [`VfsManager`] runs that many workers, each
 //!   executing one procedure at a time. At the limit procedures wait in their queues.
 //! - The allocator pool, [`Allocator::capacity`], set by the allocator.
@@ -55,8 +56,9 @@
 //!
 //! - The result channel of a connection holds at most `max_in_flight` replies, so the
 //!   global tasks never wait for a slow client.
-//! - The global queues hold at most `max_in_flight` requests per open connection, and at
-//!   most `max_pending` NFS procedures when it is set.
+//! - The VFS pool holds at most `max_pending` NFS procedures, however many connections
+//!   there are; the MOUNT and NLM queues hold at most `max_in_flight` requests per open
+//!   connection.
 //! - READ and WRITE data of all connections never exceeds the allocator pool;
 //!   `max_data_per_connection` keeps one connection from taking all of it, and
 //!   `write_timeout` frees what a client that stopped reading holds.
@@ -87,7 +89,7 @@ use std::time::Duration;
 
 use crate::consts::connection::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_IN_FLIGHT, DEFAULT_MAX_UNVERIFIED_CONNECTIONS,
-    IN_FLIGHT_PER_VFS_WORKER,
+    IN_FLIGHT_PER_VFS_WORKER, PENDING_PER_VFS_WORKER,
 };
 
 /// Limits of a server, set through [`crate::ServerContext::new`] and its `with_*` methods
@@ -113,9 +115,9 @@ pub struct Limits {
     /// How long a reply may wait for the socket before the connection is closed, `None`
     /// for ever, see [`crate::ServerContext::with_write_timeout`].
     pub write_timeout: Option<Duration>,
-    /// NFS procedures that may wait for or run in the VFS pool at once, `None` for no
-    /// limit, see [`crate::ServerContext::with_max_pending`].
-    pub max_pending: Option<NonZeroUsize>,
+    /// NFS procedures that may wait for or run in the VFS pool at once, see
+    /// [`crate::ServerContext::with_max_pending`].
+    pub max_pending: NonZeroUsize,
     /// NFS procedures executed against the backends at once, see
     /// [`crate::ServerContext::new`].
     pub vfs_concurrency: NonZeroUsize,
@@ -131,7 +133,7 @@ pub fn defaults(vfs_concurrency: NonZeroUsize) -> Limits {
         max_in_flight: default_max_in_flight(vfs_concurrency),
         max_data_per_connection: None,
         write_timeout: None,
-        max_pending: None,
+        max_pending: default_max_pending(vfs_concurrency),
         vfs_concurrency,
     }
 }
@@ -141,11 +143,16 @@ fn default_max_in_flight(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
     DEFAULT_MAX_IN_FLIGHT.max(vfs_concurrency.saturating_mul(IN_FLIGHT_PER_VFS_WORKER))
 }
 
+/// Returns the default limit of a pool of `vfs_concurrency` workers.
+fn default_max_pending(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
+    vfs_concurrency.saturating_mul(PENDING_PER_VFS_WORKER)
+}
+
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroUsize;
 
-    use super::default_max_in_flight;
+    use super::{default_max_in_flight, default_max_pending};
     use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
 
     #[test]
@@ -155,6 +162,15 @@ mod tests {
         assert_eq!(limit(1), DEFAULT_MAX_IN_FLIGHT.get());
         assert_eq!(limit(128), DEFAULT_MAX_IN_FLIGHT.get());
         assert_eq!(limit(129), 258);
+        assert_eq!(limit(usize::MAX), usize::MAX);
+    }
+
+    #[test]
+    fn the_default_pool_limit_grows_with_the_pool() {
+        let limit = |workers| default_max_pending(NonZeroUsize::new(workers).unwrap()).get();
+
+        assert_eq!(limit(1), 4);
+        assert_eq!(limit(64), 256);
         assert_eq!(limit(usize::MAX), usize::MAX);
     }
 }

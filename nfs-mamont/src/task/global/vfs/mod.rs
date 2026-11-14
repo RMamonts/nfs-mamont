@@ -186,7 +186,7 @@ pub struct VfsManager<B: Buffer> {
 
 impl<B: Buffer + 'static> VfsManager<B> {
     /// Creates a new [`VfsManager`] with [`Limits::vfs_concurrency`] workers that hold at
-    /// most [`Limits::max_pending`] procedures, if it is set.
+    /// most [`Limits::max_pending`] procedures.
     ///
     /// # Parameters
     ///
@@ -204,7 +204,7 @@ impl<B: Buffer + 'static> VfsManager<B> {
     where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (sender, receiver) = drr::channel(limits.max_pending);
+        let (sender, receiver) = drr::channel(Some(limits.max_pending));
         for _ in 0..limits.vfs_concurrency.get() {
             VfsTask::new(backends.clone(), receiver.clone()).spawn();
         }

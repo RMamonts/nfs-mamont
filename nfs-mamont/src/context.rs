@@ -151,12 +151,14 @@ where
         self
     }
 
-    /// Limits how many NFS procedures may wait for or run in the VFS pool at once, over
-    /// all connections, so that the queue no longer grows with their number. Off by
-    /// default; MOUNT and NLM procedures are not counted. A few slots per VFS worker
-    /// keep the pool busy, say `4 × vfs_concurrency`; more only add queueing delay.
+    /// Sets how many NFS procedures may wait for or run in the VFS pool at once, over
+    /// all connections, so that the queue does not grow with their number; MOUNT and NLM
+    /// procedures are not counted. The default is
+    /// [`crate::consts::connection::PENDING_PER_VFS_WORKER`] × `vfs_concurrency`: a few
+    /// slots per VFS worker keep the pool busy, more only add queueing delay. A value
+    /// that is never reached, such as [`NonZeroUsize::MAX`], takes the limit off.
     pub fn with_max_pending(mut self, max_pending: NonZeroUsize) -> Self {
-        self.limits.max_pending = Some(max_pending);
+        self.limits.max_pending = max_pending;
         self
     }
 
