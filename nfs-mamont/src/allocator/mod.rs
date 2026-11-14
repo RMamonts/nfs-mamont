@@ -60,4 +60,14 @@ pub trait Allocator {
     /// where a short read is legal) should clamp to this value instead of
     /// failing on an oversized request.
     fn capacity(&self) -> NonZeroUsize;
+
+    /// Returns how many bytes of buffers the allocator can have handed out at once, or
+    /// [`None`] if it sets no such bound.
+    ///
+    /// The server shares the pool between the connections: by default one connection
+    /// may hold a part of it, see [`crate::ServerContext::with_max_data_per_connection`].
+    /// Without a pool size there is no such default.
+    fn pool_size(&self) -> Option<NonZeroUsize> {
+        None
+    }
 }

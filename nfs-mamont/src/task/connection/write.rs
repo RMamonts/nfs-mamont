@@ -7,9 +7,9 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
+use crate::limits::budget::InFlightReply;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::connection::limit::InFlightReply;
 
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {

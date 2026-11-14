@@ -1,10 +1,17 @@
-//! In-flight budget of one connection, see the [`super`] module docs.
+//! In-flight budget of one connection: [`Limits::max_in_flight`],
+//! [`Limits::max_data_per_connection`] and [`Limits::idle_timeout`].
+//!
+//! The read task takes a [`ReplySender`] before it reads a request; the slot is freed
+//! once the write task has handed the reply to the socket, or when the request is
+//! dropped on its way. While no slot is free the socket stays unread and TCP flow
+//! control holds the client back. This is what makes the unbounded result channels
+//! safe: one holds at most `max_in_flight` replies, so the global tasks never block on a
+//! slow client.
 //!
 //! Slots are counted instead of taken from a semaphore, which costs about 4 % of GETATTR
 //! throughput on four connections.
 
 use std::io;
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -15,6 +22,7 @@ use tokio::sync::Notify;
 use tokio::time::{Instant, Sleep};
 
 use crate::allocator::Buffer;
+use crate::limits::Limits;
 use crate::rpc::Error;
 use crate::task::ProcReply;
 
@@ -108,31 +116,28 @@ struct DataLimit {
 }
 
 impl<B: Buffer> Budget<B> {
-    /// Creates a budget of `limit` slots for replies sent through `tx`. With `max_data`
-    /// it also stops reading while that many bytes of READ and WRITE data are in flight,
-    /// see [`crate::ServerContext::with_max_data_per_connection`]; with `idle_timeout`,
-    /// [`Self::idle`] tells when the connection has been idle that long.
-    pub fn new(
-        limit: NonZeroUsize,
-        max_data: Option<NonZeroUsize>,
-        idle_timeout: Option<Duration>,
-        tx: Sender<InFlightReply<B>>,
-    ) -> Self {
+    /// Creates the budget of a connection whose replies are sent through `tx`: it hands
+    /// out [`Limits::max_in_flight`] slots and, with [`Limits::max_data_per_connection`],
+    /// stops while that many bytes of READ and WRITE data are in flight; with
+    /// [`Limits::idle_timeout`], [`Self::idle`] tells when the connection has been idle
+    /// that long.
+    pub fn new(limits: &Limits, tx: Sender<InFlightReply<B>>) -> Self {
         let limiter = Arc::new(Limiter {
             released: AtomicUsize::new(0),
             bytes_released: AtomicUsize::new(0),
             notify: Notify::new(),
         });
 
-        let data = max_data.map(|max| DataLimit { max: max.get(), issued: 0 });
-        let idle = idle_timeout.map(|period| IdleTimer {
+        let data =
+            limits.max_data_per_connection.map(|max| DataLimit { max: max.get(), issued: 0 });
+        let idle = limits.idle_timeout.map(|period| IdleTimer {
             period,
             sleep: Box::pin(tokio::time::sleep(period)),
             // `idle` is first polled with one slot issued, see its docs.
             armed_at: (1, 0),
         });
 
-        Self { limiter, limit: limit.get(), issued: 0, data, idle, tx }
+        Self { limiter, limit: limits.max_in_flight.get(), issued: 0, data, idle, tx }
     }
 
     /// Takes a slot, waiting while all of them, or all the data, are taken.

@@ -117,4 +117,9 @@ impl Allocator for PoolAllocator {
     fn capacity(&self) -> NonZeroUsize {
         self.capacity
     }
+
+    fn pool_size(&self) -> Option<NonZeroUsize> {
+        // One allocation may take every buffer of the pool.
+        Some(self.capacity)
+    }
 }

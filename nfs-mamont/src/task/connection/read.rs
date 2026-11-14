@@ -9,6 +9,7 @@ use async_channel::{SendError, Sender};
 
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
+use crate::limits::connection::{ConnectionLimits, Expiry};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -17,11 +18,9 @@ use crate::parser::{
     NlmArguments, ProcArguments,
 };
 use crate::rpc::{Error, ErrorWrapper};
-use crate::task::connection::limit::Budget;
-use crate::task::connection::probation::Ticket;
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsSender;
+use crate::task::global::vfs::{VfsCommand, VfsSender};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::NfsRes;
 
@@ -55,10 +54,8 @@ pub struct ReadTask<
     client_id: ConnectionId,
     command_senders: CommandSenders<B>,
     allocator: Arc<A>,
-    /// In-flight budget of the connection, see the [`super`] module docs.
-    budget: Budget<B>,
-    /// Place on probation until the first valid call, see [`super::probation`].
-    probation: Option<Ticket>,
+    /// Limits of the connection, see [`crate::limits`].
+    limits: ConnectionLimits<B>,
 }
 
 impl<A, B> ReadTask<A, B>
@@ -72,10 +69,9 @@ where
         client_id: ConnectionId,
         allocator: Arc<A>,
         command_senders: CommandSenders<B>,
-        budget: Budget<B>,
-        probation: Option<Ticket>,
+        limits: ConnectionLimits<B>,
     ) -> Self {
-        Self { readhalf, client_id, allocator, command_senders, budget, probation }
+        Self { readhalf, client_id, allocator, command_senders, limits }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -97,23 +93,23 @@ where
             // Taken before the request is read: while the connection has `max_in_flight`
             // unanswered requests the socket stays unread and TCP flow control holds the
             // client back.
-            let mut result_tx = self.budget.acquire().await;
+            let mut result_tx = self.limits.acquire().await;
 
             let message = tokio::select! {
                 biased;
                 message = parser.next_message() => message,
-                _ = evicted(self.probation.as_ref()) => {
-                    debug!(client=%self.client_id.into_inner(), "closing a connection that has sent no valid call");
-                    return Ok(());
-                }
-                _ = self.budget.idle() => {
-                    debug!(client=%self.client_id.into_inner(), "closing an idle connection");
+                expiry = self.limits.expired() => {
+                    let client = self.client_id.into_inner();
+                    match expiry {
+                        Expiry::Evicted => debug!(%client, "closing a connection that has sent no valid call"),
+                        Expiry::Idle => debug!(%client, "closing an idle connection"),
+                    }
                     return Ok(());
                 }
             };
             if message.is_ok() {
                 // The first valid call ends the probation.
-                self.probation = None;
+                self.limits.verified();
             }
 
             match message {
@@ -144,14 +140,12 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
-                    self.budget.charge(&mut result_tx, data_footprint(&proc));
+                    self.limits.charge(&mut result_tx, &proc);
                     // Parsed before the pool's slot is taken, so that an idle connection
                     // holds no slot.
-                    let args = NfsArgWrapper { header, proc };
-                    if let Err(result_tx) =
-                        self.command_senders.pool_sender.send(args, result_tx).await
-                    {
-                        return result_tx.broken_pipe(xid).await;
+                    let command = VfsCommand { args: NfsArgWrapper { header, proc }, result_tx };
+                    if let Err(command) = self.command_senders.pool_sender.send(command).await {
+                        return command.result_tx.broken_pipe(xid).await;
                     }
                 }
 
@@ -221,22 +215,5 @@ where
                 }
             }
         }
-    }
-}
-
-/// Returns how many bytes of allocator memory a READ or WRITE holds.
-fn data_footprint<B: Buffer>(proc: &NfsArguments<B>) -> usize {
-    match proc {
-        NfsArguments::Read(_, data) => data.footprint(),
-        NfsArguments::Write(args) => args.data.footprint(),
-        _ => 0,
-    }
-}
-
-/// Completes once the connection is pushed out of probation; never without a place on it.
-async fn evicted(probation: Option<&Ticket>) {
-    match probation {
-        Some(ticket) => ticket.evicted().await,
-        None => std::future::pending().await,
     }
 }
