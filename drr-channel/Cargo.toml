@@ -1,0 +1,20 @@
+[package]
+name = "drr-channel"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "Async channel with one queue per sender, served by deficit round robin: fair sharing of a tokio worker pool between connections or tenants"
+publish = true
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/RMamonts/nfs-mamont"
+keywords = ["channel", "fairness", "scheduling", "tokio", "async"]
+categories = ["asynchronous", "concurrency"]
+rust-version.workspace = true
+
+[dependencies]
+# External dependencies
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time"] }

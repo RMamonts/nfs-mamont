@@ -1,17 +1,17 @@
-//! Tests of the deficit round robin channel, [`crate::task::global::vfs::drr`].
-
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::time::Duration;
 
 use tokio::time::timeout;
 
-use crate::task::global::vfs::drr::{channel, Cost, Receiver, QUANTUM};
+use crate::{Cost, Receiver, Sender};
 
 /// How long the tests wait to see that something does not happen.
 const WAIT: Duration = Duration::from_millis(50);
 /// A capacity the tests never reach.
 const ROOMY: NonZeroUsize = NonZeroUsize::MAX;
-/// Cost of a 1 MiB READ.
+/// Cost units a flow may spend per turn.
+const QUANTUM: u32 = 4;
+/// Cost of an item that takes several turns.
 const HEAVY: u32 = 17;
 
 struct Item {
@@ -27,6 +27,11 @@ impl Cost for Item {
 
 fn item(id: u32, cost: u32) -> Item {
     Item { id, cost }
+}
+
+/// Creates a channel of `capacity` items with a quantum of [`QUANTUM`].
+fn channel(capacity: NonZeroUsize) -> (Sender<Item>, Receiver<Item>) {
+    crate::channel(capacity, NonZeroU32::new(QUANTUM).unwrap())
 }
 
 /// Takes the next item, which must be queued already; returns its id.
