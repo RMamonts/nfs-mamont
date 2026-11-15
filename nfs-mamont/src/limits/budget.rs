@@ -1,5 +1,4 @@
-//! In-flight budget of one connection: [`Limits::max_in_flight`],
-//! [`Limits::max_data_per_connection`] and [`Limits::idle_timeout`].
+//! In-flight budget of one connection, see [`Budget`].
 //!
 //! The read task takes a [`ReplySender`] before it reads a request; the slot is freed
 //! once the write task has handed the reply to the socket, or when the request is
@@ -87,13 +86,21 @@ impl<B: Buffer> ReplySender<B> {
     }
 }
 
-/// Read-task side of the limit: hands out one [`ReplySender`] per free slot.
+/// In-flight budget of one connection, held by its read task. It enforces three limits:
+///
+/// - [`Limits::max_in_flight`]. [`Self::acquire`] hands out that many slots, one
+///   [`ReplySender`] per request, and waits while all of them are taken.
+/// - [`Limits::max_data_per_connection`]. [`Self::charge`] counts the READ and WRITE
+///   data of a request; [`Self::acquire`] also waits while that many bytes are in
+///   flight.
+/// - [`Limits::idle_timeout`]. [`Self::idle`] tells when the connection has been idle
+///   that long.
 pub struct Budget<B: Buffer> {
     limiter: Arc<Limiter>,
     limit: usize,
     /// Slots taken so far, wrapping.
     issued: usize,
-    /// Limit on the data in flight, see [`Self::new`].
+    /// Limit on the data in flight, `None` without [`Limits::max_data_per_connection`].
     data: Option<DataLimit>,
     /// Timer of [`Self::idle`], `None` without an idle timeout.
     idle: Option<IdleTimer>,
@@ -116,11 +123,8 @@ struct DataLimit {
 }
 
 impl<B: Buffer> Budget<B> {
-    /// Creates the budget of a connection whose replies are sent through `tx`: it hands
-    /// out [`Limits::max_in_flight`] slots and, with [`Limits::max_data_per_connection`],
-    /// stops while that many bytes of READ and WRITE data are in flight; with
-    /// [`Limits::idle_timeout`], [`Self::idle`] tells when the connection has been idle
-    /// that long.
+    /// Creates the budget of a connection whose replies are sent through `tx`, with the
+    /// limits set by `limits`.
     pub fn new(limits: &Limits, tx: Sender<InFlightReply<B>>) -> Self {
         let limiter = Arc::new(Limiter {
             released: AtomicUsize::new(0),

@@ -19,14 +19,16 @@ struct Item {
     cost: u32,
 }
 
+impl Item {
+    fn new(id: u32, cost: u32) -> Self {
+        Self { id, cost }
+    }
+}
+
 impl Cost for Item {
     fn cost(&self) -> u32 {
         self.cost
     }
-}
-
-fn item(id: u32, cost: u32) -> Item {
-    Item { id, cost }
 }
 
 /// Creates a channel of `capacity` items with a quantum of [`QUANTUM`].
@@ -45,7 +47,7 @@ async fn one_flow_is_served_in_order() {
     let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=20 {
-        assert!(flow.send(item(id, HEAVY)).await.is_ok());
+        assert!(flow.send(Item::new(id, HEAVY)).await.is_ok());
     }
 
     for id in 1..=20 {
@@ -58,8 +60,8 @@ async fn backlogged_flows_get_equal_cost_shares() {
     let (sender, receiver) = channel(ROOMY);
     let (light, heavy) = (sender.flow(), sender.flow());
     for i in 0..500 {
-        assert!(light.send(item(1000 + i, 1)).await.is_ok());
-        assert!(heavy.send(item(2000 + i, HEAVY)).await.is_ok());
+        assert!(light.send(Item::new(1000 + i, 1)).await.is_ok());
+        assert!(heavy.send(Item::new(2000 + i, HEAVY)).await.is_ok());
     }
 
     let (mut light_cost, mut heavy_cost) = (0, 0);
@@ -81,11 +83,11 @@ async fn a_light_flow_waits_for_at_most_one_quantum() {
     let (sender, receiver) = channel(ROOMY);
     let (heavy, light) = (sender.flow(), sender.flow());
     for i in 0..100 {
-        assert!(heavy.send(item(1000 + i, 1)).await.is_ok());
+        assert!(heavy.send(Item::new(1000 + i, 1)).await.is_ok());
     }
     // The heavy flow is in the middle of its turn when the light one arrives.
     next_id(&receiver).await;
-    assert!(light.send(item(1, 1)).await.is_ok());
+    assert!(light.send(Item::new(1, 1)).await.is_ok());
 
     let mut before = 0;
     while next_id(&receiver).await != 1 {
@@ -100,14 +102,14 @@ async fn an_idle_flow_banks_no_credit() {
     let (first, second) = (sender.flow(), sender.flow());
     // The first flow is served alone, then runs empty.
     for i in 0..40 {
-        assert!(first.send(item(1000 + i, 1)).await.is_ok());
+        assert!(first.send(Item::new(1000 + i, 1)).await.is_ok());
     }
     for _ in 0..40 {
         next_id(&receiver).await;
     }
     for i in 0..20 {
-        assert!(first.send(item(3000 + i, 1)).await.is_ok());
-        assert!(second.send(item(2000 + i, 1)).await.is_ok());
+        assert!(first.send(Item::new(3000 + i, 1)).await.is_ok());
+        assert!(second.send(Item::new(2000 + i, 1)).await.is_ok());
     }
 
     let mut before = 0;
@@ -124,7 +126,7 @@ async fn recv_waits_for_an_item() {
 
     let producer = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(20)).await;
-        assert!(flow.send(item(7, 1)).await.is_ok());
+        assert!(flow.send(Item::new(7, 1)).await.is_ok());
     });
     assert_eq!(next_id(&receiver).await, 7);
     producer.await.unwrap();
@@ -135,11 +137,11 @@ async fn dropping_the_sender_hands_out_the_queued_items_then_stops() {
     let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=3 {
-        assert!(flow.send(item(id, 1)).await.is_ok());
+        assert!(flow.send(Item::new(id, 1)).await.is_ok());
     }
 
     drop(sender);
-    assert!(flow.send(item(4, 1)).await.is_err());
+    assert!(flow.send(Item::new(4, 1)).await.is_err());
     for id in 1..=3 {
         assert_eq!(next_id(&receiver).await, id);
     }
@@ -151,7 +153,7 @@ async fn a_dropped_flow_is_freed_once_drained() {
     let (sender, receiver) = channel(ROOMY);
     let flow = sender.flow();
     for id in 1..=2 {
-        assert!(flow.send(item(id, 1)).await.is_ok());
+        assert!(flow.send(Item::new(id, 1)).await.is_ok());
     }
 
     drop(flow);
@@ -169,14 +171,14 @@ async fn a_dropped_flow_is_freed_once_drained() {
 async fn an_item_counts_against_the_capacity_until_its_slot_is_dropped() {
     let (sender, receiver) = channel(NonZeroUsize::new(2).unwrap());
     let flow = sender.flow();
-    assert!(flow.send(item(1, 1)).await.is_ok());
-    assert!(flow.send(item(2, 1)).await.is_ok());
-    assert!(timeout(WAIT, flow.send(item(3, 1))).await.is_err(), "sent past the capacity");
+    assert!(flow.send(Item::new(1, 1)).await.is_ok());
+    assert!(flow.send(Item::new(2, 1)).await.is_ok());
+    assert!(timeout(WAIT, flow.send(Item::new(3, 1))).await.is_err(), "sent past the capacity");
 
     // Taken but still held: the capacity stays full.
     let first = receiver.recv().await.unwrap();
-    assert!(timeout(WAIT, flow.send(item(3, 1))).await.is_err(), "a held item lost its slot");
+    assert!(timeout(WAIT, flow.send(Item::new(3, 1))).await.is_err(), "a held item lost its slot");
 
     drop(first);
-    assert!(timeout(WAIT, flow.send(item(3, 1))).await.unwrap().is_ok());
+    assert!(timeout(WAIT, flow.send(Item::new(3, 1))).await.unwrap().is_ok());
 }
