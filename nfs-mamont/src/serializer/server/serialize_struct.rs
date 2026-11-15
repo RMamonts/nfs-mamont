@@ -47,7 +47,7 @@ macro_rules! nfs_result {
                 $fail_fn(&mut $self.buffer, err)?;
             }
         };
-        $self.buffer.send_inner_buffer().await
+        $self.buffer.finish_record()
     }};
 }
 
@@ -79,7 +79,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
     async fn process_nfs3<B: Buffer>(&mut self, data: Box<NfsRes<B>>) -> io::Result<()> {
         match *data {
-            NfsRes::Null => self.buffer.send_inner_buffer().await,
+            NfsRes::Null => self.buffer.finish_record(),
             NfsRes::GetAttr(res) => {
                 nfs_result!(self, res, get_attr::result_ok, get_attr::result_fail)
             }
@@ -105,7 +105,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                 Err(err) => {
                     status(&mut self.buffer, err.error)?;
                     read::result_fail(&mut self.buffer, err)?;
-                    self.buffer.send_inner_buffer().await
+                    self.buffer.finish_record()
                 }
             },
             NfsRes::Write(res) => {
@@ -159,22 +159,22 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body and writes it to the underlying writer.
     async fn process_nlm(&mut self, data: Box<NlmRes>) -> io::Result<()> {
         match *data {
-            NlmRes::Null => self.buffer.send_inner_buffer().await,
+            NlmRes::Null => self.buffer.finish_record(),
             NlmRes::Lock(res) => {
                 nlm::lock_res(&mut self.buffer, res)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             NlmRes::Unlock(res) => {
                 nlm::unlock_res(&mut self.buffer, res)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             NlmRes::Test(res) => {
                 nlm::test_res(&mut self.buffer, *res)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             NlmRes::Cancel(res) => {
                 nlm::cancel_res(&mut self.buffer, res)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
         }
     }
@@ -183,7 +183,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     async fn process_mount(&mut self, data: Box<MountRes>) -> io::Result<()> {
         match *data {
             MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             MountRes::Mount(res) => {
                 match res {
@@ -195,15 +195,15 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         super::mount::mount_stat(&mut self.buffer, stat)?;
                     }
                 };
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             MountRes::Export(node) => {
                 super::mount::export::result_ok(&mut self.buffer, node)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
             MountRes::Dump(body) => {
                 super::mount::dump::result_ok(&mut self.buffer, body)?;
-                self.buffer.send_inner_buffer().await
+                self.buffer.finish_record()
             }
         }
     }
@@ -216,7 +216,44 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
     ///     order to validate itself to the client
     ///
     /// TODO:(<https://github.com/RMamonts/nfs-mamont/issues/137>)
+    #[allow(dead_code)]
     pub async fn form_reply<B: Buffer>(
+        &mut self,
+        reply: ProcReply<B>,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
+        self.stage_reply(reply, verifier).await?;
+        self.send_staged().await
+    }
+
+    /// Serializes [`ProcReply`] into a complete XDR RPC reply and appends it to the replies
+    /// staged in the internal buffer, see [`Self::send_staged`].
+    ///
+    /// Replies with READ data are written at once, together with the replies staged
+    /// before them. On error the reply is dropped and the staged ones are kept.
+    pub async fn stage_reply<B: Buffer>(
+        &mut self,
+        reply: ProcReply<B>,
+        verifier: OpaqueAuth,
+    ) -> io::Result<()> {
+        let result = self.serialize_reply(reply, verifier).await;
+        if result.is_err() {
+            self.buffer.rollback();
+        }
+        result
+    }
+
+    /// Bytes of the replies staged by [`Self::stage_reply`] and not yet written.
+    pub fn staged_len(&self) -> usize {
+        self.buffer.record_start
+    }
+
+    /// Writes the replies staged by [`Self::stage_reply`] with a single write.
+    pub async fn send_staged(&mut self) -> io::Result<()> {
+        self.buffer.send_staged().await
+    }
+
+    async fn serialize_reply<B: Buffer>(
         &mut self,
         reply: ProcReply<B>,
         verifier: OpaqueAuth,
@@ -242,32 +279,32 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         auth(&mut self.buffer, verifier)?;
                         // or maybe system error?
                         u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::RpcVersionMismatch(vers) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::RpcMismatch as u32)?;
                         u32(&mut self.buffer, vers.low)?;
                         u32(&mut self.buffer, vers.high)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::Auth(stat) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
                         u32(&mut self.buffer, stat as u32)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
@@ -275,13 +312,13 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
                         u32(&mut self.buffer, info.high)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
-                        self.buffer.send_inner_buffer().await
+                        self.buffer.finish_record()
                     }
                 }
             }
@@ -290,9 +327,14 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
 }
 
 /// Buffered async writer used by the high-level reply serializer.
+///
+/// The buffer holds complete records staged for writing followed by the record being
+/// serialized, which starts at `record_start` with a reserved RMS header.
 struct WriteBuffer<T: AsyncWrite + Unpin> {
     socket: T,
     buf: Vec<u8>,
+    /// Start of the record being serialized, the length of the staged records.
+    record_start: usize,
 }
 
 impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
@@ -302,7 +344,7 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
         Ok(buf.len())
     }
 
-    /// No-op flush (the buffer is flushed explicitly by `send_inner_*`).
+    /// No-op flush (the buffer is flushed explicitly by `send_*`).
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
@@ -311,17 +353,23 @@ impl<T: AsyncWrite + Unpin> Write for WriteBuffer<T> {
 impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
     /// Creates a new buffer around an async writer with a fixed preallocated capacity.
     fn new(socket: T, capacity: usize) -> WriteBuffer<T> {
-        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity) };
+        let mut buffer = WriteBuffer { socket, buf: Vec::with_capacity(capacity), record_start: 0 };
         buffer.clean();
         buffer
     }
 
-    /// Resets the internal write cursor to the start of the buffer.
+    /// Drops all staged bytes and starts a new record.
     fn clean(&mut self) {
         self.buf.clear();
+        self.record_start = 0;
         // reserve first 4 bytes to write header by RMS
         // https://datatracker.ietf.org/doc/html/rfc5531#autoid-19
         self.buf.extend_from_slice(&[0, 0, 0, 0]);
+    }
+
+    /// Drops the record being serialized, keeping the staged ones.
+    fn rollback(&mut self) {
+        self.buf.truncate(self.record_start + RMS_HEADER_SIZE);
     }
 
     fn append_fragment_size(&mut self, size: usize) -> io::Result<()> {
@@ -333,19 +381,34 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
                 "Fragmented messages not supported",
             ));
         }
-        // there is no need for check, since we initialize vector in new()
-        // and we append 4 bytes after clean()
         // since we check size for MAX_FRAGMENT_SIZE (which is less than u32::MAX) cast is safe
-        self.buf[..RMS_HEADER_SIZE].copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
+        let start = self.record_start;
+        self.buf[start..start + RMS_HEADER_SIZE]
+            .copy_from_slice(&((HEADER_MASK | size) as u32).to_be_bytes());
         Ok(())
     }
 
-    /// Flushes the staged XDR bytes to the underlying writer.
-    async fn send_inner_buffer(&mut self) -> io::Result<()> {
-        self.append_fragment_size(self.buf.len().saturating_sub(RMS_HEADER_SIZE))?;
-        self.socket.write_all(&self.buf).await?;
-        self.clean();
+    /// Size of the body of the record being serialized.
+    fn record_len(&self) -> usize {
+        self.buf.len() - self.record_start - RMS_HEADER_SIZE
+    }
+
+    /// Completes the record being serialized and stages it for writing.
+    fn finish_record(&mut self) -> io::Result<()> {
+        self.append_fragment_size(self.record_len())?;
+        self.record_start = self.buf.len();
+        self.buf.extend_from_slice(&[0, 0, 0, 0]);
         Ok(())
+    }
+
+    /// Writes the staged records to the underlying writer.
+    async fn send_staged(&mut self) -> io::Result<()> {
+        let result = match self.record_start {
+            0 => Ok(()),
+            staged => self.socket.write_all(&self.buf[..staged]).await,
+        };
+        self.clean();
+        result
     }
 
     /// Flushes the staged XDR bytes followed by `count` bytes of the payload
@@ -359,7 +422,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         count: usize,
     ) -> io::Result<()> {
         if count > buffer.len() {
-            self.clean();
+            self.rollback();
             return Err(io::Error::new(
                 ErrorKind::InvalidInput,
                 "reply declares more payload bytes than the buffer holds",
@@ -377,9 +440,7 @@ impl<T: AsyncWrite + Unpin> WriteBuffer<T> {
         u32(&mut self.buf, count as u32)?;
 
         let padding = padding_len(count);
-        self.append_fragment_size(
-            self.buf.len().saturating_sub(RMS_HEADER_SIZE) + count + padding,
-        )?;
+        self.append_fragment_size(self.record_len() + count + padding)?;
 
         const PADDING_BYTES: [u8; ALIGNMENT] = [0u8; ALIGNMENT];
 

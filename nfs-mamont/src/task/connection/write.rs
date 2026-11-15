@@ -1,3 +1,4 @@
+use std::io;
 use std::time::Duration;
 
 use tokio::net::tcp::OwnedWriteHalf;
@@ -10,6 +11,9 @@ use crate::connection_id::ConnectionId;
 use crate::limits::budget::InFlightReply;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
+
+/// Staged replies after which a batch is written even if more replies are queued.
+const MAX_BATCH_BYTES: usize = 64 * 1024;
 
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
@@ -46,16 +50,37 @@ impl<B: Buffer> WriteTask<B> {
     async fn run(self) {
         let result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
+        // Slots of the replies of the current batch, freed once the batch is written.
+        let mut tokens = Vec::new();
 
-        while let Ok(InFlightReply { reply, token }) = result_receiver.recv().await {
-            // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-            // Use proper authentication verifier instead of None
-            let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
-
-            let write = serializer.form_reply(reply, verifier);
+        while let Ok(first) = result_receiver.recv().await {
+            // Replies that are already queued are written together with the first one,
+            // with a single syscall.
+            let batch = async {
+                let mut next = Some(first);
+                while let Some(InFlightReply { reply, token }) = next.take() {
+                    tokens.push(token);
+                    // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
+                    // Use proper authentication verifier instead of None
+                    let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+                    if let Err(e) = serializer.stage_reply(reply, verifier).await {
+                        if e.kind() != io::ErrorKind::InvalidInput
+                            && e.kind() != io::ErrorKind::Unsupported
+                        {
+                            return Err(e);
+                        }
+                        error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize reply");
+                    }
+                    if serializer.staged_len() >= MAX_BATCH_BYTES {
+                        break;
+                    }
+                    next = result_receiver.try_recv().ok();
+                }
+                serializer.send_staged().await
+            };
             let written = match self.write_timeout {
-                Some(limit) => timeout(limit, write).await,
-                None => Ok(write.await),
+                Some(limit) => timeout(limit, batch).await,
+                None => Ok(batch.await),
             };
             let Ok(written) = written else {
                 warn!(
@@ -65,19 +90,14 @@ impl<B: Buffer> WriteTask<B> {
                 );
                 return;
             };
-            match written {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                }
-                Err(e) => {
-                    error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
-                }
-            };
+            if let Err(e) = written {
+                error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to send replies");
+                // TODO: Consider closing connection or continuing based on error type
+                // For now, continue processing other replies
+            }
 
-            // Freeing the slot before the reply is written would let replies pile up.
-            drop(token);
+            // Freeing the slots before the replies are written would let replies pile up.
+            tokens.clear();
         }
     }
 }
