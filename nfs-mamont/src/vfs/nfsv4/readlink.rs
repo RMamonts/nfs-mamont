@@ -1,7 +1,5 @@
 //! Defines the NFSv4 READLINK operation types, RFC 7530 §16.25.
 
-use std::io;
-
 /// READLINK arguments.
 pub struct Args;
 
