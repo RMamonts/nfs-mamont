@@ -53,12 +53,22 @@ impl<B: Buffer> WriteTask<B> {
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
         let mut tokens = Vec::with_capacity(MAX_BATCH_REPLIES);
 
-        // Stage whatever replies are already queued and send them with one flush.
-        // Never waits for more, so a lone reply is sent right away.
-        while let Ok(first) = result_receiver.recv().await {
-            let mut next = Some(first);
+        loop {
+            // Nothing is staged: `tokens` is empty, await for the next reply
+            // Something is staged: try to receive another reply without awaiting if the batch has room
+            let reply = if tokens.is_empty() {
+                match result_receiver.recv().await {
+                    Ok(reply) => Some(reply),
+                    Err(_) => break, // channel closed
+                }
+            } else if tokens.len() < MAX_BATCH_REPLIES && serializer.staged_len() < MAX_BATCH_BYTES
+            {
+                result_receiver.try_recv().ok()
+            } else {
+                None
+            };
 
-            while let Some(InFlightReply { reply, token }) = next.take() {
+            if let Some(InFlightReply { reply, token }) = reply {
                 // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
                 // Use proper authentication verifier instead of None
                 let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
@@ -67,12 +77,10 @@ impl<B: Buffer> WriteTask<B> {
                     error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize reply");
                 }
                 tokens.push(token);
-
-                if tokens.len() < MAX_BATCH_REPLIES && serializer.staged_len() < MAX_BATCH_BYTES {
-                    next = result_receiver.try_recv().ok();
-                }
+                continue;
             }
 
+            // No new replies are available or the batch is full
             let flush = serializer.flush();
             let flushed = match self.write_timeout {
                 Some(limit) => timeout(limit, flush).await,
