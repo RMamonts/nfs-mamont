@@ -7,7 +7,7 @@
 
 use std::io;
 use std::io::{ErrorKind, IoSlice, Write};
-use std::{iter, mem};
+use std::iter;
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
