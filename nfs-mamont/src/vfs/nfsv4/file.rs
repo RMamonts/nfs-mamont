@@ -1,4 +1,7 @@
 use crate::consts::nfsv4::{NFS4_FHSIZE, NFS4_OTHER_SIZE};
+use crate::vfs;
+
+use super::MAX_NAME_LEN;
 
 /// A file handle (`nfs_fh4`).
 ///
@@ -100,3 +103,8 @@ pub struct StateId {
     /// the state.
     pub other: [u8; NFS4_OTHER_SIZE],
 }
+
+/// A validated wrapper around a `String` representing a filename.
+///
+/// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
+pub type Name = vfs::nfs_shared::file::Name<MAX_NAME_LEN>;

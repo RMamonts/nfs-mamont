@@ -13,6 +13,9 @@ pub mod file;
 pub mod getattr;
 pub mod getfh;
 
+/// Maximum length of name.
+pub const MAX_NAME_LEN: usize = 255;
+
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
 

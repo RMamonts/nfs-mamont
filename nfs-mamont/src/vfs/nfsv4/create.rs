@@ -1,6 +1,6 @@
 //! Defines the NFSv4 CREATE operation types, RFC 7530 §16.4.
 
-use crate::vfs::nfsv4::file::{Attr, Bitmap};
+use crate::vfs::nfsv4::file::{Attr, Bitmap, Name};
 
 /// File type (`nfs_ftype4`), RFC 7530 §2.2.
 pub enum FType {
@@ -79,7 +79,7 @@ pub struct Args {
     /// Type and creation data of the object to create.
     pub objtype: CreateType,
     /// Name of the object to create.
-    pub objname: String,
+    pub objname: Name,
     /// Attributes to set on the newly created object.
     pub createattrs: Attr,
 }
