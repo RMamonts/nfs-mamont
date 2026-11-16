@@ -1,4 +1,7 @@
 use crate::consts::nfsv4::{NFS4_FHSIZE, NFS4_OTHER_SIZE};
+use crate::vfs;
+
+use super::MAX_NAME_LEN;
 
 /// A file handle (`nfs_fh4`).
 ///
@@ -45,6 +48,49 @@ impl SeqId {
     }
 }
 
+/// A bitmask of attribute names (`bitmap4`), RFC 7530 §2.2.3.
+///
+/// Each bit corresponds to a file attribute; the mask selects which set of
+/// attributes is requested or returned.
+pub struct Bitmap(Vec<u32>);
+
+impl Bitmap {
+    // TODO: find out, if it should be limited by implementation
+    // TODO: for example, limited support of attributes by server
+    pub fn new(raw: Vec<u32>) -> Self {
+        Bitmap(raw)
+    }
+
+    pub fn raw(self) -> Vec<u32> {
+        self.0
+    }
+}
+
+/// A list of attributes
+pub struct AttrList(Vec<u8>);
+
+impl AttrList {
+    // TODO: same as [`Bitmap`]
+    pub fn new(raw: Vec<u8>) -> Self {
+        AttrList(raw)
+    }
+
+    pub fn raw(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+/// A set of file attributes (`fattr4`), RFC 7530 §2.2.8.
+///
+/// Carries the attribute mask and the attributes encoded as an opaque
+/// byte sequence.
+pub struct Attr {
+    /// Bitmask describing the attributes carried in `attr_vals`.
+    pub attrmask: Bitmap,
+    /// Attributes encoded as an opaque byte sequence.
+    pub attr_vals: AttrList,
+}
+
 /// A state identifier (`stateid4`).
 ///
 /// Used to identify a particular state of the file opened by a client, such
@@ -56,4 +102,34 @@ pub struct StateId {
     /// Opaque [`crate::consts::nfsv4::NFS4_OTHER_SIZE`]-byte value identifying
     /// the state.
     pub other: [u8; NFS4_OTHER_SIZE],
+}
+
+/// A validated wrapper around a `String` representing a filename.
+///
+/// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
+pub type Name = vfs::nfs_shared::file::Name<MAX_NAME_LEN>;
+
+/// A change identifier (`changeid4`), RFC 7530 §2.2.9.
+pub struct ChangeId(u64);
+
+impl ChangeId {
+    /// Builds a change id from its raw value.
+    pub fn new(id: u64) -> ChangeId {
+        ChangeId(id)
+    }
+
+    /// Returns the raw value of the change id.
+    pub fn raw(&self) -> u64 {
+        self.0
+    }
+}
+
+/// Change information for a directory (`change_info4`), RFC 7530 §2.2.9.
+pub struct ChangeInfo {
+    /// Whether `before` and `after` refer to the same directory.
+    pub atomic: bool,
+    /// Change attribute before the operation.
+    pub before: ChangeId,
+    /// Change attribute after the operation.
+    pub after: ChangeId,
 }

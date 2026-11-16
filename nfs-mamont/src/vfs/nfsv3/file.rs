@@ -3,9 +3,9 @@ use std::path::PathBuf;
 
 use num_derive::{FromPrimitive, ToPrimitive};
 
-use crate::vfs::nfsv3::{MAX_NAME_LEN, MAX_PATH_LEN};
-
 use crate::consts::nfsv3::NFS3_FHSIZE;
+use crate::vfs;
+use crate::vfs::nfsv3::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 /// Identifier of a backend registered in [`crate::BackendRegistry`].
 ///
@@ -115,48 +115,10 @@ impl Handle {
     }
 }
 
-/// A validated wrapper around a `String` representing a name.
+/// A validated wrapper around a `String` representing a filename.
 ///
 /// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
-/// It provides safe construction, accessors, and conversion back into the
-/// owned inner [`String`].
-#[derive(Debug, PartialEq, Clone)]
-pub struct Name(String);
-
-impl Name {
-    /// Creates a new [`Name`] after validating its length.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `name.len() > MAX_NAME_LEN`.
-    pub fn new(name: String) -> io::Result<Self> {
-        if name.len() > MAX_NAME_LEN {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));
-        }
-        if name.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "name is empty"));
-        }
-        if name.contains('/') {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "name contains path separator",
-            ));
-        }
-        Ok(Name(name))
-    }
-
-    /// Consumes the wrapper and returns the inner [`String`].
-    #[inline]
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    /// Returns the inner name as a string slice.
-    #[inline]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+pub type Name = vfs::nfs_shared::file::Name<MAX_NAME_LEN>;
 
 /// A validated wrapper around a [`PathBuf`].
 ///
