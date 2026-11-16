@@ -1,6 +1,7 @@
 use std::io;
 
-use crate::vfs::nfsv3::file::{Name, Path};
+use crate::vfs::nfsv3::file::Name;
+use crate::vfs::nfsv3::file::Path;
 use crate::vfs::nfsv3::{MAX_NAME_LEN, MAX_PATH_LEN};
 
 #[test]
