@@ -41,7 +41,7 @@ impl IoStats {
     }
 }
 
-/// Wraps a socket, adding the time spent in and bytes moved by its I/O calls to [`IoStats`].
+/// Wraps a socket, adding the time spent in its I/O calls to [`IoStats`].
 pub struct IoTimer<S> {
     pub inner: S,
     stats: Arc<IoStats>,
