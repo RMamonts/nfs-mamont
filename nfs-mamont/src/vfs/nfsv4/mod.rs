@@ -17,6 +17,7 @@ pub mod getfh;
 pub mod link;
 pub mod lock;
 pub mod lockt;
+pub mod locku;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
