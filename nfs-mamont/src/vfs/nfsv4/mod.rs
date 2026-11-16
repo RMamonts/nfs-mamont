@@ -9,6 +9,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 pub mod access;
 pub mod close;
 pub mod create;
+pub mod delegpurge;
 pub mod delegreturn;
 pub mod file;
 pub mod getattr;
