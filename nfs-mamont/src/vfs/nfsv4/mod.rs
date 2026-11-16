@@ -26,6 +26,9 @@ pub mod open;
 pub mod open_confirm;
 pub mod open_downgrade;
 pub mod openattr;
+pub mod putfh;
+pub mod putpubfh;
+pub mod putrootfh;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
