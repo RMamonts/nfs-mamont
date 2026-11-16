@@ -11,12 +11,17 @@ use crate::limits::budget::InFlightReply;
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
 
+/// Max replies sent with one flush
+const MAX_BATCH_REPLIES: usize = 32;
+/// Max staged bytes per flush
+const MAX_BATCH_BYTES: usize = 256 * 1024;
+
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
     writehalf: OwnedWriteHalf,
     result_receiver: async_channel::Receiver<InFlightReply<B>>,
     client_id: ConnectionId,
-    /// How long one reply may wait for the socket, `None` for ever.
+    /// How long one batch of replies may wait for the socket, `None` for ever.
     write_timeout: Option<Duration>,
 }
 
@@ -46,18 +51,34 @@ impl<B: Buffer> WriteTask<B> {
     async fn run(self) {
         let result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
+        let mut tokens = Vec::new();
 
-        while let Ok(InFlightReply { reply, token }) = result_receiver.recv().await {
-            // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
-            // Use proper authentication verifier instead of None
-            let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+        // Stage whatever replies are already queued and send them with one flush.
+        // Never waits for more, so a lone reply is sent right away.
+        while let Ok(first) = result_receiver.recv().await {
+            let mut next = Some(first);
 
-            let write = serializer.form_reply(reply, verifier);
-            let written = match self.write_timeout {
-                Some(limit) => timeout(limit, write).await,
-                None => Ok(write.await),
+            while let Some(InFlightReply { reply, token }) = next.take() {
+                // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
+                // Use proper authentication verifier instead of None
+                let verifier = OpaqueAuth { flavor: AuthFlavor::None, body: vec![] };
+
+                if let Err(e) = serializer.form_reply(reply, verifier) {
+                    error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize reply");
+                }
+                tokens.push(token);
+
+                if tokens.len() < MAX_BATCH_REPLIES && serializer.staged_len() < MAX_BATCH_BYTES {
+                    next = result_receiver.try_recv().ok();
+                }
+            }
+
+            let flush = serializer.flush();
+            let flushed = match self.write_timeout {
+                Some(limit) => timeout(limit, flush).await,
+                None => Ok(flush.await),
             };
-            let Ok(written) = written else {
+            let Ok(flushed) = flushed else {
                 warn!(
                     client=%self.client_id.into_inner(),
                     timeout=?self.write_timeout,
@@ -65,19 +86,14 @@ impl<B: Buffer> WriteTask<B> {
                 );
                 return;
             };
-            match written {
-                Ok(_) => {
-                    // Reply successfully written to socket
-                }
-                Err(e) => {
-                    error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to serialize/send reply");
-                    // TODO: Consider closing connection or continuing based on error type
-                    // For now, continue processing other replies
-                }
-            };
+            if let Err(e) = flushed {
+                error!(client=%self.client_id.into_inner(), error=%e, "write task: failed to send replies");
+                // TODO: Consider closing connection or continuing based on error type
+                // For now, continue processing other replies
+            }
 
-            // Freeing the slot before the reply is written would let replies pile up.
-            drop(token);
+            // Freeing the slots before the replies are written would let replies pile up.
+            tokens.clear();
         }
     }
 }
