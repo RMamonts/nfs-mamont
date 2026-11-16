@@ -8,6 +8,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
 pub mod close;
+pub mod commit;
 pub mod create;
 pub mod delegpurge;
 pub mod delegreturn;
@@ -21,6 +22,10 @@ pub mod locku;
 pub mod lookup;
 pub mod lookupp;
 pub mod nverify;
+pub mod open;
+pub mod open_confirm;
+pub mod open_downgrade;
+pub mod openattr;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
