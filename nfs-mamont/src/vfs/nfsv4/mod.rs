@@ -11,6 +11,7 @@ pub mod close;
 pub mod create;
 pub mod file;
 pub mod getattr;
+pub mod getfh;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
