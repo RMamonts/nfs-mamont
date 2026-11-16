@@ -40,14 +40,13 @@ macro_rules! nfs_result {
         match $res {
             Ok(ok) => {
                 usize_as_u32(&mut $self.buffer, STATUS_OK)?;
-                $ok_fn(&mut $self.buffer, ok)?;
+                $ok_fn(&mut $self.buffer, ok)
             }
             Err(err) => {
                 status(&mut $self.buffer, err.error)?;
-                $fail_fn(&mut $self.buffer, err)?;
+                $fail_fn(&mut $self.buffer, err)
             }
-        };
-        Ok(())
+        }
     }};
 }
 
@@ -106,8 +105,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
                 }
                 Err(err) => {
                     status(&mut self.buffer, err.error)?;
-                    read::result_fail(&mut self.buffer, err)?;
-                    Ok(())
+                    read::result_fail(&mut self.buffer, err)
                 }
             },
             NfsRes::Write(res) => {
@@ -161,13 +159,12 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
     /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body and writes it to the underlying writer.
     fn process_nlm(&mut self, data: NlmRes) -> io::Result<()> {
         match data {
-            NlmRes::Null => {}
-            NlmRes::Lock(res) => nlm::lock_res(&mut self.buffer, res)?,
-            NlmRes::Unlock(res) => nlm::unlock_res(&mut self.buffer, res)?,
-            NlmRes::Test(res) => nlm::test_res(&mut self.buffer, *res)?,
-            NlmRes::Cancel(res) => nlm::cancel_res(&mut self.buffer, res)?,
+            NlmRes::Null => Ok(()),
+            NlmRes::Lock(res) => nlm::lock_res(&mut self.buffer, res),
+            NlmRes::Unlock(res) => nlm::unlock_res(&mut self.buffer, res),
+            NlmRes::Test(res) => nlm::test_res(&mut self.buffer, *res),
+            NlmRes::Cancel(res) => nlm::cancel_res(&mut self.buffer, res),
         }
-        Ok(())
     }
 
     /// Serializes a [`ProcResult::Mount`] into its XDR reply body and writes it to the underlying writer.
