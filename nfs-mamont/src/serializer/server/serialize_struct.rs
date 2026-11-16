@@ -448,19 +448,22 @@ fn segments<'a, B: Buffer>(
     buf: &'a [u8],
     payloads: &'a [Payload<B>],
 ) -> impl Iterator<Item = &'a [u8]> {
+    // Slice of `buf` after the last payload
     let tail = payloads.last().map_or(0, |p| p.offset);
-    let mut start = 0;
+    let mut buf_slice_start = 0;
     payloads
         .iter()
         .flat_map(move |p| {
-            let head = &buf[mem::replace(&mut start, p.offset)..p.offset];
-            let mut left = p.count;
+            let buf_slice = &buf[buf_slice_start..p.offset];
+            let mut payload_left = p.count;
+            // Iterator of chunks with payload. XDR padding is included in the next `buf` slice
             let data = p.data.chunks().map(move |chunk| {
-                let chunk = &chunk[..chunk.len().min(left)];
-                left -= chunk.len();
+                let chunk = &chunk[..chunk.len().min(payload_left)];
+                payload_left -= chunk.len();
                 chunk
             });
-            iter::once(head).chain(data)
+            buf_slice_start = p.offset;
+            iter::once(buf_slice).chain(data)
         })
         .chain(iter::once(&buf[tail..]))
         .filter(|segment| !segment.is_empty())
