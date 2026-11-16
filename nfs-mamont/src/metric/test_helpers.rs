@@ -16,7 +16,7 @@ pub fn with_recorder<T>(build: impl FnOnce() -> T) -> (T, Snapshotter, Debugging
 
 /// [`NfsMetrics`] bound to a fresh debugging recorder.
 pub fn nfs_metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
-    with_recorder(NfsMetrics::new)
+    with_recorder(|| NfsMetrics::with_sample_every(1))
 }
 
 /// Takes a snapshot of all metric values in debug recorder. Taking a snapshot resets the values

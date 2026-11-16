@@ -117,7 +117,6 @@ async fn read_call() {
     let (mut socket, io) = metrics.io_timer(&b"unmeasuredabcd"[..]);
     let mut buf = [0; 10];
 
-    // every call is sampled in tests
     let (output, not_nfs) = metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await;
     output.unwrap();
     let (output, timer) =

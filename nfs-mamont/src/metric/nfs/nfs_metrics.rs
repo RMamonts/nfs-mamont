@@ -63,6 +63,8 @@ impl CallMetrics {
 pub struct NfsMetrics {
     /// Reference point for [`Timer`] timestamps.
     epoch: Instant,
+    /// About one in this many requests is measured.
+    sample_every: u64,
     /// Indexed by [`Stage`].
     stage: [Histogram; 3],
     duration: Histogram,
@@ -99,14 +101,10 @@ impl Timer {
     pub const NONE: Self = Self(None);
 }
 
-/// Whether to measure the next request: true for about one in [`SAMPLE_EVERY`].
+/// Whether to measure the next request: true for about one in `every`.
 ///
 /// Random rather than every N-th, so that a periodic request pattern can't alias with it.
-/// Always true in tests to keep them deterministic.
-fn sampled() -> bool {
-    if cfg!(test) {
-        return true;
-    }
+fn sampled(every: u64) -> bool {
     thread_local! {
         static RNG: Cell<u64> = Cell::new(RandomState::new().hash_one(0) | 1);
     }
@@ -117,7 +115,7 @@ fn sampled() -> bool {
         x ^= x >> 7;
         x ^= x << 17;
         rng.set(x);
-        x % SAMPLE_EVERY == 0
+        x % every == 0
     })
 }
 
@@ -137,6 +135,15 @@ impl NfsMetrics {
     ///
     /// If called outside of tokio runtime context.
     pub fn new() -> Self {
+        Self::with_sample_every(SAMPLE_EVERY)
+    }
+
+    /// Like [`Self::new`], but measures about one in `sample_every` requests.
+    ///
+    /// # Panics
+    ///
+    /// If called outside of tokio runtime context.
+    pub fn with_sample_every(sample_every: u64) -> Self {
         describe_histogram!(
             STAGE_SECONDS,
             Unit::Seconds,
@@ -165,7 +172,7 @@ impl NfsMetrics {
             "Time a message waited for the socket to become ready"
         );
         describe_gauge!(SAMPLE_EVERY_GAUGE, Unit::Count, "Sample approximately every Nth request");
-        gauge!(SAMPLE_EVERY_GAUGE).set(SAMPLE_EVERY as f64);
+        gauge!(SAMPLE_EVERY_GAUGE).set(sample_every as f64);
 
         let task_monitors = TaskKind::ALL.map(|_| TaskMonitor::new());
         let mut reporters = Vec::new();
@@ -182,6 +189,7 @@ impl NfsMetrics {
 
         Self {
             epoch: Instant::now(),
+            sample_every,
             stage: Stage::ALL.map(|stage| histogram!(STAGE_SECONDS, "stage" => stage.as_str())),
             duration: histogram!(DURATION_SECONDS),
             requests_ok: counter!(REQUESTS_TOTAL, "status" => "ok"),
@@ -296,7 +304,7 @@ impl NfsMetrics {
         call: F,
         procedure: impl FnOnce(&F::Output) -> Option<u32>,
     ) -> (F::Output, Timer) {
-        if !sampled() {
+        if !sampled(self.sample_every) {
             return (call.await, Timer::NONE);
         }
 
