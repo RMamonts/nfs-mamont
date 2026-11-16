@@ -29,6 +29,7 @@ pub mod openattr;
 pub mod putfh;
 pub mod putpubfh;
 pub mod putrootfh;
+pub mod readlink;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
