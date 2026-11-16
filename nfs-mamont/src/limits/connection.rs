@@ -22,7 +22,7 @@ pub enum Expiry {
 
 /// Limits of one connection, held by its read task.
 pub struct ConnectionLimits<B: Buffer> {
-    /// In-flight budget; see [`Budget`].
+    /// In-flight budget.
     budget: Budget<B>,
     /// Place on probation until the first valid call, `None` after it.
     probation: Option<Ticket>,
