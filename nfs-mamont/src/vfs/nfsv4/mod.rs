@@ -34,11 +34,18 @@ pub mod putrootfh;
 pub mod read;
 pub mod readdir;
 pub mod readlink;
+pub mod release_lockowner;
 pub mod remove;
 pub mod rename;
 pub mod renew;
 pub mod restorefh;
 pub mod savefh;
+pub mod secinfo;
+pub mod setattr;
+pub mod setclientid;
+pub mod setclientid_confirm;
+pub mod verify;
+pub mod write;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
