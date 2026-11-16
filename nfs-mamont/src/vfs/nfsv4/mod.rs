@@ -36,6 +36,9 @@ pub mod readdir;
 pub mod readlink;
 pub mod remove;
 pub mod rename;
+pub mod renew;
+pub mod restorefh;
+pub mod savefh;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
