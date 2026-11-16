@@ -10,3 +10,8 @@ pub const NFS4_OTHER_SIZE: usize = 12;
 
 /// Size of a write verifier (`verifier4`), in bytes.
 pub const NFS4_VERIFIER_SIZE: usize = 8;
+/// Maximum length of filename.
+pub const MAX_NAME_LEN: usize = 255;
+
+/// Maximum length of opaque data, RFC 7531 §2
+pub const NFS4_OPAQUE_LIMIT: usize = 1024;
