@@ -22,8 +22,7 @@ pub enum Expiry {
 
 /// Limits of one connection, held by its read task.
 pub struct ConnectionLimits<B: Buffer> {
-    /// [`Limits::max_in_flight`], [`Limits::max_data_per_connection`] and
-    /// [`Limits::idle_timeout`].
+    /// In-flight budget.
     budget: Budget<B>,
     /// Place on probation until the first valid call, `None` after it.
     probation: Option<Ticket>,

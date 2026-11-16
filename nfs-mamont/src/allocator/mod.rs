@@ -61,8 +61,11 @@ pub trait Allocator {
     /// failing on an oversized request.
     fn capacity(&self) -> NonZeroUsize;
 
-    /// Returns how many bytes of buffers the allocator can have handed out at once, or
-    /// [`None`] if it sets no such bound.
+    /// Returns the total size of the buffers that may be allocated and not yet dropped
+    /// at the same time, over all callers, or [`None`] if the allocator has no such bound.
+    ///
+    /// Unlike [`Allocator::capacity`], which bounds one allocation, this bounds their sum;
+    /// the two are equal only if one allocation may take the whole pool.
     ///
     /// The server shares the pool between the connections: by default one connection
     /// may hold a part of it, see [`crate::ServerContext::with_max_data_per_connection`].
