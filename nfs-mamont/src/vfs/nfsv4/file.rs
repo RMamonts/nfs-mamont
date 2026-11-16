@@ -1,7 +1,5 @@
-use crate::consts::nfsv4::{NFS4_FHSIZE, NFS4_OTHER_SIZE};
+use crate::consts::nfsv4::{MAX_NAME_LEN, NFS4_FHSIZE, NFS4_OTHER_SIZE};
 use crate::vfs;
-
-use super::MAX_NAME_LEN;
 
 /// A file handle (`nfs_fh4`).
 ///
@@ -44,6 +42,24 @@ impl SeqId {
 
     /// Returns the raw value of the sequence id.
     pub fn raw(self) -> u32 {
+        self.0
+    }
+}
+
+/// A client identifier (`clientid4`), RFC 7530 §16.5.
+///
+/// Uniquely identifies a client instance for the purpose of establishing
+/// and maintaining locks, delegations and leases.
+pub struct ClientId(u64);
+
+impl ClientId {
+    /// Builds a client id from its raw value.
+    pub fn new(raw: u64) -> Self {
+        ClientId(raw)
+    }
+
+    /// Returns the raw value of the client id.
+    pub fn raw(self) -> u64 {
         self.0
     }
 }
