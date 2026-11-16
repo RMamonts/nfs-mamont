@@ -1,6 +1,6 @@
 //! Defines the NFSv4 CREATE operation types, RFC 7530 §16.4.
 
-use crate::vfs::nfsv4::file::{Attr, Bitmap, Name};
+use crate::vfs::nfsv4::file::{Attr, Bitmap, ChangeInfo, Name};
 
 /// File type (`nfs_ftype4`), RFC 7530 §2.2.
 pub enum FType {
@@ -31,31 +31,6 @@ pub struct SpecData {
     pub specdata1: u32,
     /// Minor device number.
     pub specdata2: u32,
-}
-
-/// A change identifier (`changeid4`), RFC 7530 §2.2.9.
-pub struct ChangeId(u64);
-
-impl ChangeId {
-    /// Builds a change id from its raw value.
-    pub fn new(id: u64) -> ChangeId {
-        ChangeId(id)
-    }
-
-    /// Returns the raw value of the change id.
-    pub fn raw(&self) -> u64 {
-        self.0
-    }
-}
-
-/// Change information for a directory (`change_info4`), RFC 7530 §2.2.9.
-pub struct ChangeInfo {
-    /// Whether `before` and `after` refer to the same directory.
-    pub atomic: bool,
-    /// Change attribute before the operation.
-    pub before: ChangeId,
-    /// Change attribute after the operation.
-    pub after: ChangeId,
 }
 
 /// Type of the file system object to create (`createtype4`), RFC 7530 §16.4.2.

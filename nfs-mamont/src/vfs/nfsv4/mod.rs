@@ -12,6 +12,7 @@ pub mod create;
 pub mod file;
 pub mod getattr;
 pub mod getfh;
+pub mod link;
 
 /// Maximum length of name.
 pub const MAX_NAME_LEN: usize = 255;

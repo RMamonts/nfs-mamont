@@ -108,3 +108,28 @@ pub struct StateId {
 ///
 /// [`Name`] ensures that the inner string does not exceed [`MAX_NAME_LEN`].
 pub type Name = vfs::nfs_shared::file::Name<MAX_NAME_LEN>;
+
+/// A change identifier (`changeid4`), RFC 7530 §2.2.9.
+pub struct ChangeId(u64);
+
+impl ChangeId {
+    /// Builds a change id from its raw value.
+    pub fn new(id: u64) -> ChangeId {
+        ChangeId(id)
+    }
+
+    /// Returns the raw value of the change id.
+    pub fn raw(&self) -> u64 {
+        self.0
+    }
+}
+
+/// Change information for a directory (`change_info4`), RFC 7530 §2.2.9.
+pub struct ChangeInfo {
+    /// Whether `before` and `after` refer to the same directory.
+    pub atomic: bool,
+    /// Change attribute before the operation.
+    pub before: ChangeId,
+    /// Change attribute after the operation.
+    pub after: ChangeId,
+}
