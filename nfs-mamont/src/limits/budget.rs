@@ -89,7 +89,7 @@ impl<B: Buffer> ReplySender<B> {
 /// In-flight budget of one connection, held by its read task. It enforces three limits:
 ///
 /// - [`Limits::max_in_flight`]. [`Self::acquire`] hands out that many slots, one
-///   [`ReplySender`] per request, and waits while all of them are taken.
+///   [`ReplySender`] processes each request, and waits while all of them are taken.
 /// - [`Limits::max_data_per_connection`]. [`Self::charge`] counts the READ and WRITE
 ///   data of a request; [`Self::acquire`] also waits while that many bytes are in
 ///   flight.
