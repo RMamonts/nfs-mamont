@@ -8,7 +8,7 @@ use crate::parser::Result;
 use crate::vfs::nfs_shared;
 use crate::vfs::nfsv3::{read_dir, read_dir_plus};
 
-/// Parses a [`read_dir::Cookie`] from the provided `Read` source.
+/// Parses a [`nfs_shared::read_dir::Cookie`] from the provided `Read` source.
 pub fn cookie(src: &mut impl Read) -> Result<nfs_shared::read_dir::Cookie> {
     Ok(nfs_shared::read_dir::Cookie::new(u64(src)?))
 }
