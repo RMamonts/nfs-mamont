@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use crate::parser::nfsv3::read_dir::args;
+use crate::vfs::nfs_shared::read_dir::Cookie;
 use crate::vfs::nfsv3::read_dir;
 
 #[test]
@@ -27,7 +28,7 @@ fn test_readdir() {
         *result.dir.as_bytes(),
         [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09]
     );
-    assert_eq!(result.cookie, read_dir::Cookie::new(4096));
+    assert_eq!(result.cookie, Cookie::new(4096));
     assert_eq!(result.cookie_verifier, read_dir::CookieVerifier::new([0, 0, 0, 0, 0, 0, 0x20, 0]));
     assert_eq!(result.count, 2048);
 }
