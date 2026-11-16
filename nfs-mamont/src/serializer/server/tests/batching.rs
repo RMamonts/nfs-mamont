@@ -4,10 +4,10 @@ use std::task::{Context, Poll};
 
 use tokio::io::AsyncWrite;
 
-use super::Serializer;
 use crate::allocator::Buffer;
 use crate::consts::rpc::HEADER_MASK;
 use crate::rpc::{AcceptStat, AuthFlavor, Error, OpaqueAuth};
+use crate::serializer::server::serialize_struct::Serializer;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::{read, NfsRes};
 
@@ -123,12 +123,13 @@ fn read_record(xid: u32, data: &[u8]) -> Vec<u8> {
 }
 
 async fn flush_one(replies: Vec<ProcReply<Chunks>>, max_write: usize) -> Socket {
-    let mut serializer = Serializer::new(Socket::new(max_write));
+    let mut socket = Socket::new(max_write);
+    let mut serializer = Serializer::new(&mut socket);
     for reply in replies {
         serializer.form_reply(reply, verifier()).unwrap();
     }
     serializer.flush().await.unwrap();
-    serializer.buffer.socket
+    socket
 }
 
 #[tokio::test]
@@ -173,7 +174,8 @@ async fn more_segments_than_iovecs() {
 
 #[tokio::test]
 async fn failed_reply_is_not_staged() {
-    let mut serializer = Serializer::new(Socket::new(usize::MAX));
+    let mut socket = Socket::new(usize::MAX);
+    let mut serializer = Serializer::new(&mut socket);
     serializer.form_reply(error_reply(1), verifier()).unwrap();
     let staged = serializer.staged_len();
 
@@ -182,6 +184,6 @@ async fn failed_reply_is_not_staged() {
     assert_eq!(serializer.staged_len(), staged);
 
     serializer.flush().await.unwrap();
-    assert_eq!(serializer.buffer.socket.data, error_record(1));
     assert_eq!(serializer.staged_len(), 0);
+    assert_eq!(socket.data, error_record(1));
 }

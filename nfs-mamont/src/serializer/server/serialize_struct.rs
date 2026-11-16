@@ -460,7 +460,3 @@ fn segments<'a, B: Buffer>(
         .chain(iter::once(&buf[tail..]))
         .filter(|segment| !segment.is_empty())
 }
-
-#[cfg(test)]
-#[path = "serialize_struct_tests.rs"]
-mod serialize_struct_tests;
