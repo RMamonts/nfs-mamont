@@ -1,6 +1,7 @@
 //! Socket wrapper measuring the time spent in its I/O calls.
 
-use std::io::{self, IoSlice};
+use std::io;
+use std::io::IoSlice;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

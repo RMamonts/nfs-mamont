@@ -1,36 +1,5 @@
 use crate::{consts::nfsv3::*, parser::NfsArguments, vfs::NfsRes, Buffer};
 
-/// How often tokio task metrics are sampled into the recorder.
-#[cfg(feature = "metrics")]
-pub(super) const TOKIO_SAMPLING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
-
-/// `proc` label values, indexed by NFSv3 procedure number.
-#[cfg(feature = "metrics")]
-pub(super) const PROC_NAMES: [&str; 22] = [
-    "null",
-    "getattr",
-    "setattr",
-    "lookup",
-    "access",
-    "readlink",
-    "read",
-    "write",
-    "create",
-    "mkdir",
-    "symlink",
-    "mknod",
-    "remove",
-    "rmdir",
-    "rename",
-    "link",
-    "readdir",
-    "readdirplus",
-    "fsstat",
-    "fsinfo",
-    "pathconf",
-    "commit",
-];
-
 impl<B: Buffer> NfsArguments<B> {
     /// Returns the NFSv3 procedure number of the call.
     pub(crate) fn procedure(&self) -> u32 {
