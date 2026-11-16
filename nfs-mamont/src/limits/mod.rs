@@ -32,7 +32,7 @@
 //!   the socket stays unread and TCP flow control holds the client back.
 //! - [`Limits::max_data_per_connection`]. [`ConnectionLimits::charge`] counts READ and
 //!   WRITE data by [`Buffer::footprint`]. At the limit the socket stays unread.
-//! - [`Limits::write_timeout`]. The write task, for every reply. The connection is
+//! - [`Limits::write_timeout`]. The write task, for every batch of replies. The connection is
 //!   closed.
 //!
 //! # Shared by all connections
@@ -108,7 +108,7 @@ pub struct Limits {
     /// Bytes of READ and WRITE data one connection may have in flight, `None` for no
     /// limit, see [`crate::ServerContext::with_max_data_per_connection`].
     pub max_data_per_connection: Option<NonZeroUsize>,
-    /// How long a reply may wait for the socket before the connection is closed, `None`
+    /// How long a batch of replies may wait for the socket before the connection is closed, `None`
     /// for ever, see [`crate::ServerContext::with_write_timeout`].
     pub write_timeout: Option<Duration>,
     /// NFS procedures that may wait for or run in the VFS pool at once, see
