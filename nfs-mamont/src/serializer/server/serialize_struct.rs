@@ -173,26 +173,17 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
     /// Serializes a [`ProcResult::Mount`] into its XDR reply body and writes it to the underlying writer.
     fn process_mount(&mut self, data: MountRes) -> io::Result<()> {
         match data {
-            MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => {}
-            MountRes::Mount(res) => {
-                match res {
-                    Ok(ok) => {
-                        usize_as_u32(&mut self.buffer, STATUS_OK)?;
-                        mnt::result_ok(&mut self.buffer, ok)?;
-                    }
-                    Err(stat) => {
-                        super::mount::mount_stat(&mut self.buffer, stat)?;
-                    }
-                };
-            }
-            MountRes::Export(node) => {
-                super::mount::export::result_ok(&mut self.buffer, node)?;
-            }
-            MountRes::Dump(body) => {
-                super::mount::dump::result_ok(&mut self.buffer, body)?;
-            }
-        };
-        Ok(())
+            MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => Ok(()),
+            MountRes::Mount(res) => match res {
+                Ok(ok) => {
+                    usize_as_u32(&mut self.buffer, STATUS_OK)?;
+                    mnt::result_ok(&mut self.buffer, ok)
+                }
+                Err(stat) => super::mount::mount_stat(&mut self.buffer, stat),
+            },
+            MountRes::Export(node) => super::mount::export::result_ok(&mut self.buffer, node),
+            MountRes::Dump(body) => super::mount::dump::result_ok(&mut self.buffer, body),
+        }
     }
 
     /// Serializes [`ProcReply`] into a complete XDR RPC reply and stages it until [`Serializer::flush`].
@@ -244,47 +235,40 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
                         // or maybe system error?
-                        u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)?;
-                        Ok(())
+                        u32(&mut self.buffer, AcceptStat::GarbageArgs as u32)
                     }
                     Error::RpcVersionMismatch(vers) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::RpcMismatch as u32)?;
                         u32(&mut self.buffer, vers.low)?;
-                        u32(&mut self.buffer, vers.high)?;
-                        Ok(())
+                        u32(&mut self.buffer, vers.high)
                     }
                     Error::Auth(stat) => {
                         u32(&mut self.buffer, ReplyBody::MsgDenied as u32)?;
                         u32(&mut self.buffer, RejectedReply::AuthError as u32)?;
-                        u32(&mut self.buffer, stat as u32)?;
-                        Ok(())
+                        u32(&mut self.buffer, stat as u32)
                     }
                     Error::ProgramMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
-                        u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)?;
-                        Ok(())
+                        u32(&mut self.buffer, AcceptStat::ProgUnavail as u32)
                     }
                     Error::ProcedureMismatch => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
-                        u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)?;
-                        Ok(())
+                        u32(&mut self.buffer, AcceptStat::ProcUnavail as u32)
                     }
                     Error::ProgramVersionMismatch(info) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
                         u32(&mut self.buffer, AcceptStat::ProgMismatch as u32)?;
                         u32(&mut self.buffer, info.low)?;
-                        u32(&mut self.buffer, info.high)?;
-                        Ok(())
+                        u32(&mut self.buffer, info.high)
                     }
                     Error::IO(_) => {
                         u32(&mut self.buffer, ReplyBody::MsgAccepted as u32)?;
                         auth(&mut self.buffer, verifier)?;
-                        u32(&mut self.buffer, AcceptStat::SystemErr as u32)?;
-                        Ok(())
+                        u32(&mut self.buffer, AcceptStat::SystemErr as u32)
                     }
                 }
             }
