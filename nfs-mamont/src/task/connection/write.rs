@@ -51,7 +51,7 @@ impl<B: Buffer> WriteTask<B> {
     async fn run(self) {
         let result_receiver = self.result_receiver;
         let mut serializer = serializer::server::serialize_struct::Serializer::new(self.writehalf);
-        let mut tokens = Vec::new();
+        let mut tokens = Vec::with_capacity(MAX_BATCH_REPLIES);
 
         // Stage whatever replies are already queued and send them with one flush.
         // Never waits for more, so a lone reply is sent right away.
