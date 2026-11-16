@@ -4,7 +4,7 @@ use std::io;
 
 use crate::consts::nfsv4::NFS4_MAX_ACE_LEN;
 
-use super::{commit, file, lock};
+use super::{file, lock};
 
 /// Concept of how the file is to be opened (opentype4), RFC 7530 §16.16.2.
 pub enum OpenType {
@@ -31,7 +31,7 @@ pub enum CreateHow {
     /// GUARDED4 - create with the given attributes, failing if it exists.
     Guarded(file::Attr),
     /// EXCLUSIVE4 - create exclusively using the given verifier.
-    Exclusive(commit::Verifier),
+    Exclusive(super::Verifier),
 }
 
 /// Whether and how a file is created on open (openflag4), RFC 7530 §16.16.2.

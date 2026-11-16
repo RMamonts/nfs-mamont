@@ -5,11 +5,12 @@ use std::io::Read;
 use crate::parser::nfsv3::file;
 use crate::parser::primitive::{array, u32, u64};
 use crate::parser::Result;
+use crate::vfs::nfs_shared;
 use crate::vfs::nfsv3::{read_dir, read_dir_plus};
 
-/// Parses a [`read_dir::Cookie`] from the provided `Read` source.
-pub fn cookie(src: &mut impl Read) -> Result<read_dir::Cookie> {
-    Ok(read_dir::Cookie::new(u64(src)?))
+/// Parses a [`nfs_shared::read_dir::Cookie`] from the provided `Read` source.
+pub fn cookie(src: &mut impl Read) -> Result<nfs_shared::read_dir::Cookie> {
+    Ok(nfs_shared::read_dir::Cookie::new(u64(src)?))
 }
 
 /// Parses a [`read_dir::CookieVerifier`] from the provided `Read` source.

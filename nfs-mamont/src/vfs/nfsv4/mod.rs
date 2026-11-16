@@ -4,6 +4,7 @@
 //! provides the argument and result types for that operation. Types shared
 //! across several operations are placed in the `file` module.
 
+use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
@@ -29,6 +30,7 @@ pub mod openattr;
 pub mod putfh;
 pub mod putpubfh;
 pub mod putrootfh;
+pub mod readdir;
 pub mod readlink;
 
 /// NFSv4 success status code.
@@ -176,4 +178,21 @@ pub enum Error {
     AdminRevoked = 10047,
     /// NFS4ERR_CB_PATH_DOWN - the callback path is down.
     CallbackPathDown = 10048,
+}
+
+/// A write verifier (`verifier4`).
+///
+/// An [`NFS4_VERIFIER_SIZE`]-byte opaque identifier of a server instance,
+pub struct Verifier([u8; NFS4_VERIFIER_SIZE]);
+
+impl Verifier {
+    /// Creates a new [`Verifier`] from the raw bytes.
+    pub fn new(raw: [u8; NFS4_VERIFIER_SIZE]) -> Self {
+        Verifier(raw)
+    }
+
+    /// Returns the raw bytes of the verifier.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
 }
