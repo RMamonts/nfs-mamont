@@ -4,8 +4,9 @@
 //! provides the argument and result types for that operation. Types shared
 //! across several operations are placed in the `file` module.
 
-use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 use num_derive::{FromPrimitive, ToPrimitive};
+
+use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 
 pub mod access;
 pub mod close;
@@ -30,8 +31,11 @@ pub mod openattr;
 pub mod putfh;
 pub mod putpubfh;
 pub mod putrootfh;
+pub mod read;
 pub mod readdir;
 pub mod readlink;
+pub mod remove;
+pub mod rename;
 
 /// NFSv4 success status code.
 pub const STATUS_OK: u32 = 0;
