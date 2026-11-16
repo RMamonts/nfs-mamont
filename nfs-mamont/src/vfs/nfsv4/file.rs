@@ -45,6 +45,49 @@ impl SeqId {
     }
 }
 
+/// A bitmask of attribute names (`bitmap4`), RFC 7530 §2.2.3.
+///
+/// Each bit corresponds to a file attribute; the mask selects which set of
+/// attributes is requested or returned.
+pub struct Bitmap(Vec<u32>);
+
+impl Bitmap {
+    // TODO: find out, if it should be limited by implementation
+    // TODO: for example, limited support of attributes by server
+    pub fn new(raw: Vec<u32>) -> Self {
+        Bitmap(raw)
+    }
+
+    pub fn raw(self) -> Vec<u32> {
+        self.0
+    }
+}
+
+/// A list of attributes
+pub struct AttrList(Vec<u8>);
+
+impl AttrList {
+    // TODO: same as [`Bitmap`]
+    pub fn new(raw: Vec<u8>) -> Self {
+        AttrList(raw)
+    }
+
+    pub fn raw(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+/// A set of file attributes (`fattr4`), RFC 7530 §2.2.8.
+///
+/// Carries the attribute mask and the attributes encoded as an opaque
+/// byte sequence.
+pub struct Attr {
+    /// Bitmask describing the attributes carried in `attr_vals`.
+    pub attrmask: Bitmap,
+    /// Attributes encoded as an opaque byte sequence.
+    pub attr_vals: AttrList,
+}
+
 /// A state identifier (`stateid4`).
 ///
 /// Used to identify a particular state of the file opened by a client, such
