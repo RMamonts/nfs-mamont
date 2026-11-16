@@ -391,6 +391,20 @@ impl<T: AsyncWrite + Unpin, B: Buffer> WriteBuffer<T, B> {
         result
     }
 
+    // TODO: Simpler version of write_staged, requires Rust 1.81+ for IoSlice::advance_slices
+    // async fn write_staged(&mut self) -> io::Result<()> {
+    //     let mut iov: Vec<IoSlice> = segments(&self.buf, &self.payloads).map(IoSlice::new).collect();
+    //     while !iov.is_empty() {
+    //         let len = iov.len().min(MAX_IOV);
+    //         let n = self.socket.write_vectored(&iov[..len]).await?;
+    //         if n == 0 {
+    //             return Err(io::Error::new(ErrorKind::WriteZero, "failed to write data to socket"));
+    //         }
+    //         IoSlice::advance_slices(&mut iov.as_mut_slice(), n);
+    //     }
+    //     Ok(())
+    // }
+
     async fn write_staged(&mut self) -> io::Result<()> {
         let total = self.staged_len();
         let mut written = 0;
