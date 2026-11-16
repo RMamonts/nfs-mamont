@@ -68,7 +68,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
         Self { buffer: WriteBuffer::new(writer, capacity) }
     }
 
-    /// Serializes a [`ProcResult`] into its XDR reply body and writes it to the underlying writer.
+    /// Serializes a [`ProcResult`] into its XDR reply body.
     fn process_result(&mut self, result: ProcResult<B>) -> io::Result<()> {
         match result {
             ProcResult::Nfs3(data) => self.process_nfs3(*data),
@@ -77,7 +77,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
         }
     }
 
-    /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body and writes it to the underlying writer.
+    /// Serializes a [`ProcResult::Nfs3`] into its XDR reply body.
     fn process_nfs3(&mut self, data: NfsRes<B>) -> io::Result<()> {
         match data {
             NfsRes::Null => Ok(()),
@@ -156,7 +156,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
         }
     }
 
-    /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body and writes it to the underlying writer.
+    /// Serializes a [`ProcResult::Nlm4`] into its XDR reply body.
     fn process_nlm(&mut self, data: NlmRes) -> io::Result<()> {
         match data {
             NlmRes::Null => Ok(()),
@@ -167,7 +167,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
         }
     }
 
-    /// Serializes a [`ProcResult::Mount`] into its XDR reply body and writes it to the underlying writer.
+    /// Serializes a [`ProcResult::Mount`] into its XDR reply body.
     fn process_mount(&mut self, data: MountRes) -> io::Result<()> {
         match data {
             MountRes::Null | MountRes::UnmountAll | MountRes::Unmount => Ok(()),
@@ -203,7 +203,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> Serializer<T, B> {
 
     /// Sends all staged replies.
     pub async fn flush(&mut self) -> io::Result<()> {
-        self.buffer.flush().await
+        self.buffer.flush_buffer().await
     }
 
     /// Bytes staged for the next [`Serializer::flush`], payloads included.
@@ -372,7 +372,6 @@ impl<T: AsyncWrite + Unpin, B: Buffer> WriteBuffer<T, B> {
         //    elements, starting with element 0 and progressing through element n-1.
         // so we need to pass size of buffer before actual opaque data
         u32(&mut self.buf, count as u32)?;
-        // Queue the data to be spliced at current offset.
         self.payloads.push(Payload { offset: self.buf.len(), data, count });
         // padding goes out with the bytes that follow the payload
         padding(&mut self.buf, count)
@@ -385,7 +384,7 @@ impl<T: AsyncWrite + Unpin, B: Buffer> WriteBuffer<T, B> {
 
     /// Sends all staged records with vectored writes and clears them, even on error,
     /// so that payload buffers are returned to the allocator.
-    async fn flush(&mut self) -> io::Result<()> {
+    async fn flush_buffer(&mut self) -> io::Result<()> {
         let result = self.write_staged().await;
         self.buf.clear();
         self.payloads.clear();
@@ -435,17 +434,12 @@ fn segments<'a, B: Buffer>(
     buf: &'a [u8],
     payloads: &'a [Payload<B>],
 ) -> impl Iterator<Item = &'a [u8]> {
-    // where the bytes after the last payload start; all of `buf` without payloads
     let tail = payloads.last().map_or(0, |p| p.offset);
-    // where the piece of `buf` before the next payload starts
     let mut start = 0;
     payloads
         .iter()
-        // for every payload: the piece of `buf` before it, then its chunks
         .flat_map(move |p| {
-            // slice of the `buf` between 2 payloads
             let head = &buf[mem::replace(&mut start, p.offset)..p.offset];
-            // sequence of allocator chunks of the next payload
             let mut left = p.count;
             let data = p.data.chunks().map(move |chunk| {
                 let chunk = &chunk[..chunk.len().min(left)];
