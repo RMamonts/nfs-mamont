@@ -132,12 +132,6 @@ impl Handle {
         Handle(raw)
     }
 
-    /// Creates a new [`Handle`] from the raw bytes as received from the NFS
-    /// client.
-    pub(crate) fn from_bytes(raw: [u8; NFS4_FHSIZE]) -> Self {
-        Handle(raw)
-    }
-
     /// Returns the kind of the handle.
     pub fn kind(&self) -> Type {
         Type::from_handle_bits(self.0[0])
@@ -153,12 +147,6 @@ impl Handle {
     /// Returns the raw bytes of the handle.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
-    }
-
-    /// Consumes the handle and returns its raw bytes.
-    #[inline]
-    pub(crate) fn into_bytes(self) -> [u8; NFS4_FHSIZE] {
-        self.0
     }
 }
 
