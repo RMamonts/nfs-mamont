@@ -11,6 +11,7 @@ use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
 pub mod access;
 pub mod close;
 pub mod commit;
+pub mod compound;
 pub mod create;
 pub mod delegpurge;
 pub mod delegreturn;
