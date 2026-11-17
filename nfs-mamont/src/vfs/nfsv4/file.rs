@@ -173,6 +173,7 @@ impl SeqId {
 ///
 /// Uniquely identifies a client instance for the purpose of establishing
 /// and maintaining locks, delegations and leases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClientId(u64);
 
 impl ClientId {
