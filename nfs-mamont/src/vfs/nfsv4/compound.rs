@@ -1,7 +1,8 @@
 //! Defines the NFSv4 COMPOUND operation types, RFC 7530 §15.2.
 
-use crate::Buffer;
 use std::io;
+
+use crate::Buffer;
 
 /// Arguments of operation for `compound`
 pub enum OperationArgs<B: Buffer> {
