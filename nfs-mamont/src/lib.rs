@@ -7,6 +7,7 @@ pub mod consts;
 mod context;
 pub mod mount;
 pub mod nlm;
+pub mod op_context;
 mod parser;
 mod rpc;
 mod rpcbind;
