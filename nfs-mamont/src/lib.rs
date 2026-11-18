@@ -23,6 +23,7 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
 
+use crate::consts::connection::VFS_QUANTUM;
 use crate::consts::socket::{
     ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
 };
@@ -30,10 +31,11 @@ use crate::limits::admission::Admission;
 use crate::mount::Mount;
 use crate::nlm::Nlm;
 use crate::task::connection;
+use crate::task::global::manager::ManagerTask;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
-use crate::vfs::nfsv3::Vfs;
 use crate::task::global::vfs::VfsManager;
+use crate::vfs::nfsv3::Vfs;
 
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
@@ -63,8 +65,13 @@ where
     let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
+    // TODO: use ddr_channel with mpsc version (not mpms as current do)
+    let (sender, receiver) = drr_channel::channel(context.limits().max_pending, VFS_QUANTUM);
+
+    let (manager_task, manager_recv) = ManagerTask::new(receiver);
+    manager_task.spawn();
     // Dropped when the server stops, which closes the pool's queues.
-    let vfs_manager = VfsManager::new(context.backends(), context.limits());
+    VfsManager::spawn_vfs_tasks(context.backends(), manager_recv, context.limits());
 
     // Publish the NFS/MOUNT/NLM services to the local rpcbind
     let port = listener.local_addr()?.port();
@@ -91,7 +98,7 @@ where
                             socket,
                             mount_sender.clone(),
                             nlm_sender.clone(),
-                            vfs_manager.sender(),
+                            sender.flow(),
                             &context,
                             pass,
                         );

@@ -7,7 +7,7 @@
 //! - NLM (TODO: TBD)
 //! - AUTH (TODO: TBD)
 
+pub mod manager;
 pub mod mount;
 pub mod nlm;
 pub mod vfs;
-pub mod manager;
