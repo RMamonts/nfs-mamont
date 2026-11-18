@@ -27,6 +27,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # drr-channel is versioned on its own and is not tied to the release tag.
       - name: Check tag matches crate version
         env:
           TAG: ${{ github.event.release.tag_name }}
@@ -45,14 +46,15 @@ jobs:
       - name: Dry run
         run: cargo publish --workspace --locked --dry-run
 
-      # Makes a re-run after a partial failure publish only the remaining crates.
+      # Skips drr-channel when its version has not changed since the last release, and makes
+      # a re-run after a partial failure publish only the remaining crates.
       - name: Select unpublished crates
         id: select
-        env:
-          TAG: ${{ github.event.release.tag_name }}
         run: |
-          for crate in nfs-mamont nfs-mamont-util; do
-            curl -sf -A nfs-mamont-release "https://crates.io/api/v1/crates/$crate/${TAG#v}" >/dev/null \
+          for crate in drr-channel nfs-mamont nfs-mamont-util; do
+            version=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+            curl -sf -A nfs-mamont-release "https://crates.io/api/v1/crates/$crate/$version" >/dev/null \
               || packages="$packages -p $crate"
           done
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
