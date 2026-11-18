@@ -66,7 +66,8 @@ impl<B: Buffer> CompoundContext<B> {
 /// needed to release the resource once the corresponding server state is
 /// modelled, e.g. the `stateid` for [`Resource::Open`] and
 /// [`Resource::Lock`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// TODO: each variant should hold identifier or resource, to be able manage releasing
+#[derive(Hash, PartialEq, Eq)]
 pub enum Resource {
     /// An open file description.
     Open,
@@ -84,9 +85,11 @@ pub enum Resource {
 /// client is reinitialized with a new `clientid4` (RFC 7530 §16.4 per
 /// `NFS4ERR_CLID_INUSE`, §16.5), every resource the dead identifier owned must
 /// be released; the client table makes that enumeration possible.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct ClientContext {
-    /// Client identifiers known to the server, used to tell which are dead.
+    /// Client identifiers known to the server.
+    /// Basically, that duplicates list in separate actor to manage ids,
+    /// but used to catch requests with stale id without additional request to actor
     clients: HashSet<ClientId>,
     /// Resources owned by each client, keyed by the client identifier.
     resources_by_client: HashMap<ClientId, HashSet<Resource>>,
