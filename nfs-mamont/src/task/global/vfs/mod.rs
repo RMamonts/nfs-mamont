@@ -1,18 +1,19 @@
 #[cfg(test)]
 mod tests;
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use drr_channel::{Cost, Receiver};
+use drr_channel::Cost;
 use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
-use crate::consts::connection::VFS_QUANTUM;
 use crate::limits::budget::ReplySender;
 use crate::limits::Limits;
 use crate::parser::{NfsArgWrapper, NfsArguments};
 use crate::rpc::auth::Credential;
+use crate::task::global::manager::ManagerTaskReceiver;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::file::BackendId;
 use crate::vfs::nfsv3::{self, NfsRes, Vfs};
@@ -45,7 +46,7 @@ fn cost<B: Buffer>(proc: &NfsArguments<B>) -> u32 {
     1 + bytes.div_ceil(COST_UNIT)
 }
 
-/// Queues the procedures of one connection for the pool, see [`VfsManager::sender`].
+/// Queues the procedures of one connection for the [`crate::ManagerTask`]
 pub type VfsSender<B> = drr_channel::FlowSender<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
@@ -168,8 +169,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: nfsv3::Error) -> Nf
     }
 }
 
-/// Pool of [`VfsTask`] workers fed from one queue per connection, served in deficit
-/// round robin, see [`drr_channel`].
+/// Pool of [`VfsTask`] workers fed from one queue per connection
 ///
 /// Every worker is a separate tokio task that executes one procedure at a time, so:
 /// - procedures run in parallel on all runtime worker threads: the CPU work done inside
@@ -181,8 +181,7 @@ fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: nfsv3::Error) -> Nf
 ///
 /// Dropping the manager closes the queues; the workers stop once they are drained.
 pub struct VfsManager<B: Buffer> {
-    /// Opens the queues of new connections.
-    sender: drr_channel::Sender<VfsCommand<B>>,
+    _inner: PhantomData<B>,
 }
 
 impl<B: Buffer + 'static> VfsManager<B> {
@@ -201,21 +200,16 @@ impl<B: Buffer + 'static> VfsManager<B> {
     /// # Panics
     ///
     /// If called outside of tokio runtime context.
-    pub fn new<V>(backends: BackendRegistry<V>, limits: &Limits) -> Self
-    where
+    pub fn spawn_vfs_tasks<V>(
+        backends: BackendRegistry<V>,
+        receiver: ManagerTaskReceiver<B>,
+        limits: &Limits,
+    ) where
         V: Vfs<B> + Send + Sync + 'static,
     {
-        let (sender, receiver) = drr_channel::channel(limits.max_pending, VFS_QUANTUM);
         for _ in 0..limits.vfs_concurrency.get() {
             VfsTask::new(backends.clone(), receiver.clone()).spawn();
         }
-
-        Self { sender }
-    }
-
-    /// Opens the queue a new connection sends its procedures through.
-    pub fn sender(&self) -> VfsSender<B> {
-        self.sender.flow()
     }
 }
 
@@ -229,7 +223,7 @@ where
     /// Registry of filesystem implementations, indexed by the first byte of a file handle.
     backends: BackendRegistry<V>,
     /// Queues of the pool, shared by all workers.
-    receiver: Receiver<VfsCommand<B>>,
+    receiver: ManagerTaskReceiver<B>,
 }
 
 impl<V, B> VfsTask<V, B>
@@ -242,12 +236,12 @@ where
     /// # Parameters
     ///
     /// - `backends` --- registry of filesystem implementations, may be empty
-    /// - `receiver` --- queues of the pool
+    /// - `receiver` --- receiver of messages from [`crate::ManagerTask`]
     ///
     /// # Returns
     ///
     /// A new [`VfsTask`] that reads commands from the pool and executes them.
-    pub fn new(backends: BackendRegistry<V>, receiver: Receiver<VfsCommand<B>>) -> Self {
+    pub fn new(backends: BackendRegistry<V>, receiver: ManagerTaskReceiver<B>) -> Self {
         Self { backends, receiver }
     }
 
@@ -263,10 +257,10 @@ where
     /// Consumes commands until the pool is closed and drained, dispatching each NFS op
     /// and sending replies.
     async fn run(self) {
-        while let Some((command, slot)) = self.receiver.recv().await {
-            dispatch(&self.backends, command).await;
+        while let Ok(command) = self.receiver.recv().await {
+            dispatch(&self.backends, command.command).await;
             // Held until the reply is queued, then goes to the next procedure.
-            drop(slot);
+            drop(command.slot);
         }
     }
 }

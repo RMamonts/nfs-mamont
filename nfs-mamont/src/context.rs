@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
-use crate::BackendId;
 use crate::limits::{self, Limits};
 use crate::vfs::nfsv3;
+use crate::BackendId;
 
 /// Shared server resources: buffer allocator, backends and limits.
 ///
