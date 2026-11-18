@@ -9,10 +9,10 @@ use tracing::{error, warn};
 
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
+use crate::limits::budget::InFlightReply;
 use crate::metric::{NfsMetrics, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::connection::limit::InFlightReply;
 use crate::task::ProcResult;
 
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.

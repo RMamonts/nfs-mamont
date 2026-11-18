@@ -7,9 +7,9 @@ use super::consts::{
     WAIT_SECONDS,
 };
 use crate::consts::nfsv3::NfsProc;
-use crate::vfs::file::BackendId;
 use crate::metric::test_helpers::{gauge, nfs_metrics as metrics, samples, snapshot, value};
 use crate::metric::{Stage, TaskKind, Timer};
+use crate::vfs::file::BackendId;
 
 #[test]
 fn timer_is_16_bytes() {
@@ -97,7 +97,10 @@ async fn write_reply() {
     // not NFS
     metrics.write_reply(&metrics.start(), None, &io, socket.write_all(b"mount")).await.unwrap();
     // not sampled
-    metrics.write_reply(&Timer::NONE, Some(NfsProc::GetAttr as u32), &io, socket.write_all(b"ab")).await.unwrap();
+    metrics
+        .write_reply(&Timer::NONE, Some(NfsProc::GetAttr as u32), &io, socket.write_all(b"ab"))
+        .await
+        .unwrap();
     metrics
         .write_reply(&metrics.start(), Some(NfsProc::GetAttr as u32), &io, socket.write_all(b"cd"))
         .await
@@ -120,8 +123,9 @@ async fn read_call() {
 
     let (output, not_nfs) = metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await;
     output.unwrap();
-    let (output, timer) =
-        metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(NfsProc::GetAttr as u32)).await;
+    let (output, timer) = metrics
+        .read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(NfsProc::GetAttr as u32))
+        .await;
     output.unwrap();
     metrics.finish(not_nfs);
     metrics.finish(timer);

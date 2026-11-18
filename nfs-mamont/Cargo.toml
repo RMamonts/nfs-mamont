@@ -20,6 +20,9 @@ default = []
 metrics = ["dep:metrics", "dep:tokio-metrics"]
 
 [dependencies]
+# Internal crates
+drr-channel.workspace = true
+
 # External dependencies
 async-channel.workspace = true
 byteorder.workspace = true

@@ -6,8 +6,8 @@ use std::alloc::{self, Layout};
 use crossbeam_queue::ArrayQueue;
 use tokio::sync::Semaphore;
 
-use super::UnownedBuffer;
 use super::metric::AllocatorMetrics;
+use super::UnownedBuffer;
 
 /// Shared state of the [`PoolAllocator`](super::PoolAllocator) to allow return of buffers and permit restoration.
 #[derive(Debug)]

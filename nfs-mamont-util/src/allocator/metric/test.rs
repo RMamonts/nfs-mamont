@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use metrics_util::debugging::{DebugValue, Snapshotter};
 
-use nfs_mamont::Allocator as _;
-use crate::allocator::PoolAllocator;
 use super::allocator_metrics::{
     CHUNKS_CAPACITY, CHUNKS_IN_USE, REJECTED_TOTAL, REQUEST_BYTES, WAIT_SECONDS,
 };
 use super::test_helpers::{gauge, samples, snapshot, value, with_recorder};
+use crate::allocator::PoolAllocator;
+use nfs_mamont::Allocator as _;
 
 fn allocator(size: usize, count: usize) -> (PoolAllocator, Snapshotter) {
     let (allocator, snapshotter, _) = with_recorder(|| {

@@ -5,6 +5,7 @@ mod backend;
 pub mod connection_id;
 pub mod consts;
 mod context;
+mod limits;
 mod metric;
 pub mod mount;
 pub mod nlm;
@@ -15,7 +16,9 @@ mod serializer;
 mod task;
 pub mod vfs;
 
+use std::io;
 use std::sync::Arc;
+
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{info, warn};
@@ -23,16 +26,19 @@ use tracing::{info, warn};
 use crate::consts::socket::{
     ACCEPT_ERROR_BACKOFF, ACCEPT_ERROR_EBADF, ACCEPT_ERROR_EINVAL, ACCEPT_ERROR_ENOTSOCK,
 };
+use crate::limits::admission::Admission;
 use crate::mount::Mount;
 use crate::nlm::Nlm;
 use crate::task::connection;
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
+use crate::task::global::vfs::VfsManager;
 use crate::vfs::Vfs;
 
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
+pub use limits::Limits;
 pub use rpc::auth;
 pub use rpc::AuthFlavor;
 pub use vfs::file::BackendId;
@@ -57,6 +63,9 @@ where
     let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
+    // Dropped when the server stops, which closes the pool's queues.
+    let vfs_manager = VfsManager::new(context.backends(), context.limits(), context.metrics());
+
     // Publish the NFS/MOUNT/NLM services to the local rpcbind
     let port = listener.local_addr()?.port();
     match rpcbind::register(port).await {
@@ -68,15 +77,24 @@ where
         ),
     }
 
+    let admission = Admission::new(context.limits());
+
     // TODO: will be replaced with other solution in future
     let mut shutdown = Box::pin(signal::ctrl_c());
 
     let accept_result = loop {
         tokio::select! {
-            accepted = listener.accept() => {
+            accepted = admission.accept(&listener) => {
                 match accepted {
-                    Ok((socket, _)) => {
-                        connection::new(socket, mount_sender.clone(), nlm_sender.clone(), &context);
+                    Ok((socket, pass)) => {
+                        connection::new(
+                            socket,
+                            mount_sender.clone(),
+                            nlm_sender.clone(),
+                            vfs_manager.sender(),
+                            &context,
+                            pass,
+                        );
                     }
                     Err(err) if is_fatal_accept_error(&err) => break Err(err),
                     Err(err) => {
@@ -99,7 +117,7 @@ where
 }
 
 /// Returns `true` for `accept` errors after which the listener is unusable.
-fn is_fatal_accept_error(err: &std::io::Error) -> bool {
+fn is_fatal_accept_error(err: &io::Error) -> bool {
     match err.raw_os_error() {
         Some(errno) => {
             errno == ACCEPT_ERROR_EBADF

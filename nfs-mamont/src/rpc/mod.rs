@@ -83,11 +83,13 @@ pub enum Error {
     /// The maximum element limit was exceeded.
     MaxElemLimit,
     /// An I/O error occurred.
-    IO(io::Error),
+    // The cause is only read by `Debug`, which logs it.
+    IO(#[allow(dead_code)] io::Error),
     /// An enum discriminant mismatch occurred.
     EnumDiscMismatch,
     /// An incorrect string was encountered during UTF-8 conversion.
-    IncorrectString(FromUtf8Error),
+    // The cause is only read by `Debug`, which logs it.
+    IncorrectString(#[allow(dead_code)] FromUtf8Error),
     /// An impossible type cast was attempted.
     ImpossibleTypeCast,
     /// A bad file handle was encountered.

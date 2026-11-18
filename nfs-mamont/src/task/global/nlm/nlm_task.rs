@@ -10,9 +10,9 @@ use tracing::{debug, error};
 
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
+use crate::limits::budget::ReplySender;
 use crate::metric::Timer;
 use crate::nlm::Nlm;
-use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,

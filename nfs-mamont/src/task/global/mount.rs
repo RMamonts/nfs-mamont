@@ -5,10 +5,10 @@ use tracing::debug;
 
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
+use crate::limits::budget::ReplySender;
 use crate::metric::Timer;
 use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
-use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 
 /// Command sent to [`MountTask`] from connection read tasks.

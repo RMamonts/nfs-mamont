@@ -1,4 +1,4 @@
-//! Metrics of the built-in [`PoolAllocator`](super::PoolAllocator).
+//! Metrics of the built-in [`PoolAllocator`](crate::allocator::PoolAllocator).
 
 use std::fmt;
 use std::time::Instant;

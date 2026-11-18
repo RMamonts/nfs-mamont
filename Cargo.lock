@@ -72,6 +72,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
+name = "drr-channel"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -233,10 +240,11 @@ dependencies = [
 
 [[package]]
 name = "nfs-mamont"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-channel",
  "byteorder",
+ "drr-channel",
  "metrics",
  "metrics-util",
  "num-derive",
@@ -249,7 +257,7 @@ dependencies = [
 
 [[package]]
 name = "nfs-mamont-util"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "crossbeam-queue",
  "libc",
