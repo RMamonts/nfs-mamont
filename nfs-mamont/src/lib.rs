@@ -65,7 +65,9 @@ where
     let (nlm_task, nlm_sender) = NlmTask::new(nlm_service);
     nlm_task.spawn();
 
+    // TODO: use ddr_channel with mpsc version (not mpms as current do)
     let (sender, receiver) = drr_channel::channel(context.limits().max_pending, VFS_QUANTUM);
+
     let (manager_task, manager_recv) = ManagerTask::new(receiver);
     manager_task.spawn();
     // Dropped when the server stops, which closes the pool's queues.
