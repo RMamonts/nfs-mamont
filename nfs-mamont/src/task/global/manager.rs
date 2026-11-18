@@ -1,5 +1,6 @@
 use drr_channel::{Receiver, Slot};
 
+use crate::op_context::nfsv4::ClientContext;
 use crate::task::global::vfs::VfsCommand;
 use crate::Buffer;
 
@@ -17,6 +18,8 @@ where
 {
     vfs_recv: Receiver<VfsCommand<B>>,
     sender: ManagerTaskSender<B>,
+    #[allow(unused)]
+    context: ClientContext,
 }
 
 impl<B> ManagerTask<B>
@@ -26,7 +29,7 @@ where
     pub fn new(vfs_recv: Receiver<VfsCommand<B>>) -> (Self, ManagerTaskReceiver<B>) {
         // TODO: replace with crossbeam_queue or other spmc?
         let (sender, receiver) = async_channel::unbounded::<ManagerMessage<B>>();
-        let task = Self { vfs_recv, sender };
+        let task = Self { vfs_recv, sender, context: ClientContext::new() };
         (task, receiver)
     }
 
