@@ -18,6 +18,7 @@ use crate::nlm::procedures::{
 };
 
 /// `Nlm4Stats` indicates the success or failure of a call.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Nlm4Stats {
     /// The call was successfully completed, and the lock was set.
@@ -28,7 +29,7 @@ pub enum Nlm4Stats {
     /// The call failed because the server could not allocate the necessary resources.
     DeniedNolocks = 2,
     /// The request is queued.
-    /// The server will issue an [`NLMPROC4_GRANTED`](crate::consts::nlm::NLMPROC4_GRANTED) callback
+    /// The server will issue an `NLMPROC4_GRANTED` callback
     /// to the client when the lock is granted.
     Blocked = 3,
     /// The call failed because the server is reestablishing old
@@ -89,11 +90,11 @@ impl OpaqueHandle {
 pub struct Name(String);
 
 impl Name {
-    /// Creates a new [`crate::vfs::file::Name`] after validating its length.
+    /// Creates a new [`Name`] after validating its length.
     ///
     /// # Errors
     ///
-    /// Returns an error if `name.len() > MAX_NAME_LEN` or if `name` is empty.
+    /// Returns an error if `name.len() > LM_MAXSTRLEN` or if `name` is empty.
     pub fn new(name: String) -> io::Result<Self> {
         if name.len() > LM_MAXSTRLEN {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "name too long"));

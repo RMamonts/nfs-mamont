@@ -18,11 +18,11 @@ pub mod unlock;
 /// Decodes the lock-owner identifier from an NLM request.
 /// The wire encoding is a variable-length opaque capped at [`OPAQUE_HANDLE_SIZE`].
 pub fn opaque_handle(src: &mut impl Read) -> Result<OpaqueHandle> {
-    OpaqueHandle::new(vec_max_size(src, OPAQUE_HANDLE_SIZE)?).map_err(Error::IO)
+    OpaqueHandle::new(vec_max_size(src, OPAQUE_HANDLE_SIZE)?).map_err(|_| Error::FormatMismatch)
 }
 
 pub fn caller_name(src: &mut impl Read) -> Result<Name> {
-    Name::new(string_max_size(src, nlm::LM_MAXSTRLEN)?).map_err(Error::IO)
+    Name::new(string_max_size(src, nlm::LM_MAXSTRLEN)?).map_err(|_| Error::FormatMismatch)
 }
 
 /// Decodes the lock-arguments block shared by every LOCK/UNLOCK/TEST/CANCEL request.

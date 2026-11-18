@@ -1,4 +1,4 @@
-//! Metrics of the built-in [`crate::allocator::Impl`].
+//! Metrics of the built-in [`crate::service::allocator::PoolAllocator`].
 
 use std::fmt;
 use std::time::Instant;
@@ -81,7 +81,7 @@ impl AllocatorMetrics {
     }
 }
 
-// `AllocatorState` derives `Debug`, `metrics` crate handles do not have it
+// `PoolState` derives `Debug`, `metrics` crate handles do not have it
 impl fmt::Debug for AllocatorMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AllocatorMetrics").finish_non_exhaustive()

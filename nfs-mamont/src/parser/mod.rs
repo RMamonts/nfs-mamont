@@ -1,5 +1,6 @@
 //! Defines NFSv3 and MOUNT protocol parsing functionality.
 
+pub mod error;
 pub mod mount;
 pub mod nfsv3;
 pub mod nlm;
@@ -19,20 +20,23 @@ use crate::nlm::procedures::{
     cancel::Nlm4CancelArgs, lock::Nlm4LockArgs, test::Nlm4TestArgs, unlock::Nlm4UnlockArgs,
 };
 
+use crate::parser::error::Error;
 use crate::rpc::auth::Credential;
-use crate::rpc::Error;
 use crate::vfs::{
     access, commit, create, fs_info, fs_stat, get_attr, link, lookup, mk_dir, mk_node, path_conf,
     read, read_dir, read_dir_plus, read_link, remove, rename, rm_dir, set_attr, symlink, write,
 };
 
-/// Result of parsing operations with errors type [`Error`].
+/// Result of structural parsing operations with errors type [`error::Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Helper function to process nested errors.
 /// Function takes `future` to call. If result is `OK`, discards it, and returns `error`.
 /// If `future` returns error - returns new one, rather than `error`
-pub async fn proc_nested_errors<T>(error: Error, future: impl Future<Output = Result<T>>) -> Error {
+pub async fn proc_nested_errors<T, E>(
+    error: E,
+    future: impl Future<Output = std::result::Result<T, E>>,
+) -> E {
     match future.await {
         Ok(_) => error,
         Err(err) => err,
@@ -78,18 +82,10 @@ pub struct ArgWrapper<B: Buffer> {
     pub proc: ProcArguments<B>,
 }
 
-/// Wrapper for [`Error`] to pass `xid` of procedure, this error
-/// is associated with
-#[derive(Debug)]
-pub struct ErrorWrapper {
-    pub xid: Option<u32>,
-    pub error: Error,
-}
-
 /// Parsed RPC message grouped by top-level RPC program.
 ///
 /// This is used by generic message consumers (for example, read tasks) that
-/// accept both NFSv3 and MOUNT calls from the same connection.
+/// accept NFSv3, MOUNT and NLM calls from the same connection.
 pub enum ProcArguments<B: Buffer> {
     Nfs3(Box<NfsArguments<B>>),
     Mount(Box<MountArguments>),

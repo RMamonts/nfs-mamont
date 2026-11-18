@@ -7,6 +7,9 @@ use auth::AuthStat;
 
 pub mod auth;
 
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[repr(u32)]
 pub enum AcceptStat {
     Success = 0,
     ProgUnavail = 1,
@@ -16,18 +19,21 @@ pub enum AcceptStat {
     SystemErr = 5,
 }
 
+#[repr(u32)]
 #[derive(ToPrimitive, FromPrimitive)]
 pub enum RpcBody {
     Call = 0,
     Reply = 1,
 }
 
+#[repr(u32)]
 pub enum ReplyBody {
     MsgAccepted = 0,
     MsgDenied = 1,
 }
 
 /// Authentication flavors.
+#[repr(u32)]
 #[derive(Debug, Clone, ToPrimitive, FromPrimitive)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum AuthFlavor {
@@ -45,6 +51,7 @@ pub struct OpaqueAuth {
     pub body: Vec<u8>,
 }
 
+#[repr(u32)]
 pub enum RejectedReply {
     RpcMismatch = 0,
     AuthError = 1,
@@ -56,6 +63,18 @@ pub enum RejectedReply {
 pub struct VersionMismatch {
     pub low: u32,
     pub high: u32,
+}
+
+/// Wrapper for [`Error`] to pass `xid` of procedure, this error
+/// is associated with.
+///
+/// The semantically validated (header-level) errors flow out of the parser as
+/// [`Error`], while structural parse failures are converted to that
+/// type at the parser boundary.
+#[derive(Debug)]
+pub struct ErrorWrapper {
+    pub xid: Option<u32>,
+    pub error: Error,
 }
 
 /// Errors that can occur during parsing.

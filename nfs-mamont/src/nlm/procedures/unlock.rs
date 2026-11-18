@@ -18,7 +18,7 @@ pub struct Nlm4UnlockArgs {
 
 /// NLM UNLOCK result.
 ///
-/// Returned by [`NLMPROC4_UNLOCK`](crate::consts::nlm::NLMPROC4_UNLOCK) procedure.
+/// Returned by the [`NlmProc::Unlock`](crate::consts::nlm::NlmProc::Unlock) procedure.
 pub struct Nlm4UnlockRes {
     /// Transaction identifier for matching request/response.
     pub cookie: Cookie,

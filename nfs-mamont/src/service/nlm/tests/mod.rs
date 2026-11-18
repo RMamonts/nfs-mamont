@@ -17,7 +17,7 @@ mod ranges;
 mod registry;
 
 pub fn fill_fh(value: u8) -> Handle {
-    Handle([value; NFS3_FHSIZE])
+    Handle::from_bytes([value; NFS3_FHSIZE])
 }
 
 pub fn fill_opaque(value: u8) -> OpaqueHandle {

@@ -1,7 +1,7 @@
-//! Defines tests for [`crate::allocator::slice::Slice::iter`] interface.
+//! Defines tests for [`crate::service::allocator::Slice::iter_mut`] interface.
 
 use super::test_helpers::SliceGuard;
-use crate::allocator::Slice;
+use crate::service::allocator::Slice;
 
 const FIRST_BUFFER: &[u8] = &[1, 2, 3, 4, 5];
 const SECOND_BUFFER: &[u8] = &[6, 7, 8];
@@ -15,14 +15,14 @@ where
     SliceGuard::new(buffers, range)
 }
 
-fn check_iter_is_empty<'a>(iter: &'a mut impl Iterator<Item = &'a [u8]>) {
+fn check_iter_is_empty<'a>(iter: &'a mut impl Iterator<Item = &'a mut [u8]>) {
     assert!(iter.next().is_none());
     assert!(iter.next().is_none());
     assert!(iter.next().is_none());
 }
 
 fn check_slice_is_empty(slice: &mut Slice) {
-    check_iter_is_empty(&mut slice.iter());
+    check_iter_is_empty(&mut slice.iter_mut());
 }
 
 fn check_slice_content<Content>(slice: &mut Slice, content: Content)
@@ -30,7 +30,7 @@ where
     Content: IntoIterator,
     Content::Item: AsRef<[u8]>,
 {
-    let mut iter_under_test = slice.iter();
+    let mut iter_under_test = slice.iter_mut();
 
     for expected_slice in content.into_iter() {
         let actual_slice = iter_under_test.next().unwrap();
@@ -469,5 +469,41 @@ fn all_from_first_all_from_second_all_from_third_three_buffers() {
     check_slice_content(
         &mut slice,
         [[1, 2, 3, 4, 5].as_slice(), [6, 7, 8].as_slice(), [9, 10, 11].as_slice()],
+    );
+}
+
+// Checks that we can observe what writes to obtained slices.
+
+#[test]
+fn write_all_three_buffers() {
+    let mut slice = make_slice(
+        [FIRST_BUFFER, SECOND_BUFFER, THIRD_BUFFER],
+        0..FIRST_BUFFER.len() + SECOND_BUFFER.len() + THIRD_BUFFER.len(),
+    );
+    let mut iter = slice.iter_mut();
+
+    let first_slice = iter.next().unwrap();
+    assert_eq!(first_slice, [1, 2, 3, 4, 5].as_mut_slice());
+    for item in first_slice.iter_mut() {
+        *item += 1;
+    }
+
+    let second_slice = iter.next().unwrap();
+    assert_eq!(second_slice, [6, 7, 8].as_mut_slice());
+    for item in second_slice.iter_mut() {
+        *item += 2;
+    }
+
+    let third_slice = iter.next().unwrap();
+    assert_eq!(third_slice, [9, 10, 11].as_mut_slice());
+    for item in third_slice.iter_mut() {
+        *item += 3;
+    }
+
+    check_iter_is_empty(&mut iter);
+
+    check_slice_content(
+        &mut slice,
+        [[2, 3, 4, 5, 6].as_slice(), [8, 9, 10].as_slice(), [12, 13, 14].as_slice()],
     );
 }

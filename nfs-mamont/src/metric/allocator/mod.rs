@@ -1,4 +1,4 @@
-//! Metrics of the built-in [`crate::allocator::Impl`].
+//! Metrics of the built-in [`crate::service::allocator::PoolAllocator`].
 
 #[cfg(feature = "metrics")]
 mod allocator_metrics;

@@ -6,7 +6,8 @@ use super::consts::{
     CPU_SECONDS, DURATION_SECONDS, REQUESTS_TOTAL, STAGE_SECONDS, SYSCALL_SECONDS, VFS_IN_FLIGHT,
     WAIT_SECONDS,
 };
-use crate::consts::nfsv3::GETATTR;
+use crate::consts::nfsv3::NfsProc;
+use crate::vfs::file::BackendId;
 use crate::metric::test_helpers::{gauge, nfs_metrics as metrics, samples, snapshot, value};
 use crate::metric::{Stage, TaskKind, Timer};
 
@@ -55,8 +56,8 @@ async fn in_flight_guard_restores_gauge() {
     let (metrics, snapshotter, recorder) = metrics();
 
     let _held = with_local_recorder(&recorder, || {
-        let held = metrics.vfs_in_flight(0);
-        let _dropped = metrics.vfs_in_flight(1);
+        let held = metrics.vfs_in_flight(BackendId::new(0));
+        let _dropped = metrics.vfs_in_flight(BackendId::new(1));
         held
     });
 
@@ -96,9 +97,9 @@ async fn write_reply() {
     // not NFS
     metrics.write_reply(&metrics.start(), None, &io, socket.write_all(b"mount")).await.unwrap();
     // not sampled
-    metrics.write_reply(&Timer::NONE, Some(GETATTR), &io, socket.write_all(b"ab")).await.unwrap();
+    metrics.write_reply(&Timer::NONE, Some(NfsProc::GetAttr as u32), &io, socket.write_all(b"ab")).await.unwrap();
     metrics
-        .write_reply(&metrics.start(), Some(GETATTR), &io, socket.write_all(b"cd"))
+        .write_reply(&metrics.start(), Some(NfsProc::GetAttr as u32), &io, socket.write_all(b"cd"))
         .await
         .unwrap();
 
@@ -120,7 +121,7 @@ async fn read_call() {
     let (output, not_nfs) = metrics.read_call(&io, socket.read_exact(&mut buf), |_| None).await;
     output.unwrap();
     let (output, timer) =
-        metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(GETATTR)).await;
+        metrics.read_call(&io, socket.read_exact(&mut buf[..4]), |_| Some(NfsProc::GetAttr as u32)).await;
     output.unwrap();
     metrics.finish(not_nfs);
     metrics.finish(timer);

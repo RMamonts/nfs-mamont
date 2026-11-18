@@ -71,7 +71,7 @@ pub struct NfsMetrics {
     requests_ok: Counter,
     requests_err: Counter,
     /// Indexed by [`BackendId`], registered on first use.
-    vfs_in_flight: [OnceLock<Gauge>; BackendId::MAX as usize + 1],
+    vfs_in_flight: [OnceLock<Gauge>; u8::MAX as usize + 1],
     /// Indexed by NFSv3 procedure number.
     reply: [ReplyMetrics; 22],
     /// Indexed by NFSv3 procedure number.
@@ -236,8 +236,8 @@ impl NfsMetrics {
     /// Counts a request executing in `backend` until the guard is dropped.
     #[inline]
     pub fn vfs_in_flight(&self, backend: BackendId) -> InFlightGuard<'_> {
-        let gauge = self.vfs_in_flight[backend as usize]
-            .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.to_string()));
+        let gauge = self.vfs_in_flight[backend.raw() as usize]
+            .get_or_init(|| gauge!(VFS_IN_FLIGHT, "backend" => backend.raw().to_string()));
         gauge.increment(1.0);
         InFlightGuard(gauge)
     }
