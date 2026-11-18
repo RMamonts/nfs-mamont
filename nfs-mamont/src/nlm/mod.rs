@@ -8,6 +8,9 @@ pub mod lock;
 pub mod procedures;
 pub mod share;
 
+#[cfg(test)]
+mod tests;
+
 use std::io;
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -140,17 +143,4 @@ impl<T> Nlm for T where
         + procedures::test::Test
         + procedures::cancel::Cancel
 {
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{OpaqueHandle, OPAQUE_HANDLE_SIZE};
-
-    #[test]
-    fn opaque_handle_bytes() {
-        let bytes = [0x01; OPAQUE_HANDLE_SIZE].to_vec();
-        let verifier = bytes.clone();
-        let oh = OpaqueHandle::new(bytes).unwrap();
-        assert_eq!(oh.as_bytes(), verifier.as_slice());
-    }
 }

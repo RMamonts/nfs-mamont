@@ -14,7 +14,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    # Restricted to v* tags; tag creation is limited to org admins by ruleset.
+    # The environment only accepts v* tags; tag creation is limited to org admins by ruleset.
     environment: crates-io
     permissions:
       contents: read
@@ -31,21 +31,42 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          version=$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "nfs-mamont") | .version')
-          if [ "$TAG" != "v$version" ]; then
-            echo "::error::release tag $TAG does not match crate version v$version"
-            exit 1
-          fi
+          for crate in nfs-mamont nfs-mamont-util; do
+            version=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+            if [ "$TAG" != "v$version" ]; then
+              echo "::error::release tag $TAG does not match $crate version v$version"
+              exit 1
+            fi
+          done
 
+      # Packages and builds every crate before anything is uploaded; dependent crates are
+      # verified against the local, not yet published versions of their dependencies.
       - name: Dry run
-        run: cargo publish -p nfs-mamont --locked --dry-run
+        run: cargo publish --workspace --locked --dry-run
+
+      # Makes a re-run after a partial failure publish only the remaining crates.
+      - name: Select unpublished crates
+        id: select
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for crate in nfs-mamont nfs-mamont-util; do
+            curl -sf -A nfs-mamont-release "https://crates.io/api/v1/crates/$crate/${TAG#v}" >/dev/null \
+              || packages="$packages -p $crate"
+          done
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
 
       - name: Authenticate with crates.io
+        if: steps.select.outputs.packages != ''
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
 
+      # Publishes in dependency order and waits for each crate to appear in the index.
       - name: Publish
-        run: cargo publish -p nfs-mamont --locked
+        if: steps.select.outputs.packages != ''
+        # PACKAGES is intentionally unquoted: it holds several `-p <crate>` arguments.
+        run: cargo publish --locked $PACKAGES
         env:
+          PACKAGES: ${{ steps.select.outputs.packages }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

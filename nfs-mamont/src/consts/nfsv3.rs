@@ -33,10 +33,11 @@ pub enum NfsProc {
 
 /// Size of a file handle in bytes.
 ///
-/// The first byte carries the [`crate::BackendId`] of the backend owning the object,
-/// the rest identifies the object inside that backend. The value is not a multiple of
-/// the XDR alignment; padding is added by the serializer and skipped by the parser.
-pub const NFS3_FHSIZE: usize = 9;
+/// The first two bytes carry the [`crate::BackendId`] (slot and generation) of the
+/// backend owning the object, the remaining eight identify the object inside that
+/// backend. The value is not a multiple of the XDR alignment; padding is added by the
+/// serializer and skipped by the parser.
+pub const NFS3_FHSIZE: usize = 10;
 
 pub const NFS3_COOKIEVERFSIZE: usize = 8;
 

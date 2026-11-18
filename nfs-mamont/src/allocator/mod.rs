@@ -1,8 +1,5 @@
 //! Defines [`Allocator`] interface used to bound allocation of buffers
 //! for user data transmission inside NFS-Mamont implementation.
-//!
-//! The built-in implementation is
-//! [`PoolAllocator`](crate::service::allocator::PoolAllocator).
 
 use std::future::Future;
 use std::num::NonZeroUsize;

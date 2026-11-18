@@ -56,8 +56,8 @@ async fn in_flight_guard_restores_gauge() {
     let (metrics, snapshotter, recorder) = metrics();
 
     let _held = with_local_recorder(&recorder, || {
-        let held = metrics.vfs_in_flight(BackendId::new(0));
-        let _dropped = metrics.vfs_in_flight(BackendId::new(1));
+        let held = metrics.vfs_in_flight(BackendId::new(0, 0));
+        let _dropped = metrics.vfs_in_flight(BackendId::new(1, 0));
         held
     });
 

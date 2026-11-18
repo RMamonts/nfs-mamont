@@ -110,11 +110,20 @@ The contribution workflow is:
   MSRV is the normal workflow.)
 
 - **Platform:** development happens on **Linux**. `libc` is only pulled in by
-  the optional [`mlock`](README.md#safety--requirements) feature.
+  the optional [`mlock`](README.md#safety--requirements) feature of
+  `nfs-mamont-util`.
 
 ### Building and testing
 
-The repository is a Cargo workspace with a single member crate, `nfs-mamont`.
+The repository is a Cargo workspace with two member crates:
+
+- `nfs-mamont` — the core library: RPC/XDR layer, MOUNT/NFSv3/NLM protocol
+  traits, VFS interface and the server loop. It does not depend on
+  `nfs-mamont-util`.
+- `nfs-mamont-util` — ready-made implementations built on the public API of
+  `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService`.
+
+The commands below run from the repository root and cover the whole workspace.
 
 ```bash
 # Build the library
@@ -131,12 +140,16 @@ cargo fmt --all --check
 
 # Documentation
 cargo doc --no-deps
+
+# Check the core crate on its own: workspace builds unify dependency features
+# with nfs-mamont-util, which can hide a feature the core uses but does not declare
+cargo check -p nfs-mamont --all-targets
 ```
 
 Optional, to exercise the memory-locking helpers:
 
 ```bash
-cargo test --features mlock
+cargo test -p nfs-mamont-util --features mlock
 ```
 
 These commands mirror what CI runs in its `lint`, `test`, `docs`, `security`,

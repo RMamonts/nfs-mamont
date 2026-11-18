@@ -26,7 +26,7 @@ so histogram counts are about `1/N` of the real request count; rates need to be 
 | `nfsmamont_rpc_stage_seconds`    | histogram | `stage` = `vfs_queue`, `vfs`, `reply_queue` | s     | Time spent in one pipeline stage; parsing the call and writing the reply is covered by the message metrics |
 | `nfsmamont_rpc_duration_seconds` | histogram | —                                           | s     | Parsed -> reply written (also recorded when the reply write failed)                                        |
 | `nfsmamont_rpc_requests_total`   | counter   | `status` = `ok`, `error`                    | count | Replies written for NFSv3 requests; `error` is a failed reply write                                        |
-| `nfsmamont_vfs_in_flight`        | gauge     | `backend` = backend id                      | count | Requests executing in a backend                                                                            |
+| `nfsmamont_vfs_in_flight`        | gauge     | `backend` = backend slot                    | count | Requests executing in a backend                                                                            |
 | `nfsmamont_sample_every`         | gauge     | —                                           | count | Sampling divisor: about one in this many requests is timed                                                 |
 
 ## Message metrics
@@ -50,7 +50,7 @@ Read-side caveats:
 
 ## Allocator metrics
 
-The built-in allocator records its own metrics.
+The built-in `PoolAllocator` (`nfs-mamont-util`) records its own metrics when the `metrics` feature of `nfs-mamont-util` is enabled; it is independent of the `nfs-mamont` feature of the same name.
 
 | Metric                                | Type      | Labels | Unit  | Meaning                                        |
 | ------------------------------------- | --------- | ------ | ----- | ---------------------------------------------- |
