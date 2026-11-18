@@ -9,8 +9,10 @@ use std::sync::Arc;
 use tracing::{debug, error};
 
 use crate::allocator::Buffer;
+use crate::connection_id::ConnectionId;
 use crate::metric::Timer;
 use crate::nlm::Nlm;
+use crate::task::connection::limit::ReplySender;
 use crate::task::{ProcReply, ProcResult};
 use crate::{
     nlm::NlmRes,
@@ -20,9 +22,14 @@ use crate::{
 /// The structure that expects NlmTask. Contains arguments and channels for responses and calls.
 pub struct NlmCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
-    pub result_sender: Sender<ProcReply<B>>,
+    pub result_sender: ReplySender<B>,
     /// Placeholder for NLM procedure args.
     pub args: NlmArgWrapper,
+
+    /// The ID using the socket address.
+    /// It is passed along with the NlmCommand to nlm.
+    #[allow(dead_code)]
+    pub connection_id: ConnectionId,
 }
 
 /// The main task is to obtain/send nlm procedures.
@@ -71,7 +78,7 @@ where
         let receiver = self.receiver;
 
         while let Ok(command) = receiver.recv().await {
-            let NlmCommand { result_sender, args } = command;
+            let NlmCommand { result_sender, args, connection_id: _ } = command;
             let xid = args.header.xid;
             let nlm_result = process_message(args, Arc::clone(&nlm_service)).await;
             if let Some(result) = nlm_result {
@@ -81,7 +88,7 @@ where
     }
 }
 
-async fn send_reply<B: Buffer>(result_sender: Sender<ProcReply<B>>, nlm_result: NlmRes, xid: u32) {
+async fn send_reply<B: Buffer>(result_sender: ReplySender<B>, nlm_result: NlmRes, xid: u32) {
     // TODO:
     // - some logs when occurred error
     // - or retry with fail

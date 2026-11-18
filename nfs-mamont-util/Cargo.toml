@@ -6,10 +6,10 @@ authors.workspace = true
 description = "Ready-made building blocks for nfs-mamont servers: pool buffer allocator, MOUNT v3 and NLM v4 service implementations"
 publish = true
 license = "MIT"
-readme = "../README.md"
+readme = "README.md"
 repository = "https://github.com/RMamonts/nfs-mamont"
-keywords = ["nfs", "nfsv3", "async", "server"]
-categories = ["network-programming", "filesystem"]
+keywords = ["nfs", "nfsv3", "nlm", "mount", "buffer-pool"]
+categories = ["network-programming", "filesystem", "memory-management"]
 rust-version.workspace = true
 
 [features]

@@ -110,7 +110,7 @@ The contribution workflow is:
   MSRV is the normal workflow.)
 
 - **Platform:** development happens on **Linux**. `libc` is only pulled in by
-  the optional [`mlock`](README.md#safety--requirements) feature of
+  the optional [`mlock`](nfs-mamont-util/README.md#feature-flags) feature of
   `nfs-mamont-util`.
 
 ### Building and testing

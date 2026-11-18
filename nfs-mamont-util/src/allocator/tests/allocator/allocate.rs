@@ -4,7 +4,7 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use nfs_mamont::Allocator;
+use nfs_mamont::{Allocator, Buffer};
 
 use crate::allocator::PoolAllocator;
 
@@ -127,4 +127,17 @@ async fn allocate_more_than_capacity_returns_none() {
     let requested = NonZeroUsize::new(SIZE.get() * COUNT.get() + 1).unwrap();
 
     assert!(allocator.allocate(requested).await.is_none());
+}
+
+#[tokio::test]
+async fn footprint_counts_the_whole_buffers_of_the_pool() {
+    let allocator = PoolAllocator::new(nonzero(1024), nonzero(4));
+    let footprint = |slice: &crate::allocator::Slice| (slice.len(), slice.footprint());
+
+    let short = allocator.allocate(nonzero(10)).await.unwrap();
+    assert_eq!(footprint(&short), (10, 1024));
+    let exact = allocator.allocate(nonzero(1024)).await.unwrap();
+    assert_eq!(footprint(&exact), (1024, 1024));
+    let two_parts = allocator.allocate(nonzero(1025)).await.unwrap();
+    assert_eq!(footprint(&two_parts), (1025, 2048));
 }

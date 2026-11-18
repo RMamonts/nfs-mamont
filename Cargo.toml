@@ -3,14 +3,14 @@ members = ["nfs-mamont", "nfs-mamont-util"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Rmamonts"]
 rust-version = "1.75.0"
 
 [workspace.dependencies]
 # Internal crates
-nfs-mamont = { path = "nfs-mamont", version = "0.2.0" }
+nfs-mamont = { path = "nfs-mamont", version = "0.3.0" }
 
 # External dependencies
 async-channel = "2.3.0"

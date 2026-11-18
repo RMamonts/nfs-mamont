@@ -24,8 +24,8 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 
 | Crate | Contents |
 |-------|----------|
-| `nfs-mamont` | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
-| `nfs-mamont-util` | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
+| [`nfs-mamont`](nfs-mamont/README.md) | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
+| [`nfs-mamont-util`](nfs-mamont-util/README.md) | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
 
 `nfs-mamont` does not depend on `nfs-mamont-util`; use the latter if you do not need custom
 allocator, MOUNT or NLM implementations.
@@ -33,35 +33,17 @@ allocator, MOUNT or NLM implementations.
 ## Architecture
 
 Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture)
-### Quick start
 
-As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation
+## Quick start
 
-The library does not install a global `tracing` subscriber — that is the responsibility
-of the application. In your `main()`, initialize `tracing` yourself, for example:
+As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation.
+Installation and usage notes are in the README of each crate.
 
-```rust
-tracing_subscriber::fmt()
-    .with_env_filter(
-        tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("nfs_mamont=debug")),
-    )
-    .init();
-```
-
-This requires `tracing-subscriber` (with the `env-filter` feature) as a dependency of your
-application, not of the library.
-
-## Safety & Requirements
+## Requirements
 
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the
   current stable toolchain).
-- **Platform:** Linux (`libc` is an optional dependency of `nfs-mamont-util`, used only
-  for the `mlock` feature).
-
-### Optional feature
-
-- `mlock` (`nfs-mamont-util`) — locks the whole `PoolAllocator` memory block in RAM via `libc`.
+- **Platform:** Linux.
 
 ## Contributing
 

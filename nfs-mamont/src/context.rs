@@ -1,9 +1,11 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::allocator::{Allocator, Buffer};
 use crate::backend::BackendRegistry;
 use crate::metric::NfsMetrics;
+use crate::consts::connection::{DEFAULT_MAX_IN_FLIGHT, IN_FLIGHT_PER_VFS_WORKER};
 use crate::task::global::vfs::VfsManager;
 use crate::vfs;
 use crate::vfs::file::BackendId;
@@ -53,6 +55,12 @@ where
     allocator: Arc<A>,
     /// Filesystem implementations backing NFS operations, keyed by backend id.
     backends: BackendRegistry<V>,
+    /// Requests one connection may have read but not yet answered.
+    max_in_flight: NonZeroUsize,
+    /// Bytes of READ and WRITE data one connection may have in flight, `None` for no limit.
+    max_data_per_connection: Option<NonZeroUsize>,
+    /// How long a reply may wait for the socket before the connection is closed.
+    write_timeout: Option<Duration>,
     /// Server metrics shared by all tasks.
     metrics: Arc<NfsMetrics>,
 }
@@ -79,8 +87,79 @@ where
         let backends = BackendRegistry::new();
         let metrics = Arc::new(NfsMetrics::new());
         let vfs_manager = VfsManager::new(backends.clone(), vfs_concurrency, Arc::clone(&metrics));
+        let max_in_flight = default_max_in_flight(vfs_concurrency);
 
-        Self { vfs_manager, allocator, backends, metrics }
+        Self {
+            vfs_manager,
+            allocator,
+            backends,
+            max_in_flight,
+            max_data_per_connection: None,
+            write_timeout: None,
+            metrics,
+        }
+    }
+
+    /// Sets how many requests one connection may have read from the socket but not yet
+    /// answered; beyond it the server stops reading and TCP flow control holds the
+    /// client back. The default is the larger of [`DEFAULT_MAX_IN_FLIGHT`] and
+    /// [`IN_FLIGHT_PER_VFS_WORKER`] × `vfs_concurrency`.
+    ///
+    /// The limit caps the throughput of one connection at `max_in_flight / latency`. It
+    /// counts requests, not bytes: a client that stops reading its READ replies can still
+    /// hold the whole allocator pool, see [`Self::with_max_data_per_connection`].
+    pub fn with_max_in_flight(mut self, max_in_flight: NonZeroUsize) -> Self {
+        self.max_in_flight = max_in_flight;
+        self
+    }
+
+    /// Limits how many NFS procedures may wait for or run in the VFS pool at once, over
+    /// all connections, so that the queue no longer grows with their number. Off by
+    /// default; MOUNT and NLM procedures are not counted. A few slots per VFS worker
+    /// keep the pool busy, say `4 × vfs_concurrency`; more only add queueing delay.
+    pub fn with_max_pending(mut self, max_pending: NonZeroUsize) -> Self {
+        self.vfs_manager.limit_pending(max_pending);
+        self
+    }
+
+    /// Returns how many requests one connection may have read but not yet answered.
+    #[inline]
+    pub fn max_in_flight(&self) -> NonZeroUsize {
+        self.max_in_flight
+    }
+
+    /// Limits the allocator memory the READ and WRITE requests of one connection may
+    /// hold, counted by [`Buffer::footprint`], so that a client that stops reading its
+    /// READ replies cannot take the whole pool. Off by default.
+    ///
+    /// The server stops reading the connection while `bytes` are in flight; the request
+    /// that crosses the limit is still served. A client needs about `bandwidth × round
+    /// trip` bytes in flight to run at line rate, a few MiB on 10 GbE.
+    pub fn with_max_data_per_connection(mut self, bytes: NonZeroUsize) -> Self {
+        self.max_data_per_connection = Some(bytes);
+        self
+    }
+
+    /// Returns the data limit of one connection, see [`Self::with_max_data_per_connection`].
+    #[inline]
+    pub fn max_data_per_connection(&self) -> Option<NonZeroUsize> {
+        self.max_data_per_connection
+    }
+
+    /// Closes a connection whose client does not take a reply within `timeout`. Off by
+    /// default; a zero `timeout` turns it off.
+    ///
+    /// Without it, a client that stops reading keeps its connection, its in-flight
+    /// slots and their buffers for as long as it stays connected.
+    pub fn with_write_timeout(mut self, timeout: Duration) -> Self {
+        self.write_timeout = (!timeout.is_zero()).then_some(timeout);
+        self
+    }
+
+    /// Returns the write timeout, see [`Self::with_write_timeout`].
+    #[inline]
+    pub fn write_timeout(&self) -> Option<Duration> {
+        self.write_timeout
     }
 
     /// Attaches `backend` at runtime, making it serve requests immediately.
@@ -134,5 +213,29 @@ where
     #[inline]
     pub fn metrics(&self) -> Arc<NfsMetrics> {
         Arc::clone(&self.metrics)
+    }
+}
+
+/// Returns the default in-flight limit for a pool of `vfs_concurrency` workers, see
+/// [`ServerContext::new`].
+fn default_max_in_flight(vfs_concurrency: NonZeroUsize) -> NonZeroUsize {
+    DEFAULT_MAX_IN_FLIGHT.max(vfs_concurrency.saturating_mul(IN_FLIGHT_PER_VFS_WORKER))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use super::default_max_in_flight;
+    use crate::consts::connection::DEFAULT_MAX_IN_FLIGHT;
+
+    #[test]
+    fn the_default_limit_grows_with_the_pool() {
+        let limit = |workers| default_max_in_flight(NonZeroUsize::new(workers).unwrap()).get();
+
+        assert_eq!(limit(1), DEFAULT_MAX_IN_FLIGHT.get());
+        assert_eq!(limit(128), DEFAULT_MAX_IN_FLIGHT.get());
+        assert_eq!(limit(129), 258);
+        assert_eq!(limit(usize::MAX), usize::MAX);
     }
 }
