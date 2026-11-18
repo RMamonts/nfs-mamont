@@ -24,7 +24,7 @@ where
     B: Buffer + 'static,
 {
     pub fn new(vfs_recv: Receiver<VfsCommand<B>>) -> (Self, ManagerTaskReceiver<B>) {
-        /// TODO: replace with crossbeam_queue or other spmc?
+        // TODO: replace with crossbeam_queue or other spmc?
         let (sender, receiver) = async_channel::unbounded::<ManagerMessage<B>>();
         let task = Self { vfs_recv, sender };
         (task, receiver)
