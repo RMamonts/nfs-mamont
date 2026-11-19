@@ -10,7 +10,7 @@ use crate::mount::{Mount, MountRes};
 use crate::parser::{MountArgWrapper, MountArguments};
 use crate::task::{ProcReply, ProcResult};
 
-/// Command sent to [`MountTask`] from connection read tasks.
+/// Command sent to [`MountTask`] by the task manager.
 pub struct MountCommand<B: Buffer> {
     /// Channel used to pass the result to write task.
     pub result_tx: ReplySender<B>,
@@ -19,6 +19,9 @@ pub struct MountCommand<B: Buffer> {
     /// Placeholder for mount procedure args.
     pub args: MountArgWrapper,
 }
+
+/// Sender used to forward mount commands to [`MountTask`].
+pub type MountTaskSender<B> = Sender<MountCommand<B>>;
 
 pub struct MountTask<M, B>
 where

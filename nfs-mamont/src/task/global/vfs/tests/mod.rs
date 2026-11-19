@@ -1,5 +1,5 @@
 use crate::allocator::Buffer;
-use crate::parser::NfsArguments;
+use crate::parser::Nfs3Arguments;
 use crate::vfs::nfsv3::file::{BackendId, Handle, PAYLOAD_SIZE};
 use crate::vfs::nfsv3::{self, get_attr, link, read, rename, write, DirOpArgs, NfsRes};
 
@@ -40,21 +40,21 @@ fn name() -> nfsv3::file::Name {
 
 #[test]
 fn null_needs_no_backend() {
-    let proc = NfsArguments::<MockBuffer>::Null;
+    let proc = Nfs3Arguments::<MockBuffer>::Null;
 
     assert!(matches!(target(&proc), Target::None));
 }
 
 #[test]
 fn backend_is_taken_from_the_handle() {
-    let proc = NfsArguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(3) });
+    let proc = Nfs3Arguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(3) });
 
     assert!(matches!(target(&proc), Target::Single(id) if id == BackendId::new(3, 0)));
 }
 
 #[test]
 fn rename_within_one_backend_is_routed_to_it() {
-    let proc = NfsArguments::<MockBuffer>::Rename(rename::Args {
+    let proc = Nfs3Arguments::<MockBuffer>::Rename(rename::Args {
         from: DirOpArgs { dir: handle(2), name: name() },
         to: DirOpArgs { dir: handle(2), name: name() },
     });
@@ -64,7 +64,7 @@ fn rename_within_one_backend_is_routed_to_it() {
 
 #[test]
 fn rename_across_backends_is_crossing() {
-    let proc = NfsArguments::<MockBuffer>::Rename(rename::Args {
+    let proc = Nfs3Arguments::<MockBuffer>::Rename(rename::Args {
         from: DirOpArgs { dir: handle(2), name: name() },
         to: DirOpArgs { dir: handle(5), name: name() },
     });
@@ -74,7 +74,7 @@ fn rename_across_backends_is_crossing() {
 
 #[test]
 fn link_across_backends_is_crossing() {
-    let proc = NfsArguments::<MockBuffer>::Link(link::Args {
+    let proc = Nfs3Arguments::<MockBuffer>::Link(link::Args {
         file: handle(0),
         link: DirOpArgs { dir: handle(1), name: name() },
     });
@@ -84,7 +84,7 @@ fn link_across_backends_is_crossing() {
 
 #[test]
 fn failed_response_keeps_the_procedure_variant() {
-    let proc = NfsArguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
+    let proc = Nfs3Arguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
 
     let NfsRes::GetAttr(Err(fail)) = failed_response(&proc, nfsv3::Error::StaleFile) else {
         panic!("expected a failed GETATTR response");
@@ -92,18 +92,18 @@ fn failed_response_keeps_the_procedure_variant() {
     assert_eq!(fail.error, nfsv3::Error::StaleFile);
 }
 
-fn read_of(count: u32) -> NfsArguments<MockBuffer> {
-    NfsArguments::Read(read::Args { file: handle(0), offset: 0, count }, MockBuffer)
+fn read_of(count: u32) -> Nfs3Arguments<MockBuffer> {
+    Nfs3Arguments::Read(read::Args { file: handle(0), offset: 0, count }, MockBuffer)
 }
 
-fn write_of(size: u32) -> NfsArguments<MockBuffer> {
+fn write_of(size: u32) -> Nfs3Arguments<MockBuffer> {
     let stable = write::StableHow::Unstable;
-    NfsArguments::Write(write::Args { file: handle(0), offset: 0, size, stable, data: MockBuffer })
+    Nfs3Arguments::Write(write::Args { file: handle(0), offset: 0, size, stable, data: MockBuffer })
 }
 
 #[test]
 fn cost_grows_with_the_data() {
-    let getattr = NfsArguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
+    let getattr = Nfs3Arguments::<MockBuffer>::GetAttr(get_attr::Args { file: handle(0) });
 
     assert_eq!(cost(&getattr), 1);
     assert_eq!(cost(&read_of(0)), 1);

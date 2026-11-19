@@ -9,7 +9,7 @@ use crate::allocator::Buffer;
 use crate::limits::budget::{Budget, InFlightReply, ReplySender};
 use crate::limits::probation::Ticket;
 use crate::limits::Limits;
-use crate::parser::NfsArguments;
+use crate::parser::Nfs3Arguments;
 
 /// Why a connection has to close, see [`ConnectionLimits::expired`].
 pub enum Expiry {
@@ -43,10 +43,10 @@ impl<B: Buffer> ConnectionLimits<B> {
 
     /// Charges the READ or WRITE data `proc` holds to the request `result_tx` answers;
     /// it is freed with the slot.
-    pub fn charge(&mut self, result_tx: &mut ReplySender<B>, proc: &NfsArguments<B>) {
+    pub fn charge(&mut self, result_tx: &mut ReplySender<B>, proc: &Nfs3Arguments<B>) {
         let bytes = match proc {
-            NfsArguments::Read(_, data) => data.footprint(),
-            NfsArguments::Write(args) => args.data.footprint(),
+            Nfs3Arguments::Read(_, data) => data.footprint(),
+            Nfs3Arguments::Write(args) => args.data.footprint(),
             _ => return,
         };
         self.budget.charge(result_tx, bytes);

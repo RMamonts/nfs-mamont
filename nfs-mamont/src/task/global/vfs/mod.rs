@@ -11,7 +11,7 @@ use crate::allocator::Buffer;
 use crate::backend::BackendRegistry;
 use crate::limits::budget::ReplySender;
 use crate::limits::Limits;
-use crate::parser::{NfsArgWrapper, NfsArguments};
+use crate::parser::{Nfs3ArgWrapper, Nfs3Arguments};
 use crate::rpc::auth::Credential;
 use crate::task::global::manager::ManagerTaskReceiver;
 use crate::task::{ProcReply, ProcResult};
@@ -21,15 +21,15 @@ use crate::vfs::nfsv3::{self, NfsRes, Vfs};
 /// Bytes of READ or WRITE data that cost as much as one procedure.
 const COST_UNIT: u32 = 64 * 1024;
 
-/// One queued NFS procedure.
-pub struct VfsCommand<B: Buffer> {
+/// One queued NFSv3 procedure.
+pub struct Nfs3Command<B: Buffer> {
     /// Parsed RPC header and procedure arguments.
-    pub args: NfsArgWrapper<B>,
+    pub args: Nfs3ArgWrapper<B>,
     /// Channel to the write task of the connection the reply goes to.
     pub result_tx: ReplySender<B>,
 }
 
-impl<B: Buffer> Cost for VfsCommand<B> {
+impl<B: Buffer> Cost for Nfs3Command<B> {
     fn cost(&self) -> u32 {
         cost(&self.args.proc)
     }
@@ -37,17 +37,14 @@ impl<B: Buffer> Cost for VfsCommand<B> {
 
 /// Returns the cost of `proc`: one unit, plus one per started [`COST_UNIT`] of READ or
 /// WRITE data.
-fn cost<B: Buffer>(proc: &NfsArguments<B>) -> u32 {
+fn cost<B: Buffer>(proc: &Nfs3Arguments<B>) -> u32 {
     let bytes = match proc {
-        NfsArguments::Read(args, _) => args.count,
-        NfsArguments::Write(args) => args.size,
+        Nfs3Arguments::Read(args, _) => args.count,
+        Nfs3Arguments::Write(args) => args.size,
         _ => 0,
     };
     1 + bytes.div_ceil(COST_UNIT)
 }
-
-/// Queues the procedures of one connection for the [`crate::ManagerTask`]
-pub type VfsSender<B> = drr_channel::FlowSender<VfsCommand<B>>;
 
 /// Backend a parsed procedure has to be executed against.
 enum Target {
@@ -64,30 +61,30 @@ enum Target {
 /// The backend index is taken from the first byte of the file handle carried by the
 /// arguments. Procedures addressing two objects must keep both of them within the
 /// same backend, otherwise [`Target::Crossing`] is returned.
-fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
+fn target<B: Buffer>(proc: &Nfs3Arguments<B>) -> Target {
     let (first, second) = match proc {
-        NfsArguments::Null => return Target::None,
-        NfsArguments::GetAttr(args) => (&args.file, None),
-        NfsArguments::SetAttr(args) => (&args.file, None),
-        NfsArguments::LookUp(args) => (&args.parent, None),
-        NfsArguments::Access(args) => (&args.file, None),
-        NfsArguments::ReadLink(args) => (&args.file, None),
-        NfsArguments::Read(args, _) => (&args.file, None),
-        NfsArguments::Write(args) => (&args.file, None),
-        NfsArguments::Create(args) => (&args.object.dir, None),
-        NfsArguments::MkDir(args) => (&args.object.dir, None),
-        NfsArguments::SymLink(args) => (&args.object.dir, None),
-        NfsArguments::MkNod(args) => (&args.object.dir, None),
-        NfsArguments::Remove(args) => (&args.object.dir, None),
-        NfsArguments::RmDir(args) => (&args.object.dir, None),
-        NfsArguments::Rename(args) => (&args.from.dir, Some(&args.to.dir)),
-        NfsArguments::Link(args) => (&args.file, Some(&args.link.dir)),
-        NfsArguments::ReadDir(args) => (&args.dir, None),
-        NfsArguments::ReadDirPlus(args) => (&args.dir, None),
-        NfsArguments::FsStat(args) => (&args.root, None),
-        NfsArguments::FsInfo(args) => (&args.root, None),
-        NfsArguments::PathConf(args) => (&args.file, None),
-        NfsArguments::Commit(args) => (&args.file, None),
+        Nfs3Arguments::Null => return Target::None,
+        Nfs3Arguments::GetAttr(args) => (&args.file, None),
+        Nfs3Arguments::SetAttr(args) => (&args.file, None),
+        Nfs3Arguments::LookUp(args) => (&args.parent, None),
+        Nfs3Arguments::Access(args) => (&args.file, None),
+        Nfs3Arguments::ReadLink(args) => (&args.file, None),
+        Nfs3Arguments::Read(args, _) => (&args.file, None),
+        Nfs3Arguments::Write(args) => (&args.file, None),
+        Nfs3Arguments::Create(args) => (&args.object.dir, None),
+        Nfs3Arguments::MkDir(args) => (&args.object.dir, None),
+        Nfs3Arguments::SymLink(args) => (&args.object.dir, None),
+        Nfs3Arguments::MkNod(args) => (&args.object.dir, None),
+        Nfs3Arguments::Remove(args) => (&args.object.dir, None),
+        Nfs3Arguments::RmDir(args) => (&args.object.dir, None),
+        Nfs3Arguments::Rename(args) => (&args.from.dir, Some(&args.to.dir)),
+        Nfs3Arguments::Link(args) => (&args.file, Some(&args.link.dir)),
+        Nfs3Arguments::ReadDir(args) => (&args.dir, None),
+        Nfs3Arguments::ReadDirPlus(args) => (&args.dir, None),
+        Nfs3Arguments::FsStat(args) => (&args.root, None),
+        Nfs3Arguments::FsInfo(args) => (&args.root, None),
+        Nfs3Arguments::PathConf(args) => (&args.file, None),
+        Nfs3Arguments::Commit(args) => (&args.file, None),
     };
 
     match second {
@@ -100,70 +97,70 @@ fn target<B: Buffer>(proc: &NfsArguments<B>) -> Target {
 ///
 /// Used when the procedure cannot reach a backend at all, so no backend-provided
 /// attributes are available.
-fn failed_response<B: Buffer>(proc: &NfsArguments<B>, error: nfsv3::Error) -> NfsRes<B> {
+fn failed_response<B: Buffer>(proc: &Nfs3Arguments<B>, error: nfsv3::Error) -> NfsRes<B> {
     let wcc_data = || nfsv3::WccData { before: None, after: None };
 
     match proc {
-        NfsArguments::Null => NfsRes::Null,
-        NfsArguments::GetAttr(_) => NfsRes::GetAttr(Err(nfsv3::get_attr::Fail { error })),
-        NfsArguments::SetAttr(_) => {
+        Nfs3Arguments::Null => NfsRes::Null,
+        Nfs3Arguments::GetAttr(_) => NfsRes::GetAttr(Err(nfsv3::get_attr::Fail { error })),
+        Nfs3Arguments::SetAttr(_) => {
             NfsRes::SetAttr(Err(nfsv3::set_attr::Fail { error, wcc_data: wcc_data() }))
         }
-        NfsArguments::LookUp(_) => {
+        Nfs3Arguments::LookUp(_) => {
             NfsRes::LookUp(Err(nfsv3::lookup::Fail { error, dir_attr: None }))
         }
-        NfsArguments::Access(_) => {
+        Nfs3Arguments::Access(_) => {
             NfsRes::Access(Err(nfsv3::access::Fail { error, object_attr: None }))
         }
-        NfsArguments::ReadLink(_) => {
+        Nfs3Arguments::ReadLink(_) => {
             NfsRes::ReadLink(Err(nfsv3::read_link::Fail { error, symlink_attr: None }))
         }
-        NfsArguments::Read(..) => NfsRes::Read(Err(nfsv3::read::Fail { error, file_attr: None })),
-        NfsArguments::Write(_) => {
+        Nfs3Arguments::Read(..) => NfsRes::Read(Err(nfsv3::read::Fail { error, file_attr: None })),
+        Nfs3Arguments::Write(_) => {
             NfsRes::Write(Err(nfsv3::write::Fail { error, wcc_data: wcc_data() }))
         }
-        NfsArguments::Create(_) => {
+        Nfs3Arguments::Create(_) => {
             NfsRes::Create(Err(nfsv3::create::Fail { error, wcc_data: wcc_data() }))
         }
-        NfsArguments::MkDir(_) => {
+        Nfs3Arguments::MkDir(_) => {
             NfsRes::MkDir(Err(nfsv3::mk_dir::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::SymLink(_) => {
+        Nfs3Arguments::SymLink(_) => {
             NfsRes::SymLink(Err(nfsv3::symlink::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::MkNod(_) => {
+        Nfs3Arguments::MkNod(_) => {
             NfsRes::MkNod(Err(nfsv3::mk_node::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::Remove(_) => {
+        Nfs3Arguments::Remove(_) => {
             NfsRes::Remove(Err(nfsv3::remove::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::RmDir(_) => {
+        Nfs3Arguments::RmDir(_) => {
             NfsRes::RmDir(Err(nfsv3::rm_dir::Fail { error, dir_wcc: wcc_data() }))
         }
-        NfsArguments::Rename(_) => NfsRes::Rename(Err(nfsv3::rename::Fail {
+        Nfs3Arguments::Rename(_) => NfsRes::Rename(Err(nfsv3::rename::Fail {
             error,
             from_dir_wcc: wcc_data(),
             to_dir_wcc: wcc_data(),
         })),
-        NfsArguments::Link(_) => {
+        Nfs3Arguments::Link(_) => {
             NfsRes::Link(Err(nfsv3::link::Fail { error, file_attr: None, dir_wcc: wcc_data() }))
         }
-        NfsArguments::ReadDir(_) => {
+        Nfs3Arguments::ReadDir(_) => {
             NfsRes::ReadDir(Err(nfsv3::read_dir::Fail { error, dir_attr: None }))
         }
-        NfsArguments::ReadDirPlus(_) => {
+        Nfs3Arguments::ReadDirPlus(_) => {
             NfsRes::ReadDirPlus(Err(nfsv3::read_dir_plus::Fail { error, dir_attr: None }))
         }
-        NfsArguments::FsStat(_) => {
+        Nfs3Arguments::FsStat(_) => {
             NfsRes::FsStat(Err(nfsv3::fs_stat::Fail { error, root_attr: None }))
         }
-        NfsArguments::FsInfo(_) => {
+        Nfs3Arguments::FsInfo(_) => {
             NfsRes::FsInfo(Err(nfsv3::fs_info::Fail { error, root_attr: None }))
         }
-        NfsArguments::PathConf(_) => {
+        Nfs3Arguments::PathConf(_) => {
             NfsRes::PathConf(Err(nfsv3::path_conf::Fail { error, file_attr: None }))
         }
-        NfsArguments::Commit(_) => {
+        Nfs3Arguments::Commit(_) => {
             NfsRes::Commit(Err(nfsv3::commit::Fail { error, file_wcc: wcc_data() }))
         }
     }
@@ -266,12 +263,12 @@ where
 }
 
 /// Routes a single NFS procedure to the backend owning its file handle and sends the reply.
-async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: VfsCommand<B>)
+async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: Nfs3Command<B>)
 where
     B: Buffer + 'static,
     V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
-    let VfsCommand { args: NfsArgWrapper { header, proc }, result_tx } = command;
+    let Nfs3Command { args: Nfs3ArgWrapper { header, proc }, result_tx } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
@@ -307,35 +304,35 @@ where
 }
 
 /// Runs the procedure against `backend` and wraps its result.
-async fn execute<V, B>(proc: NfsArguments<B>, backend: Arc<V>, cred: &Credential) -> NfsRes<B>
+async fn execute<V, B>(proc: Nfs3Arguments<B>, backend: Arc<V>, cred: &Credential) -> NfsRes<B>
 where
     B: Buffer + 'static,
     V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
     match proc {
-        NfsArguments::Null => NfsRes::Null,
-        NfsArguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args, cred).await),
-        NfsArguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args, cred).await),
-        NfsArguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args, cred).await),
-        NfsArguments::Access(args) => NfsRes::Access(backend.access(args, cred).await),
-        NfsArguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args, cred).await),
-        NfsArguments::Read(args, data) => NfsRes::Read(backend.read(args, data, cred).await),
-        NfsArguments::Write(args) => NfsRes::Write(backend.write(args, cred).await),
-        NfsArguments::Create(args) => NfsRes::Create(backend.create(args, cred).await),
-        NfsArguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args, cred).await),
-        NfsArguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args, cred).await),
-        NfsArguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args, cred).await),
-        NfsArguments::Remove(args) => NfsRes::Remove(backend.remove(args, cred).await),
-        NfsArguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args, cred).await),
-        NfsArguments::Rename(args) => NfsRes::Rename(backend.rename(args, cred).await),
-        NfsArguments::Link(args) => NfsRes::Link(backend.link(args, cred).await),
-        NfsArguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args, cred).await),
-        NfsArguments::ReadDirPlus(args) => {
+        Nfs3Arguments::Null => NfsRes::Null,
+        Nfs3Arguments::GetAttr(args) => NfsRes::GetAttr(backend.get_attr(args, cred).await),
+        Nfs3Arguments::SetAttr(args) => NfsRes::SetAttr(backend.set_attr(args, cred).await),
+        Nfs3Arguments::LookUp(args) => NfsRes::LookUp(backend.lookup(args, cred).await),
+        Nfs3Arguments::Access(args) => NfsRes::Access(backend.access(args, cred).await),
+        Nfs3Arguments::ReadLink(args) => NfsRes::ReadLink(backend.read_link(args, cred).await),
+        Nfs3Arguments::Read(args, data) => NfsRes::Read(backend.read(args, data, cred).await),
+        Nfs3Arguments::Write(args) => NfsRes::Write(backend.write(args, cred).await),
+        Nfs3Arguments::Create(args) => NfsRes::Create(backend.create(args, cred).await),
+        Nfs3Arguments::MkDir(args) => NfsRes::MkDir(backend.mk_dir(args, cred).await),
+        Nfs3Arguments::SymLink(args) => NfsRes::SymLink(backend.symlink(args, cred).await),
+        Nfs3Arguments::MkNod(args) => NfsRes::MkNod(backend.mk_node(args, cred).await),
+        Nfs3Arguments::Remove(args) => NfsRes::Remove(backend.remove(args, cred).await),
+        Nfs3Arguments::RmDir(args) => NfsRes::RmDir(backend.rm_dir(args, cred).await),
+        Nfs3Arguments::Rename(args) => NfsRes::Rename(backend.rename(args, cred).await),
+        Nfs3Arguments::Link(args) => NfsRes::Link(backend.link(args, cred).await),
+        Nfs3Arguments::ReadDir(args) => NfsRes::ReadDir(backend.read_dir(args, cred).await),
+        Nfs3Arguments::ReadDirPlus(args) => {
             NfsRes::ReadDirPlus(backend.read_dir_plus(args, cred).await)
         }
-        NfsArguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args, cred).await),
-        NfsArguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args, cred).await),
-        NfsArguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args, cred).await),
-        NfsArguments::Commit(args) => NfsRes::Commit(backend.commit(args, cred).await),
+        Nfs3Arguments::FsStat(args) => NfsRes::FsStat(backend.fs_stat(args, cred).await),
+        Nfs3Arguments::FsInfo(args) => NfsRes::FsInfo(backend.fs_info(args, cred).await),
+        Nfs3Arguments::PathConf(args) => NfsRes::PathConf(backend.path_conf(args, cred).await),
+        Nfs3Arguments::Commit(args) => NfsRes::Commit(backend.commit(args, cred).await),
     }
 }

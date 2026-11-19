@@ -31,6 +31,9 @@ pub struct NlmCommand<B: Buffer> {
     pub connection_id: ConnectionId,
 }
 
+/// Sender used to forward NLM commands to [`NlmTask`] by the task manager.
+pub type NlmTaskSender<B> = Sender<NlmCommand<B>>;
+
 /// The main task is to obtain/send nlm procedures.
 pub struct NlmTask<B, N>
 where

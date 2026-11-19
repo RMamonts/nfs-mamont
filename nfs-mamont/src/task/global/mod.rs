@@ -9,5 +9,6 @@
 
 pub mod manager;
 pub mod mount;
+pub mod nfsv4;
 pub mod nlm;
 pub mod vfs;
