@@ -20,10 +20,7 @@ use crate::context::ServerContext;
 use crate::limits::admission::Pass;
 use crate::limits::budget::InFlightReply;
 use crate::limits::connection::ConnectionLimits;
-use crate::task::connection::read::CommandSenders;
-use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsSender;
+use crate::task::global::manager::ManagerCommandSender;
 use crate::vfs::nfsv3::Vfs;
 
 mod read;
@@ -34,9 +31,7 @@ mod write;
 // Creates all connection tasks with their inner connections
 pub fn new<A, V, B>(
     socket: TcpStream,
-    mount_sender: async_channel::Sender<MountCommand<B>>,
-    nlm_sender: async_channel::Sender<NlmCommand<B>>,
-    vfs_sender: VfsSender<B>,
+    manager_sender: ManagerCommandSender<B>,
     context: &ServerContext<A, V, B>,
     pass: Pass,
 ) where
@@ -59,14 +54,12 @@ pub fn new<A, V, B>(
     let limits = context.limits();
     let connection_limits = ConnectionLimits::new(limits, result_sender, Some(pass.ticket));
 
-    let command_senders = CommandSenders::<B>::new(mount_sender, nlm_sender, vfs_sender);
-
     spawn_tasks(
         read::ReadTask::<A, B>::new(
             readhalf,
             client_id,
             context.get_allocator(),
-            command_senders,
+            manager_sender,
             connection_limits,
         ),
         write::WriteTask::<B>::new(writehalf, result_receiver, client_id, limits.write_timeout),

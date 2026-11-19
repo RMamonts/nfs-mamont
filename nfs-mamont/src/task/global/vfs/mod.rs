@@ -46,9 +46,6 @@ fn cost<B: Buffer>(proc: &NfsArguments<B>) -> u32 {
     1 + bytes.div_ceil(COST_UNIT)
 }
 
-/// Queues the procedures of one connection for the [`crate::ManagerTask`]
-pub type VfsSender<B> = drr_channel::FlowSender<VfsCommand<B>>;
-
 /// Backend a parsed procedure has to be executed against.
 enum Target {
     /// The procedure does not address any object, so no backend is needed.

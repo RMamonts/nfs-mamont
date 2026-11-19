@@ -5,8 +5,6 @@ use tokio::net::tcp::OwnedReadHalf;
 use tokio::task::AbortHandle;
 use tracing::{debug, error, warn};
 
-use async_channel::{SendError, Sender};
-
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::limits::connection::{ConnectionLimits, Expiry};
@@ -18,41 +16,22 @@ use crate::parser::{
     NlmArguments, ProcArguments,
 };
 use crate::rpc::{Error, ErrorWrapper};
+use crate::task::global::manager::{ManagerCommand, ManagerCommandSender};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::{VfsCommand, VfsSender};
+use crate::task::global::vfs::VfsCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::NfsRes;
 
-/// Wrapper for NLM, NFS, mount command senders.
-pub struct CommandSenders<B: Buffer + 'static> {
-    /// To send messages into mount task.
-    mount_sender: Sender<MountCommand<B>>,
-    /// To send command into nlm task.
-    nlm_sender: Sender<NlmCommand<B>>,
-    /// To pass command into vfs task.
-    pool_sender: VfsSender<B>,
-}
-
-impl<B: Buffer + 'static> CommandSenders<B> {
-    pub fn new(
-        mount_sender: Sender<MountCommand<B>>,
-        nlm_sender: Sender<NlmCommand<B>>,
-        pool_sender: VfsSender<B>,
-    ) -> Self {
-        Self { mount_sender, nlm_sender, pool_sender }
-    }
-}
-
 /// Reads RPC commands from a network connection, parses them,
-/// and forwards to [`super::super::global::vfs::VfsTask`] or other global tasks.
+/// and forwards to [`super::super::global::manager::ManagerTask`].
 pub struct ReadTask<
     A: Allocator + Send + Sync + 'static,
     B: Buffer + 'static = <A as Allocator>::Buffer,
 > {
     readhalf: OwnedReadHalf,
     client_id: ConnectionId,
-    command_senders: CommandSenders<B>,
+    manager_sender: ManagerCommandSender<B>,
     allocator: Arc<A>,
     /// Limits of the connection, see [`crate::limits`].
     limits: ConnectionLimits<B>,
@@ -68,10 +47,10 @@ where
         readhalf: OwnedReadHalf,
         client_id: ConnectionId,
         allocator: Arc<A>,
-        command_senders: CommandSenders<B>,
+        manager_sender: ManagerCommandSender<B>,
         limits: ConnectionLimits<B>,
     ) -> Self {
-        Self { readhalf, client_id, allocator, command_senders, limits }
+        Self { readhalf, client_id, manager_sender, allocator, limits }
     }
 
     /// Spawns a [`ReadTask`]  that reads commands from a socket.
@@ -141,11 +120,14 @@ where
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="NFS", proc="NON_NULL", "rpc dispatch");
                     self.limits.charge(&mut result_tx, &proc);
-                    // Parsed before the pool's slot is taken, so that an idle connection
-                    // holds no slot.
-                    let command = VfsCommand { args: NfsArgWrapper { header, proc }, result_tx };
-                    if let Err(command) = self.command_senders.pool_sender.send(command).await {
-                        return command.result_tx.broken_pipe(xid).await;
+                    // Parsed before the manager's slot is taken, so that an idle
+                    // connection holds no slot.
+                    let command = ManagerCommand::Nfs(VfsCommand {
+                        args: NfsArgWrapper { header, proc },
+                        result_tx,
+                    });
+                    if let Err(command) = self.manager_sender.send(command).await {
+                        return broken_pipe(command).await;
                     }
                 }
 
@@ -166,31 +148,27 @@ where
                 Ok(ArgWrapper { proc: ProcArguments::Mount(proc), header }) => {
                     let xid = header.xid;
                     debug!(client=%self.client_id.into_inner(), xid, program="MOUNT", proc="NON_NULL", "rpc dispatch");
-                    let command = MountCommand {
+                    let command = ManagerCommand::Mount(MountCommand {
                         result_tx,
                         args: MountArgWrapper { header, proc },
                         connection_id: self.client_id,
-                    };
-                    if let Err(SendError(command)) =
-                        self.command_senders.mount_sender.send(command).await
-                    {
-                        return command.result_tx.broken_pipe(xid).await;
+                    });
+                    if let Err(command) = self.manager_sender.send(command).await {
+                        return broken_pipe(command).await;
                     }
                 }
 
                 Ok(ArgWrapper { proc: ProcArguments::Nlm4(proc), header }) => {
                     let xid = header.xid;
-                    debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NLM", proc="NON_NULL", "rpc dispatch");
-                    let command = NlmCommand {
+                    debug!(client=%self.client_id.into_inner(), xid, program="NLM", proc="NON_NULL", "rpc dispatch");
+                    let command = ManagerCommand::Nlm(NlmCommand {
                         result_sender: result_tx,
                         args: NlmArgWrapper { header, proc },
                         connection_id: self.client_id,
-                    };
+                    });
 
-                    if let Err(SendError(command)) =
-                        self.command_senders.nlm_sender.send(command).await
-                    {
-                        return command.result_sender.broken_pipe(xid).await;
+                    if let Err(command) = self.manager_sender.send(command).await {
+                        return broken_pipe(command).await;
                     }
                 }
 
@@ -214,6 +192,25 @@ where
                     return Err(io::Error::from(io::ErrorKind::Other));
                 }
             }
+        }
+    }
+}
+
+/// Fails the request with a `BrokenPipe` because the task manager is gone (the server is
+/// shutting down); every command carries its own reply channel, whichever protocol it is.
+async fn broken_pipe<B: Buffer>(command: ManagerCommand<B>) -> io::Result<()> {
+    match command {
+        ManagerCommand::Nfs(command) => {
+            let xid = command.args.header.xid;
+            command.result_tx.broken_pipe(xid).await
+        }
+        ManagerCommand::Mount(command) => {
+            let xid = command.args.header.xid;
+            command.result_tx.broken_pipe(xid).await
+        }
+        ManagerCommand::Nlm(command) => {
+            let xid = command.args.header.xid;
+            command.result_sender.broken_pipe(xid).await
         }
     }
 }

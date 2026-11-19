@@ -31,7 +31,7 @@ use crate::limits::admission::Admission;
 use crate::mount::Mount;
 use crate::nlm::Nlm;
 use crate::task::connection;
-use crate::task::global::manager::ManagerTask;
+use crate::task::global::manager::{ManagerCommand, ManagerTask};
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::task::global::vfs::VfsManager;
@@ -66,9 +66,10 @@ where
     nlm_task.spawn();
 
     // TODO: use ddr_channel with mpsc version (not mpms as current do)
-    let (sender, receiver) = drr_channel::channel(context.limits().max_pending, VFS_QUANTUM);
+    let (sender, receiver) =
+        drr_channel::channel::<ManagerCommand<B>>(context.limits().max_pending, VFS_QUANTUM);
 
-    let (manager_task, manager_recv) = ManagerTask::new(receiver);
+    let (manager_task, manager_recv) = ManagerTask::new(receiver, mount_sender, nlm_sender);
     manager_task.spawn();
     // Dropped when the server stops, which closes the pool's queues.
     VfsManager::spawn_vfs_tasks(context.backends(), manager_recv, context.limits());
@@ -94,14 +95,7 @@ where
             accepted = admission.accept(&listener) => {
                 match accepted {
                     Ok((socket, pass)) => {
-                        connection::new(
-                            socket,
-                            mount_sender.clone(),
-                            nlm_sender.clone(),
-                            sender.flow(),
-                            &context,
-                            pass,
-                        );
+                        connection::new(socket, sender.flow(), &context, pass);
                     }
                     Err(err) if is_fatal_accept_error(&err) => break Err(err),
                     Err(err) => {

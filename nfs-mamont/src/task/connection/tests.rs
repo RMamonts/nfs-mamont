@@ -7,7 +7,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use async_channel::Receiver;
 use drr_channel::Slot;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
@@ -23,12 +22,11 @@ use crate::consts::rpc::{HEADER_MASK, RPC_VERSION};
 use crate::limits::connection::ConnectionLimits;
 use crate::limits::probation::{Probation, Ticket};
 use crate::limits::{self, Limits};
-use crate::task::connection::read::{CommandSenders, ReadTask};
+use crate::task::connection::read::ReadTask;
 use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
-use crate::task::global::mount::MountCommand;
-use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::{VfsCommand, VfsSender};
+use crate::task::global::manager::{ManagerCommand, ManagerCommandSender};
+use crate::task::global::vfs::VfsCommand;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::NfsRes;
 
@@ -112,9 +110,6 @@ fn read_frame(xid: u32) -> Vec<u8> {
 struct Connection {
     // Dropped to hang up.
     _client: TcpStream,
-    // Kept open so that the read task could still queue MOUNT and NLM commands.
-    _mount_rx: Receiver<MountCommand<TestBuffer>>,
-    _nlm_rx: Receiver<NlmCommand<TestBuffer>>,
 }
 
 struct Pipeline {
@@ -125,13 +120,13 @@ struct Pipeline {
 /// The VFS pool of a test: the queues of its connections, read by the test instead of
 /// the workers, behind `max_pending` slots.
 struct Pool {
-    sender: drr_channel::Sender<VfsCommand<TestBuffer>>,
-    receiver: drr_channel::Receiver<VfsCommand<TestBuffer>>,
+    sender: drr_channel::Sender<ManagerCommand<TestBuffer>>,
+    receiver: drr_channel::Receiver<ManagerCommand<TestBuffer>>,
 }
 
 impl Pool {
     /// Opens the queue of a new connection.
-    fn sender(&self) -> VfsSender<TestBuffer> {
+    fn sender(&self) -> ManagerCommandSender<TestBuffer> {
         self.sender.flow()
     }
 
@@ -147,7 +142,7 @@ impl Pool {
     }
 
     /// Takes the next command, in the order the workers would.
-    async fn recv(&self) -> (VfsCommand<TestBuffer>, Slot) {
+    async fn recv(&self) -> (ManagerCommand<TestBuffer>, Slot) {
         self.receiver.recv().await.unwrap()
     }
 }
@@ -212,15 +207,13 @@ async fn flooded_pipeline(
 
 /// Starts a connection queueing into `pool` and sends it `setup.calls` calls, with xids
 /// from `setup.first_xid` on.
-async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connection {
+async fn flooded_connection(pool: ManagerCommandSender<TestBuffer>, setup: Setup) -> Connection {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (client, accepted) = tokio::join!(TcpStream::connect(addr), listener.accept());
     let (socket, _) = accepted.unwrap();
     let (readhalf, writehalf) = socket.into_split();
 
-    let (mount_tx, _mount_rx) = async_channel::unbounded();
-    let (nlm_tx, _nlm_rx) = async_channel::unbounded();
     let (result_tx, result_rx) = async_channel::unbounded();
     let limits = Limits {
         max_in_flight: NonZeroUsize::new(LIMIT).unwrap(),
@@ -229,7 +222,6 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
         ..limits::defaults(NonZeroUsize::MIN, None)
     };
     let connection_limits = ConnectionLimits::new(&limits, result_tx, setup.probation);
-    let senders = CommandSenders::new(mount_tx, nlm_tx, pool);
 
     if !setup.client_reads {
         fill_send_buffer(&writehalf).await;
@@ -237,7 +229,7 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
     let client_id = ConnectionId::new(addr);
     let allocator = Arc::new(TestAllocator);
     spawn_tasks(
-        ReadTask::new(readhalf, client_id, allocator, senders, connection_limits),
+        ReadTask::new(readhalf, client_id, allocator, pool, connection_limits),
         WriteTask::new(writehalf, result_rx, client_id, setup.write_timeout),
         setup.permit,
     );
@@ -246,13 +238,15 @@ async fn flooded_connection(pool: VfsSender<TestBuffer>, setup: Setup) -> Connec
     let xids = setup.first_xid..setup.first_xid + setup.calls;
     client.write_all(&xids.flat_map(setup.call).collect::<Vec<_>>()).await.unwrap();
 
-    Connection { _client: client, _mount_rx, _nlm_rx }
+    Connection { _client: client }
 }
 
 /// Answers the oldest queued command; returns its xid.
 async fn answer_one(pool_rx: &Pool) -> u32 {
     // The slot of `max_pending` is held until the reply is queued, as the workers do.
-    let (VfsCommand { args, result_tx }, _slot) = pool_rx.recv().await;
+    let ManagerCommand::Nfs(VfsCommand { args, result_tx }) = pool_rx.recv().await.0 else {
+        unreachable!("tests only queue NFS commands");
+    };
     let xid = args.header.xid;
     let reply = ProcReply { xid, proc_result: Ok(ProcResult::Nfs3(Box::new(NfsRes::Null))) };
     result_tx.send(reply).await.unwrap();
