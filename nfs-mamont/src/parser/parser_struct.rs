@@ -44,7 +44,7 @@ use crate::parser::primitive::{u32, u32_as_usize};
 use crate::parser::read_buffer::FrameReader;
 use crate::parser::rpc::{auth, authsys_parms, RpcMessage};
 use crate::parser::{
-    proc_nested_errors, ArgWrapper, MountArguments, NfsArguments, NlmArguments, ProcArguments,
+    proc_nested_errors, ArgWrapper, MountArguments, Nfs3Arguments, NlmArguments, ProcArguments,
     RpcHeader,
 };
 use crate::rpc;
@@ -305,34 +305,34 @@ impl<A: Allocator, S: AsyncRead + Unpin> RpcParser<A, S> {
     async fn parse_nfs_proc(
         &mut self,
         procedure: NfsProc,
-    ) -> parser::Result<NfsArguments<A::Buffer>> {
+    ) -> parser::Result<Nfs3Arguments<A::Buffer>> {
         let src = &mut self.reader;
         let args = match procedure {
-            NfsProc::Null => NfsArguments::Null,
-            NfsProc::GetAttr => NfsArguments::GetAttr(get_attr::args(src)?),
-            NfsProc::SetAttr => NfsArguments::SetAttr(set_attr::args(src)?),
-            NfsProc::LookUp => NfsArguments::LookUp(lookup::args(src)?),
-            NfsProc::Access => NfsArguments::Access(access::args(src)?),
-            NfsProc::ReadLink => NfsArguments::ReadLink(read_link::args(src)?),
+            NfsProc::Null => Nfs3Arguments::Null,
+            NfsProc::GetAttr => Nfs3Arguments::GetAttr(get_attr::args(src)?),
+            NfsProc::SetAttr => Nfs3Arguments::SetAttr(set_attr::args(src)?),
+            NfsProc::LookUp => Nfs3Arguments::LookUp(lookup::args(src)?),
+            NfsProc::Access => Nfs3Arguments::Access(access::args(src)?),
+            NfsProc::ReadLink => Nfs3Arguments::ReadLink(read_link::args(src)?),
             NfsProc::Read => {
                 let (args, data) = adapter_for_read(&self.allocator, src).await?;
-                NfsArguments::Read(args, data)
+                Nfs3Arguments::Read(args, data)
             }
-            NfsProc::Write => NfsArguments::Write(adapter_for_write(&self.allocator, src).await?),
-            NfsProc::Create => NfsArguments::Create(create::args(src)?),
-            NfsProc::MkDir => NfsArguments::MkDir(mk_dir::args(src)?),
-            NfsProc::SymLink => NfsArguments::SymLink(symlink::args(src)?),
-            NfsProc::MkNod => NfsArguments::MkNod(mk_node::args(src)?),
-            NfsProc::Remove => NfsArguments::Remove(remove::args(src)?),
-            NfsProc::RmDir => NfsArguments::RmDir(rm_dir::args(src)?),
-            NfsProc::Rename => NfsArguments::Rename(rename::args(src)?),
-            NfsProc::Link => NfsArguments::Link(link::args(src)?),
-            NfsProc::ReadDir => NfsArguments::ReadDir(read_dir::args(src)?),
-            NfsProc::ReadDirPlus => NfsArguments::ReadDirPlus(read_dir_plus::args(src)?),
-            NfsProc::FsStat => NfsArguments::FsStat(fs_stat::args(src)?),
-            NfsProc::FsInfo => NfsArguments::FsInfo(fs_info::args(src)?),
-            NfsProc::PathConf => NfsArguments::PathConf(path_conf::args(src)?),
-            NfsProc::Commit => NfsArguments::Commit(commit::args(src)?),
+            NfsProc::Write => Nfs3Arguments::Write(adapter_for_write(&self.allocator, src).await?),
+            NfsProc::Create => Nfs3Arguments::Create(create::args(src)?),
+            NfsProc::MkDir => Nfs3Arguments::MkDir(mk_dir::args(src)?),
+            NfsProc::SymLink => Nfs3Arguments::SymLink(symlink::args(src)?),
+            NfsProc::MkNod => Nfs3Arguments::MkNod(mk_node::args(src)?),
+            NfsProc::Remove => Nfs3Arguments::Remove(remove::args(src)?),
+            NfsProc::RmDir => Nfs3Arguments::RmDir(rm_dir::args(src)?),
+            NfsProc::Rename => Nfs3Arguments::Rename(rename::args(src)?),
+            NfsProc::Link => Nfs3Arguments::Link(link::args(src)?),
+            NfsProc::ReadDir => Nfs3Arguments::ReadDir(read_dir::args(src)?),
+            NfsProc::ReadDirPlus => Nfs3Arguments::ReadDirPlus(read_dir_plus::args(src)?),
+            NfsProc::FsStat => Nfs3Arguments::FsStat(fs_stat::args(src)?),
+            NfsProc::FsInfo => Nfs3Arguments::FsInfo(fs_info::args(src)?),
+            NfsProc::PathConf => Nfs3Arguments::PathConf(path_conf::args(src)?),
+            NfsProc::Commit => Nfs3Arguments::Commit(commit::args(src)?),
         };
         Ok(args)
     }

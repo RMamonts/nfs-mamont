@@ -26,7 +26,7 @@ use crate::task::connection::read::ReadTask;
 use crate::task::connection::spawn_tasks;
 use crate::task::connection::write::WriteTask;
 use crate::task::global::manager::{ManagerCommand, ManagerCommandSender};
-use crate::task::global::vfs::VfsCommand;
+use crate::task::global::vfs::Nfs3Command;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::NfsRes;
 
@@ -244,7 +244,7 @@ async fn flooded_connection(pool: ManagerCommandSender<TestBuffer>, setup: Setup
 /// Answers the oldest queued command; returns its xid.
 async fn answer_one(pool_rx: &Pool) -> u32 {
     // The slot of `max_pending` is held until the reply is queued, as the workers do.
-    let ManagerCommand::Nfs(VfsCommand { args, result_tx }) = pool_rx.recv().await.0 else {
+    let ManagerCommand::Nfs(Nfs3Command { args, result_tx }) = pool_rx.recv().await.0 else {
         unreachable!("tests only queue NFS commands");
     };
     let xid = args.header.xid;

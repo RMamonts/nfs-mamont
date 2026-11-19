@@ -10,7 +10,7 @@ use crate::consts::xdr::padding_len;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::tests::allocator::MockAllocator;
 use crate::parser::tests::socket::MockSocket;
-use crate::parser::{ArgWrapper, MountArguments, NfsArguments, ProcArguments, RpcHeader};
+use crate::parser::{ArgWrapper, MountArguments, Nfs3Arguments, ProcArguments, RpcHeader};
 use crate::rpc::auth::{AuthStat, AuthSysParams, Credential};
 use crate::rpc::{
     AcceptStat, AuthFlavor, Error, ErrorWrapper, OpaqueAuth, RejectedReply, ReplyBody, RpcBody,
@@ -225,8 +225,8 @@ fn write_args(arg: &WriteWrapper) -> Vec<u8> {
 }
 
 /// Helper to assert parsed FSSTAT arguments are as expected.
-fn assert_fsstat_result(result: &NfsArguments<impl Buffer>, expected_root: &[u8]) {
-    let NfsArguments::FsStat(args) = result else {
+fn assert_fsstat_result(result: &Nfs3Arguments<impl Buffer>, expected_root: &[u8]) {
+    let Nfs3Arguments::FsStat(args) = result else {
         panic!("Wrong NFS argument type");
     };
     assert_eq!(*args.root.as_bytes(), expected_root);
@@ -241,10 +241,10 @@ fn assert_fsstat_proc_result(result: &ProcArguments<impl Buffer>, expected_root:
 
 /// Helper to assert parsed WRITE arguments are as expected.
 fn assert_write_result<B: Buffer + PartialEq<[u8]> + std::fmt::Debug>(
-    result: &NfsArguments<B>,
+    result: &Nfs3Arguments<B>,
     expected_write: &WriteWrapper,
 ) {
-    let NfsArguments::Write(args) = result else {
+    let Nfs3Arguments::Write(args) = result else {
         panic!("Wrong NFS argument type");
     };
     assert_eq!(expected_write.part.size, args.size);

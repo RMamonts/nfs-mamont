@@ -3,8 +3,9 @@ use drr_channel::{Cost, Receiver, Slot};
 use crate::allocator::Buffer;
 use crate::op_context::nfsv4::ClientContext;
 use crate::task::global::mount::{MountCommand, MountTaskSender};
+use crate::task::global::nfsv4::Nfsv4Command;
 use crate::task::global::nlm::nlm_task::{NlmCommand, NlmTaskSender};
-use crate::task::global::vfs::VfsCommand;
+use crate::task::global::vfs::Nfs3Command;
 
 pub type ManagerTaskSender<B> = async_channel::Sender<ManagerMessage<B>>;
 pub type ManagerTaskReceiver<B> = async_channel::Receiver<ManagerMessage<B>>;
@@ -15,11 +16,14 @@ pub type ManagerTaskReceiver<B> = async_channel::Receiver<ManagerMessage<B>>;
 /// them, so that the manager owns the senders to every protocol handler.
 pub enum ManagerCommand<B: Buffer> {
     /// An NFSv3 procedure forwarded to the VFS pool.
-    Nfs(VfsCommand<B>),
+    Nfs(Nfs3Command<B>),
     /// A MOUNT procedure forwarded to the mount task.
     Mount(MountCommand<B>),
     /// An NLMv4 procedure forwarded to the NLM task.
     Nlm(NlmCommand<B>),
+    /// An NFSv4 procedure forwarded to the NFSv4 task (not yet handled).
+    #[allow(unused)]
+    Nfsv4(Nfsv4Command<B>),
 }
 
 /// Flow sender of [`ManagerCommand`]: one flow per connection.
@@ -29,14 +33,14 @@ impl<B: Buffer> Cost for ManagerCommand<B> {
     fn cost(&self) -> u32 {
         match self {
             Self::Nfs(command) => command.cost(),
-            Self::Mount(_) | Self::Nlm(_) => 1,
+            Self::Mount(_) | Self::Nlm(_) | Self::Nfsv4(_) => 1,
         }
     }
 }
 
 /// NFS command handed to the VFS pool workers together with the slot of its queue spot.
 pub struct ManagerMessage<B: Buffer> {
-    pub command: VfsCommand<B>,
+    pub command: Nfs3Command<B>,
     pub slot: Slot,
 }
 
@@ -92,6 +96,11 @@ where
                     if let Err(command) = self.nlm_sender.send(command).await {
                         let _ = command.0.result_sender.broken_pipe(xid).await;
                     }
+                    drop(slot);
+                }
+                ManagerCommand::Nfsv4(command) => {
+                    // TODO: handle nfsv4
+                    let _ = command;
                     drop(slot);
                 }
             }

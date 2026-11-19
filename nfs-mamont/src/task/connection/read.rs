@@ -12,14 +12,14 @@ use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
 use crate::parser::{
-    ArgWrapper, MountArgWrapper, MountArguments, NfsArgWrapper, NfsArguments, NlmArgWrapper,
+    ArgWrapper, MountArgWrapper, MountArguments, Nfs3ArgWrapper, Nfs3Arguments, NlmArgWrapper,
     NlmArguments, ProcArguments,
 };
 use crate::rpc::{Error, ErrorWrapper};
 use crate::task::global::manager::{ManagerCommand, ManagerCommandSender};
 use crate::task::global::mount::MountCommand;
 use crate::task::global::nlm::nlm_task::NlmCommand;
-use crate::task::global::vfs::VfsCommand;
+use crate::task::global::vfs::Nfs3Command;
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::NfsRes;
 
@@ -93,7 +93,7 @@ where
 
             match message {
                 Ok(ArgWrapper { proc: ProcArguments::Nfs3(proc), header })
-                    if matches!(*proc, NfsArguments::Null) =>
+                    if matches!(*proc, Nfs3Arguments::Null) =>
                 {
                     debug!(client=%self.client_id.into_inner(), xid=header.xid, program="NFS", proc="NULL", "rpc dispatch");
                     let result = ProcReply {
@@ -122,8 +122,8 @@ where
                     self.limits.charge(&mut result_tx, &proc);
                     // Parsed before the manager's slot is taken, so that an idle
                     // connection holds no slot.
-                    let command = ManagerCommand::Nfs(VfsCommand {
-                        args: NfsArgWrapper { header, proc },
+                    let command = ManagerCommand::Nfs(Nfs3Command {
+                        args: Nfs3ArgWrapper { header, proc },
                         result_tx,
                     });
                     if let Err(command) = self.manager_sender.send(command).await {
@@ -211,6 +211,10 @@ async fn broken_pipe<B: Buffer>(command: ManagerCommand<B>) -> io::Result<()> {
         ManagerCommand::Nlm(command) => {
             let xid = command.args.header.xid;
             command.result_sender.broken_pipe(xid).await
+        }
+        ManagerCommand::Nfsv4(command) => {
+            // TODO: handle nfsv4
+            command.result_tx.broken_pipe(0).await
         }
     }
 }

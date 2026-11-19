@@ -56,11 +56,11 @@ pub struct RpcHeader {
     pub cred: Credential,
 }
 
-/// Wrapper for NFS procedure arguments along with the parsed RPC header.
+/// Wrapper for NFSv3 procedure arguments along with the parsed RPC header.
 /// Used to pass fully decoded request data into NFS service handlers.
-pub struct NfsArgWrapper<B: Buffer> {
+pub struct Nfs3ArgWrapper<B: Buffer> {
     pub header: RpcHeader,
-    pub proc: Box<NfsArguments<B>>,
+    pub proc: Box<Nfs3Arguments<B>>,
 }
 
 /// Wrapper for MOUNT protocol procedure arguments along with the RPC header.
@@ -87,13 +87,13 @@ pub struct ArgWrapper<B: Buffer> {
 /// This is used by generic message consumers (for example, read tasks) that
 /// accept NFSv3, MOUNT and NLM calls from the same connection.
 pub enum ProcArguments<B: Buffer> {
-    Nfs3(Box<NfsArguments<B>>),
+    Nfs3(Box<Nfs3Arguments<B>>),
     Mount(Box<MountArguments>),
     Nlm4(Box<NlmArguments>),
 }
 
-/// Enumerates supported NFS protocol procedure arguments.
-pub enum NfsArguments<B: Buffer> {
+/// Enumerates supported NFSv3 protocol procedure arguments.
+pub enum Nfs3Arguments<B: Buffer> {
     /// Null operation arguments.
     Null,
     /// Arguments for the [`get_attr`] operation.
@@ -141,7 +141,7 @@ pub enum NfsArguments<B: Buffer> {
     Commit(commit::Args),
 }
 
-impl<B: Buffer> NfsArguments<B> {
+impl<B: Buffer> Nfs3Arguments<B> {
     /// Static label for logging/tracing for the given procedure variant.
     pub fn get_name(&self) -> &'static str {
         match self {
