@@ -31,13 +31,13 @@ use crate::limits::admission::Admission;
 use crate::mount::Mount;
 use crate::nlm::Nlm;
 use crate::task::connection;
-use crate::task::global::manager::{ManagerCommand, ManagerTask};
+use crate::task::global::manager::{ManagerCommand, ManagerMessage, ManagerTask};
 use crate::task::global::mount::MountTask;
 use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::task::global::vfs::VfsManager;
 use crate::vfs::nfsv3::Vfs;
 
-use crate::task::global::manager::compound_processor::CompoundProcessor;
+use crate::task::global::manager::compound_processor::Nfsv4Processor;
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
@@ -70,15 +70,16 @@ where
     let (sender, receiver) =
         drr_channel::channel::<ManagerCommand<B>>(context.limits().max_pending, VFS_QUANTUM);
 
-    let (manager_task, manager_recv, comp_recv) =
-        ManagerTask::new(receiver, mount_sender, nlm_sender);
+    let (worker_sender, worker_recv) = async_channel::unbounded::<ManagerMessage<B>>();
+    let (manager_task, comp_recv) =
+        ManagerTask::new(receiver, mount_sender, nlm_sender, worker_sender.clone());
     manager_task.spawn();
     // max amount of compound requests to be processed in parallel
     let compound_depth = context.limits().max_in_flight.get();
-    let compound_proc = CompoundProcessor::new(compound_depth, comp_recv);
+    let compound_proc = Nfsv4Processor::new(compound_depth, comp_recv, worker_sender);
     compound_proc.spawn();
     // Dropped when the server stops, which closes the pool's queues.
-    VfsManager::spawn_vfs_tasks(context.backends(), manager_recv, context.limits());
+    VfsManager::spawn_vfs_tasks(context.backends(), worker_recv, context.limits());
 
     // Publish the NFS/MOUNT/NLM services to the local rpcbind
     let port = listener.local_addr()?.port();
