@@ -4,9 +4,10 @@
 //! provides the argument and result types for that operation. Types shared
 //! across several operations are placed in the `file` module.
 
-use num_derive::{FromPrimitive, ToPrimitive};
-
 use crate::consts::nfsv4::NFS4_VERIFIER_SIZE;
+use crate::vfs::nfsv4::compound::{OperationRes, Tag};
+use crate::Buffer;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 pub mod access;
 pub mod close;
@@ -58,8 +59,6 @@ pub const STATUS_OK: u32 = 0;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 #[repr(u32)]
 pub enum Error {
-    /// NFS4_OK - successful execution of the operation.
-    Ok = 0,
     /// NFS4ERR_PERM - not owner.
     Permission = 1,
     /// NFS4ERR_NOENT - no such file or directory.
@@ -193,6 +192,11 @@ pub enum Error {
     AdminRevoked = 10047,
     /// NFS4ERR_CB_PATH_DOWN - the callback path is down.
     CallbackPathDown = 10048,
+}
+
+pub enum NfsRes<B: Buffer> {
+    Null,
+    Compound { tag: Tag, status: Result<(), Error>, result_array: Vec<OperationRes<B>> },
 }
 
 /// A write verifier (`verifier4`).
