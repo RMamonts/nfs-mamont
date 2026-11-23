@@ -14,14 +14,15 @@ use metrics::{
 use tokio::task::AbortHandle;
 use tokio_metrics::{TaskMetricsReporterBuilder, TaskMonitor};
 
+use crate::metric::consts::SAMPLE_EVERY_GAUGE;
+use crate::metric::{Stage, TaskKind};
+use crate::vfs::file::BackendId;
+
 use super::consts::{
     CPU_SECONDS, DURATION_SECONDS, PROC_NAMES, REQUESTS_TOTAL, SAMPLE_EVERY, STAGE_SECONDS,
     SYSCALL_SECONDS, TOKIO_SAMPLING_INTERVAL, VFS_IN_FLIGHT, WAIT_SECONDS,
 };
 use super::io::{IoStats, IoTimer};
-use crate::metric::consts::SAMPLE_EVERY_GAUGE;
-use crate::metric::{Stage, TaskKind};
-use crate::vfs::file::BackendId;
 
 /// Reply metrics of one NFSv3 procedure.
 struct ReplyMetrics {
