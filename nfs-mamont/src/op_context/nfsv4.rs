@@ -15,16 +15,17 @@ use crate::Buffer;
 /// procedure and threaded through the execution of the operations.
 #[allow(dead_code)]
 pub struct CompoundContext<B: Buffer> {
+    pub xid: u32,
     /// Client-supplied tag echoed back in the compound result.
-    tag: compound::Tag,
+    pub tag: compound::Tag,
     /// Authenticated identity of the caller.
-    credentials: Credential,
+    pub credentials: Credential,
     /// Current file handle, `None` before one is established.
-    current: Option<Handle>,
+    pub current: Option<Handle>,
     /// Saved file handle, populated and cleared by SAVEFH/RESTOREFH.
-    saved: Option<Handle>,
+    pub saved: Option<Handle>,
     /// Operations of the compound in execution order.
-    ops: VecDeque<compound::OperationArgs<B>>,
+    pub ops: VecDeque<compound::OperationArgs<B>>,
 }
 
 impl<B: Buffer> CompoundContext<B> {
@@ -32,11 +33,12 @@ impl<B: Buffer> CompoundContext<B> {
     ///
     /// `tag`, `credentials`, and `ops` are taken from the decoded request.
     pub fn new(
+        xid: u32,
         tag: compound::Tag,
         credentials: Credential,
         ops: VecDeque<compound::OperationArgs<B>>,
     ) -> Self {
-        CompoundContext { tag, credentials, current: None, saved: None, ops }
+        CompoundContext { xid, tag, credentials, current: None, saved: None, ops }
     }
 
     /// Returns the authenticated caller identity.

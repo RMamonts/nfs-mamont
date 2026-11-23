@@ -13,7 +13,7 @@ use crate::limits::budget::ReplySender;
 use crate::limits::Limits;
 use crate::parser::{Nfs3ArgWrapper, Nfs3Arguments};
 use crate::rpc::auth::Credential;
-use crate::task::global::manager::ManagerTaskReceiver;
+use crate::task::global::manager::{ManagerMessage, ManagerTaskReceiver};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::file::BackendId;
 use crate::vfs::nfsv3::{self, NfsRes, Vfs};
@@ -255,9 +255,17 @@ where
     /// and sending replies.
     async fn run(self) {
         while let Ok(command) = self.receiver.recv().await {
-            dispatch(&self.backends, command.command).await;
-            // Held until the reply is queued, then goes to the next procedure.
-            drop(command.slot);
+            // TODO: move to dispatch, when there is actual handle for nfsv4
+            match command {
+                ManagerMessage::NFSv3 { cmd, slot } => {
+                    dispatch(&self.backends, cmd).await;
+                    // Held until the reply is queued, then goes to the next procedure.
+                    drop(slot);
+                }
+                ManagerMessage::NFSv4(_) => {
+                    unimplemented!()
+                }
+            }
         }
     }
 }

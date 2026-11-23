@@ -37,6 +37,7 @@ use crate::task::global::nlm::nlm_task::NlmTask;
 use crate::task::global::vfs::VfsManager;
 use crate::vfs::nfsv3::Vfs;
 
+use crate::task::global::manager::compound_processor::CompoundProcessor;
 pub use allocator::{Allocator, Buffer};
 pub use backend::BackendRegistry;
 pub use context::ServerContext;
@@ -69,8 +70,13 @@ where
     let (sender, receiver) =
         drr_channel::channel::<ManagerCommand<B>>(context.limits().max_pending, VFS_QUANTUM);
 
-    let (manager_task, manager_recv) = ManagerTask::new(receiver, mount_sender, nlm_sender);
+    let (manager_task, manager_recv, comp_recv) =
+        ManagerTask::new(receiver, mount_sender, nlm_sender);
     manager_task.spawn();
+    // max amount of compound requests to be processed in parallel
+    let compound_depth = context.limits().max_in_flight.get();
+    let compound_proc = CompoundProcessor::new(compound_depth, comp_recv);
+    compound_proc.spawn();
     // Dropped when the server stops, which closes the pool's queues.
     VfsManager::spawn_vfs_tasks(context.backends(), manager_recv, context.limits());
 

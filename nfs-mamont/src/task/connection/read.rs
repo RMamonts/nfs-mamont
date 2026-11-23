@@ -122,7 +122,7 @@ where
                     self.limits.charge(&mut result_tx, &proc);
                     // Parsed before the manager's slot is taken, so that an idle
                     // connection holds no slot.
-                    let command = ManagerCommand::Nfs(Nfs3Command {
+                    let command = ManagerCommand::Nfsv3(Nfs3Command {
                         args: Nfs3ArgWrapper { header, proc },
                         result_tx,
                     });
@@ -200,7 +200,7 @@ where
 /// shutting down); every command carries its own reply channel, whichever protocol it is.
 async fn broken_pipe<B: Buffer>(command: ManagerCommand<B>) -> io::Result<()> {
     match command {
-        ManagerCommand::Nfs(command) => {
+        ManagerCommand::Nfsv3(command) => {
             let xid = command.args.header.xid;
             command.result_tx.broken_pipe(xid).await
         }
