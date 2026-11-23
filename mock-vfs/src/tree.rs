@@ -174,7 +174,7 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use nfs_mamont::vfs::file::Handle;
+    use nfs_mamont::vfs::file::{BackendId, Handle};
 
     use super::{Kind, Layout, ObjectId};
 
@@ -217,9 +217,10 @@ mod tests {
     #[test]
     fn handle_round_trips_and_keeps_the_backend() {
         let id = ObjectId::ROOT.child("dir_1").child("file_7");
-        let handle: Handle = id.handle(5);
+        let backend = BackendId::new(5, 0);
+        let handle: Handle = id.handle(backend);
 
-        assert_eq!(handle.backend_id(), 5);
+        assert_eq!(handle.backend_id(), backend);
         assert_eq!(ObjectId::from_handle(&handle), id);
     }
 

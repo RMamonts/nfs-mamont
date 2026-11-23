@@ -1,6 +1,7 @@
 //! End-to-end tests: a real server in-process, the real parser and serializer on the
 //! wire, and the client of this crate talking to them.
 
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
 use mock_vfs::client::{self, mount, nfs, Connection};
@@ -18,6 +19,8 @@ async fn start(latency: Duration) -> Server {
             dirs_per_dir: 2,
             ..MockVfsConfig::default()
         },
+        buf_size: NonZeroUsize::new(64 << 10).expect("non-zero constant"),
+        buf_count: NonZeroUsize::new(16).expect("non-zero constant"),
         ..ServerConfig::default()
     };
 
@@ -35,7 +38,7 @@ async fn connect_and_mount(server: &Server) -> (Connection, Vec<u8>) {
 async fn mount_lookup_read_write_over_the_wire() {
     let server = start(Duration::ZERO).await;
     let (mut conn, root) = connect_and_mount(&server).await;
-    assert_eq!(root[0], server.backend_id(), "root handle carries the backend id");
+    assert_eq!(root[0], server.backend_id().slot(), "root handle carries the backend id");
 
     let file = nfs::lookup(&mut conn, &root, "file_0").await.unwrap();
     let attr = file.attr.expect("LOOKUP returns attributes");

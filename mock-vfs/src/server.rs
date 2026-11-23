@@ -1,6 +1,6 @@
 //! Runs an NFS Mamont server backed by [`MockVfs`].
 //!
-//! The wiring is the one a real deployment uses: an [`Impl`] allocator, a
+//! The wiring is the one a real deployment uses: a [`PoolAllocator`] allocator, a
 //! [`ServerContext`] with the mock attached as a backend, the library
 //! [`MountService`] exporting the mock root and the library [`NlmService`].
 
@@ -12,11 +12,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-use nfs_mamont::mount::ExportEntry;
-use nfs_mamont::service::mount::{ExportEntryWrapper, MountService};
-use nfs_mamont::service::nlm::NlmService;
 use nfs_mamont::vfs::file::{BackendId, Path};
-use nfs_mamont::{handle_forever, BackendRegistry, Impl, ServerContext};
+use nfs_mamont::{handle_forever, BackendRegistry, ServerContext};
+use nfs_mamont_util::{MountService, NlmService, PoolAllocator};
 
 use crate::config::MockVfsConfig;
 use crate::mock::MockVfs;
@@ -110,7 +108,7 @@ impl Server {
         let listener = TcpListener::bind(config.bind).await?;
         let addr = listener.local_addr()?;
 
-        let allocator = Arc::new(Impl::new(config.buf_size, config.buf_count));
+        let allocator = Arc::new(PoolAllocator::new(config.buf_size, config.buf_count));
         let context = ServerContext::new(allocator, config.concurrency);
         let backend = Arc::new(MockVfs::new(config.vfs));
         let backend_id = context
@@ -118,11 +116,8 @@ impl Server {
             .ok_or_else(|| io::Error::other("no free backend slot"))?;
         let backends = context.backends();
 
-        let export = ExportEntryWrapper {
-            export: ExportEntry { directory: Path::new(config.export)?, names: Vec::new() },
-            root_handle: MockVfs::root_handle(backend_id),
-        };
-        let mount_service = Arc::new(MountService::with_exports(vec![export]));
+        let mount_service = Arc::new(MountService::new());
+        mount_service.add_export(Path::new(config.export)?, MockVfs::root_handle(backend_id)).await;
         let nlm_service = Arc::new(NlmService::new());
 
         let task = tokio::spawn(handle_forever(listener, context, mount_service, nlm_service));

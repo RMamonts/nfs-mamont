@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use nfs_mamont::auth::Credential;
 use nfs_mamont::vfs::commit::Commit;
 use nfs_mamont::vfs::create::Create;
-use nfs_mamont::vfs::file::{Handle, Name, Type};
+use nfs_mamont::vfs::file::{BackendId, Handle, Name, Type};
 use nfs_mamont::vfs::fs_info::FsInfo;
 use nfs_mamont::vfs::get_attr::GetAttr;
 use nfs_mamont::vfs::lookup::Lookup;
@@ -18,12 +18,15 @@ use nfs_mamont::vfs::set_attr::{Guard, NewAttr, SetAttr, SetTime};
 use nfs_mamont::vfs::write::{StableHow, Write};
 use nfs_mamont::vfs::{self, commit, create, fs_info, get_attr, lookup, mk_dir, read, read_dir};
 use nfs_mamont::vfs::{read_dir_plus, remove, rm_dir, set_attr, write, DirOpArgs};
-use nfs_mamont::{Allocator, Buffer, Impl, Slice};
+use nfs_mamont::{Allocator, Buffer};
+use nfs_mamont_util::{PoolAllocator, Slice};
 
 use super::MockVfs;
 use crate::config::{Latency, MockVfsConfig};
 
-const BACKEND: u8 = 3;
+fn backend() -> BackendId {
+    BackendId::new(3, 0)
+}
 const CRED: Credential = Credential::None;
 
 fn mock() -> MockVfs {
@@ -36,7 +39,7 @@ fn mock() -> MockVfs {
 }
 
 fn root() -> Handle {
-    MockVfs::root_handle(BACKEND)
+    MockVfs::root_handle(backend())
 }
 
 fn name(text: &str) -> Name {
@@ -55,7 +58,8 @@ fn unset() -> NewAttr {
 }
 
 async fn buffer(size: usize) -> Slice {
-    let allocator = Impl::new(NonZeroUsize::new(4096).unwrap(), NonZeroUsize::new(8).unwrap());
+    let allocator =
+        PoolAllocator::new(NonZeroUsize::new(4096).unwrap(), NonZeroUsize::new(8).unwrap());
     allocator.allocate(NonZeroUsize::new(size).unwrap()).await.unwrap()
 }
 
@@ -79,7 +83,7 @@ async fn lookup_keeps_the_backend_and_decides_the_kind_by_name() {
     let mock = mock();
 
     let file = lookup(&mock, &root(), "file_0").await;
-    assert_eq!(file.file.backend_id(), BACKEND);
+    assert_eq!(file.file.backend_id(), backend());
     let attr = file.file_attr.unwrap();
     assert!(is_regular(&attr));
     assert_eq!(attr.size, 10_000);
@@ -256,7 +260,7 @@ async fn readdirplus_returns_handles_matching_lookup() {
 
     for entry in page.entries.into_iter().skip(2) {
         let handle = entry.file_handle.unwrap();
-        assert_eq!(handle.backend_id(), BACKEND);
+        assert_eq!(handle.backend_id(), backend());
         let looked_up = lookup(&mock, &root(), entry.file_name.as_str()).await;
         assert_eq!(looked_up.file, handle);
         let attr = entry.file_attr.unwrap();

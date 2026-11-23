@@ -20,10 +20,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 
-use nfs_mamont::consts::nfsv3::{
-    ACCESS, COMMIT, CREATE, GETATTR, LOOKUP, NFS_PROGRAM, NFS_VERSION, NULL, READ, READDIR,
-    READDIRPLUS, REMOVE, WRITE,
-};
+use nfs_mamont::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
 
 use mock_vfs::cli::{self, Args};
 use mock_vfs::client::{self, mount, nfs, Connection};
@@ -354,33 +351,51 @@ impl Requests {
     fn new(shared: &Shared, worker: usize) -> Self {
         let (fh, root, block) = (&shared.file, &shared.root, shared.phase.block);
         let offset_at = client::ARGS_OFFSET + nfs::args::offset_position(fh.len());
-        let read = Template::new(READ, &nfs::args::read(fh, 0, block as u32), Some(offset_at));
+        let read = Template::new(
+            NfsProc::Read as u32,
+            &nfs::args::read(fh, 0, block as u32),
+            Some(offset_at),
+        );
         let payload = match shared.phase.op {
             Op::Write | Op::RandRw => vec![0xA5u8; block as usize],
             _ => Vec::new(),
         };
         let write = Template::new(
-            WRITE,
+            NfsProc::Write as u32,
             &nfs::args::write(fh, 0, &payload, nfs::UNSTABLE),
             Some(offset_at),
         );
         let name = format!("bench_{worker}");
         let other = match shared.phase.op {
-            Op::GetAttr => Template::new(GETATTR, &nfs::args::getattr(fh), None),
-            Op::Lookup => Template::new(LOOKUP, &nfs::args::lookup(root, &shared.file_name), None),
-            Op::Access => Template::new(ACCESS, &nfs::args::access(fh, nfs::ACCESS_ALL), None),
-            Op::ReadDir => {
-                Template::new(READDIR, &nfs::args::readdir(root, 0, &[0; 8], READDIR_COUNT), None)
+            Op::GetAttr => Template::new(NfsProc::GetAttr as u32, &nfs::args::getattr(fh), None),
+            Op::Lookup => Template::new(
+                NfsProc::LookUp as u32,
+                &nfs::args::lookup(root, &shared.file_name),
+                None,
+            ),
+            Op::Access => {
+                Template::new(NfsProc::Access as u32, &nfs::args::access(fh, nfs::ACCESS_ALL), None)
             }
+            Op::ReadDir => Template::new(
+                NfsProc::ReadDir as u32,
+                &nfs::args::readdir(root, 0, &[0; 8], READDIR_COUNT),
+                None,
+            ),
             Op::ReadDirPlus => Template::new(
-                READDIRPLUS,
+                NfsProc::ReadDirPlus as u32,
                 &nfs::args::readdirplus(root, 0, &[0; 8], READDIR_COUNT, READDIR_COUNT * 2),
                 None,
             ),
-            Op::Create => Template::new(CREATE, &nfs::args::create(root, &name), None),
-            Op::Remove => Template::new(REMOVE, &nfs::args::remove(root, &name), None),
-            Op::Commit => Template::new(COMMIT, &nfs::args::commit(fh, 0, 0), None),
-            Op::Null | Op::Read | Op::Write | Op::RandRw => Template::new(NULL, &[], None),
+            Op::Create => {
+                Template::new(NfsProc::Create as u32, &nfs::args::create(root, &name), None)
+            }
+            Op::Remove => {
+                Template::new(NfsProc::Remove as u32, &nfs::args::remove(root, &name), None)
+            }
+            Op::Commit => Template::new(NfsProc::Commit as u32, &nfs::args::commit(fh, 0, 0), None),
+            Op::Null | Op::Read | Op::Write | Op::RandRw => {
+                Template::new(NfsProc::Null as u32, &[], None)
+            }
         };
 
         Self { read, write, other, block, blocks: shared.file_size / block }
@@ -472,7 +487,8 @@ async fn worker(
         // in flight is answered it can stop. NULL bypasses the VFS queue, so the
         // sentinel may be answered before earlier requests, which is why the
         // receiver also waits for the in-flight set to drain.
-        let sentinel = client::call_record(NFS_PROGRAM, NFS_VERSION, NULL, SENTINEL_XID, &[]);
+        let sentinel =
+            client::call_record(NFS_PROGRAM, NFS_VERSION, NfsProc::Null as u32, SENTINEL_XID, &[]);
         writer.write_all(&sentinel).await?;
 
         Ok::<(), client::Error>(())

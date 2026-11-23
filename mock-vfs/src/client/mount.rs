@@ -1,6 +1,6 @@
 //! MOUNT v3 `MNT` request and reply (RFC 1813, section 5).
 
-use nfs_mamont::consts::mount::{MOUNT_MNT, MOUNT_PROGRAM, MOUNT_VERSION};
+use nfs_mamont::consts::mount::{MountProc, MOUNT_PROGRAM, MOUNT_VERSION};
 
 use super::xdr::{put_str, Reader};
 use super::{Connection, Error};
@@ -40,7 +40,7 @@ pub fn parse(body: &[u8]) -> Result<Mount, Error> {
 
 /// Mounts `path` and returns its root handle.
 pub async fn mount(conn: &mut Connection, path: &str) -> Result<Vec<u8>, Error> {
-    let body = conn.call(MOUNT_PROGRAM, MOUNT_VERSION, MOUNT_MNT, &args(path)).await?;
+    let body = conn.call(MOUNT_PROGRAM, MOUNT_VERSION, MountProc::Mnt as u32, &args(path)).await?;
 
     Ok(parse(body)?.handle)
 }

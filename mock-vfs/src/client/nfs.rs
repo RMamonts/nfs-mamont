@@ -1,9 +1,6 @@
 //! NFSv3 requests and replies (RFC 1813).
 
-use nfs_mamont::consts::nfsv3::{
-    ACCESS, COMMIT, CREATE, FSINFO, GETATTR, LOOKUP, NFS_PROGRAM, NFS_VERSION, NULL, READ, READDIR,
-    READDIRPLUS, REMOVE, WRITE,
-};
+use nfs_mamont::consts::nfsv3::{NfsProc, NFS_PROGRAM, NFS_VERSION};
 
 use super::xdr::{opaque_size, put_bool, put_opaque, put_str, put_u32, put_u64, Reader};
 use super::{Connection, Error};
@@ -389,27 +386,27 @@ async fn call<'a>(conn: &'a mut Connection, procedure: u32, args: &[u8]) -> Resu
 
 /// `NULL`.
 pub async fn null(conn: &mut Connection) -> Result<()> {
-    call(conn, NULL, &[]).await.map(|_| ())
+    call(conn, NfsProc::Null as u32, &[]).await.map(|_| ())
 }
 
 /// `GETATTR`.
 pub async fn getattr(conn: &mut Connection, fh: &[u8]) -> Result<Attr> {
-    parse_getattr(call(conn, GETATTR, &args::getattr(fh)).await?)
+    parse_getattr(call(conn, NfsProc::GetAttr as u32, &args::getattr(fh)).await?)
 }
 
 /// `LOOKUP`.
 pub async fn lookup(conn: &mut Connection, dir: &[u8], name: &str) -> Result<Lookup> {
-    parse_lookup(call(conn, LOOKUP, &args::lookup(dir, name)).await?)
+    parse_lookup(call(conn, NfsProc::LookUp as u32, &args::lookup(dir, name)).await?)
 }
 
 /// `ACCESS`.
 pub async fn access(conn: &mut Connection, fh: &[u8], mask: u32) -> Result<u32> {
-    parse_access(call(conn, ACCESS, &args::access(fh, mask)).await?)
+    parse_access(call(conn, NfsProc::Access as u32, &args::access(fh, mask)).await?)
 }
 
 /// `READ`.
 pub async fn read(conn: &mut Connection, fh: &[u8], offset: u64, count: u32) -> Result<ReadReply> {
-    let read = parse_read(call(conn, READ, &args::read(fh, offset, count)).await?)?;
+    let read = parse_read(call(conn, NfsProc::Read as u32, &args::read(fh, offset, count)).await?)?;
 
     Ok(ReadReply { count: read.count, eof: read.eof, data: read.data.to_vec() })
 }
@@ -422,17 +419,17 @@ pub async fn write(
     data: &[u8],
     stable: u32,
 ) -> Result<Write> {
-    parse_write(call(conn, WRITE, &args::write(fh, offset, data, stable)).await?)
+    parse_write(call(conn, NfsProc::Write as u32, &args::write(fh, offset, data, stable)).await?)
 }
 
 /// `CREATE` (unchecked).
 pub async fn create(conn: &mut Connection, dir: &[u8], name: &str) -> Result<Option<Vec<u8>>> {
-    parse_create(call(conn, CREATE, &args::create(dir, name)).await?)
+    parse_create(call(conn, NfsProc::Create as u32, &args::create(dir, name)).await?)
 }
 
 /// `REMOVE`.
 pub async fn remove(conn: &mut Connection, dir: &[u8], name: &str) -> Result<()> {
-    status(call(conn, REMOVE, &args::remove(dir, name)).await?).map(|_| ())
+    status(call(conn, NfsProc::Remove as u32, &args::remove(dir, name)).await?).map(|_| ())
 }
 
 /// `READDIR`.
@@ -443,7 +440,9 @@ pub async fn readdir(
     verifier: &[u8; 8],
     count: u32,
 ) -> Result<ReadDir> {
-    parse_readdir(call(conn, READDIR, &args::readdir(dir, cookie, verifier, count)).await?)
+    parse_readdir(
+        call(conn, NfsProc::ReadDir as u32, &args::readdir(dir, cookie, verifier, count)).await?,
+    )
 }
 
 /// `READDIRPLUS`.
@@ -456,15 +455,15 @@ pub async fn readdirplus(
     max_count: u32,
 ) -> Result<ReadDir> {
     let args = args::readdirplus(dir, cookie, verifier, dir_count, max_count);
-    parse_readdirplus(call(conn, READDIRPLUS, &args).await?)
+    parse_readdirplus(call(conn, NfsProc::ReadDirPlus as u32, &args).await?)
 }
 
 /// `COMMIT`.
 pub async fn commit(conn: &mut Connection, fh: &[u8], offset: u64, count: u32) -> Result<[u8; 8]> {
-    parse_commit(call(conn, COMMIT, &args::commit(fh, offset, count)).await?)
+    parse_commit(call(conn, NfsProc::Commit as u32, &args::commit(fh, offset, count)).await?)
 }
 
 /// `FSINFO`.
 pub async fn fsinfo(conn: &mut Connection, fh: &[u8]) -> Result<FsInfo> {
-    parse_fsinfo(call(conn, FSINFO, &args::fsinfo(fh)).await?)
+    parse_fsinfo(call(conn, NfsProc::FsInfo as u32, &args::fsinfo(fh)).await?)
 }
