@@ -9,6 +9,7 @@
 /// Authentication status codes (`auth_stat`) from RFC 5531, section 5.3.3.
 ///
 /// See RFC 5531, for the canonical descriptions.
+#[repr(u32)]
 #[derive(Debug)]
 pub enum AuthStat {
     /// The call succeeded and the credentials were accepted. `AUTH_OK`.

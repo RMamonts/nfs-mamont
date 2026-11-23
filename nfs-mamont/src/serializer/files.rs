@@ -15,13 +15,7 @@ pub fn nfs_time(dest: &mut impl Write, arg: file::Time) -> io::Result<()> {
 
 /// Serializes [`vfs::file::Handle`] into XDR `nfs_fh3`.
 pub fn file_handle(dest: &mut impl Write, fh: file::Handle) -> io::Result<()> {
-    usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array(dest, fh.0))
-}
-
-/// Serializes [`vfs::Error`] as an XDR enum discriminant (NFS status).
-#[allow(dead_code)]
-pub fn error(dest: &mut impl Write, stat: vfs::Error) -> io::Result<()> {
-    variant(dest, stat)
+    usize_as_u32(dest, NFS3_FHSIZE).and_then(|_| array(dest, fh.into_bytes()))
 }
 
 /// Serializes [file::Type] as the XDR `ftype3` enum discriminant.

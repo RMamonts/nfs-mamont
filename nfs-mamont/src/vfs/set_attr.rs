@@ -1,5 +1,7 @@
 //! Defines NFSv3 [`SetAttr`] interface.
 
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use crate::rpc::auth::Credential;
 use crate::vfs;
 
@@ -17,6 +19,18 @@ pub enum SetTime {
     DontChange,
     ToServer,
     ToClient(file::Time),
+}
+
+/// Wire discriminants of [`SetTime`] (`time_how` in RFC 1813).
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive)]
+pub enum SetTimeMode {
+    /// [`SetTime::DontChange`].
+    DontChange = 0,
+    /// [`SetTime::ToServer`].
+    ToServer = 1,
+    /// [`SetTime::ToClient`], followed by the time value.
+    ToClient = 2,
 }
 
 /// Specifies which attribute to update via [`SetAttr::set_attr`].

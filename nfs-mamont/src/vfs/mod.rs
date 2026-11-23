@@ -40,6 +40,7 @@ pub const MAX_PATH_LEN: usize = 1024;
 pub const STATUS_OK: usize = 0;
 
 /// [`Vfs`] errors.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToPrimitive, FromPrimitive)]
 pub enum Error {
     /// Not owner. The operation was not allowed because the

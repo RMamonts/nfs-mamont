@@ -17,8 +17,8 @@ const EMPTY_NEW_ATTR: &[u8] = &[
 
 #[rustfmt::skip]
 const ARGS_PREFIX_NODE: &[u8] = &[
-    0x00, 0x00, 0x00, 0x09, 0x00, 0x01, 0x02, 0x03,
-    0x04, 0x05, 0x06, 0x07, 0x08, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03,
+    0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x04, b'n', b'o', b'd', b'e',
 ];
 
@@ -31,7 +31,10 @@ fn test_mknod_fifo() {
     let data = wrap_what_with_args(&[[0, 0, 0, 7].as_slice(), EMPTY_NEW_ATTR].concat());
     let result = args(&mut Cursor::new(data)).unwrap();
 
-    assert_eq!(result.object.dir.0, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    assert_eq!(
+        *result.object.dir.as_bytes(),
+        [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09]
+    );
     assert_eq!(result.object.name.as_str(), "node");
     assert!(matches!(
         result.what,
@@ -137,5 +140,5 @@ fn test_args_invalid_what_discriminant() {
 fn test_args_truncated_after_what() {
     let data = wrap_what_with_args(&[0, 0, 0, 7]);
 
-    assert!(matches!(args(&mut Cursor::new(data)), Err(Error::IO(_))));
+    assert!(matches!(args(&mut Cursor::new(data)), Err(Error::InvalidData)));
 }

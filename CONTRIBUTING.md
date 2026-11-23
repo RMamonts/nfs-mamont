@@ -110,14 +110,25 @@ The contribution workflow is:
   MSRV is the normal workflow.)
 
 - **Platform:** development happens on **Linux**. `libc` is only pulled in by
-  the optional [`mlock`](README.md#safety--requirements) feature.
+  the optional [`mlock`](nfs-mamont-util/README.md#feature-flags) feature of
+  `nfs-mamont-util`.
 
 ### Building and testing
 
-The repository is a Cargo workspace with two member crates: `nfs-mamont`, the
-library, and `mock-vfs`, the benchmark tooling (never published, see its
-[README](mock-vfs/README.md)). The commands below cover both; add
-`-p nfs-mamont` to restrict them to the library.
+The repository is a Cargo workspace with four member crates:
+
+- `nfs-mamont` — the core library: RPC/XDR layer, MOUNT/NFSv3/NLM protocol
+  traits, VFS interface and the server loop. It does not depend on
+  `nfs-mamont-util`.
+- `nfs-mamont-util` — ready-made implementations built on the public API of
+  `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService`.
+- `drr-channel` — async channel with one queue per sender, served by deficit
+  round robin. `nfs-mamont` uses it for its VFS worker pool; it depends on
+  neither of the other two and knows nothing about NFS.
+- `mock-vfs` — the benchmark tooling (never published, see its
+  [README](mock-vfs/README.md)).
+
+The commands below run from the repository root and cover the whole workspace.
 
 ```bash
 # Build the library
@@ -134,12 +145,18 @@ cargo fmt --all --check
 
 # Documentation
 cargo doc --no-deps
+
+# Check the core crate and drr-channel on their own: workspace builds unify
+# dependency features between the crates, which can hide a feature a crate uses but
+# does not declare
+cargo check -p nfs-mamont --all-targets
+cargo check -p drr-channel --all-targets
 ```
 
 Optional, to exercise the memory-locking helpers:
 
 ```bash
-cargo test --features mlock
+cargo test -p nfs-mamont-util --features mlock
 ```
 
 These commands mirror what CI runs in its `lint`, `test`, `docs`, `security`,

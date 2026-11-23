@@ -6,39 +6,39 @@ use byteorder::{BigEndian, ReadBytesExt};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use super::{Error, Result};
-use crate::consts::xdr::ALIGNMENT;
+use crate::consts::xdr::{padding_len, ALIGNMENT};
 
 /// Reads and discards padding bytes to ensure XDR alignment.
 #[inline]
 pub fn padding(src: &mut impl Read, n: usize) -> Result<()> {
     let mut buf = [0u8; ALIGNMENT];
-    let padding = (ALIGNMENT - n % ALIGNMENT) % ALIGNMENT;
-    src.read_exact(&mut buf[..padding]).map_err(Error::IO)
+    let padding = padding_len(n);
+    src.read_exact(&mut buf[..padding]).map_err(|_| Error::InvalidData)
 }
 
 /// Parses a `u8` (byte) from the `Read` source.
 #[allow(dead_code)]
 #[inline]
 pub fn u8(src: &mut impl Read) -> Result<u8> {
-    src.read_u8().map_err(Error::IO)
+    src.read_u8().map_err(|_| Error::InvalidData)
 }
 
 /// Parses a `u32` (unsigned 32-bit integer) from the `Read` source, in Big-Endian format.
 #[inline]
 pub fn u32(src: &mut impl Read) -> Result<u32> {
-    src.read_u32::<BigEndian>().map_err(Error::IO)
+    src.read_u32::<BigEndian>().map_err(|_| Error::InvalidData)
 }
 
 /// Parses a `u64` (unsigned 64-bit integer) from the `Read` source, in Big-Endian format.
 #[inline]
 pub fn u64(src: &mut impl Read) -> Result<u64> {
-    src.read_u64::<BigEndian>().map_err(Error::IO)
+    src.read_u64::<BigEndian>().map_err(|_| Error::InvalidData)
 }
 
 /// Parses a `i32` (32-bit integer) from the `Read` source, in Big-Endian format.
 #[inline]
 pub fn i32(src: &mut impl Read) -> Result<i32> {
-    src.read_i32::<BigEndian>().map_err(Error::IO)
+    src.read_i32::<BigEndian>().map_err(|_| Error::InvalidData)
 }
 
 /// Parses an XDR boolean (encoded as a `u32`) from the `Read` source.
@@ -67,7 +67,7 @@ pub fn option<T, S: Read>(
 #[inline]
 pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
     let mut buf = [0u8; N];
-    src.read_exact(&mut buf).map_err(Error::IO)?;
+    src.read_exact(&mut buf).map_err(|_| Error::InvalidData)?;
     padding(src, N)?;
     Ok(buf)
 }
@@ -78,7 +78,7 @@ pub fn array<const N: usize>(src: &mut impl Read) -> Result<[u8; N]> {
 pub fn vector(src: &mut impl Read) -> Result<Vec<u8>> {
     let size = u32_as_usize(src)?;
     let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    src.read_exact(vec.as_mut_slice()).map_err(|_| Error::InvalidData)?;
     padding(src, size)?;
     Ok(vec)
 }
@@ -91,7 +91,7 @@ pub fn vec_max_size(src: &mut impl Read, max_size: usize) -> Result<Vec<u8>> {
         return Err(Error::MaxElemLimit);
     }
     let mut vec = vec![0u8; size];
-    src.read_exact(vec.as_mut_slice()).map_err(Error::IO)?;
+    src.read_exact(vec.as_mut_slice()).map_err(|_| Error::InvalidData)?;
     padding(src, size)?;
     Ok(vec)
 }

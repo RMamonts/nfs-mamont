@@ -14,17 +14,31 @@ providing a complete MOUNT and NFSv3 stack. The project currently targets
 - **NFSv3** via the `NFS_PROGRAM` (100003) RPC program — full procedure set of RFC 1813.
 - **MOUNT protocol** — export handling, mount/umount, and export dumps.
 - **Custom RPC/XDR layer** — hand-written parser and serializer.
-- **Zero-copy buffer allocator** — a reusable byte-slice allocator for
-  efficient packet and file I/O. Allocator has public trait so you can put your own implementation.
+- **Zero-copy pool allocator** — `PoolAllocator` (in `nfs-mamont-util`), a pool of reusable
+  byte buffers for efficient packet and file I/O. Allocator has public trait so you can put your
+  own implementation.
 - **Pluggable VFS backend** — the `Vfs` trait abstracts the filesystem so
   different storage back ends can be mounted.
+
+## Crates
+
+| Crate | Contents |
+|-------|----------|
+| [`nfs-mamont`](nfs-mamont/README.md) | RPC/XDR layer, MOUNT/NFSv3/NLM protocol traits, `handle_forever` server loop |
+| [`nfs-mamont-util`](nfs-mamont-util/README.md) | Ready-made implementations built on the public API of `nfs-mamont`: `PoolAllocator`, `MountService`, `NlmService` |
+| [`drr-channel`](drr-channel/README.md) | Async channel with one queue per sender, served by deficit round robin; shares the VFS worker pool of `nfs-mamont` between connections and is usable on its own |
+
+`nfs-mamont` does not depend on `nfs-mamont-util`; use the latter if you do not need custom
+allocator, MOUNT or NLM implementations.
 
 ## Architecture
 
 Described [here](https://github.com/RMamonts/nfs-mamont/wiki/NFS%E2%80%90Mamont-architecture)
-### Quick start
 
-As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation
+## Quick start
+
+As an example we provide our [demo](https://github.com/RMamonts/mirror-fs) implementation.
+Installation and usage notes are in the README of each crate.
 
 ### Benchmarking
 
@@ -33,16 +47,11 @@ with a configurable response time, a standalone `mock-nfs-server` and the
 `nfs-bench` load generator, so the server pipeline can be measured without a
 real file system behind it.
 
-## Safety & Requirements
+## Requirements
 
 - **Rust version:** 1.75.0 or later (CI is validated on both `1.75.0` and the
   current stable toolchain).
-- **Platform:** Linux (`libc` is an optional dependency used only for the
-  `mlock` feature, only needed if you are using our allocator implementation).
-
-### Optional feature
-
-- `mlock` — enables the `libc`-based memory locking helpers.
+- **Platform:** Linux.
 
 ## Contributing
 

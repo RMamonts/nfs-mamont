@@ -9,6 +9,7 @@ use super::{Name, OpaqueHandle};
 /// DOS-style file sharing mode.
 ///
 /// Defines what operations other clients are prohibited from performing.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum FileSharingMode {
     /// Other clients may perform any operation.
@@ -24,6 +25,7 @@ pub enum FileSharingMode {
 /// DOS-style file sharing access mode.
 ///
 /// Defines what operations the requesting client is allowed to perform.
+#[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum FileSharingAccess {
     /// Client has no access to the file.

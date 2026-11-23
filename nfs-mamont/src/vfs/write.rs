@@ -19,6 +19,7 @@ use super::file;
 /// `data` and the metadata to stable storage, including all or none, before returning a reply
 /// the client. There is no guarantee whether or when any uncommitted data will subsequently be
 /// committed to stable storage.
+#[repr(u32)]
 #[derive(Clone, Copy, Eq, PartialEq, FromPrimitive, ToPrimitive, Debug)]
 pub enum StableHow {
     Unstable = 0,
