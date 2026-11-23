@@ -115,7 +115,7 @@ The contribution workflow is:
 
 ### Building and testing
 
-The repository is a Cargo workspace with three member crates:
+The repository is a Cargo workspace with four member crates:
 
 - `nfs-mamont` — the core library: RPC/XDR layer, MOUNT/NFSv3/NLM protocol
   traits, VFS interface and the server loop. It does not depend on
@@ -125,6 +125,8 @@ The repository is a Cargo workspace with three member crates:
 - `drr-channel` — async channel with one queue per sender, served by deficit
   round robin. `nfs-mamont` uses it for its VFS worker pool; it depends on
   neither of the other two and knows nothing about NFS.
+- `mock-vfs` — the benchmark tooling (never published, see its
+  [README](mock-vfs/README.md)).
 
 The commands below run from the repository root and cover the whole workspace.
 
