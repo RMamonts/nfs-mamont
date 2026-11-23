@@ -73,6 +73,7 @@ impl<T: AsyncWrite + Unpin> Serializer<T> {
             ProcResult::Nfs3(data) => self.process_nfs3(data).await,
             ProcResult::Mount(data) => self.process_mount(data).await,
             ProcResult::Nlm4(data) => self.process_nlm(data).await,
+            ProcResult::Nfs4(_) => todo!(),
         }
     }
 

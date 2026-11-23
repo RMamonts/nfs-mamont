@@ -7,14 +7,16 @@ use crate::allocator::Buffer;
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::rpc::Error;
-use crate::vfs::nfsv3::NfsRes;
+use crate::vfs;
 
 pub mod connection;
 pub mod global;
 
 /// Tagged union of top-level RPC program results supported by this server.
 pub enum ProcResult<B: Buffer> {
-    Nfs3(Box<NfsRes<B>>),
+    Nfs3(Box<vfs::nfsv3::NfsRes<B>>),
+    #[allow(unused)]
+    Nfs4(Box<vfs::nfsv4::NfsRes<B>>),
     Mount(Box<MountRes>),
     Nlm4(Box<NlmRes>),
 }
