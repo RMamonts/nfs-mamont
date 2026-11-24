@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crate::Buffer;
+use crate::{vfs, Buffer};
 
 /// Arguments of operation for `compound`
 pub enum OperationArgs<B: Buffer> {
@@ -92,6 +92,163 @@ pub enum OperationRes<B: Buffer> {
         core::result::Result<super::release_lockowner::Success, super::release_lockowner::Fail>,
     ),
     Illegal,
+}
+
+impl<B: Buffer> OperationRes<B> {
+    pub fn extract_result(&self) -> core::result::Result<(), vfs::nfsv4::Error> {
+        match self {
+            OperationRes::Access(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Close(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Commit(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Create(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::DelegPurge(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::DelegReturn(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::GetAttr(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::GetFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Link(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Lock(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::LockT(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::LockU(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Lookup(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::LookupP(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::NVerify(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Open(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::OpenAttr(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::OpenConfirm(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::OpenDowngrade(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::PutFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::PutPubFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::PutRootFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Read(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::ReadDir(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::ReadLink(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Remove(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Rename(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Renew(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::RestoreFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::SaveFh(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Secinfo(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::SetAttr(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::SetClientId(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::SetClientIdConfirm(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Verify(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::Write(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            OperationRes::ReleaseLockOwner(res) => match res {
+                Ok(_) => Ok(()),
+                Err(err) => Err(err.error),
+            },
+            // TODO: check, what should be here
+            OperationRes::Illegal => Ok(()),
+        }
+    }
 }
 
 pub struct Tag(String);

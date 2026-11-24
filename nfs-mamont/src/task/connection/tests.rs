@@ -244,7 +244,7 @@ async fn flooded_connection(pool: ManagerCommandSender<TestBuffer>, setup: Setup
 /// Answers the oldest queued command; returns its xid.
 async fn answer_one(pool_rx: &Pool) -> u32 {
     // The slot of `max_pending` is held until the reply is queued, as the workers do.
-    let ManagerCommand::Nfs(Nfs3Command { args, result_tx }) = pool_rx.recv().await.0 else {
+    let ManagerCommand::Nfsv3(Nfs3Command { args, result_tx }) = pool_rx.recv().await.0 else {
         unreachable!("tests only queue NFS commands");
     };
     let xid = args.header.xid;

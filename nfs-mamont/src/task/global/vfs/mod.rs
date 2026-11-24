@@ -13,7 +13,7 @@ use crate::limits::budget::ReplySender;
 use crate::limits::Limits;
 use crate::parser::{Nfs3ArgWrapper, Nfs3Arguments};
 use crate::rpc::auth::Credential;
-use crate::task::global::manager::ManagerTaskReceiver;
+use crate::task::global::manager::{ManagerArgs, ManagerTaskReceiver};
 use crate::task::{ProcReply, ProcResult};
 use crate::vfs::nfsv3::file::BackendId;
 use crate::vfs::nfsv3::{self, NfsRes, Vfs};
@@ -255,20 +255,29 @@ where
     /// and sending replies.
     async fn run(self) {
         while let Ok(command) = self.receiver.recv().await {
-            dispatch(&self.backends, command.command).await;
-            // Held until the reply is queued, then goes to the next procedure.
-            drop(command.slot);
+            // TODO: move to dispatch, when there is actual handle for nfsv4
+            match command {
+                ManagerArgs::NFSv3(inner) => {
+                    dispatch(&self.backends, inner.args, inner.reply_sender).await;
+                    // Held until the reply is queued, then goes to the next procedure.
+                    drop(inner.slot);
+                }
+                ManagerArgs::NFSv4(_) => unimplemented!(),
+            };
         }
     }
 }
 
 /// Routes a single NFS procedure to the backend owning its file handle and sends the reply.
-async fn dispatch<V, B>(backends: &BackendRegistry<V>, command: Nfs3Command<B>)
-where
+async fn dispatch<V, B>(
+    backends: &BackendRegistry<V>,
+    command: Nfs3ArgWrapper<B>,
+    result_tx: ReplySender<B>,
+) where
     B: Buffer + 'static,
     V: nfsv3::Vfs<B> + Send + Sync + 'static,
 {
-    let Nfs3Command { args: Nfs3ArgWrapper { header, proc }, result_tx } = command;
+    let Nfs3ArgWrapper { header, proc } = command;
     let proc_name = proc.get_name();
 
     let response = match target(&proc) {
