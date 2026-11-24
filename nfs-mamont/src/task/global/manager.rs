@@ -103,13 +103,23 @@ where
     }
     async fn run(self) {
         let mut futures = futures::stream::FuturesUnordered::new();
+        let mut is_closed = false;
 
         loop {
             tokio::select! {
-                Some((command, slot)) = self.receiver.recv() => {
-                    self.handle_proc(command, slot, &mut futures).await;
-                },
+                new_cmd = self.receiver.recv(), if !is_closed => {
+                    match new_cmd {
+                        // all readers are closed and all msgs are processed
+                        None => {
+                            is_closed = true;
+                        },
+                        Some((command, slot)) => {
+                            self.handle_proc(command, slot, &mut futures).await;
+                        }
+                    }
+                }
                 _ = futures.next(), if !futures.is_empty() => {}
+                else => break,
             }
         }
     }
