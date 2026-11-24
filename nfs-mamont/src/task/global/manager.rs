@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 
 use futures::stream::FuturesUnordered;
@@ -78,6 +79,7 @@ where
     sender: ManagerTaskSender<B>,
     #[allow(unused)]
     context: ClientContext,
+    limit_compound_in_flight: NonZeroUsize,
 }
 
 type CompoundFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -90,11 +92,18 @@ where
         receiver: Receiver<ManagerCommand<B>>,
         mount_sender: MountTaskSender<B>,
         nlm_sender: NlmTaskSender<B>,
+        limit_compound_in_flight: NonZeroUsize,
     ) -> (Self, ManagerTaskReceiver<B>) {
         // TODO: replace with crossbeam_queue or other spmc?
         let (sender, worker_recv) = async_channel::unbounded::<ManagerArgs<B>>();
-        let task =
-            Self { receiver, mount_sender, nlm_sender, sender, context: ClientContext::new() };
+        let task = Self {
+            receiver,
+            mount_sender,
+            nlm_sender,
+            sender,
+            context: ClientContext::new(),
+            limit_compound_in_flight,
+        };
         (task, worker_recv)
     }
 
@@ -104,10 +113,12 @@ where
     async fn run(self) {
         let mut futures = futures::stream::FuturesUnordered::new();
         let mut is_closed = false;
+        // probably not really necessary, since there is explicit ddr_channel with same limitations
+        let limit = self.limit_compound_in_flight.get();
 
         loop {
             tokio::select! {
-                new_cmd = self.receiver.recv(), if !is_closed => {
+                new_cmd = self.receiver.recv(), if !is_closed && futures.len() < limit => {
                     match new_cmd {
                         // all readers are closed and all msgs are processed
                         None => {

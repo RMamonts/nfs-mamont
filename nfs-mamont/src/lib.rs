@@ -69,7 +69,8 @@ where
     let (sender, receiver) =
         drr_channel::channel::<ManagerCommand<B>>(context.limits().max_pending, VFS_QUANTUM);
 
-    let (manager_task, manager_recv) = ManagerTask::new(receiver, mount_sender, nlm_sender);
+    let (manager_task, manager_recv) =
+        ManagerTask::new(receiver, mount_sender, nlm_sender, context.limits().max_in_flight);
     manager_task.spawn();
     // Dropped when the server stops, which closes the pool's queues.
     VfsManager::spawn_vfs_tasks(context.backends(), manager_recv, context.limits());
