@@ -10,7 +10,6 @@ use tracing::warn;
 use drr_channel::{Cost, Receiver, Slot};
 
 use crate::allocator::Buffer;
-use crate::auth::AuthStat::Ok;
 use crate::limits::budget::ReplySender;
 use crate::op_context::nfsv4::{ClientContext, CompoundContext};
 use crate::parser::{Nfs3ArgWrapper, RpcHeader};
@@ -171,7 +170,9 @@ where
                 match command.args.op {
                     Nfs4Arguments::Null => {
                         let res_sender = command.result_tx;
-                        let reply = ProcReply { xid: command.args.header.xid, proc_result: Ok(()) };
+                        let res = ProcResult::Nfs4(Box::new(vfs::nfsv4::NfsRes::Null));
+                        let reply =
+                            ProcReply { xid: command.args.header.xid, proc_result: Ok(res) };
                         if let Err(e) = res_sender.send(reply).await {
                             warn!("Failed to send NULL reply: {e}");
                         }
