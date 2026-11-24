@@ -195,17 +195,20 @@ async fn new_future<B: Buffer>(
 ) {
     let mut context = CompoundContext::new(header.xid, args.tag, header.cred, args.argarray.into());
     let mut results = Vec::with_capacity(context.ops.len());
+
     let result = loop {
         let Some(next) = context.ops.pop_front() else { break Ok(()) };
+
         let (callback_sender, callback_recv) =
             oneshot::channel::<vfs::nfsv4::compound::OperationRes<B>>();
-        // TODO: handle properly
-        let _ = sender
-            .send(ManagerArgs::NFSv4(ManagerNfsv4Command {
-                reply_sender: callback_sender,
-                args: next,
-            }))
-            .await;
+
+        let msg =
+            ManagerArgs::NFSv4(ManagerNfsv4Command { reply_sender: callback_sender, args: next });
+
+        let Ok(_) = sender.send(msg).await else {
+            // failed to submit message to worker
+            break Err(vfs::nfsv4::Error::ServerFault);
+        };
 
         let Ok(res) = callback_recv.await else {
             // callback was not send, which could happen on unexpected worker task drop
@@ -219,6 +222,7 @@ async fn new_future<B: Buffer>(
             break result;
         }
     };
+
     let reply = ProcReply {
         xid: context.xid,
         proc_result: Ok(ProcResult::Nfs4(Box::new(vfs::nfsv4::NfsRes::Compound {
@@ -227,6 +231,7 @@ async fn new_future<B: Buffer>(
             result_array: results,
         }))),
     };
+
     match result_tx.send(reply).await {
         Ok(_) => {}
         Err(e) => warn!("Failed to send reply: {:?}", e),
