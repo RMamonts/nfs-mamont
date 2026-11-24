@@ -27,3 +27,4 @@ num-traits.workspace = true
 tokio = { workspace = true, features = ["rt", "net", "io-util", "sync", "time", "macros", "signal"] }
 tracing.workspace = true
 trait-variant.workspace = true
+futures = "0.3.34"
