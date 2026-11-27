@@ -10,7 +10,7 @@ use async_channel::{SendError, Sender};
 use crate::allocator::{Allocator, Buffer};
 use crate::connection_id::ConnectionId;
 use crate::limits::connection::{ConnectionLimits, Expiry};
-use crate::metric::{NfsMetrics, TaskKind, Timer};
+use crate::metric::{call_procedure, NfsMetrics, TaskKind, Timer};
 use crate::mount::MountRes;
 use crate::nlm::NlmRes;
 use crate::parser::parser_struct::RpcParser;
@@ -102,13 +102,7 @@ where
 
             let (message, timer) = tokio::select! {
                 biased;
-                call = self.metrics.read_call(&io, parser.next_message(), |message| match message {
-                    Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => {
-                        Some(args.procedure())
-                    }
-
-                    _ => None,
-                }) => call,
+                call = self.metrics.read_call(&io, parser.next_message(), call_procedure) => call,
                 expiry = self.limits.expired() => {
                     let client = self.client_id.into_inner();
                     match expiry {

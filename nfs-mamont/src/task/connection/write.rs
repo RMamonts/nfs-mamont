@@ -10,10 +10,9 @@ use tracing::{error, warn};
 use crate::allocator::Buffer;
 use crate::connection_id::ConnectionId;
 use crate::limits::budget::InFlightReply;
-use crate::metric::{NfsMetrics, Stage, TaskKind, Timer};
+use crate::metric::{reply_procedure, NfsMetrics, Stage, TaskKind, Timer};
 use crate::rpc::{AuthFlavor, OpaqueAuth};
 use crate::serializer;
-use crate::task::ProcResult;
 
 /// Writes [`super::super::global::vfs::VfsTask`] responses to a network connection.
 pub struct WriteTask<B: Buffer> {
@@ -58,10 +57,7 @@ impl<B: Buffer> WriteTask<B> {
         while let Ok(InFlightReply { mut reply, token }) = result_receiver.recv().await {
             let mut timer = mem::replace(&mut reply.timer, Timer::NONE);
             self.metrics.lap(&mut timer, Stage::ReplyQueue);
-            let procedure = match &reply.proc_result {
-                Ok(ProcResult::Nfs3(res)) => Some(res.procedure()),
-                _ => None,
-            };
+            let procedure = reply_procedure(&reply);
 
             // TODO: <https://github.com/RMamonts/nfs-mamont/issues/143>
             // Use proper authentication verifier instead of None

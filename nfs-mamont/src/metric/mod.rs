@@ -16,3 +16,4 @@ mod test_helpers;
 
 pub use kinds::{Stage, TaskKind};
 pub use nfs::*;
+pub(crate) use procedure::{call_procedure, reply_procedure};

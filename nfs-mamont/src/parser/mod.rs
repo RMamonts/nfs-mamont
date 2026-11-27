@@ -10,7 +10,7 @@ pub mod read_buffer;
 pub mod rpc;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::future::Future;
 

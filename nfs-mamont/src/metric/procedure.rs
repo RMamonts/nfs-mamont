@@ -1,8 +1,33 @@
-use crate::{consts::nfsv3::NfsProc, parser::NfsArguments, vfs::NfsRes, Buffer};
+use crate::{
+    consts::nfsv3::NfsProc,
+    parser::{ArgWrapper, NfsArguments, ProcArguments},
+    rpc::ErrorWrapper,
+    task::{ProcReply, ProcResult},
+    vfs::NfsRes,
+    Buffer,
+};
+
+/// Returns the NFSv3 procedure number of a parsed call, `None` for other programs and errors.
+pub(crate) fn call_procedure<B: Buffer>(
+    message: &Result<ArgWrapper<B>, ErrorWrapper>,
+) -> Option<u32> {
+    match message {
+        Ok(ArgWrapper { proc: ProcArguments::Nfs3(args), .. }) => Some(args.procedure()),
+        _ => None,
+    }
+}
+
+/// Returns the NFSv3 procedure number of a reply, `None` for other programs and errors.
+pub(crate) fn reply_procedure<B: Buffer>(reply: &ProcReply<B>) -> Option<u32> {
+    match &reply.proc_result {
+        Ok(ProcResult::Nfs3(res)) => Some(res.procedure()),
+        _ => None,
+    }
+}
 
 impl<B: Buffer> NfsArguments<B> {
     /// Returns the NFSv3 procedure number of the call.
-    pub(crate) fn procedure(&self) -> u32 {
+    fn procedure(&self) -> u32 {
         match self {
             Self::Null => NfsProc::Null as u32,
             Self::GetAttr(_) => NfsProc::GetAttr as u32,
@@ -32,7 +57,7 @@ impl<B: Buffer> NfsArguments<B> {
 
 impl<B: Buffer> NfsRes<B> {
     /// Returns the NFSv3 procedure number this is a result of.
-    pub(crate) fn procedure(&self) -> u32 {
+    fn procedure(&self) -> u32 {
         match self {
             NfsRes::Null => NfsProc::Null as u32,
             NfsRes::GetAttr(_) => NfsProc::GetAttr as u32,
