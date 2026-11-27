@@ -42,7 +42,7 @@ async fn main() {
     let (sender, receiver) = channel(capacity, quantum);
 
     // One flow per source of work.
-    let (busy, quiet) = (sender.flow(), sender.flow());
+    let (mut busy, mut quiet) = (sender.flow(), sender.flow());
     for id in 0..4 {
         busy.send(Job(id)).await.unwrap();
     }
@@ -76,9 +76,13 @@ async fn main() {
 - A light flow waits for at most one quantum of each backlogged one.
 - A flow that runs empty loses its unspent credit, so an idle flow banks none.
 - At most `capacity` items are queued or held by receivers at once; senders wait for a
-  slot in the order they came.
+  slot in the order they came. `FlowSender::send` takes `&mut self`, so a flow has at
+  most one sender waiting, and the waiting flows take the slots in turn.
 - Dropping the `Sender` closes the channel: the queued items are still handed out, then
-  `Receiver::recv` returns `None`.
+  `Receiver::recv` returns `None`; `FlowSender::send` fails, also while it waits for a
+  slot.
+- Dropping the last `Receiver` closes the channel too and drops the queued items.
+- `Cost::cost` is asked once per item, when it is sent; a cost of 0 counts as 1.
 
 ## License
 
