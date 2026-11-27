@@ -16,24 +16,28 @@ A request is timed from the moment it is parsed through three stages (vfs queue,
 
 Only NFSv3 calls are measured.
 
-| Metric                           | Type      | Labels                                      | Unit  | Meaning                                                                                                                                   |
-| -------------------------------- | --------- | ------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `nfsmamont_rpc_stage_seconds`    | histogram | `stage` = `vfs_queue`, `vfs`, `reply_queue` | s     | Time spent in one pipeline stage; parsing the call and writing the reply is covered by the message metrics                                |
-| `nfsmamont_rpc_duration_seconds` | histogram | —                                           | s     | Parsed -> reply written                                                                                                                   |
-| `nfsmamont_rpc_requests_total`   | counter   | `status` = `ok`, `error`                    | count | Completed requests; `error` is an internal server error or a failed reply write                                                           |
-| `nfsmamont_vfs_in_flight`        | gauge     | `backend` = backend id                      | count | Requests executing in a backend                                                                                                           |
-| `nfsmamont_queue_depth`          | gauge     | `queue` = `vfs`, `reply`                    | count | Messages waiting in a channel: `vfs` is the VFS pool queue, `reply` sums the per-connection reply queues (MOUNT and NLM replies included) |
+To keep overhead low, timing is **sampled**: about one in `SAMPLE_EVERY` (16 by default) NFSv3 requests is picked at random on the read side.
+Only the sampled requests feed the histograms below and in [Message metrics](#message-metrics),
+so histogram counts are about `1/N` of the real request count; rates need to be scaled by `nfsmamont_sample_every`.
+`nfsmamont_rpc_requests_total` and `nfsmamont_vfs_in_flight` cover every request.
+
+| Metric                           | Type      | Labels                                      | Unit  | Meaning                                                                                                    |
+| -------------------------------- | --------- | ------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `nfsmamont_rpc_stage_seconds`    | histogram | `stage` = `vfs_queue`, `vfs`, `reply_queue` | s     | Time spent in one pipeline stage; parsing the call and writing the reply is covered by the message metrics |
+| `nfsmamont_rpc_duration_seconds` | histogram | —                                           | s     | Parsed -> reply written (also recorded when the reply write failed)                                        |
+| `nfsmamont_rpc_requests_total`   | counter   | `status` = `ok`, `error`                    | count | Replies written for NFSv3 requests; `error` is a failed reply write                                        |
+| `nfsmamont_vfs_in_flight`        | gauge     | `backend` = backend id                      | count | Requests executing in a backend                                                                            |
+| `nfsmamont_sample_every`         | gauge     | —                                           | count | Sampling divisor: about one in this many requests is timed                                                 |
 
 ## Message metrics
 
-Both connection tasks run (de)serialization under a `tokio_metrics::FutureMonitor` with their socket half wrapped in `IoTimer`, which sums the time spent in and bytes moved by the socket syscalls.
+Both connection tasks time (de)serialization of sampled messages with their socket half wrapped in `IoTimer`, which sums the time spent in the socket syscalls.
 
-| Metric                          | Type      | Labels                              | Unit  | Meaning                                              |
-| ------------------------------- | --------- | ----------------------------------- | ----- | ---------------------------------------------------- |
-| `nfsmamont_rpc_cpu_seconds`     | histogram | `proc`, `message` = `call`, `reply` | s     | Poll time minus syscall time: (de)serialization      |
-| `nfsmamont_rpc_syscall_seconds` | histogram | `proc`, `message` = `call`, `reply` | s     | Time in socket calls (mostly syscall time)           |
-| `nfsmamont_rpc_wait_seconds`    | histogram | `proc`, `message` = `reply`         | s     | Idle time: waiting for the socket to become writable |
-| `nfsmamont_rpc_reply_bytes`     | histogram | `proc`, `message` = `reply`         | bytes | Bytes written, record marking included               |
+| Metric                          | Type      | Labels                              | Unit | Meaning                                                                                         |
+| ------------------------------- | --------- | ----------------------------------- | ---- | ----------------------------------------------------------------------------------------------- |
+| `nfsmamont_rpc_cpu_seconds`     | histogram | `proc`, `message` = `call`, `reply` | s    | Poll time minus syscall time: (de)serialization                                                 |
+| `nfsmamont_rpc_syscall_seconds` | histogram | `proc`, `message` = `call`, `reply` | s    | Time in socket calls (mostly syscall time)                                                      |
+| `nfsmamont_rpc_wait_seconds`    | histogram | `proc`, `message` = `reply`         | s    | Time between polls: waiting for the socket to become writable, plus scheduling delay on wake-up |
 
 Nothing is recorded for a reply whose write failed.
 
@@ -63,9 +67,9 @@ Read and Write tasks use `TaskMonitor` (1 per task kind, 2 total) to instrument 
 
 A call to `ServerContext::new` also spawns task reporters that periodically (`TOKIO_SAMPLING_INTERVAL`) sample `TaskMonitor`'s metrics to any configured recorder.
 
-| Source                                                                                            | Name                          | Labels                   |
-| ------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------ |
-| [`TaskMetrics`](https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.TaskMetrics.html)       | `nfsmamont_tokio_task_<name>` | `task` = `read`, `write` |
+| Source                                                                                      | Name                          | Labels                   |
+| ------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------ |
+| [`TaskMetrics`](https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.TaskMetrics.html) | `nfsmamont_tokio_task_<name>` | `task` = `read`, `write` |
 
 ## Clocksource
 

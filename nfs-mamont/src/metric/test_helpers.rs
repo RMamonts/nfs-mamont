@@ -16,7 +16,7 @@ pub fn with_recorder<T>(build: impl FnOnce() -> T) -> (T, Snapshotter, Debugging
 
 /// [`NfsMetrics`] bound to a fresh debugging recorder.
 pub fn nfs_metrics() -> (NfsMetrics, Snapshotter, DebuggingRecorder) {
-    with_recorder(NfsMetrics::new)
+    with_recorder(|| NfsMetrics::with_sample_every(1))
 }
 
 /// Takes a snapshot of all metric values in debug recorder. Taking a snapshot resets the values
@@ -52,16 +52,4 @@ pub fn samples(value: &DebugValue) -> usize {
 /// Gauge value as it appears in a snapshot.
 pub fn gauge(value: f64) -> DebugValue {
     DebugValue::Gauge(value.into())
-}
-
-/// Returns the value of gauge `name` with exactly `labels`.
-pub fn gauge_value(
-    snapshot: &[(CompositeKey, DebugValue)],
-    name: &str,
-    labels: &[(&str, &str)],
-) -> f64 {
-    match value(snapshot, name, labels) {
-        DebugValue::Gauge(value) => value.into_inner(),
-        other => panic!("expected a gauge, got {other:?}"),
-    }
 }
