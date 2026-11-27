@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "nfs-mamont"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "async-channel",
  "byteorder",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "nfs-mamont-util"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-queue",
  "libc",
