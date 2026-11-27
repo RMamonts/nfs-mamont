@@ -171,7 +171,7 @@ impl<T: Cost> FlowSender<T> {
             if inner.closed {
                 return Err(item);
             }
-            
+
             let flow = inner.flows[self.id].as_mut().expect("a sender keeps its flow open");
 
             if flow.queue.is_empty() {
@@ -231,7 +231,7 @@ impl<T> Drop for Receiver<T> {
             inner.closed = true;
             inner.drain()
         };
-        
+
         self.shared.close();
         // Dropped outside the lock: an item may do anything when dropped.
         drop(queued);
@@ -262,7 +262,7 @@ impl<T> Receiver<T> {
                     return None;
                 }
             }
-            
+
             notified.await;
         }
     }
